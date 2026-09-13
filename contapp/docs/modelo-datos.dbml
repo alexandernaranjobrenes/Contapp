@@ -1,0 +1,650 @@
+// CONTAPP — Modelo de datos propuesto
+// Ver docs/propuesta-contapp.md para el razonamiento de cada dominio.
+// Convención: toda tabla transaccional/de configuración lleva company_id
+// (excepto las marcadas como globales) y aplica CompanyScope en Eloquent.
+
+Project contapp {
+  database_type: 'MySQL'
+  note: 'ERP contable SaaS multi-empresa para Costa Rica'
+}
+
+//////////////////////////////////////////////////////////
+// CORE: Tenancy, usuarios, roles, permisos
+//////////////////////////////////////////////////////////
+
+Table companies {
+  id bigint [pk, increment]
+  legal_name varchar
+  trade_name varchar
+  tax_id varchar [note: 'cédula jurídica']
+  country_code varchar [default: 'CR']
+  local_currency_id bigint [ref: > currencies.id]
+  foreign_currency_id bigint [ref: > currencies.id]
+  system_currency_id bigint [ref: > currencies.id]
+  timezone varchar [default: 'America/Costa_Rica']
+  logo_path varchar
+  status varchar [default: 'active', note: 'active|suspended']
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table account_mask_configs {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  segment_lengths json [note: 'ej [1,2,2,2,3] para x-xx-xx-xx-xxx']
+}
+
+Table users {
+  id bigint [pk, increment]
+  name varchar
+  email varchar [unique]
+  password varchar
+  is_super_admin boolean [default: false, note: 'global, no editable por UI normal']
+  default_company_id bigint [ref: > companies.id]
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table company_user {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  user_id bigint [ref: > users.id]
+  is_default boolean [default: false]
+
+  indexes {
+    (company_id, user_id) [unique]
+  }
+}
+
+Table roles {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id, note: 'null = rol de sistema global']
+  name varchar
+  type varchar [note: 'super_admin|admin|user']
+  can_grant_permissions boolean [default: false, note: 'delega la facultad de otorgar derechos, nunca delete']
+  created_at timestamp
+}
+
+Table user_roles {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  role_id bigint [ref: > roles.id]
+  company_id bigint [ref: > companies.id]
+}
+
+Table modules {
+  id bigint [pk, increment]
+  code varchar [unique, note: 'ventas, bancos, cxc, contabilidad, planillas...']
+  name varchar
+}
+
+Table module_permissions {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  module_id bigint [ref: > modules.id]
+  subject_type varchar [note: 'user|role']
+  subject_id bigint
+  access_level varchar [note: 'read_write|read|none']
+}
+
+Table company_modules {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  module_id bigint [ref: > modules.id]
+  enabled boolean [default: true]
+  enabled_at timestamp
+}
+
+Table audit_logs {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  user_id bigint [ref: > users.id]
+  action varchar [note: 'create|update|delete|void|permission_change|period_close...']
+  auditable_type varchar
+  auditable_id bigint
+  old_values json
+  new_values json
+  ip_address varchar
+  created_at timestamp
+}
+
+//////////////////////////////////////////////////////////
+// MOTOR DE DOCUMENTOS
+//////////////////////////////////////////////////////////
+
+Table document_types {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar [note: '3 letras: FVE, NCC, DVC, NDC, TRB, CKB, DEB, ADD, ADC, ACC']
+  name varchar
+  origin_module varchar [note: 'ventas|compras|bancos|contable|cxc|cxp|activos_fijos']
+  generates_journal boolean [default: true]
+  requires_electronic_key boolean [default: false]
+  bp_line_requirement varchar [default: 'none', note: 'none|due_date|application|either — qué exige en líneas con socio de negocio (ver PostJournalService::post(), docs/decisiones.md 2026-08-24)']
+  is_opening_type boolean [default: false, note: 'true solo en el tipo reservado que el sistema crea de oficio para saldos iniciales (ver OpeningBalanceBulkImporter, docs/decisiones.md 2026-08-24) — nunca elegible en el asiento manual']
+  is_reconciliation_type boolean [default: false, note: 'true solo en el tipo reservado (código ARR) para traspasos de reconciliación interna (ver AccountReconciliationController, docs/decisiones.md 2026-08-24) — nunca elegible en el asiento manual']
+  is_closing_type boolean [default: false, note: 'true solo en el tipo reservado (código ACC) para el asiento de cierre anual (ver PeriodCloseService::closingDocumentType(), docs/decisiones.md 2026-08-27) — nunca elegible en el asiento manual, y LedgerService lo excluye del mayor de cuentas de resultados']
+  default_debit_account_id bigint [ref: > chart_of_accounts.id]
+  default_credit_account_id bigint [ref: > chart_of_accounts.id]
+  numbering_mask varchar [default: '99999999']
+  field_count int [default: 8]
+  next_consecutive int [default: 1]
+  range_from bigint
+  range_to bigint
+  consecutive_on_save boolean [default: false]
+  allow_out_of_range_dates boolean [default: false]
+  prevent_admins_out_of_range boolean [default: false]
+  date_range_from date
+  date_range_to date
+  currency_mode varchar [note: 'local_fija|extranjera_fija|libre']
+  allows_balance_increase boolean [default: false]
+  reads_document_classifications boolean [default: false]
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table document_type_printing {
+  id bigint [pk, increment]
+  document_type_id bigint [ref: > document_types.id]
+  workstation varchar
+  assigned_printer varchar
+  print_on_save boolean [default: false]
+  enable_direct_print boolean [default: false]
+  confirm_on_reprint boolean [default: false]
+  resume_lines_on_print boolean [default: false]
+  print_format_file varchar
+}
+
+Table document_type_officers {
+  id bigint [pk, increment]
+  document_type_id bigint [ref: > document_types.id]
+  officer_role varchar [note: 'elaborated_by|reviewed_by|approved_by']
+  required boolean [default: false]
+}
+
+Table document_type_visible_columns {
+  id bigint [pk, increment]
+  document_type_id bigint [ref: > document_types.id]
+  column_key varchar
+  visible boolean [default: true]
+  language varchar [default: 'es']
+}
+
+Table document_type_permissions {
+  id bigint [pk, increment]
+  document_type_id bigint [ref: > document_types.id]
+  subject_type varchar [note: 'user|role']
+  subject_id bigint
+  scope varchar [note: 'individual|group']
+  can_create boolean [default: false]
+  can_modify boolean [default: false]
+  can_delete boolean [default: false, note: 'UI lo respeta, pero borrado real de contabilizado solo lo fuerza el super admin desde código']
+  can_void boolean [default: false]
+  can_vary_consecutive boolean [default: false]
+  can_backdate boolean [default: false]
+  can_modify_integrated_documents boolean [default: false]
+  can_create_out_of_range boolean [default: false]
+  can_modify_document_dates boolean [default: false]
+}
+
+//////////////////////////////////////////////////////////
+// CONTABILIDAD: catálogo, monedas, asientos, períodos
+//////////////////////////////////////////////////////////
+
+Table currencies {
+  id bigint [pk, increment]
+  code varchar [unique, note: 'ISO 4217: CRC, USD...']
+  name varchar
+  symbol varchar
+  decimal_places int [default: 2]
+
+  Note: 'Catálogo global, sin company_id ni columna "type". El rol de cada
+  moneda (local/extranjera/sistema) lo define companies.local_currency_id /
+  foreign_currency_id / system_currency_id, que pueden apuntar al mismo
+  registro (ver docs/decisiones.md, 2026-08-05).'
+}
+
+Table exchange_rates {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  currency_id bigint [ref: > currencies.id]
+  rate_date date
+  rate_type varchar [note: 'buy|sell|reference']
+  rate decimal
+  source varchar [note: 'bccr_api|manual']
+  is_locked boolean [default: false]
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+
+  indexes {
+    (company_id, currency_id, rate_date, rate_type)
+  }
+}
+
+Table chart_of_accounts {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar [note: 'x-xx-xx-xx-xxx']
+  parent_id bigint [ref: > chart_of_accounts.id]
+  level int
+  description_es varchar
+  description_en varchar
+  account_type varchar [note: 'asset|liability|equity|income|expense']
+  normal_balance varchar [note: 'debit|credit']
+  currency_mode varchar [note: 'local|foreign|both']
+  accepts_posting boolean [default: false, note: 'solo cuentas hoja reciben movimiento']
+  is_financial_report boolean [default: true]
+  section varchar
+  list_order int
+  tax_classification varchar [note: 'none|sales|purchases|iva_general|iva_devengado|iva_soportado']
+  is_active boolean [default: true]
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table fiscal_years {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  year int
+  status varchar [default: 'open', note: 'open|closed']
+}
+
+Table fiscal_periods {
+  id bigint [pk, increment]
+  fiscal_year_id bigint [ref: > fiscal_years.id]
+  period_number int
+  start_date date
+  end_date date
+  status varchar [default: 'open', note: 'open|blocked|closed']
+}
+
+Table cost_centers {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  start_date date [note: 'vigente desde']
+  end_date date [note: 'vigente hasta; null = sin fecha de fin']
+  is_active boolean [default: true]
+
+  indexes {
+    (company_id, code) [unique]
+  }
+
+  Note: 'Catálogo plano (sin jerarquía desde 2026-08-25, ver docs/decisiones.md) —
+  un centro de costo ya no recibe asignación directa por línea de asiento,
+  recibe su porción vía el reparto por porcentaje de una cost_allocation_rule.'
+}
+
+Table cost_allocation_rules {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  valid_from date
+  valid_until date [note: 'null = sin vencimiento']
+  is_active boolean [default: true]
+
+  indexes {
+    (company_id, code) [unique]
+  }
+
+  Note: '"Norma de reparto" (SAP B1): una línea de asiento de cuenta de
+  costo/gasto (chart_of_accounts.requires_cost_center) elige UNA de estas en
+  vez de un centro de costo directo. Al contabilizar, PostJournalService::post()
+  reparte el monto de la línea entre los centros de costo de sus
+  cost_allocation_rule_lines, proporcional al porcentaje de cada una (deben
+  sumar exactamente 100%), generando una journal_details real por centro de
+  costo — así el mayor auxiliar por centro de costo sigue leyendo
+  journal_details.cost_center_id directo, sin cambios.'
+}
+
+Table cost_allocation_rule_lines {
+  id bigint [pk, increment]
+  cost_allocation_rule_id bigint [ref: > cost_allocation_rules.id]
+  cost_center_id bigint [ref: > cost_centers.id, note: 'restrictOnDelete: no se puede borrar un centro que una norma todavía reparte']
+  percentage decimal(5,2)
+  position int [note: 'decide qué línea absorbe el remanente de redondeo al repartir']
+
+  indexes {
+    (cost_allocation_rule_id, cost_center_id) [unique]
+  }
+}
+
+Table journal_entries {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  document_type_id bigint [ref: > document_types.id]
+  document_number bigint
+  document_date date [note: 'informativa: fecha del documento fuente, no fija período/TC/vigencias']
+  posting_date date [note: 'rectora: fija período fiscal, tipo de cambio y vigencias de cuenta/tarifa']
+  due_date date [note: 'opcional; precarga journal_details.due_date de cada línea al agregarla']
+  fiscal_period_id bigint [ref: > fiscal_periods.id]
+  description varchar
+  status varchar [default: 'draft', note: 'draft|posted|voided']
+  reversal_of_id bigint [ref: > journal_entries.id]
+  schedule_id bigint [ref: > journal_entry_schedules.id, note: 'presente = este borrador lo generó una programación ("Programable"); ver journal_entry_schedules']
+  source_module varchar
+  business_partner_id bigint [ref: > business_partners.id]
+  created_by bigint [ref: > users.id]
+  posted_by bigint [ref: > users.id]
+  posted_at timestamp
+  created_at timestamp
+
+  indexes {
+    (company_id, document_type_id, document_number) [unique]
+  }
+}
+
+Table journal_entry_schedules {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  document_type_id bigint [ref: > document_types.id]
+  description varchar
+  lines json [note: 'plantilla de líneas (cuenta, socio, moneda, débito/crédito, centro de costo, descripción) — subconjunto de JournalLineInput; sin clave electrónica/vencimiento/IVA/aplicación a partida, datos de un documento puntual, no de una receta que se repite']
+  frequency_type varchar [note: 'days|months']
+  interval_count int
+  next_run_date date
+  expires_at date [note: 'nullable = sin vencimiento']
+  status varchar [default: 'active', note: 'active|expired|cancelled']
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  note: 'Receta que JournalEntryScheduleService::processDue() usa para generar un
+  journal_entries en estado draft (vía PostJournalService::saveDraft(), sin
+  contabilizar nada solo) cada vez que next_run_date llega — avanza next_run_date
+  (+interval_count días, o +interval_count meses con addMonthsNoOverflow para no
+  "correrse" de fecha al cruzar febrero) y se marca expired sola si la próxima
+  corrida ya pasa expires_at. Ver docs/decisiones.md 2026-08-24.'
+}
+
+Table journal_details {
+  id bigint [pk, increment]
+  journal_entry_id bigint [ref: > journal_entries.id]
+  line_number int
+  account_id bigint [ref: > chart_of_accounts.id]
+  description varchar
+  business_partner_id bigint [ref: > business_partners.id]
+  cost_center_id bigint [ref: > cost_centers.id, note: 'centro específico de ESTA fila; si vino de una norma de reparto, una línea de entrada explota en varias filas, una por centro']
+  cost_allocation_rule_id bigint [ref: > cost_allocation_rules.id, note: 'trazabilidad: qué norma generó esta fila, si aplica']
+  currency_id bigint [ref: > currencies.id, note: 'moneda "natural" en que nació la línea']
+  exchange_rate_lc_fc decimal
+  exchange_rate_fc_sc decimal
+  debit_local decimal
+  credit_local decimal
+  debit_foreign decimal
+  credit_foreign decimal
+  debit_system decimal
+  credit_system decimal
+  due_date date
+  reference_document varchar
+  bank_reconciled boolean [default: false]
+}
+
+//////////////////////////////////////////////////////////
+// SOCIOS DE NEGOCIO / CxC-CxP
+//////////////////////////////////////////////////////////
+
+Table bp_categories {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+}
+
+Table bp_families {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+}
+
+Table business_partners {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar [note: 'alfanumérico x-xxx']
+  name varchar
+  type varchar [note: 'client|supplier|both']
+  tax_id varchar
+  email varchar
+  economic_activity_code varchar [note: 'código de actividad económica de Hacienda, para facturación electrónica']
+  phone varchar
+  contact_name varchar [note: 'nombre del encargado']
+  partner_since date [note: 'fecha de inicio como cliente/proveedor']
+  category_id bigint [ref: > bp_categories.id]
+  family_id bigint [ref: > bp_families.id]
+  cost_center_id bigint [ref: > cost_centers.id, note: 'referencia informativa para reportes por centro de costo; no exige hoja ni vigencia']
+  gl_account_id bigint [ref: > chart_of_accounts.id]
+  currency_id bigint [ref: > currencies.id]
+  credit_limit decimal
+  payment_terms_days int
+  status varchar [default: 'active']
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table bp_open_items {
+  id bigint [pk, increment]
+  business_partner_id bigint [ref: > business_partners.id]
+  origin_journal_detail_id bigint [ref: > journal_details.id]
+  document_type_code varchar
+  document_number bigint
+  due_date date
+  original_amount decimal
+  currency_id bigint [ref: > currencies.id]
+  last_revaluation_rate decimal [note: 'TC de la última revaluación de cierre que incluyó esta partida (FxRevaluationService) — si está presente, ApplyPaymentService lo usa como base del diferencial REALIZADO en vez del TC original, para no contar dos veces la porción ya reconocida como no realizado (docs/decisiones.md 2026-08-24)']
+  applied_amount decimal [default: 0]
+  balance decimal
+  status varchar [default: 'open', note: 'open|partial|closed']
+}
+
+Table bp_payment_applications {
+  id bigint [pk, increment]
+  payment_journal_entry_id bigint [ref: > journal_entries.id]
+  open_item_id bigint [ref: > bp_open_items.id]
+  applied_amount decimal
+  applied_date date
+  exchange_rate decimal
+  realized_fx_difference decimal [default: 0]
+  created_by bigint [ref: > users.id]
+}
+
+Table account_reconciliations {
+  id bigint [pk, increment]
+  account_id bigint [ref: > chart_of_accounts.id]
+  reconciled_by bigint [ref: > users.id]
+  reconciled_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  Note: 'Reconciliación interna genérica (docs/decisiones.md 2026-08-24):
+  agrupa movimientos de UNA MISMA cuenta cuyo neto en moneda local es cero.
+  Sin company_id propio (se filtra vía account_id -> chart_of_accounts.company_id).
+  Deshacer = delete físico (cascada a account_reconciliation_lines); no toca
+  ningún journal_detail. Excluye a propósito movimientos con
+  business_partner_id — esos usan bp_open_items/bp_payment_applications.'
+}
+
+Table account_reconciliation_lines {
+  id bigint [pk, increment]
+  account_reconciliation_id bigint [ref: > account_reconciliations.id]
+  journal_detail_id bigint [ref: > journal_details.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    journal_detail_id [unique, note: 'una línea solo puede estar en UNA reconciliación activa a la vez']
+  }
+}
+
+//////////////////////////////////////////////////////////
+// BANCOS
+//////////////////////////////////////////////////////////
+
+Table bank_accounts {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  gl_account_id bigint [ref: > chart_of_accounts.id]
+  bank_name varchar
+  account_number varchar
+  currency_id bigint [ref: > currencies.id]
+}
+
+Table bank_reconciliations {
+  id bigint [pk, increment]
+  bank_account_id bigint [ref: > bank_accounts.id]
+  cutoff_date date
+  bank_balance decimal
+  book_balance decimal
+  unrecorded_deposits decimal [default: 0]
+  unpaid_checks decimal [default: 0]
+  unrecorded_bank_credits decimal [default: 0]
+  unrecorded_bank_debits decimal [default: 0]
+  status varchar [default: 'in_progress']
+  created_by bigint [ref: > users.id]
+}
+
+Table bank_reconciliation_lines {
+  id bigint [pk, increment]
+  bank_reconciliation_id bigint [ref: > bank_reconciliations.id]
+  journal_detail_id bigint [ref: > journal_details.id]
+  matched_in_books boolean [default: false]
+  matched_in_bank boolean [default: false]
+  bank_statement_line_id bigint [ref: > bank_statement_lines.id]
+}
+
+Table bank_statement_lines {
+  id bigint [pk, increment]
+  bank_account_id bigint [ref: > bank_accounts.id]
+  statement_date date
+  description varchar
+  amount decimal
+  import_batch_id varchar
+  matched boolean [default: false]
+}
+
+//////////////////////////////////////////////////////////
+// IVA / FISCAL (Costa Rica)
+//////////////////////////////////////////////////////////
+
+Table tax_types {
+  id bigint [pk, increment]
+  code varchar [note: 'IVA, RENTA...']
+  name varchar
+}
+
+Table tax_rates {
+  id bigint [pk, increment]
+  tax_type_id bigint [ref: > tax_types.id]
+  code varchar
+  name varchar
+  percentage decimal
+  grants_fiscal_credit boolean [default: false, note: 'si este indicador da derecho a crédito fiscal']
+  fiscal_credit_note varchar [note: 'matiz libre, ej. "Tarifa reducida", "Salvo exportaciones/exoneraciones"']
+  effective_from date
+  effective_to date
+}
+
+Table journal_detail_taxes {
+  id bigint [pk, increment]
+  journal_detail_id bigint [ref: > journal_details.id]
+  tax_rate_id bigint [ref: > tax_rates.id]
+  taxable_base decimal
+  tax_amount decimal
+}
+
+//////////////////////////////////////////////////////////
+// DIFERENCIAL CAMBIARIO
+//////////////////////////////////////////////////////////
+
+Table fx_revaluation_runs {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  cutoff_date date
+  exchange_rate_used decimal
+  gain_account_id bigint [ref: > chart_of_accounts.id, note: 'contrapartida de ganancia cambiaria — separada de pérdida desde 2026-08-24, antes era una sola cuenta compartida']
+  loss_account_id bigint [ref: > chart_of_accounts.id]
+  document_type_id bigint [ref: > document_types.id]
+  journal_entry_id bigint [ref: > journal_entries.id]
+  status varchar [default: 'draft']
+  executed_by bigint [ref: > users.id]
+  executed_at timestamp
+}
+
+Table fx_revaluation_details {
+  id bigint [pk, increment]
+  fx_revaluation_run_id bigint [ref: > fx_revaluation_runs.id]
+  account_id bigint [ref: > chart_of_accounts.id]
+  business_partner_id bigint [ref: > business_partners.id]
+  foreign_balance decimal
+  historical_local_amount decimal
+  revalued_local_amount decimal
+  difference decimal
+  journal_detail_id bigint [ref: > journal_details.id]
+}
+
+//////////////////////////////////////////////////////////
+// CIERRES Y SALDOS INICIALES
+//////////////////////////////////////////////////////////
+
+Table period_closing_processes {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  fiscal_period_id bigint [ref: > fiscal_periods.id]
+  type varchar [note: 'month_close|year_close|month_reopen']
+  document_type_id bigint [ref: > document_types.id]
+  journal_entry_id bigint [ref: > journal_entries.id]
+  executed_by bigint [ref: > users.id]
+  executed_at timestamp
+  status varchar [default: 'completed']
+}
+
+Table opening_balances {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  fiscal_year_id bigint [ref: > fiscal_years.id]
+  account_id bigint [ref: > chart_of_accounts.id]
+  business_partner_id bigint [ref: > business_partners.id]
+  debit_local decimal [default: 0]
+  credit_local decimal [default: 0]
+  debit_foreign decimal [default: 0]
+  credit_foreign decimal [default: 0]
+  currency_id bigint [ref: > currencies.id]
+  imported_by bigint [ref: > users.id]
+  imported_at timestamp
+}
+
+//////////////////////////////////////////////////////////
+// IA
+//////////////////////////////////////////////////////////
+
+Table ai_provider_settings {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  provider varchar [note: 'anthropic|openai']
+  api_key_encrypted varchar
+  model varchar
+  enabled_features json
+  monthly_token_budget int
+}
+
+Table ai_usage_logs {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  user_id bigint [ref: > users.id]
+  feature varchar
+  tokens_used int
+  estimated_cost decimal
+  created_at timestamp
+}

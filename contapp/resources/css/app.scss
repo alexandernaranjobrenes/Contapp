@@ -1,0 +1,267 @@
+// Sistema de diseño CONTAPP: azul marino profundo (primario) + blanco mármol
+// (secundario), con modo claro/oscuro. Sin frameworks de terceros: la app es
+// Vue + Inertia y estos tokens son consumidos directamente por los componentes .vue.
+
+:root {
+    --color-primary: #0b1f3a;
+    --color-primary-hover: #142b4d;
+    --color-primary-soft: #e8edf5;
+    --color-on-primary: #f4f6fa;
+
+    --color-bg: #f6f5f2;
+    --color-surface: #ffffff;
+    --color-surface-alt: #f0efe9;
+    --color-border: #e1dfd7;
+    --color-text: #1a2233;
+    --color-text-muted: #616a7a;
+
+    --color-success: #1f7a4d;
+    --color-success-soft: #e4f4ec;
+    --color-danger: #b3261e;
+    --color-danger-soft: #fbeae9;
+    --color-warning: #92600a;
+    --color-warning-soft: #fbf0dd;
+
+    --sidebar-width: 264px;
+    --sidebar-width-collapsed: 72px;
+    --topbar-height: 56px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --shadow-sm: 0 1px 2px rgba(11, 31, 58, 0.06), 0 1px 1px rgba(11, 31, 58, 0.04);
+    --shadow-md: 0 4px 16px rgba(11, 31, 58, 0.10);
+
+    // Mármol sutil: veta suave sin imagen, liviana y auto-contenida.
+    --marble-texture: radial-gradient(120% 90% at 10% 0%, rgba(11, 31, 58, 0.035), transparent 55%),
+        radial-gradient(100% 80% at 90% 100%, rgba(11, 31, 58, 0.03), transparent 60%);
+
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    --color-primary: #3a5f95;
+    --color-primary-hover: #4a71aa;
+    --color-primary-soft: #16233b;
+    --color-on-primary: #eef2f8;
+
+    --color-bg: #0b1220;
+    --color-surface: #111a2e;
+    --color-surface-alt: #16213a;
+    --color-border: #253253;
+    --color-text: #e7e9ee;
+    --color-text-muted: #97a2b8;
+
+    --color-success: #4fbf87;
+    --color-success-soft: #123425;
+    --color-danger: #e3665d;
+    --color-danger-soft: #3a1a18;
+    --color-warning: #d9a441;
+    --color-warning-soft: #382a10;
+
+    --marble-texture: radial-gradient(120% 90% at 10% 0%, rgba(255, 255, 255, 0.02), transparent 55%),
+        radial-gradient(100% 80% at 90% 100%, rgba(255, 255, 255, 0.015), transparent 60%);
+
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --color-primary: #3a5f95;
+        --color-primary-hover: #4a71aa;
+        --color-primary-soft: #16233b;
+        --color-on-primary: #eef2f8;
+
+        --color-bg: #0b1220;
+        --color-surface: #111a2e;
+        --color-surface-alt: #16213a;
+        --color-border: #253253;
+        --color-text: #e7e9ee;
+        --color-text-muted: #97a2b8;
+
+        --color-success: #4fbf87;
+        --color-success-soft: #123425;
+        --color-danger: #e3665d;
+        --color-danger-soft: #3a1a18;
+        --color-warning: #d9a441;
+        --color-warning-soft: #382a10;
+
+        color-scheme: dark;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    background: var(--color-bg) var(--marble-texture);
+    color: var(--color-text);
+    font-family: 'Instrument Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+#app {
+    min-height: 100%;
+}
+
+a {
+    color: inherit;
+}
+
+button {
+    font-family: inherit;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+// Un input[type=date] nativo necesita este ancho mínimo para mostrar
+// "dd/mm/aaaa" completo (con el ícono de calendario) — sin esto, cualquier
+// celda de tabla o columna angosta lo recorta y el año queda truncado
+// (ej. "202" en vez de "2026"). Aplica a todo el sistema de una sola vez,
+// sin depender de que cada formulario le calcule un ancho suficiente.
+input[type="date"] {
+    min-width: 135px;
+}
+
+// El botón "Imprimir" del DocumentToolbar llama a window.print() directo
+// (sin plantilla propia) — así "imprimir" y "convertir a PDF" son lo mismo,
+// vía el diálogo nativo del navegador (Guardar como PDF). Acá se oculta
+// el chrome de la aplicación (barra lateral, topbar, la barra de
+// herramientas misma) para que solo salga el documento.
+@media print {
+    .sidebar, .topbar, .doc-toolbar, .app-footer, .sidebar-collapse-btn {
+        display: none !important;
+    }
+
+    // .app-shell es un grid de 2 columnas (sidebar + contenido, ver
+    // AppLayout.vue) — ocultar el sidebar con display:none no libera su
+    // columna sola, hay que forzar el grid a una sola columna para que el
+    // contenido use todo el ancho de la hoja impresa.
+    .app-shell {
+        display: block !important;
+        height: auto !important;
+    }
+
+    .app-main {
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    .content {
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+}
+
+.card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.btn-primary:hover {
+    background: var(--color-primary-hover);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--color-text);
+    border-color: var(--color-border);
+}
+
+.btn-ghost:hover {
+    background: var(--color-surface-alt);
+}
+
+.btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.9rem;
+}
+
+.field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.field input,
+.field select,
+.field textarea {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.6rem;
+    color: var(--color-text);
+    font-size: 0.88rem;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+.field .error {
+    color: var(--color-danger);
+    font-size: 0.76rem;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+.badge-success { background: var(--color-success-soft); color: var(--color-success); }
+.badge-danger { background: var(--color-danger-soft); color: var(--color-danger); }
+.badge-warning { background: var(--color-warning-soft); color: var(--color-warning); }
+.badge-neutral { background: var(--color-surface-alt); color: var(--color-text-muted); }
