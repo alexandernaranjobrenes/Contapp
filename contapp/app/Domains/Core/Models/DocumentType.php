@@ -4,6 +4,7 @@ namespace App\Domains\Core\Models;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Core\Concerns\BelongsToCompany;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,7 @@ class DocumentType extends Model
         'cxc' => 'Cuentas por Cobrar',
         'cxp' => 'Cuentas por Pagar',
         'activos_fijos' => 'Activos Fijos',
+        'inventario' => 'Inventario',
     ];
 
     public const CURRENCY_MODES = [
@@ -127,7 +129,7 @@ class DocumentType extends Model
      * Resuelve el permiso más restrictivo entre el otorgado directamente al usuario
      * y el otorgado a cualquiera de sus roles en la compañía activa.
      */
-    public function userCan(\App\Models\User $user, string $ability): bool
+    public function userCan(User $user, string $ability): bool
     {
         if ($user->isSuperAdmin($this->company_id)) {
             return true;

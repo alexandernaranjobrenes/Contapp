@@ -681,12 +681,17 @@ class PostJournalService
             ];
         }
 
+        // Precedencia del tipo de cambio: el congelado de la línea (costo
+        // histórico de inventario, ver JournalLineInput) gana sobre el manual
+        // del asiento, y ambos sobre el vigente a la fecha. Es por línea
+        // porque un mismo documento puede mover artículos comprados en
+        // fechas distintas, cada uno con su propio TC de adquisición.
         if ($line->currencyId === $company->local_currency_id) {
-            $rateLcFc = $manualExchangeRate ?? $this->rateOnOrBefore($company, $company->foreign_currency_id, $date);
+            $rateLcFc = $line->frozenExchangeRate ?? $manualExchangeRate ?? $this->rateOnOrBefore($company, $company->foreign_currency_id, $date);
             $local = $line->amount();
             $foreign = $this->money(bcdiv($local, $rateLcFc, 10));
         } elseif ($line->currencyId === $company->foreign_currency_id) {
-            $rateLcFc = $manualExchangeRate ?? $this->rateOnOrBefore($company, $company->foreign_currency_id, $date);
+            $rateLcFc = $line->frozenExchangeRate ?? $manualExchangeRate ?? $this->rateOnOrBefore($company, $company->foreign_currency_id, $date);
             $foreign = $line->amount();
             $local = $this->money(bcmul($foreign, $rateLcFc, 10));
         } else {

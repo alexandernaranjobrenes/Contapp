@@ -626,6 +626,293 @@ Table opening_balances {
 }
 
 //////////////////////////////////////////////////////////
+// INVENTARIO
+// Diseño de Fase 0 (docs/decisiones.md 2026-09-13). Cubre Fases 1-2
+// (catálogos + kardex + entrada/salida/ajuste). Landed costs, producción
+// y ubicaciones WMS son fases posteriores y todavía no tienen tablas acá.
+//////////////////////////////////////////////////////////
+
+Table units_of_measure {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  decimals tinyint [default: 2, note: 'decimales admitidos en cantidad; unidades indivisibles usan 0']
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table item_groups {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table warehouses {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  address varchar
+  is_default boolean [default: false]
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+Table items {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar
+  name varchar
+  item_group_id bigint [ref: > item_groups.id]
+  uom_id bigint [ref: > units_of_measure.id]
+  barcode varchar
+  is_inventory_item boolean [default: true, note: 'false = servicio: se compra/vende pero no lleva kardex ni costo']
+  is_sales_item boolean [default: true]
+  is_purchase_item boolean [default: true]
+  tax_rate_id bigint [ref: > tax_rates.id, note: 'indicador de impuesto por defecto de la línea']
+  avg_cost_local decimal(18,6) [default: 0, note: 'promedio ponderado móvil, GLOBAL por artículo (no por almacén)']
+  avg_cost_foreign decimal(18,6) [default: 0, note: 'mismo promedio en FC; avg_cost_local/avg_cost_foreign es el TC congelado del stock']
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+    (company_id, item_group_id)
+  }
+}
+
+// Única fuente de verdad de la existencia. La existencia total del artículo
+// es un SUM sobre esta tabla y NO se almacena en items: el promedio móvil
+// obliga a guardar el costo (es dependiente de la trayectoria), la cantidad no.
+Table item_warehouses {
+  id bigint [pk, increment]
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  on_hand decimal(18,6) [default: 0]
+
+  indexes {
+    (item_id, warehouse_id) [unique]
+  }
+}
+
+// Matriz de determinación de cuentas (G/L Account Determination de SAP B1).
+// scope_id es polimórfico según scope_level — mismo patrón ya usado por
+// document_type_permissions.subject_type/subject_id.
+// Precedencia al resolver: item > item_group > warehouse > company, y si
+// ninguna fila resuelve, cae a document_types.default_debit/credit_account_id.
+Table gl_determinations {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  scope_level varchar [note: 'company|warehouse|item_group|item']
+  scope_id bigint [note: 'null solo cuando scope_level=company']
+  category varchar [note: 'inventory|gr_ir_clearing|cogs|stock_increase|stock_decrease|landed_cost_clearing|price_difference|wip|production_variance|write_down_allowance|write_down_expense']
+  account_id bigint [ref: > chart_of_accounts.id]
+  cost_allocation_rule_id bigint [ref: > cost_allocation_rules.id, note: 'obligatorio si la cuenta tiene requires_cost_center']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, scope_level, scope_id, category) [unique]
+  }
+}
+
+Table inventory_documents {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  document_type_id bigint [ref: > document_types.id]
+  journal_entry_id bigint [ref: > journal_entries.id, note: 'null SOLO en un traslado cuyos almacenes comparten cuenta: no cambia el valor del inventario, así que no hay nada que contabilizar (decisiones 2026-09-15)']
+  invoice_journal_entry_id bigint [ref: > journal_entries.id, note: 'asiento de la factura que liquidó la cuenta puente GR/IR; null = pendiente de facturar']
+  operation varchar [note: 'goods_receipt|purchase_receipt|goods_issue|count_adjustment|production_issue|production_receipt|sales_issue|transfer']
+  production_order_id bigint [ref: > production_orders.id, note: 'obligatorio en las dos operaciones de producción, null en el resto']
+  document_date date
+  posting_date date [note: 'fecha rectora, la misma del asiento']
+  description varchar
+  business_partner_id bigint [ref: > business_partners.id, note: 'proveedor; obligatorio en purchase_receipt, null en el resto']
+  status varchar [default: 'posted', note: 'posted|voided — sin borrador, ver Fase 0']
+  reversal_of_id bigint [ref: > inventory_documents.id]
+  created_by bigint [ref: > users.id]
+  posted_by bigint [ref: > users.id]
+  posted_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, posting_date)
+  }
+}
+
+Table inventory_document_lines {
+  id bigint [pk, increment]
+  inventory_document_id bigint [ref: > inventory_documents.id]
+  line_number int
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  warehouse_bin_id bigint [ref: > warehouse_bins.id, note: 'obligatoria si el almacén usa ubicaciones, null si no']
+  to_warehouse_id bigint [ref: > warehouses.id, note: 'almacén de destino; solo en traslados']
+  to_warehouse_bin_id bigint [ref: > warehouse_bins.id]
+  quantity decimal(18,6) [note: 'siempre positiva; en un conteo es la cantidad CONTADA, no la diferencia']
+  unit_cost_local decimal(18,6) [note: 'solo se digita en entradas; en salidas lo resuelve el promedio']
+  unit_cost_foreign decimal(18,6)
+  description varchar
+
+  indexes {
+    (inventory_document_id, line_number)
+  }
+}
+
+// Costos de importación (flete, aranceles, seguro, agencia aduanal). Se
+// capitalizan al costo del artículo solo en la proporción que sigue en
+// existencia; el resto va a diferencia de precio (decisiones 2026-09-13 Fase 5).
+Table landed_cost_documents {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  document_type_id bigint [ref: > document_types.id]
+  journal_entry_id bigint [ref: > journal_entries.id]
+  inventory_document_id bigint [ref: > inventory_documents.id, note: 'la recepción cuyo costo se incrementa']
+  business_partner_id bigint [ref: > business_partners.id, note: 'quien cobra el flete/arancel']
+  document_date date
+  posting_date date
+  amount decimal(18,2) [note: 'total a repartir, en moneda local']
+  capitalized_amount decimal(18,2) [note: 'la parte que entró al inventario todavía en existencia']
+  expensed_amount decimal(18,2) [note: 'la parte cuya mercancía ya salió']
+  description varchar
+  status varchar [default: 'posted', note: 'posted|voided']
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, posting_date)
+  }
+}
+
+// Guarda las cantidades con las que se calculó el reparto porque ambas cambian
+// después: sin esa foto nadie puede reconstruir por qué se capitalizó esa
+// proporción y no otra.
+Table landed_cost_allocations {
+  id bigint [pk, increment]
+  landed_cost_document_id bigint [ref: > landed_cost_documents.id]
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  received_quantity decimal(18,6)
+  on_hand_quantity decimal(18,6) [note: 'existencia del artículo al momento de repartir']
+  allocated_amount decimal(18,2)
+  capitalized_amount decimal(18,2)
+  expensed_amount decimal(18,2)
+  created_at timestamp
+  updated_at timestamp
+}
+
+// Orden de fabricación (Fase 6). Sin lista de materiales a propósito: el plan
+// de componentes es conveniencia de catálogo, no un hecho contable — se emite
+// lo que de verdad se consumió.
+Table production_orders {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  item_id bigint [ref: > items.id, note: 'el producto a fabricar']
+  warehouse_id bigint [ref: > warehouses.id, note: 'dónde ingresa el producto terminado']
+  planned_quantity decimal(18,6)
+  produced_quantity decimal(18,6) [default: 0]
+  order_date date
+  description varchar
+  status varchar [default: 'open', note: 'open|closed']
+  variance_journal_entry_id bigint [ref: > journal_entries.id, note: 'asiento que descargó el WIP sobrante al cerrar; null si cerró en cero']
+  closed_at timestamp
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, status)
+  }
+}
+
+// Ubicaciones dentro de un almacén (Fase 7). Capa puramente LOGÍSTICA: el
+// costo promedio sigue siendo global por artículo, así que una ubicación
+// nunca cambia cuánto vale una unidad, solo dónde está.
+Table warehouse_bins {
+  id bigint [pk, increment]
+  warehouse_id bigint [ref: > warehouses.id]
+  code varchar
+  name varchar
+  status varchar [default: 'active', note: 'active|inactive']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (warehouse_id, code) [unique]
+  }
+}
+
+// Desglosa —nunca reemplaza— a item_warehouses: la suma de las ubicaciones de
+// un almacén es siempre igual a su on_hand.
+Table item_bins {
+  id bigint [pk, increment]
+  item_id bigint [ref: > items.id]
+  warehouse_bin_id bigint [ref: > warehouse_bins.id]
+  on_hand decimal(18,6) [default: 0]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (item_id, warehouse_bin_id) [unique]
+  }
+}
+
+// Kardex (OINM). Append-only: sin updated_at, nunca se edita ni se borra —
+// una corrección es un documento de reversión que agrega filas nuevas.
+// Una fila nace de un movimiento de stock o de una revaluación de valor
+// (landed cost, diferencia de precio), y apunta a lo que la causó.
+Table stock_journals {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  warehouse_bin_id bigint [ref: > warehouse_bins.id, note: 'null en almacenes sin ubicaciones']
+  inventory_document_line_id bigint [ref: > inventory_document_lines.id, note: 'null en una revaluación por costo de importación']
+  landed_cost_allocation_id bigint [ref: > landed_cost_allocations.id, note: 'solo en revaluaciones por costo de importación']
+  journal_entry_id bigint [ref: > journal_entries.id]
+  posting_date date
+  direction varchar [note: 'in|out|revaluation — una revaluación no mueve unidades, solo valor']
+  quantity decimal(18,6)
+  unit_cost_local decimal(18,6)
+  unit_cost_foreign decimal(18,6)
+  total_cost_local decimal(18,2) [note: 'ya redondeado: es el monto exacto que fue al asiento']
+  total_cost_foreign decimal(18,2)
+  balance_quantity decimal(18,6) [note: 'existencia del almacén después de este movimiento — foto de auditoría, no fuente de verdad']
+  avg_cost_local_after decimal(18,6) [note: 'promedio global del artículo después de este movimiento']
+  avg_cost_foreign_after decimal(18,6)
+  reversal_of_id bigint [ref: > stock_journals.id]
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+
+  indexes {
+    (company_id, item_id, warehouse_id, posting_date)
+    (journal_entry_id)
+  }
+}
+
+//////////////////////////////////////////////////////////
 // IA
 //////////////////////////////////////////////////////////
 
@@ -647,4 +934,190 @@ Table ai_usage_logs {
   tokens_used int
   estimated_cost decimal
   created_at timestamp
+}
+
+//////////////////////////////////////////////////////////
+// FACTURACIÓN ELECTRÓNICA (Hacienda v4.4)
+// Los catálogos de la norma (tipos de comprobante, tarifas de IVA, medios de
+// pago, unidades...) NO son tablas: viven en FiscalCatalogs porque son valores
+// que fija la norma, no configuración del usuario.
+//////////////////////////////////////////////////////////
+
+// De cuál actividad se factura define a qué cuenta de ingresos va la venta.
+Table company_economic_activities {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  code varchar [note: 'código de actividad económica de Hacienda, 6 dígitos']
+  name varchar
+  revenue_account_id bigint [ref: > chart_of_accounts.id]
+  is_default boolean [default: false]
+  status varchar [default: 'active']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, code) [unique]
+  }
+}
+
+// Puente entre la tarifa de la norma y lo que el ERP necesita: la cuenta del
+// débito fiscal y el indicador de impuesto equivalente, que es lo que mantiene
+// vivo el reporte de IVA ya existente.
+Table billing_tax_accounts {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  iva_rate_code varchar [note: 'Nota 8.1']
+  account_id bigint [ref: > chart_of_accounts.id]
+  tax_rate_id bigint [ref: > tax_rates.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, iva_rate_code) [unique]
+  }
+}
+
+// Contra qué cuenta se debita una venta de contado según cómo se cobró.
+Table billing_payment_accounts {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  method_code varchar [note: 'Nota 6']
+  account_id bigint [ref: > chart_of_accounts.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, method_code) [unique]
+  }
+}
+
+// Los totales se ALMACENAN, a diferencia de casi todo el resto del sistema:
+// no son un saldo derivable sino parte del documento firmado y enviado a
+// Hacienda. Recalcularlos daría otro número si cambiara una tarifa o un precio.
+Table sales_documents {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  document_type_id bigint [ref: > document_types.id]
+  fiscal_document_type varchar [note: 'Nota 3: 01 FE, 02 ND, 03 NC, 04 TE, 08 FEC, 09 FEE, 10 REP']
+  situation varchar [default: '1', note: '1 normal, 2 contingencia, 3 sin internet']
+  branch varchar [default: '001']
+  terminal varchar [default: '00001']
+  consecutive varchar [note: 'consecutivo fiscal de 20 dígitos']
+  clave varchar [note: 'clave numérica de 50 dígitos']
+  security_code varchar [note: 'dígitos 43-50 de la clave']
+  emitter_activity_code varchar
+  receiver_activity_code varchar
+  business_partner_id bigint [ref: > business_partners.id, note: 'null solo en tiquete a consumidor final']
+  currency_id bigint [ref: > currencies.id]
+  exchange_rate decimal(18,5)
+  sale_condition varchar [note: 'Nota 5']
+  credit_term_days smallint [note: 'obligatorio en condiciones a crédito']
+  document_date date
+  posting_date date
+  due_date date
+  total_taxed_services decimal(18,5)
+  total_exempt_services decimal(18,5)
+  total_exonerated_services decimal(18,5)
+  total_no_subject_services decimal(18,5)
+  total_taxed_goods decimal(18,5)
+  total_exempt_goods decimal(18,5)
+  total_exonerated_goods decimal(18,5)
+  total_no_subject_goods decimal(18,5)
+  total_sale decimal(18,5)
+  total_discounts decimal(18,5)
+  total_net_sale decimal(18,5)
+  total_tax decimal(18,5)
+  total_document decimal(18,5)
+  notes varchar
+  status varchar [default: 'draft', note: 'draft|posted|voided']
+  journal_entry_id bigint [ref: > journal_entries.id, note: 'asiento de la venta']
+  inventory_document_id bigint [ref: > inventory_documents.id, note: 'salida con su costo de ventas; null si no mueve stock']
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, clave) [unique]
+    (company_id, consecutive) [unique]
+    (company_id, posting_date)
+  }
+}
+
+// Los datos fiscales se copian del maestro al facturar y no se vuelven a leer
+// de ahí: el comprobante debe poder reconstruirse tal cual se envió aunque el
+// artículo cambie de CAByS o de descripción después.
+Table sales_document_lines {
+  id bigint [pk, increment]
+  sales_document_id bigint [ref: > sales_documents.id]
+  line_number int
+  item_id bigint [ref: > items.id, note: 'null permite facturar un concepto libre']
+  warehouse_id bigint [ref: > warehouses.id, note: 'null en servicios']
+  warehouse_bin_id bigint [ref: > warehouse_bins.id]
+  item_code varchar
+  cabys_code varchar [note: '13 dígitos del BCCR']
+  description varchar [note: 'entre 3 y 200 caracteres']
+  unit_code varchar [note: 'Nota 15']
+  is_service boolean [default: false, note: 'separa servicios de mercancías en el resumen']
+  quantity decimal(16,3)
+  unit_price decimal(18,5)
+  total_amount decimal(18,5)
+  discount_code varchar [note: 'Nota 20']
+  discount_reason varchar [note: 'obligatorio si el código es 99']
+  discount_amount decimal(18,5) [default: 0]
+  subtotal decimal(18,5)
+  tax_amount decimal(18,5) [default: 0]
+  exonerated_amount decimal(18,5) [default: 0]
+  line_total decimal(18,5)
+  vin_or_serial varchar [note: 'obligatorio si el CAByS es vehículo, aeronave o embarcación']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (sales_document_id, line_number)
+  }
+}
+
+// Una línea puede llevar varios impuestos y cada uno venir exonerado en parte.
+Table sales_line_taxes {
+  id bigint [pk, increment]
+  sales_document_line_id bigint [ref: > sales_document_lines.id]
+  tax_code varchar [note: 'Nota 8']
+  iva_rate_code varchar [note: 'Nota 8.1']
+  rate_percentage decimal(5,2)
+  taxable_base decimal(18,5)
+  amount decimal(18,5) [note: 'base × tarifa, antes de exoneración']
+  exoneration_document_type varchar [note: 'Nota 10.1']
+  exoneration_document_number varchar
+  exoneration_article varchar
+  exoneration_clause varchar
+  exoneration_institution varchar [note: 'Nota 23']
+  exoneration_date date
+  exonerated_percentage decimal(5,2)
+  exonerated_amount decimal(18,5) [default: 0]
+  net_amount decimal(18,5) [note: 'lo que de verdad se cobra']
+  created_at timestamp
+  updated_at timestamp
+}
+
+// Hasta 4 por comprobante; su suma debe dar exactamente el total.
+Table sales_payments {
+  id bigint [pk, increment]
+  sales_document_id bigint [ref: > sales_documents.id]
+  method_code varchar [note: 'Nota 6']
+  amount decimal(18,5)
+  created_at timestamp
+  updated_at timestamp
+}
+
+// Obligatorio en notas de crédito/débito y facturas de compra.
+Table sales_references {
+  id bigint [pk, increment]
+  sales_document_id bigint [ref: > sales_documents.id]
+  document_type varchar [note: 'Nota 10']
+  number varchar [note: 'clave de 50 dígitos o número del documento físico']
+  issued_at date
+  reason_code varchar [note: 'Nota 9']
+  reason varchar [note: 'entre 3 y 180 caracteres']
+  created_at timestamp
+  updated_at timestamp
 }

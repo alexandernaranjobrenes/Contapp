@@ -3,12 +3,13 @@
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\AgingController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
 use App\Http\Controllers\Auth\LicenseActivationController;
+use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
 use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankReconciliationController;
 use App\Http\Controllers\BankReconciliationReportController;
+use App\Http\Controllers\BillingSettingsController;
 use App\Http\Controllers\BpCategoryController;
 use App\Http\Controllers\BusinessPartnerController;
 use App\Http\Controllers\CashFlowProjectionController;
@@ -25,13 +26,18 @@ use App\Http\Controllers\CostCenterController;
 use App\Http\Controllers\CostCenterReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentTypeController;
-use App\Http\Controllers\DocumentTypeRegisterController;
 use App\Http\Controllers\DocumentTypeNumberSeriesController;
+use App\Http\Controllers\DocumentTypeRegisterController;
 use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\FxRevaluationController;
+use App\Http\Controllers\GlDeterminationController;
 use App\Http\Controllers\IncomeStatementController;
+use App\Http\Controllers\InventoryDocumentController;
+use App\Http\Controllers\ItemController;
+use App\Http\Controllers\ItemGroupController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
+use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\LicenseCategoryController;
 use App\Http\Controllers\LicenseController;
@@ -40,11 +46,18 @@ use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\OpenItemController;
 use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
+use App\Http\Controllers\ProductionOrderController;
+use App\Http\Controllers\SalesDocumentController;
 use App\Http\Controllers\SavedReportController;
+use App\Http\Controllers\StockTransferController;
+use App\Http\Controllers\SupplierInvoiceController;
 use App\Http\Controllers\TaxRateController;
 use App\Http\Controllers\TaxReportController;
 use App\Http\Controllers\TrialBalanceController;
+use App\Http\Controllers\UnitOfMeasureController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\WarehouseBinController;
+use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
@@ -143,6 +156,85 @@ Route::middleware('auth')->group(function () {
         Route::post('journal-entry-schedules', [JournalEntryScheduleController::class, 'store'])->name('journal-entry-schedules.store');
         Route::post('journal-entry-schedules/process-now', [JournalEntryScheduleController::class, 'processNow'])->name('journal-entry-schedules.process-now');
         Route::post('journal-entry-schedules/{journalEntrySchedule}/cancel', [JournalEntryScheduleController::class, 'cancel'])->name('journal-entry-schedules.cancel');
+    });
+
+    // Sexto módulo del rollout de enforcement, primero agregado después de
+    // cerrarlo (ver los cinco de arriba): catálogos de inventario. Mismo
+    // criterio de siempre — 'read' para consultar, 'read_write' para
+    // crear/modificar/borrar. Los movimientos de stock llegan en Fase 2
+    // (docs/decisiones.md 2026-09-13).
+    Route::middleware('module-access:inventory,read')->group(function () {
+        Route::get('units-of-measure', [UnitOfMeasureController::class, 'index'])->name('units-of-measure.index');
+        Route::get('item-groups', [ItemGroupController::class, 'index'])->name('item-groups.index');
+        Route::get('warehouses', [WarehouseController::class, 'index'])->name('warehouses.index');
+        Route::get('items', [ItemController::class, 'index'])->name('items.index');
+        Route::get('items/{item}/kardex', [InventoryDocumentController::class, 'kardex'])->name('items.kardex');
+        Route::get('gl-determinations', [GlDeterminationController::class, 'index'])->name('gl-determinations.index');
+        Route::get('inventory-movements', [InventoryDocumentController::class, 'index'])->name('inventory-movements.index');
+        Route::get('inventory-movements/create', [InventoryDocumentController::class, 'create'])->name('inventory-movements.create');
+        Route::get('inventory-movements/{inventoryDocument}', [InventoryDocumentController::class, 'show'])->name('inventory-movements.show');
+        Route::get('supplier-invoices', [SupplierInvoiceController::class, 'index'])->name('supplier-invoices.index');
+        Route::get('landed-costs', [LandedCostController::class, 'index'])->name('landed-costs.index');
+        Route::get('production-orders', [ProductionOrderController::class, 'index'])->name('production-orders.index');
+        Route::get('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'index'])->name('warehouse-bins.index');
+        Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stock-transfers.index');
+    });
+
+    Route::middleware('module-access:inventory,read_write')->group(function () {
+        Route::post('units-of-measure', [UnitOfMeasureController::class, 'store'])->name('units-of-measure.store');
+        Route::put('units-of-measure/{unitOfMeasure}', [UnitOfMeasureController::class, 'update'])->name('units-of-measure.update');
+        Route::delete('units-of-measure/{unitOfMeasure}', [UnitOfMeasureController::class, 'destroy'])->name('units-of-measure.destroy');
+
+        Route::post('item-groups', [ItemGroupController::class, 'store'])->name('item-groups.store');
+        Route::put('item-groups/{itemGroup}', [ItemGroupController::class, 'update'])->name('item-groups.update');
+        Route::delete('item-groups/{itemGroup}', [ItemGroupController::class, 'destroy'])->name('item-groups.destroy');
+
+        Route::post('warehouses', [WarehouseController::class, 'store'])->name('warehouses.store');
+        Route::put('warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('warehouses.update');
+        Route::delete('warehouses/{warehouse}', [WarehouseController::class, 'destroy'])->name('warehouses.destroy');
+
+        Route::post('items', [ItemController::class, 'store'])->name('items.store');
+        Route::put('items/{item}', [ItemController::class, 'update'])->name('items.update');
+        Route::delete('items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
+
+        Route::post('gl-determinations', [GlDeterminationController::class, 'store'])->name('gl-determinations.store');
+        Route::put('gl-determinations/{glDetermination}', [GlDeterminationController::class, 'update'])->name('gl-determinations.update');
+        Route::delete('gl-determinations/{glDetermination}', [GlDeterminationController::class, 'destroy'])->name('gl-determinations.destroy');
+
+        Route::post('inventory-movements', [InventoryDocumentController::class, 'store'])->name('inventory-movements.store');
+        Route::post('supplier-invoices', [SupplierInvoiceController::class, 'store'])->name('supplier-invoices.store');
+        Route::post('landed-costs', [LandedCostController::class, 'store'])->name('landed-costs.store');
+
+        Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stock-transfers.store');
+
+        Route::post('production-orders', [ProductionOrderController::class, 'store'])->name('production-orders.store');
+        Route::post('production-orders/{productionOrder}/issue', [ProductionOrderController::class, 'issue'])->name('production-orders.issue');
+        Route::post('production-orders/{productionOrder}/receive', [ProductionOrderController::class, 'receive'])->name('production-orders.receive');
+        Route::post('production-orders/{productionOrder}/close', [ProductionOrderController::class, 'close'])->name('production-orders.close');
+
+        Route::post('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'store'])->name('warehouse-bins.store');
+        Route::put('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'update'])->name('warehouse-bins.update');
+        Route::delete('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'destroy'])->name('warehouse-bins.destroy');
+    });
+
+    // Séptimo módulo del rollout de enforcement: facturación electrónica.
+    Route::middleware('module-access:billing,read')->group(function () {
+        Route::get('sales-documents', [SalesDocumentController::class, 'index'])->name('sales-documents.index');
+        Route::get('sales-documents/create', [SalesDocumentController::class, 'create'])->name('sales-documents.create');
+        Route::get('sales-documents/{salesDocument}', [SalesDocumentController::class, 'show'])->name('sales-documents.show');
+        Route::get('sales-documents/{salesDocument}/xml', [SalesDocumentController::class, 'xml'])->name('sales-documents.xml');
+        Route::get('billing-settings', [BillingSettingsController::class, 'index'])->name('billing-settings.index');
+    });
+
+    Route::middleware('module-access:billing,read_write')->group(function () {
+        Route::post('sales-documents', [SalesDocumentController::class, 'store'])->name('sales-documents.store');
+
+        Route::post('billing-settings/activities', [BillingSettingsController::class, 'storeActivity'])->name('billing-settings.activities.store');
+        Route::delete('billing-settings/activities/{activity}', [BillingSettingsController::class, 'destroyActivity'])->name('billing-settings.activities.destroy');
+        Route::post('billing-settings/tax-accounts', [BillingSettingsController::class, 'storeTaxAccount'])->name('billing-settings.tax-accounts.store');
+        Route::delete('billing-settings/tax-accounts/{taxAccount}', [BillingSettingsController::class, 'destroyTaxAccount'])->name('billing-settings.tax-accounts.destroy');
+        Route::post('billing-settings/payment-accounts', [BillingSettingsController::class, 'storePaymentAccount'])->name('billing-settings.payment-accounts.store');
+        Route::delete('billing-settings/payment-accounts/{paymentAccount}', [BillingSettingsController::class, 'destroyPaymentAccount'])->name('billing-settings.payment-accounts.destroy');
     });
 
     // Cuarto módulo del rollout de enforcement (ver "reports"/"tax"/"banking"

@@ -4,6 +4,269 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 
 ---
 
+## 2026-09-15 — Traslados entre almacenes: la fase que la Fase 2 dejó pendiente a propósito
+
+**Pedido:** cerrar el traslado entre almacenes, que se retiró del alcance de la Fase 2 justamente porque exigía una decisión propia y no una excepción metida de contrabando.
+
+**La decisión que lo tenía pendiente, resuelta: un traslado puede NO generar asiento.** Si origen y destino resuelven a la misma cuenta de inventario y a la misma norma de reparto —el caso normal—, el asiento sería Debe X / Haber X por el mismo monto: consumiría un consecutivo y dejaría en el libro diario una partida numerada que no cambia nada. Un contador que abra el diario encontraría asientos que no hacen nada. Es lo mismo que hace SAP B1.
+
+**Eso obligó a reformular la invariante, no a romperla.** Nunca fue "todo documento tiene asiento" sino **"todo cambio en el VALOR del inventario tiene su asiento"**. Un traslado cambia dónde está la mercancía, no cuánto vale, y por eso no hay nada que contabilizar. `inventory_documents.journal_entry_id` y `stock_journals.journal_entry_id` pasaron a nullable, y el único movimiento que los deja en null es el traslado. Cuando los almacenes SÍ tienen cuentas distintas, el asiento se genera normalmente y reclasifica el valor entre ellas —hay un test que confirma que el inventario total no cambia: ₡70.000 en origen más ₡30.000 en destino siguen siendo los ₡100.000 que entraron.
+
+**Service aparte, no dentro de `PostStockMovementService`.** La forma es otra: una línea de traslado produce DOS filas de kardex —salida del origen, entrada al destino— mientras que todo el motor asume "una línea, un movimiento, un almacén". Meterlo ahí habría llenado de condicionales el service del que dependen inventario, producción y facturación, con 125 tests encima. Lo compartido de verdad —la regla de ubicaciones— se extrajo a `WarehouseBinResolver` para que las dos vías no puedan divergir; duplicarla habría permitido que una aceptara una ubicación que la otra rechaza.
+
+**Un traslado no toca el costo promedio**, y por eso `StockTransferLineInput` no acepta costo: dejarlo digitar permitiría "mover" mercancía cambiándole el valor de paso. El kardex repite el promedio vigente en ambas filas para que la columna siga contando la historia completa del artículo.
+
+**Bug real que encontró el test de traslado entre ubicaciones del mismo almacén:** el service calculaba el saldo de origen y el de destino **ambos desde el valor inicial**, así que cuando origen y destino eran el mismo almacén la suma pisaba a la resta y la existencia se inflaba por la cantidad trasladada (50 unidades pasaban a 70 al mover 20 de un estante a otro). Corregido calculando secuencialmente. Era exactamente el caso que el traslado entre ubicaciones introduce y que ningún otro movimiento podía producir.
+
+**Traslado entre ubicaciones del mismo almacén sí es válido**, y es el caso que distingue "mismo origen y destino" de "mismo almacén": se rechaza solo cuando almacén *y* ubicación coinciden, porque ahí no se mueve nada.
+
+**Verificado con 16 tests nuevos** (13 de servicio, 3 HTTP): existencia movida sin cambiar total ni costo, ausencia de asiento con cuenta compartida, reclasificación con cuentas distintas, inventario total invariante, dos filas de kardex con sus saldos, existencia insuficiente, mismo origen y destino, artículo de servicio, almacén inactivo, traslado entre ubicaciones, ubicación de origen vacía, atomicidad multi-línea y documento con varias líneas. Suite de inventario completa: 91 tests.
+
+---
+
+## 2026-09-15 — Módulo de facturación electrónica (v4.4) y cierre de la Fase 4 de inventario
+
+**Pedido:** construir el módulo de facturación que la Fase 4 (ventas) necesitaba, con la especificación de seis paneles del usuario, **sin cambiar configuración de contabilidad ni de inventarios**. Con esto el PDF original queda cubierto completo.
+
+**Dos decisiones se consultaron antes de programar,** porque cambiaban lo que se construía:
+
+1. **Activar la categoría `cogs`** en la matriz de determinación. Sin ella, todos los artículos irían a la misma cuenta de costo. Es aditivo —ninguna regla ni cuenta existente cambia— y el usuario lo aprobó. La operación `sales_issue` se agregó por lo mismo: una salida por venta no es una baja de inventario, es el costo de lo vendido.
+2. **Firma XAdES-EPES y envío a la DGT**: no hay certificado ni credenciales ATV en este entorno, y sin ellos no se pueden construir ni verificar. Se acordó generar el XML completo y dejar firma y envío detrás de una interfaz.
+
+**Todo lo demás del módulo vive en tablas propias.** Las cuentas de IVA por tarifa, las cuentas por medio de pago y las actividades económicas con su cuenta de ingresos son configuración de facturación, no del catálogo contable ni de la matriz de inventario. Mezclarlas habría obligado a tocar configuración ya en uso, que era justo lo que el pedido prohibía.
+
+**Los catálogos de la norma van en código, no en base de datos.** `FiscalCatalogs` tiene los tipos de comprobante, condiciones de venta, medios de pago, tarifas de IVA, unidades, códigos de descuento, tipos e instituciones de exoneración y tipos/razones de referencia. No son configuración del usuario sino valores que fija la norma: guardarlos en tablas invitaría a editarlos, y un código inventado hace que Hacienda rechace el comprobante. Cuando la norma cambie, cambia el archivo y el diff queda en el historial.
+
+**El porcentaje del IVA no se digita: lo fija el código de tarifa.** `SalesTaxInput` lo deriva de la Nota 8.1, porque es la norma la que empareja código y porcentaje, y una combinación inventada haría rechazar el comprobante.
+
+**La clasificación del resumen es lo delicado, no la aritmética.** Cada línea cae en uno de cuatro cubos —gravada, exenta, exonerada, no sujeta— y además se separa entre servicios y mercancías: ocho totales que Hacienda cruza. La diferencia entre "exenta" (tarifa 10, exenta por ley) y "no sujeta" (tarifa 11, fuera del impuesto) parece cosmética porque ambas dan cero, pero confundirlas distorsiona la declaración de IVA. Y una línea exonerada se reporta como exonerada aunque su tarifa nominal fuera gravada: lo que clasifica es el trato fiscal efectivo.
+
+**El redondeo lo absorbe el ingreso.** El XML maneja cinco decimales y la contabilidad dos. El IVA tiene que ser exacto porque es lo que se le debe a Hacienda, y la cuenta por cobrar también porque es lo que el cliente debe; el ingreso es el único de los tres que puede absorber la diferencia sin distorsionar una obligación con un tercero. La línea de ingresos se calcula por resta (`total − IVA posteado`), no por su propio redondeo.
+
+**Clave y consecutivo se arman por tramos con longitud verificada.** Consecutivo = sucursal(3) + terminal(5) + tipo(2) + número(10); clave = país(3) + fecha(6) + cédula(12) + consecutivo(20) + situación(1) + código de seguridad(8). Un dígito de más o de menos hace que Hacienda rechace, así que `FiscalKeyGenerator` verifica longitud y que sea numérico antes de devolver. El código de seguridad usa `random_int()` y no `rand()`: su función es impedir que un tercero adivine claves ajenas a partir de una propia.
+
+**Límite conocido y deliberado del XML:** se escribió a partir de la estructura documentada del anexo técnico pero **no se validó contra el XSD oficial**, que no está disponible en este entorno. Por eso existe `validateAgainstSchema()`: se apunta al `.xsd` que publica Hacienda y devuelve la lista de errores. Es el único chequeo que de verdad garantiza que la DGT no rechace por estructura, y hay que correrlo antes de emitir contra producción.
+
+**El XML se arma con `DOMDocument` y no concatenando strings.** Escapa el contenido por sí solo; un nombre de cliente con "&" o una descripción con "<" romperían un XML armado a mano sin que nadie lo note hasta el rechazo. Hay un test que factura a "Ferretería & Cía \<SA\>" y confirma que el documento sigue siendo válido.
+
+**Firma y envío fallan explícitamente.** `UnconfiguredHaciendaSigner` y `UnconfiguredHaciendaTransport` lanzan una excepción explicando qué falta, en vez de devolver el XML sin firmar: un comprobante que se cree emitido y no lo esté es un problema fiscal, no un detalle técnico. Al configurar el certificado se reemplazan los dos `bind` del `AppServiceProvider` y nada más del módulo cambia.
+
+**Dos bugs reales encontrados por los tests:**
+- El service exigía cuenta de IVA configurada **incluso para tarifas exentas** que no generan monto alguno, obligando a inventar una cuenta que ningún asiento usaría. Corregido filtrando a las tarifas con débito fiscal real.
+- Un helper de test usaba `?? 30` para el plazo de crédito, lo que **pisaba con el default un override a null** puesto a propósito para probar que la venta a crédito exige plazo. El test pasaba sin probar nada. Corregido con `array_key_exists`.
+
+**Limitación explícita:** cuando una línea viene exonerada, el asiento no se enlaza al indicador de impuesto del proyecto, porque el monto ya no es base × tarifa y `PostJournalService::attachTax()` lo rechazaría. Esas ventas quedan correctamente contabilizadas pero no alimentan el reporte de IVA existente. Resolverlo exige decidir antes cómo se representa una exoneración en ese reporte.
+
+**Otras cosas que quedaron fuera a propósito:** no hay catálogo CAByS cargado (son miles de códigos del BCCR; el artículo guarda el suyo y se valida el formato de 13 dígitos), no hay lista de precios por cliente (el precio se digita), y no hay sub-tabla de surtidos para combos con tarifas mixtas.
+
+**Verificado con 47 tests nuevos** (18 del motor de venta, 13 del XML y el punto de enganche de Hacienda, 16 HTTP de pantallas y configuración), cada archivo corriendo también por separado. `vite build` compila las cuatro pantallas nuevas sin errores.
+
+---
+
+## 2026-09-15 — Módulo de inventario, Fases 6 y 7: producción (WIP) y ubicaciones de almacén
+
+**Pedido:** adelantar las dos fases restantes que no dependen de construir facturación de clientes. Con esto el PDF original queda cubierto salvo la mitad de salida (venta).
+
+### Fase 6 — Producción
+
+**Sin lista de materiales (BOM), a propósito.** El plan de componentes es una conveniencia de catálogo, no un hecho contable: lo que se costea es lo que de verdad se consumió, que es justamente lo que la emisión registra. Una BOM sirve para *planificar*, y se agrega si aparece esa necesidad — construirla ahora habría sido una tabla más sin impacto en ningún asiento.
+
+**Las dos operaciones nuevas viven en el motor de stock que ya existía**, no en un service paralelo: `production_issue` y `production_receipt` se costean exactamente igual que una salida y una entrada cualesquiera, y lo único que cambia es contra qué cuenta van (`wip` en ambos casos, solo que en sentidos opuestos). `PostProductionService` orquesta el ciclo por encima sin duplicar ni costeo ni kardex.
+
+**El costo del producto terminado NO se digita.** Es el WIP acumulado dividido entre las unidades que ingresan, así que un recibo descarga la cuenta en proceso **completa** y la deja exactamente en cero. Es lo que hace que el producto quede valuado al costo real consumido y no a un estimado — que es todo el punto de tener una cuenta en proceso.
+
+**Consecuencia de ese diseño: la desviación de fabricación aparece solo al CERRAR una orden con saldo**, es decir materia prima que se consumió y nunca llegó a producto terminado (merma, lote fallido). No hay desviación "por diferencia contra estándar" porque este proyecto costea a promedio ponderado móvil, no a costo estándar. Dejar ese saldo en WIP sería mantener como activo un costo que ya no tiene producto que lo respalde.
+
+**Bug real que atrapó el test de orden cerrada:** `assertOpen()` validaba el estado de la instancia que recibía el llamador, no el de la base. Un controlador que hubiera cargado la orden antes de que otra request la cerrara habría podido emitir materia prima contra una orden cerrada. Se reemplazó por `lockOpenOrder()`, que toma la fila bajo `lockForUpdate()` dentro de la transacción y verifica ahí el estado real — las tres operaciones (emitir, recibir, cerrar) pasan ahora por él.
+
+**`wipBalance()` se DERIVA de los movimientos de la orden**, no se almacena. Es una suma, no un valor dependiente de la trayectoria como el costo promedio: la excepción a "los saldos se calculan" sigue acotada a lo irreducible.
+
+### Fase 7 — Ubicaciones
+
+**Es una capa puramente logística, y el diseño lo refleja.** Las ubicaciones dicen *dónde está* cada unidad, no cuánto vale: el costo promedio sigue siendo global por artículo. Por eso `item_bins` **desglosa** a `item_warehouses` en vez de reemplazarla, la suma de las ubicaciones de un almacén siempre iguala su `on_hand`, y el motor de costeo no las mira nunca. Esa decisión es la que permitió agregar la fase sin tocar una sola línea del cálculo de promedios — lo que la entrada de Fase 0 señalaba como el riesgo de este módulo ("el que menos aporta contablemente y el que más complica el kardex").
+
+**Opcional por almacén** (`warehouses.uses_bins`): uno que las activa las exige en cada línea; uno que no, sigue funcionando exactamente como antes. Hay un test dedicado a confirmar justamente eso, porque era el riesgo real de esta fase.
+
+**La existencia disponible pasa a ser la de la ubicación, no la del almacén.** Sacar de un estante vacío se rechaza aunque el almacén tenga stock de sobra — es la razón de ser de manejar ubicaciones. Lo mismo para el conteo físico: se cuenta la ubicación, no el almacén entero.
+
+**`warehouse_bin_id` es nullable en el kardex y no puede no serlo:** los movimientos contabilizados antes de esta fase no tienen ubicación, y el kardex es inviolable.
+
+**Verificado con 34 tests nuevos** (13 en `ProductionServiceTest`, 12 en `WarehouseBinsTest`, 9 HTTP en `ProductionAndBinsHttpTest`). La suite de inventario completa quedó en 78 tests de servicio, **con los 53 anteriores intactos** — que era la comprobación importante, porque la Fase 7 tocó el motor ya estabilizado. `vite build` compila las dos pantallas nuevas y las tres modificadas sin errores.
+
+**Estado de las categorías contables: siete de once activas.** Quedan `cogs` (llega con ventas), `landed_cost_clearing` (si se necesita provisionar el flete antes de su factura) y las dos de deterioro NIC 2, que son un proceso periódico manual y no un asiento automático.
+
+---
+
+## 2026-09-13 — Módulo de inventario, Fase 5 (adelantada): costos de importación y diferencia de precio
+
+**Pedido:** adelantar la Fase 5 por delante de ventas. Tiene sentido: se apoya solo en lo ya construido, y cierra de paso la limitación que la Fase 3 dejó abierta a propósito — que la factura del proveedor tuviera que coincidir exactamente con lo recibido. Ambas cosas son **el mismo mecanismo**, que es justamente por qué no se construyó medio en la Fase 3.
+
+**El hueco del PDF, cerrado.** El documento original dice que un costo de importación "incrementa el costo unitario promedio", sin más. Eso solo es cierto mientras la mercancía siga en existencia: si ya se vendió, no hay activo que incrementar y capitalizarlo inflaría el inventario con mercancía que no existe. `StockRevaluationSplitter` reparte el costo en dos: lo que capitaliza y lo que va a resultados, exactamente como hace SAP B1.
+
+**La proporción se mide contra la existencia ACTUAL, no contra capas de compra.** El costeo de este proyecto es promedio ponderado móvil global (decisión de Fase 0), así que no existe "quedan 40 de AQUELLAS 100" — solo "quedan 40 en total". Si de 100 recibidas quedan 40, capitaliza el 40% y el 60% va a diferencia de precio.
+
+**Una revaluación deja fila en el kardex, con `direction = 'revaluation'` y cantidad cero.** Cambia el valor sin mover una sola unidad, pero omitirla haría que la columna `avg_cost_local_after` de la fila anterior mintiera y que el promedio cambiara sin ningún registro que lo explique. `stock_journals.inventory_document_line_id` pasó a nullable y se sumó `landed_cost_allocation_id`: una fila del kardex nace de un movimiento de stock o de un reparto de costo, y apunta a lo que la causó.
+
+**Bug real que encontró el test del prorrateo, y que vale para todo el módulo:** repartir un costo entre tres artículos generaba tres líneas de asiento, y **cada una se convierte a moneda extranjera por separado y redondea a dos decimales**, así que la suma de las partes redondeadas no daba el total redondeado y `PostJournalService` rechazaba el asiento por descuadre en FC. La corrección es agregar las líneas **por cuenta, no por artículo** — que además es la forma normal de un asiento: nadie postea cincuenta líneas contra la misma cuenta de inventario. El detalle por artículo vive en `landed_cost_allocations` y en el kardex, que es su lugar. `PostStockMovementService` no necesitaba el cambio: ahí cada par débito/crédito lleva el mismo monto y el mismo tipo de cambio, así que se cancela exacto por construcción.
+
+**El reparto entre líneas es proporcional al valor, y la última absorbe el residuo del redondeo** (`allocateByValue`), para que la suma de las partes sea exactamente el total. Con ₡100 entre tres líneas iguales da 33,33 / 33,33 / 33,34, nunca 99,99.
+
+**Dos tipos de cambio distintos, por una razón contable real.** Un costo de importación se valúa al TC **del día**: es una transacción nueva, del transportista, que ocurrió hoy. Una diferencia de precio del proveedor se valúa al TC **de la recepción**: no es un costo nuevo, es una corrección del precio de esa misma compra. La distinción no es cosmética — determina a qué tipo de cambio queda congelado el inventario.
+
+**El costo de importación se acredita directo a la cuenta de control del transportista y abre partida en CxP**, no a una cuenta puente. El caso normal es registrarlo cuando llega su factura. La variante de provisionarlo antes es el mismo patrón que GR/IR y se agregará si aparece la necesidad — por eso `landed_cost_clearing` sigue sin activarse y `price_difference` sí (van cinco categorías de once).
+
+**Guarda nueva: una diferencia de precio no puede dejar el costo promedio en negativo.** Solo es alcanzable cuando la rebaja supera el valor total del stock, lo que exige que una compra posterior más barata haya bajado el promedio por debajo del costo original. El primer test que escribí para esto **no disparaba la guarda** —el escenario que imaginé no llegaba a negativo— y hubo que construir uno que sí: comprar caro, vender casi todo, comprar barato, y recién ahí facturar la primera compra por casi nada.
+
+**Sin tabla nueva para la diferencia de precio.** Es un parámetro más de la factura (`netAmount`): si difiere del valor recibido, la diferencia pasa por el mismo repartidor. Sus filas de kardex apuntan a la **línea de la recepción** que revalúan, porque es la misma compra corregida; las de un costo de importación apuntan a su reparto, porque son un costo aparte.
+
+**Verificado con 26 tests nuevos** (14 en `LandedCostServiceTest`, incluidos dos sobre el repartidor puro sin base de datos; 8 de diferencia de precio en `SupplierInvoiceServiceTest`; 4 HTTP). Suite de inventario completa: 53 tests de servicio + HTTP, cada archivo verificado también **por separado** (la lección de la Fase 3). `vite build` compila la pantalla nueva y las dos modificadas sin errores.
+
+---
+
+## 2026-09-13 — Módulo de inventario, Fase 3: compras con cuenta puente GR/IR y factura de proveedor
+
+**Pedido:** las dos primeras reglas del PDF — entrada por compra (Debe Inventario / Haber GR/IR) y factura de proveedor (Debe GR/IR / Haber Cuentas por Pagar). Separar ambos pasos es lo que resuelve el problema real: la mercancía llega en un mes y la factura en otro, y entre medio hay un pasivo que existe pero todavía no tiene documento.
+
+**Sin órdenes de compra, a propósito.** SAP B1 llama "GRPO" a la recepción *contra un pedido*, pero el pedido no genera asiento alguno — es un compromiso, no un hecho contable. Construirlo habría sido un módulo entero sin impacto contable para habilitar una regla que no lo necesita. La entrada por compra es simplemente una entrada con proveedor que acredita GR/IR en vez del ajuste de aumento.
+
+**Sin tabla de facturas de proveedor tampoco.** La factura no mueve stock: **es** un asiento contable. Basta con que la recepción apunte a él (`inventory_documents.invoice_journal_entry_id`), y así "qué está pendiente de facturar" es un `whereNull` sobre esa columna en vez de una tabla y un estado que mantener sincronizado. Dos columnas nuevas (`business_partner_id`, `invoice_journal_entry_id`) reemplazan lo que habrían sido dos tablas.
+
+**La decisión de fondo: las líneas de GR/IR de la factura se ESPEJAN del asiento de la recepción**, en vez de volver a resolver la matriz de determinación. Mismas cuentas, mismos montos, mismo tipo de cambio congelado (leído de `journal_details.exchange_rate_lc_fc`). Si alguien reconfigura la matriz entre la recepción y la factura —semanas después, que es justo el escenario para el que existe GR/IR— re-resolverla debitaría una cuenta distinta y la puente nunca cerraría. Espejarla garantiza que cierre en cero **por construcción**, no por suerte, y eso es exactamente lo que prueba el test central.
+
+**Todo el asiento de la factura usa el TC congelado de la recepción, no el del día de facturar.** Vale la pena explicar por qué, porque parece incorrecto y no lo es. Si la factura se postea al TC del día, el asiento no cuadra en moneda extranjera: el débito a GR/IR arrastra el TC de la recepción y el crédito a CxP tendría otro, y la diferencia exigiría una cuenta de diferencial cambiario dentro de este módulo. Al usar un solo TC, el asiento cuadra en las tres monedas y la deuda queda registrada al valor con el que entró la mercancía; **si el tipo de cambio se movió, esa diferencia la reconoce el proceso de diferencial cambiario sobre el saldo de CxP**, que es el módulo dueño de esa responsabilidad y ya existe. No se pierde nada: se reconoce donde corresponde.
+
+**La factura abre partida pendiente en CxP** (`opensItem: true` en la línea del proveedor, contra su `gl_account_id`). Sin eso la deuda quedaría contabilizada pero invisible para antigüedad de saldos y sin forma de aplicarle un pago. Es la primera vez que el módulo de inventario se conecta con el de socios de negocio, y lo hace reutilizando el mecanismo que ya existía desde Fase 1 en vez de inventar uno propio.
+
+**El IVA deriva su tarifa de la cuenta elegida**, no se pide aparte: la factura recibe `taxAccountId` y la tarifa sale de `chart_of_accounts.tax_rate_id`, el mismo mecanismo que el asiento manual usa desde el 2026-08-19. `PostJournalService::attachTax()` después valida que el monto corresponda a base × tarifa, así que un IVA mal digitado revierte la factura entera. La pantalla precalcula el monto al elegir la cuenta pero lo deja editable: la factura del proveedor manda.
+
+**Limitación deliberada y explícita: la factura debe liquidar exactamente el valor recibido.** No se admite todavía que el monto facturado difiera del recibido. La diferencia de precio (SAP la manda a inventario si el stock sigue en existencia, y a una cuenta de diferencia de precio si ya se vendió) es **el mismo mecanismo** que hace falta para los landed costs de la Fase 5, y construir medio mecanismo acá para reconstruirlo allá habría sido peor que esperar. Por eso `price_difference` sigue sin activarse: llega con la fase que la usa.
+
+**Categoría `gr_ir_clearing` activada** (van cuatro de once) y operación `purchase_receipt` agregada. Una entrada por compra se costea exactamente igual que cualquier otra entrada —mismo promedio ponderado, mismo TC congelado—; lo único que cambia es contra qué cuenta se acredita.
+
+**Bug real encontrado y corregido en el camino:** la primera versión de `resolveMovement()` chequeaba `if ($operation === 'goods_receipt')` y caía por defecto a la rama de conteo físico, así que `purchase_receipt` se habría costeado **como un ajuste por conteo** — ignorando el costo digitado y tratando la cantidad recibida como si fuera un inventario contado. Lo detectó el primer test de la fase.
+
+**Refactor de los fixtures de test, que era un problema latente:** `inventoryFixture()` y `movementFixture()` vivían dentro de archivos de test y se usaban desde otros. Una función declarada en un archivo de test solo existe si ESE archivo se cargó, así que correr un archivo suelto (`pest tests/.../SupplierInvoiceServiceTest.php`) fallaba entero. Pasaban solo porque se corría el directorio completo. Se movieron a `tests/Pest.php`, que Pest siempre carga, y se verificó corriendo **cada archivo por separado**.
+
+**Verificado con 20 tests nuevos** (13 en `SupplierInvoiceServiceTest`: entrada por compra contra GR/IR sin tocar el ajuste de aumento, proveedor obligatorio, socio que no es proveedor rechazado, cuenta puente en cero en ambas monedas, partida pendiente abierta en CxP con su vencimiento, IVA correcto, IVA que no corresponde a la tarifa rechazado, cuenta de IVA sin indicador rechazada, doble facturación bloqueada, entrada que no es por compra no facturable, recepción marcada y fuera del pendiente, factura que no mueve el kardex, atomicidad ante fallo; 7 en `SupplierInvoicesHttpTest`: proveedor obligatorio por HTTP, socio que no es proveedor, bandeja con su valor recibido, liquidación completa, doble facturación traducida a error de formulario, tipo de documento ajeno al módulo de compras, detalle mostrando el pendiente). `vite build` compila la pantalla nueva y las dos modificadas sin errores.
+
+---
+
+## 2026-09-13 — Módulo de inventario, Fase 2 (motor): matriz de determinación de cuentas, kardex y `PostStockMovementService`
+
+**Pedido:** la fase crítica del plan — el motor que convierte un movimiento logístico en asiento contable. Esta entrada cubre el motor y sus pruebas; las pantallas quedan pendientes.
+
+**El cambio al núcleo contable que la Fase 0 anticipó, ya aplicado: `JournalLineInput` acepta `frozenExchangeRate` por línea**, y `PostJournalService::computeTripleCurrencyAmounts()` lo respeta con la precedencia *congelado de la línea → manual del asiento → vigente a la fecha*. Es por línea y no por asiento porque un mismo documento puede mover artículos comprados en fechas distintas, cada uno con su propio TC de adquisición; `manualExchangeRate`, que ya existía, es de encabezado y no alcanzaba. La guarda nueva rechaza un TC congelado ≤ 0 y su combinación con `localOnly` (una línea que no deriva moneda extranjera no tiene TC que congelar).
+
+**Verificado que el problema era real, no teórico** — es el test central de esta entrega: 100 u compradas a ₡5.000 con TC 500 ($10/u); al salir 40 u cuando el TC ya es 520, el motor sin congelar habría posteado ₡200.000 / **$384,62** en vez de $400, dejando 60 unidades valuadas a $10,26 sin que ningún asiento lo explique. Hay además un test que agota la existencia con un TC intermedio distinto y confirma que **la cuenta de inventario cierra en cero en las dos monedas**, que es la única prueba real de que el costo no se contaminó.
+
+**`PostStockMovementService`, punto único de escritura del kardex, llama a `PostJournalService::post()` inline** dentro de su propia `DB::transaction()` — servicios, no eventos, como se decidió en Fase 0. El test de atomicidad borra la determinación de una categoría y confirma que no sobrevive **nada**: ni documento, ni kardex, ni asiento, ni fila de existencia, ni el consecutivo del tipo de documento.
+
+**Tres operaciones, y el traslado entre almacenes deliberadamente fuera.** `goods_receipt`, `goods_issue` y `count_adjustment`. El traslado estaba en el DBML de Fase 0 y se retiró al implementar: con costo global por artículo, un traslado entre dos almacenes que comparten cuenta de inventario produciría un asiento Debe X / Haber X por el mismo monto —ruido puro— y la alternativa sería hacer `inventory_documents.journal_entry_id` nullable, debilitando justamente la invariante que sostiene el módulo ("no hay movimiento de stock sin su asiento"). Merece su propia fase y su propia decisión, no una excepción metida de contrabando acá.
+
+**Qué significa `quantity` según la operación** (documentado en `StockLineInput`): en entrada y salida es lo que entra o sale; en un conteo es la **cantidad contada** —la nueva existencia—, y el service calcula el delta. Un conteo que coincide con la existencia no genera movimiento; si ninguna línea lo genera, se rechaza el documento entero en vez de contabilizar un asiento vacío.
+
+**Solo una entrada mueve el costo promedio.** Una salida se valúa al promedio vigente y no lo altera, y un conteo tampoco: encontrar o perder unidades cambia cuántas hay, no cuánto costaron. Eso deja el recálculo ponderado confinado a un solo punto del código.
+
+**`total_cost_foreign` del kardex se deriva del total local con la MISMA fórmula que usa `PostJournalService`** (dividir por el TC y redondear a 2), no multiplicando cantidad por costo unitario en FC. Las dos vías difieren hasta en un céntimo por redondeo, y ese céntimo es exactamente lo que haría imposible cuadrar el kardex contra el mayor. Hay un test con un TC de 613,50 y un costo de ₡3.333,33 que compara ambos valores campo a campo.
+
+**Existencia negativa: rechazada con lock pesimista, no solo con un `if`.** `PostStockMovementService` toma `lockForUpdate()` sobre las filas de `items` **ordenadas por id** antes de leer existencias. Sin el lock, dos salidas concurrentes pasan ambas la validación y dejan el saldo negativo igual; el orden fijo evita deadlocks entre documentos que tocan los mismos artículos en distinto orden.
+
+**Costo cero en una entrada: rechazado explícitamente.** Dejaría una línea de asiento en 0,00 (que `JournalLineInput` ya rechaza) y un promedio sin sentido. Mercancía recibida sin costo —muestras, bonificaciones— es un caso real que se resolverá cuando se pida; hoy se rechaza con un mensaje claro en vez de contabilizar algo que no cuadra.
+
+**La matriz (`gl_determinations`) resuelve por precedencia artículo > grupo > almacén > compañía, y cae a `document_types.default_debit/credit_account_id`** como último recurso, tal como se acordó. `scope_id` es polimórfico según `scope_level`, mismo patrón que `document_type_permissions.subject_type/subject_id`. `GlDeterminationResolver` **no valida** la cuenta resuelta (que sea hoja, que exija centro de costo): de eso ya es autoridad única `PostJournalService`, y duplicar esas reglas acá las dejaría desincronizadas a la primera que cambie.
+
+**Solo tres categorías activas** (`inventory`, `stock_increase`, `stock_decrease`) en vez de las once del diseño de Fase 0. Las otras ocho se agregan con la fase que las consuma: una categoría configurable que ningún asiento lee sería exactamente el esquema muerto que este módulo se comprometió a no repetir. El ajuste de stock quedó separado en aumento y disminución, como hace SAP B1, para que sobrante y faltante puedan ir a cuentas distintas.
+
+**`inventario` agregado a `DocumentType::ORIGIN_MODULES`** — ahora sí tiene consumidor real, a diferencia de la Fase 1 donde se dejó fuera a propósito. `journal_entries.source_module` queda en `'inventario'` sin tocar `PostJournalService`, que ya lo derivaba del tipo de documento.
+
+**Hallazgo al escribir los tests, que vale para cualquier test de servicio futuro:** las primeras aserciones leían `JournalEntry::find()`, `StockJournal::count()` y `GlDetermination::where()->delete()` sin `CurrentCompany` seteado, y `CompanyScope` falla cerrado (decisión del 2026-08-05) — devolvían cero filas y **un test de atomicidad pasaba por la razón equivocada**: el `delete()` que debía romper la configuración no borraba nada. El fixture ahora setea `CurrentCompany` para las aserciones, y hay un test dedicado que lo limpia y confirma que el service sigue siendo correcto sin estado ambiental, como un job en background.
+
+**Verificado con 18 tests Pest nuevos** en `PostStockMovementServiceTest`: entrada con partida doble y promedio inicial, promedio ponderado de dos entradas a costos distintos, TC congelado en la salida, cuenta de inventario en cero en ambas monedas al agotar, kardex idéntico al asiento, salida mayor a la existencia rechazada, existencia de otro almacén no utilizable, conteo hacia arriba y hacia abajo, conteo sin diferencia rechazado, artículo de servicio rechazado, entrada con costo cero rechazada, atomicidad completa, precedencia artículo sobre grupo, fallback al tipo de documento, documento multi-línea con kardex por almacén y promedio global, independencia de `CurrentCompany`, y enlace documento↔asiento con `source_module`.
+
+### Pantallas (misma fecha, segunda parte de la Fase 2)
+
+**Cinco pantallas Inertia nuevas**: matriz de determinación (`GlDeterminations/Index`), lista y alta de movimientos (`Movements/Index`, `Movements/Create`), detalle de un movimiento con su kardex y enlace al asiento (`Movements/Show`), y kardex por artículo con filtro por almacén (`Kardex/Show`, alcanzable desde la fila de cada artículo). Todo bajo el módulo `inventory` ya existente — `read` para consultar, `read_write` para registrar.
+
+**El costo unitario solo es editable en una entrada.** En una salida y en un conteo la pantalla muestra el promedio vigente como texto, no como campo: el usuario no elige a qué costo sale la mercancía, lo determina el kardex. Es la misma regla del motor, hecha visible.
+
+**En un conteo, la pantalla pide la cantidad CONTADA, no la diferencia** (la etiqueta de la columna cambia con la operación). Pedir la diferencia obligaría al usuario a hacer la resta que el sistema ya puede hacer, y a equivocarse de signo.
+
+**El kardex muestra dos saldos distintos a propósito**: `balance_quantity` (el saldo del almacén de esa fila, guardado en el kardex) y un saldo acumulado del artículo calculado al vuelo sobre el listado. Sin filtro de almacén no coinciden, y esconder esa diferencia haría parecer un error lo que es la definición de cada columna.
+
+**Validación de cuenta hoja al configurar la matriz**, no solo al contabilizar. Es una duplicación deliberada y acotada de una regla que `PostJournalService` ya hace cumplir: sin ella, configurar una cuenta de mayor "funcionaría" y el error aparecería recién semanas después, al intentar el primer movimiento. La autoridad sigue siendo el motor; esto es una guarda de configuración.
+
+**El alcance y la categoría de una regla no se editan**, solo la cuenta a la que apunta: cambiarlos la convertiría en otra regla distinta y podría chocar con una existente. Para eso se borra y se crea.
+
+**Bug real en mis propios tests, vale anotarlo:** `route('items.kardex', $item->id, ['warehouse_id' => $x])` no pasa query params — el tercer argumento del helper es `$absolute`, no parámetros extra. El filtro parecía roto cuando lo que estaba mal era la llamada. La forma correcta es `route('items.kardex', ['item' => $id, 'warehouse_id' => $x])`.
+
+**Verificado con 10 tests HTTP nuevos** (`InventoryMovementsHttpTest`: entrada contabilizada por HTTP con su kardex y promedio, falta de existencia traducida a error de formulario sin dejar nada contabilizado, tipo de documento ajeno al módulo rechazado, artículo de otra compañía rechazado, detalle con líneas y kardex, kardex filtrado por almacén; matriz: alta, duplicado rechazado, alcance obligatorio cuando no es compañía, cuenta que no acepta movimientos rechazada, cuenta de otra compañía rechazada). `vite build` compila las 5 pantallas nuevas sin errores.
+
+**Verificado además contra MySQL real, no solo SQLite**: se creó una base descartable (`contapp_verify`), se corrieron los **43 tests de inventario** (motor + catálogos + HTTP) contra MySQL 8 y pasaron los 43 — lo que confirma que las columnas `DECIMAL(18,6)`/`DECIMAL(18,2)`, los nombres de índice compuesto y el ida y vuelta entre bcmath y MySQL se comportan igual que en SQLite. La base descartable se eliminó al terminar y **no se tocó ningún dato de `bdcontapp`**: la compañía demo no tiene período fiscal ni tipo de cambio para hoy, y crearlos para una prueba habría dejado configuración contable real inventada.
+
+---
+
+## 2026-09-13 — Módulo de inventario, Fase 1: catálogos (unidades de medida, grupos, almacenes, artículos)
+
+**Pedido:** continuar con la Fase 1 del plan acordado en la entrada de Fase 0 de hoy — los catálogos y su CRUD, sin contabilidad todavía. Las 5 tablas salen tal cual del DBML escrito en esa entrada.
+
+**Dominio nuevo `App\Domains\Inventory`** con 5 modelos: `UnitOfMeasure` (`$table = 'units_of_measure'`, porque Eloquent pluralizaría a `unit_of_measures`), `ItemGroup`, `Warehouse`, `Item` e `ItemWarehouse`. Los cuatro primeros usan `BelongsToCompany`; **`ItemWarehouse` a propósito NO**: no tiene `company_id`, su aislamiento lo heredan `item` y `warehouse`. Agregarle uno permitiría que la fila contradiga a su propio artículo, y `CompanyScope` no tendría forma de detectarlo.
+
+**La existencia total del artículo NO se almacena**, cumpliendo lo que la Fase 0 dejó fijado: `item_warehouses.on_hand` es la única fuente de verdad de la cantidad, y el total del artículo es `Item::onHand()`, un `SUM` sobre esa tabla. La excepción a "los saldos nunca se almacenan" queda acotada a lo estrictamente irreducible — **solo el costo promedio** (`avg_cost_local`/`avg_cost_foreign`), que es dependiente de la trayectoria. La cantidad es una suma y se comporta como cualquier otro saldo del sistema.
+
+**`Item::frozenExchangeRate()`** devuelve `avg_cost_local / avg_cost_foreign` — el tipo de cambio al que está congelado el stock, que es el valor que la Fase 2 le va a pasar por línea a `PostJournalService`. Devuelve `null` cuando el costo en FC es cero (artículo nuevo o existencia agotada): en ese caso no hay TC que preservar y la entrada que venga fija el promedio desde cero.
+
+**Sexto módulo del rollout de enforcement: `inventory`** (`ModuleSeeder` + el helper `grantAllModuleAccess` de `tests/Pest.php`, que ya estaba generalizado a "todos los módulos" justamente para no tener que tocarlo en cada entrega). Mismo criterio de siempre: `read` para consultar, `read_write` para escribir.
+
+**Tres reglas de borrado, todas del mismo espíritu "nada con historia se borra en silencio":**
+1. Una unidad de medida en uso por un artículo no se elimina (se inactiva).
+2. Un grupo con artículos asignados tampoco — acá se bloquea **en vez de** dejar que el `nullOnDelete` de la FK vacíe el grupo de los artículos calladamente: en Fase 2 el grupo es un nivel de la matriz de determinación de cuentas, y perderlo cambiaría a qué cuenta contable van esos artículos sin que nadie lo note.
+3. Un almacén o un artículo con existencia distinta de cero no se elimina. Con existencia en cero sí, y se limpian de paso las filas de `item_warehouses` en cero, que son rastro de existencia pasada y no un movimiento contabilizado. **En Fase 2 estos tres borrados van a tener que consultar además `stock_journals`**, que sí es inviolable — queda anotado en el código de ambos controladores.
+
+**Un almacén por defecto por compañía**: marcar uno desmarca al anterior dentro de la misma transacción, en vez de rechazar el guardado y obligar al usuario a dos pasos.
+
+**Un artículo con existencia no se puede convertir en servicio** (`is_inventory_item` de true a false): dejaría stock huérfano, sin kardex que lo explique ni cuenta contable que lo respalde.
+
+**Bug real encontrado al escribir la validación de artículos:** la primera versión validaba el indicador de impuesto con `Rule::exists('tax_rates','id')->where('company_id', $companyId)`, que habría **rechazado todo el catálogo nacional** — `tax_rates.company_id` es nullable y NULL significa "compartido por todas las compañías" (migración del 2026-09-07 y `GlobalOrOwnCompanyScope`), o sea justamente el IVA 13% que usa casi todo el mundo. Corregido a aceptar `company_id IS NULL OR company_id = :companyId`, con un test dedicado que postea un artículo contra una tarifa nacional.
+
+**Fuera de alcance a propósito:** no se agregó `inventario` a `DocumentType::ORIGIN_MODULES`. Recién tiene sentido en Fase 2, cuando exista un tipo de documento que genere asientos de inventario; agregarlo hoy sería exactamente el esquema muerto que la entrada de Fase 0 se comprometió a no repetir. Tampoco hay importación XLSX de artículos ni pantalla de existencias por almacén — los catálogos son la base, no el módulo completo.
+
+**Verificado con 19 tests Pest nuevos** (15 en `InventoryCatalogsHttpTest`: aislamiento por compañía en el listado, código duplicado rechazado dentro de la compañía, los tres bloqueos de borrado, borrado permitido con existencia en cero, almacén por defecto que desmarca al anterior, creación de artículo con grupo/unidad/impuesto, tarifa nacional aceptada, unidad de medida de otra compañía rechazada, conversión a servicio bloqueada con existencia, artículo de otra compañía no actualizable, existencia total expuesta como suma de almacenes; 4 en `InventoryModuleAccessHttpTest`: sin permiso las cuatro pantallas dan 403, `read` consulta pero no escribe, `read_write` escribe, superusuario entra sin permiso explícito) — **suite completa: 653 tests, 2658 assertions, sin ningún test roto de los 634 anteriores**. `vite build` compila las 4 pantallas nuevas sin errores. Verificado además de punta a punta contra Docker/MySQL real: migraciones aplicadas, artículo creado en dos almacenes (12,5 + 7,25) devolviendo 19,75 de existencia total por `SUM`, TC congelado calculado correctamente (₡5.000 / $10 = 500), `company_id` heredado del `CurrentCompany` ambiental, y el unique `(company_id, code)` rechazando el duplicado. Datos de prueba eliminados por completo al terminar.
+
+**Nota sobre el entorno:** el PHP del host (8.5.9) no tiene ningún driver de PDO compilado, así que `pest` no corre fuera de Docker. Toda verificación de este proyecto tiene que hacerse con `docker exec contapp_app ...`.
+
+---
+
+## 2026-09-13 — Módulo de inventario, Fase 0: decisiones de diseño y modelo de datos (sin código todavía)
+
+**Pedido:** integrar un módulo de inventario estilo SAP B1 según `instructivo-contapp-laravel11-inventario-contabilidad.pdf`, donde cada evento logístico genera su asiento automáticamente. Las ocho reglas de partida doble del PDF (GRPO, factura A/P, landed costs, emisión a producción, recibo de producción, entrega, factura A/R, ajuste por conteo) son correctas y se toman tal cual. Lo que no encaja es el andamiaje técnico que propone, porque el documento describe un proyecto que ya no es este.
+
+**El PDF está desactualizado en cuatro puntos que cambian el diseño:** asume Laravel 11 (es 13.8 / PHP 8.4), asume doble moneda LC/FC (el motor exige cuadre en LC, FC y SC), asume la nomenclatura `empresa_id` del CLAUDE.md (el esquema real es inglés en toda tabla desde Fase 0), y pide construir validación de cuadre, excepción de rollback e inmutabilidad que **ya existen completas** en `PostJournalService` (22 excepciones, `reverse()` con espejo exacto, `JournalEntryPolicy::delete()`). Lo que de verdad falta es todo lo logístico: no hay artículos, almacenes, unidades de medida ni kardex. Tampoco existen documentos de venta ni de compra — `document_types.origin_module` tiene los valores `ventas`/`compras` pero ningún documento los usa, así que las Fases 3-4 dependen de construir facturación, que el PDF da por hecha.
+
+**Costo promedio en LC y FC simultáneamente, con tipo de cambio congelado por línea.** Es la decisión de fondo y no es una preferencia: `computeTripleCurrencyAmounts()` deriva FC dividiendo el monto LC por el tipo de cambio de la fecha de contabilización, así que una salida de inventario se valuaría al TC de hoy y no al TC con el que la mercancía entró. Con 100 u que ingresaron por ₡500.000 a TC 500 ($1.000, o sea ₡5.000 y $10 por unidad), una venta de 40 u con TC 520 postearía ₡200.000 y dejaría FC = 200.000/520 = **$384,62** en vez de $400 — la cuenta de inventario quedaría con $615,38 para 60 unidades, o sea $10,26/u. El costo en dólares se distorsiona solo, sin que nadie registre nada. Además es contablemente incorrecto: el inventario es una partida **no monetaria** (NIC 21) y su costo queda congelado al TC de adquisición, no se revalúa. Guardando el promedio en ambas monedas, el TC congelado de cada artículo es `avg_cost_local / avg_cost_foreign` y la salida reproduce exactamente el costo de entrada; la cuenta cierra en cero en las dos monedas al agotarse el stock, que es la prueba de que está bien.
+
+**Consecuencia sobre el núcleo: `JournalLineInput` necesita un tipo de cambio POR LÍNEA.** Hoy `post()` solo acepta `manualExchangeRate` a nivel de asiento entero, y eso no alcanza — un documento con tres artículos comprados en fechas distintas tiene tres TC implícitos distintos. El cambio es de una línea en `computeTripleCurrencyAmounts()` (`$line->frozenExchangeRate ?? $manualExchangeRate ?? $this->rateOnOrBefore(...)`) más el parámetro opcional en el DTO, mismo estilo que las guardas `localOnly`/`allowZeroAmount` que ya viven ahí. Se verificó que `foreign_currency_id` y `system_currency_id` apuntan ambos a USD (`DemoCompanySeeder`, y la decisión del 2026-08-04 de USD fijo para todo el tenant), así que `rateFcSc = 1.000000` y SC espeja a FC automáticamente: el problema de tres monedas se reduce a LC↔FC y basta un solo override. Si alguna compañía llegara a configurar FC ≠ SC, SC volvería a derivarse al TC del día y haría falta un segundo override — no se diseña hoy porque contradiría una decisión vigente del tenant.
+
+**Servicios, no eventos — se descarta el `StockMovementProcessed` / `CreateAutomaticJournalEntryListener` del PDF.** `PostStockMovementService` será el punto único de escritura del kardex y llamará a `PostJournalService::post()` **inline** dentro de su propia `DB::transaction()`, exactamente el precedente que sentó `ApplyPaymentService` al meterse dentro de `post()` (entrada del 2026-08-24): Laravel anida vía SAVEPOINT, así que si el asiento falla el movimiento de stock tampoco existe. El riesgo concreto de la vía del PDF es que un listener de Laravel se vuelve asíncrono agregando una interfaz (`ShouldQueue`, una línea); el día que alguien lo haga "para mejorar el rendimiento", el kardex y el mayor quedan desacoplados y el inventario deja de cuadrar sin que nadie se entere. La atomicidad no debe depender de que nadie agregue una interfaz.
+
+**Costo por artículo (global), no por almacén** — se descarta el `PriceAtWH` del PDF, a pedido del usuario. `avg_cost_local`/`avg_cost_foreign` viven en `items`. Consecuencia: un traslado entre almacenes no toca resultados, pero si la matriz asigna cuentas de inventario distintas por almacén sí genera asiento (Debe Inventario-B / Haber Inventario-A al mismo costo unitario), sin impacto en el estado de resultados.
+
+**La matriz de determinación convive con `document_types.default_debit_account_id`, no lo reemplaza.** Precedencia al resolver una categoría: `item` > `item_group` > `warehouse` > `company` dentro de `gl_determinations`, y si ninguna fila resuelve, cae a `document_types.default_debit/credit_account_id`. `scope_id` es polimórfico según `scope_level`, mismo patrón que `document_type_permissions.subject_type/subject_id` ya usa. **La matriz resuelve también el centro de costo** (`cost_allocation_rule_id` por fila): la cuenta de COGS típicamente tiene `requires_cost_center`, y sin esto todo asiento de venta explotaría con `MissingCostAllocationRuleException`.
+
+**Once categorías contables**, con el ajuste de stock separado en dos (`stock_increase`/`stock_decrease`) en vez de la única "Variación" del PDF — es como lo hace SAP B1 y permite que sobrante y faltante vayan a cuentas distintas: `inventory`, `gr_ir_clearing`, `cogs`, `stock_increase`, `stock_decrease`, `landed_cost_clearing`, `price_difference`, `wip`, `production_variance`, `write_down_allowance`, `write_down_expense`.
+
+**Tres huecos contables del PDF, cerrados en el diseño:**
+1. **Landed cost retroactivo sobre mercancía ya vendida.** El PDF dice que el flete "incrementa el costo unitario promedio", pero si la mercancía ya salió no hay inventario que capitalizar. Va a la cuenta `price_difference` (resultado), configurable en la matriz, igual que SAP B1. Sin esto el módulo inflaría el activo con costo de mercancía que ya no existe.
+2. **NIC 2 — valor neto realizable.** El PDF no contempla deterioro. Se reservan `write_down_allowance` (contra-activo) y `write_down_expense`; es un proceso periódico manual, no un asiento automático por transacción, y no se construye hasta que se pida.
+3. **Existencia negativa prohibida.** `InsufficientStockException` validada con `lockForUpdate()` sobre la fila del artículo antes de leer la existencia — sin lock pesimista, dos salidas concurrentes pasan ambas la validación y dejan el saldo negativo igual. Mismo patrón que `nextDocumentNumber()`.
+
+**Excepción declarada a "los saldos nunca se almacenan" (CLAUDE.md):** `items.avg_cost_local/foreign` es estado almacenado, y hay que dejarlo por escrito igual que se hizo con `bp_open_items.balance` el 2026-08-27. Un saldo de cuenta es una suma y se recalcula con un `SUM` sobre cualquier rango; un promedio ponderado móvil es **dependiente de la trayectoria** — no existe consulta puntual que lo derive, hay que reproducir la secuencia completa de movimientos en orden. Guardarlo no es un atajo de rendimiento, es la única forma de que el concepto exista. La excepción se acota a eso: la **cantidad** no se denormaliza (vive solo en `item_warehouses.on_hand`, y la existencia total del artículo es un `SUM`), y las columnas `balance_quantity`/`avg_cost_*_after` del kardex son foto de auditoría, nunca fuente de verdad para un reporte.
+
+**Alcance de esta entrega: diseño únicamente, cero código.** Se agregaron 8 tablas a `docs/modelo-datos.dbml` (`units_of_measure`, `item_groups`, `warehouses`, `items`, `item_warehouses`, `gl_determinations`, `inventory_documents`, `inventory_document_lines`, `stock_journals`) que cubren Fases 1-2 (catálogos + kardex + entrada/salida/ajuste). No se escribieron migraciones, modelos ni services. Landed costs, producción (WIP) y ubicaciones WMS son fases posteriores y **a propósito no tienen tablas todavía**: el proyecto ya arrastra el problema de esquema "Fase 0" sin conectar (`opening_balances`, `BpCategory`, `document_type_permissions`), y no tiene sentido repetirlo. Por la misma razón `inventory_documents` no lleva estado `draft` ni `item_warehouses` columnas `committed`/`ordered` reservadas: se agregan cuando exista el flujo que las use.
+
+**Plan de fases acordado:** 1) catálogos + CRUD Inertia; 2) matriz G/L + kardex + `PostStockMovementService` con entrada/salida/ajuste — **es la fase crítica, donde se prueba que el costeo cuadra en las tres monedas**; 3) compras (GRPO + GR/IR + factura de proveedor); 4) ventas (entrega con COGS + factura A/R, depende de construir facturación); 5) landed costs incluyendo el caso de mercancía ya vendida; 6) producción; 7) WMS, solo si se necesita. Falta agregar `inventario` a `DocumentType::ORIGIN_MODULES` y un módulo `inventory` a `ModuleSeeder` cuando arranque la Fase 1.
+
+---
+
 ## 2026-08-31 — Pie de página con la licencia de la compañía (CLAUDE.md secc. 17), cerrando un pendiente desde el 2026-08-27
 
 **Pedido:** que el usuario de compañía vea qué tipo de licencia tiene. Esto es exactamente el pie de página que CLAUDE.md secc. 17 pide (referencia de licencia enmascarada + vigencia) y que la entrada del 2026-08-27 (modo de gracia) había dejado señalado explícitamente como pendiente, sin resolver.

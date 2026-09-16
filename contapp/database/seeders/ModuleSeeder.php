@@ -21,6 +21,8 @@ class ModuleSeeder extends Seeder
             ['code' => 'banking', 'name' => 'Bancos y conciliaciones'],
             ['code' => 'tax', 'name' => 'Impuestos (IVA)'],
             ['code' => 'reports', 'name' => 'Reportería'],
+            ['code' => 'inventory', 'name' => 'Inventario (artículos, almacenes)'],
+            ['code' => 'billing', 'name' => 'Facturación electrónica'],
         ];
 
         foreach ($modules as $module) {

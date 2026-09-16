@@ -48,6 +48,31 @@ const nav = computed(() => {
             ],
         },
         {
+            label: 'Inventario', icon: '▦', module: 'inventory',
+            match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*'],
+            children: [
+                { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex'] },
+                { label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
+                { label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
+                { label: 'Facturas de proveedor', href: route('supplier-invoices.index'), match: ['supplier-invoices.*'] },
+                { label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
+                { label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
+                { label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
+                { label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
+                { label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
+                { label: 'Determinación de cuentas', href: route('gl-determinations.index'), match: ['gl-determinations.*'] },
+            ],
+        },
+        {
+            label: 'Facturación', icon: '🧾', module: 'billing',
+            match: ['sales-documents.*', 'billing-settings.*'],
+            children: [
+                { label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
+                { label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
+                { label: 'Configuración', href: route('billing-settings.index'), match: ['billing-settings.*'] },
+            ],
+        },
+        {
             label: 'Socios de negocio', icon: '⚭', module: 'business_partners',
             match: ['business-partners.*', 'bp-categories.*'],
             children: [

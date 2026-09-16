@@ -32,6 +32,7 @@ class JournalLineInput
         public readonly ?string $electronicKey = null,
         public readonly ?int $applyToOpenItemId = null,
         public readonly ?string $referenceDocumentDate = null,
+        public readonly ?string $frozenExchangeRate = null,
     ) {
         $this->debit = number_format((float) $debit, 2, '.', '');
         $this->credit = number_format((float) $credit, 2, '.', '');
@@ -81,6 +82,22 @@ class JournalLineInput
         // impuesto, así que esta combinación no tiene un caso real.
         if ($this->costAllocationRuleId !== null && ($this->opensItem || $this->applyToOpenItemId !== null || $this->taxRateId !== null)) {
             throw new \InvalidArgumentException('Una línea con norma de reparto no puede abrir/aplicar partida ni llevar impuesto a la vez.');
+        }
+
+        // El inventario es una partida NO monetaria (NIC 21): su costo queda
+        // congelado al tipo de cambio de adquisición y no se revalúa. Sin
+        // esto, una salida de inventario se convertiría a moneda extranjera
+        // al TC del día de la salida en vez del TC con el que la mercancía
+        // entró, y el costo unitario en FC se distorsionaría solo en cada
+        // movimiento (docs/decisiones.md 2026-09-13).
+        if ($this->frozenExchangeRate !== null) {
+            if (bccomp($this->frozenExchangeRate, '0', 10) <= 0) {
+                throw new \InvalidArgumentException('El tipo de cambio congelado de una línea debe ser mayor a cero.');
+            }
+
+            if ($this->localOnly) {
+                throw new \InvalidArgumentException('Una línea localOnly no deriva moneda extranjera; no admite tipo de cambio congelado.');
+            }
         }
     }
 
