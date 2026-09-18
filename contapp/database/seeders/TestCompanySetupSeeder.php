@@ -173,6 +173,10 @@ class TestCompanySetupSeeder extends Seeder
             // porque el kardex siempre asienta en moneda local, con el tipo
             // de cambio implícito del costo promedio, no el del día.
             ['EIN', 'Entrada de inventario', 'inventario', 'local_fija', 'none', false],
+            // Entrada por compra: deja la deuda en la cuenta puente GR/IR
+            // hasta que llegue la factura del proveedor, que es la que abre
+            // la partida en CxP (ver PostSupplierInvoiceService).
+            ['ECP', 'Entrada por compra', 'inventario', 'local_fija', 'none', false],
             ['SIN', 'Salida de inventario', 'inventario', 'local_fija', 'none', false],
             ['TRA', 'Traslado entre almacenes', 'inventario', 'local_fija', 'none', false],
         ];
@@ -209,7 +213,7 @@ class TestCompanySetupSeeder extends Seeder
             ]
         );
 
-        $this->command?->line('  Tipos de documento: ADD, ADC, FVE, FCP, REC, PAG, TRB, EIN, SIN, TRA, ACC.');
+        $this->command?->line('  Tipos de documento: ADD, ADC, FVE, FCP, REC, PAG, TRB, EIN, ECP, SIN, TRA, ACC.');
     }
 
     /**

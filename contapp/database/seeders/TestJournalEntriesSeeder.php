@@ -154,19 +154,14 @@ class TestJournalEntriesSeeder extends Seeder
 
         $log[] = $this->describe($compraEquipo, 'Compra de equipo de cómputo');
 
-        // ── 3. Compra de mercadería a crédito ─────────────────────────────
-        $log[] = $this->post($company, $doc('FCP'), '2026-02-10', 'Compra de mercadería', $createdBy, [
-            new JournalLineInput(accountId: $acc('1-01-03-01-001'), currencyId: $crc, debit: '8000000.00', credit: 0,
-                description: 'Mercadería para la venta'),
-            new JournalLineInput(accountId: $acc('1-01-04-01-001'), currencyId: $crc, debit: '1040000.00', credit: 0,
-                description: 'IVA soportado 13%',
-                taxRateId: $ivaRate('1-01-04-01-001'), taxableBase: '8000000.00'),
-            new JournalLineInput(accountId: $acc('2-01-01-01-001'), currencyId: $crc, debit: 0, credit: '9040000.00',
-                description: 'Suministros Industriales del Sur',
-                businessPartnerId: $bp('PRV-001'), dueDate: '2026-03-12', opensItem: true),
-        ]);
+        // La compra de mercadería y el costo de la venta NO se asientan acá:
+        // los mueve TestInventoryMovementsSeeder por el módulo de inventario
+        // (entrada por compra + factura del proveedor, y salida por venta).
+        // Asentarlos a mano contra la cuenta de inventario dejaría el saldo
+        // contable por encima de la valoración del kardex, que es justo el
+        // descuadre que este módulo existe para no tener.
 
-        // ── 4. Factura de venta a crédito ─────────────────────────────────
+        // ── 3. Factura de venta a crédito ─────────────────────────────────
         $venta1 = $this->post($company, $doc('FVE'), '2026-03-05', 'Factura de venta a Distribuidora La Central', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-02-01-001'), currencyId: $crc, debit: '5650000.00', credit: 0,
                 description: 'Distribuidora La Central S.A.',
@@ -180,15 +175,7 @@ class TestJournalEntriesSeeder extends Seeder
 
         $log[] = $this->describe($venta1, 'Factura de venta a Distribuidora La Central');
 
-        // ── 5. Costo de la venta anterior ─────────────────────────────────
-        $log[] = $this->post($company, $doc('ADD'), '2026-03-05', 'Costo de la mercadería vendida en marzo', $createdBy, [
-            new JournalLineInput(accountId: $acc('5-01-01-01-001'), currencyId: $crc, debit: '3200000.00', credit: 0,
-                description: 'Costo de la venta de marzo', costAllocationRuleId: $rule('VEN100')),
-            new JournalLineInput(accountId: $acc('1-01-03-01-001'), currencyId: $crc, debit: 0, credit: '3200000.00',
-                description: 'Salida de inventario'),
-        ]);
-
-        // ── 6. Cobro de la factura de venta (cancela la partida de CxC) ───
+        // ── 4. Cobro de la factura de venta (cancela la partida de CxC) ───
         $log[] = $this->post($company, $doc('REC'), '2026-04-02', 'Cobro de la factura de venta de marzo', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-01-02-001'), currencyId: $crc, debit: '5650000.00', credit: 0,
                 description: 'Transferencia recibida'),
@@ -198,7 +185,7 @@ class TestJournalEntriesSeeder extends Seeder
                 applyToOpenItemId: $this->openItemOf($venta1, $bp('CLI-001'))),
         ]);
 
-        // ── 7. Planilla de abril (gasto repartido con la norma GRAL) ──────
+        // ── 5. Planilla de abril (gasto repartido con la norma GRAL) ──────
         $log[] = $this->post($company, $doc('ADD'), '2026-04-30', 'Planilla de abril', $createdBy, [
             new JournalLineInput(accountId: $acc('6-01-01-01-001'), currencyId: $crc, debit: '4000000.00', credit: 0,
                 description: 'Salarios de abril', costAllocationRuleId: $rule('GRAL')),
@@ -210,7 +197,7 @@ class TestJournalEntriesSeeder extends Seeder
                 description: 'CCSS obrera y patronal por pagar'),
         ]);
 
-        // ── 8. Gastos operativos de mayo a crédito ────────────────────────
+        // ── 6. Gastos operativos de mayo a crédito ────────────────────────
         $log[] = $this->post($company, $doc('FCP'), '2026-05-15', 'Gastos operativos de mayo', $createdBy, [
             new JournalLineInput(accountId: $acc('6-01-02-01-001'), currencyId: $crc, debit: '800000.00', credit: 0,
                 description: 'Alquiler de oficinas', costAllocationRuleId: $rule('ADM100')),
@@ -224,7 +211,7 @@ class TestJournalEntriesSeeder extends Seeder
                 businessPartnerId: $bp('PRV-002'), dueDate: '2026-06-14', opensItem: true),
         ]);
 
-        // ── 9. Segunda factura de venta ───────────────────────────────────
+        // ── 7. Segunda factura de venta ───────────────────────────────────
         $log[] = $this->post($company, $doc('FVE'), '2026-06-18', 'Factura de venta a Comercial El Roble', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-02-01-001'), currencyId: $crc, debit: '9040000.00', credit: 0,
                 description: 'Comercial El Roble S.A.',
@@ -236,7 +223,7 @@ class TestJournalEntriesSeeder extends Seeder
                 taxRateId: $ivaRate('2-01-02-01-001'), taxableBase: '8000000.00'),
         ]);
 
-        // ── 10. Depreciación del primer semestre ──────────────────────────
+        // ── 8. Depreciación del primer semestre ──────────────────────────
         $log[] = $this->post($company, $doc('ADD'), '2026-06-30', 'Depreciación del primer semestre', $createdBy, [
             new JournalLineInput(accountId: $acc('6-01-03-01-003'), currencyId: $crc, debit: '300000.00', credit: 0,
                 description: 'Depreciación de equipo de cómputo', costAllocationRuleId: $rule('ADM100')),
@@ -244,7 +231,7 @@ class TestJournalEntriesSeeder extends Seeder
                 description: 'Depreciación acumulada de equipo de cómputo'),
         ]);
 
-        // ── 11. Venta de exportación EN DÓLARES ───────────────────────────
+        // ── 9. Venta de exportación EN DÓLARES ───────────────────────────
         // Ambas líneas se digitan en la moneda extranjera: PostJournalService
         // deriva el equivalente en colones con la tasa vigente al 2026-08-01.
         // Deja saldo en USD en una cuenta de CxC, que es justo lo que después
@@ -257,7 +244,7 @@ class TestJournalEntriesSeeder extends Seeder
                 description: 'Venta de exportación (exenta)', costAllocationRuleId: $rule('VEN100')),
         ]);
 
-        // ── 12. Honorarios profesionales a crédito ────────────────────────
+        // ── 10. Honorarios profesionales a crédito ────────────────────────
         $log[] = $this->post($company, $doc('FCP'), '2026-09-05', 'Honorarios profesionales de setiembre', $createdBy, [
             new JournalLineInput(accountId: $acc('6-01-02-02-001'), currencyId: $crc, debit: '1450000.00', credit: 0,
                 description: 'Asesoría contable y fiscal', costAllocationRuleId: $rule('ADM100')),
@@ -269,7 +256,7 @@ class TestJournalEntriesSeeder extends Seeder
                 businessPartnerId: $bp('PRV-003'), dueDate: '2026-10-05', opensItem: true),
         ]);
 
-        // ── 13. Pago total al proveedor del equipo de cómputo ─────────────
+        // ── 11. Pago total al proveedor del equipo de cómputo ─────────────
         $log[] = $this->post($company, $doc('PAG'), '2026-09-12', 'Pago de la compra de equipo de cómputo', $createdBy, [
             new JournalLineInput(accountId: $acc('2-01-01-01-001'), currencyId: $crc, debit: '3390000.00', credit: 0,
                 description: 'Cancelación total al proveedor',
