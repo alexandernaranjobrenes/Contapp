@@ -225,6 +225,17 @@ class TestChartOfAccountsSeeder extends Seeder
         ['3-02-03', 'OTROS RESULTADOS INTEGRALES'],
         ['3-02-03-01', 'OTROS RESULTADOS INTEGRALES'],
         ['3-02-03-01-001', 'Superávit por revaluación de activos'],
+        // Contrapartida de los saldos iniciales. Existe porque cargar
+        // existencias de apertura como entrada de mercancía manda su
+        // contrapartida a "Ajuste de inventario — aumento", que es una
+        // cuenta de RESULTADOS: el balance cuadra igual, pero el estado de
+        // resultados muestra la apertura como si fuera menos costo, o sea
+        // más utilidad. Un saldo inicial no es un resultado del período;
+        // su contrapartida es patrimonial.
+        ['3-03', 'SALDOS INICIALES'],
+        ['3-03-01', 'SALDOS INICIALES'],
+        ['3-03-01-01', 'SALDOS INICIALES'],
+        ['3-03-01-01-001', 'Saldos iniciales de existencias'],
 
         // ========================== 4. INGRESOS ===========================
         ['4', 'INGRESOS'],

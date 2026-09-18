@@ -2,10 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
+use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Accounting\Models\JournalDetail;
+use App\Domains\Accounting\Models\JournalEntry;
+use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
+use App\Domains\Inventory\Models\GlDetermination;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\Warehouse;
@@ -49,13 +55,29 @@ class TestInventoryStockSeeder extends Seeder
 {
     private const MARKER = '[PRUEBA]';
 
+    /**
+     * 10 de enero: dentro del primer período fiscal abierto y después del
+     * aporte de capital, para que la compañía tenga con qué haberlas comprado
+     * cuando se mire la línea de tiempo.
+     */
+    private const OPENING_DATE = '2026-01-10';
+
+    /** Contrapartida patrimonial correcta de una carga de apertura. */
+    private const OPENING_ACCOUNT = '3-03-01-01-001';
+
+    /** La de resultados a la que apunta 'stock_increase' el resto del tiempo. */
+    private const ADJUSTMENT_ACCOUNT = '5-01-03-01-001';
+
     /** Compañía destino. Si queda en null se lee de SEED_COMPANY_ID. */
     public ?int $companyId = null;
 
     /** true: contabiliza todo y revierte al final, sin dejar nada. */
     public bool $dryRun = false;
 
-    public function __construct(private readonly PostStockMovementService $stock) {}
+    public function __construct(
+        private readonly PostStockMovementService $stock,
+        private readonly PostJournalService $journal,
+    ) {}
 
     /**
      * Existencias del almacén principal. [código, cantidad, costo unitario].
@@ -114,13 +136,9 @@ class TestInventoryStockSeeder extends Seeder
         $company = Company::findOrFail($companyId);
         app(CurrentCompany::class)->set($company->id);
 
-        $existing = InventoryDocument::where('description', 'like', self::MARKER.'%')->count();
-
-        if ($existing > 0 && ! $this->dryRun) {
-            $this->command?->warn("  Ya hay {$existing} documentos de inventario de prueba; no se crean de nuevo.");
-
-            return;
-        }
+        $existing = InventoryDocument::where('description', 'like', self::MARKER.'%')
+            ->where('operation', 'goods_receipt')
+            ->count();
 
         $createdBy = $company->license?->superuser_id
             ?? User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))->value('id');
@@ -137,18 +155,36 @@ class TestInventoryStockSeeder extends Seeder
         DB::beginTransaction();
 
         try {
-            $docs = [
-                $this->receipt($company, $documentType, $createdBy, 'ALM01',
-                    'Existencias iniciales — almacén principal', self::ALM01),
-                $this->receipt($company, $documentType, $createdBy, 'ALM02',
-                    'Existencias iniciales — bodega de tránsito', self::ALM02),
-                $this->receipt($company, $documentType, $createdBy, 'ALM03',
-                    'Existencias iniciales — almacén con ubicaciones', self::ALM03),
-            ];
+            $log = [];
+
+            if ($existing > 0 && ! $this->dryRun) {
+                $this->command?->warn("  Ya hay {$existing} entradas de existencias de prueba; no se crean de nuevo.");
+            } else {
+                $docs = $this->withOpeningCounterpart(fn () => [
+                    $this->receipt($company, $documentType, $createdBy, 'ALM01',
+                        'Existencias iniciales — almacén principal', self::ALM01),
+                    $this->receipt($company, $documentType, $createdBy, 'ALM02',
+                        'Existencias iniciales — bodega de tránsito', self::ALM02),
+                    $this->receipt($company, $documentType, $createdBy, 'ALM03',
+                        'Existencias iniciales — almacén con ubicaciones', self::ALM03),
+                ]);
+
+                $log = [...$log, ...$docs];
+            }
+
+            // Corrige una carga vieja que quedó con la contrapartida en la
+            // cuenta de ajuste. En una base nueva no encuentra nada que
+            // reclasificar, porque withOpeningCounterpart() ya la mandó a la
+            // cuenta correcta desde el principio.
+            $reclass = $this->reclassifyLegacyCounterpart($company, $createdBy);
+
+            if ($reclass !== null) {
+                $log[] = $reclass;
+            }
 
             if ($this->dryRun) {
                 DB::rollBack();
-                $this->command?->info('  SIMULACIÓN: '.count($docs).' entradas contabilizaron bien. Nada quedó escrito.');
+                $this->command?->info('  SIMULACIÓN: todo contabilizó bien. Nada quedó escrito.');
 
                 return;
             }
@@ -158,16 +194,136 @@ class TestInventoryStockSeeder extends Seeder
             DB::rollBack();
 
             throw new RuntimeException(
-                'Ninguna entrada quedó escrita. Falló: '.get_class($e).' — '.$e->getMessage(),
+                'Nada quedó escrito. Falló: '.get_class($e).' — '.$e->getMessage(),
                 previous: $e
             );
         }
 
-        foreach ($docs as $line) {
+        foreach ($log as $line) {
             $this->command?->line("  {$line}");
         }
 
-        $this->command?->info('  '.count($docs).' entradas de existencias contabilizadas.');
+        $this->command?->info('  Existencias iniciales al día.');
+    }
+
+    /**
+     * Desvía temporalmente la categoría 'stock_increase' a la cuenta
+     * patrimonial de saldos iniciales, corre lo que se le pase, y la devuelve
+     * a su cuenta de siempre.
+     *
+     * Por qué el desvío y no cambiar la matriz de una vez: 'stock_increase'
+     * es la contrapartida de CUALQUIER entrada sin origen —un sobrante de
+     * conteo, un ajuste— y esas sí son resultado del período. La cuenta
+     * patrimonial solo corresponde mientras se carga la apertura; dejarla
+     * puesta mandaría a patrimonio ajustes que son gasto.
+     *
+     * El restore va en finally: si una entrada falla, la transacción de
+     * run() revierte todo igual, pero así la matriz tampoco queda desviada
+     * dentro de la misma corrida.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $posting
+     * @return T
+     */
+    private function withOpeningCounterpart(callable $posting): mixed
+    {
+        $rule = GlDetermination::where('scope_level', 'company')
+            ->whereNull('scope_id')
+            ->where('category', 'stock_increase')
+            ->first();
+
+        if (! $rule) {
+            throw new RuntimeException(
+                'Falta la regla de determinación "stock_increase" a nivel de compañía. '.
+                'Corré antes: php artisan db:seed --class=TestInventorySeeder'
+            );
+        }
+
+        $opening = $this->openingAccount();
+        $previous = $rule->account_id;
+
+        $rule->update(['account_id' => $opening->id]);
+
+        try {
+            return $posting();
+        } finally {
+            $rule->update(['account_id' => $previous]);
+        }
+    }
+
+    /**
+     * Mueve a patrimonio la contrapartida de una carga de apertura anterior
+     * que haya quedado en la cuenta de ajuste. Idempotente: si ya existe la
+     * reclasificación, no la repite.
+     */
+    private function reclassifyLegacyCounterpart(Company $company, ?int $createdBy): ?string
+    {
+        $description = self::MARKER.' Reclasificación de la contrapartida de saldos iniciales';
+
+        if (JournalEntry::where('description', $description)->exists()) {
+            return null;
+        }
+
+        $opening = $this->openingAccount();
+
+        // Los asientos que nacieron de las entradas de apertura...
+        $entryIds = InventoryDocument::where('description', 'like', self::MARKER.'%')
+            ->where('operation', 'goods_receipt')
+            ->pluck('journal_entry_id')
+            ->filter();
+
+        if ($entryIds->isEmpty()) {
+            return null;
+        }
+
+        // ...y cuánto de ellos quedó acreditado en la cuenta de ajuste. Si
+        // dio cero, la carga ya usó la cuenta correcta y no hay nada que hacer.
+        $adjustment = ChartOfAccount::where('code', self::ADJUSTMENT_ACCOUNT)->firstOrFail();
+
+        $amount = (string) JournalDetail::whereIn('journal_entry_id', $entryIds)
+            ->where('account_id', $adjustment->id)
+            ->sum('credit_local');
+
+        if (bccomp($amount, '0.00', 2) <= 0) {
+            return null;
+        }
+
+        $amount = number_format((float) $amount, 2, '.', '');
+        $documentType = DocumentType::where('code', 'ADD')->firstOrFail();
+        $on = new DateTime(self::OPENING_DATE);
+
+        $this->journal->post(
+            $company,
+            $documentType,
+            $on,
+            $on,
+            [
+                new JournalLineInput(accountId: $adjustment->id, currencyId: $company->local_currency_id,
+                    debit: $amount, credit: 0, description: 'Saca la apertura de resultados'),
+                new JournalLineInput(accountId: $opening->id, currencyId: $company->local_currency_id,
+                    debit: 0, credit: $amount, description: 'Contrapartida patrimonial de la apertura'),
+            ],
+            $description,
+            $createdBy,
+        );
+
+        return sprintf('RECLASIFICADO  ₡%s  de «%s» a «%s»',
+            number_format((float) $amount, 2), $adjustment->description_es, $opening->description_es);
+    }
+
+    private function openingAccount(): ChartOfAccount
+    {
+        $account = ChartOfAccount::where('code', self::OPENING_ACCOUNT)->first();
+
+        if (! $account) {
+            throw new RuntimeException(
+                'Falta la cuenta '.self::OPENING_ACCOUNT.'. '.
+                'Corré antes: php artisan db:seed --class=TestChartOfAccountsSeeder'
+            );
+        }
+
+        return $account;
     }
 
     /**
@@ -219,10 +375,7 @@ class TestInventoryStockSeeder extends Seeder
             $total = bcadd($total, bcmul((string) $quantity, $unitCost, 2), 2);
         }
 
-        // 10 de enero: dentro del primer período fiscal abierto y después del
-        // aporte de capital, para que la compañía tenga con qué haberlas
-        // comprado cuando se mire la línea de tiempo.
-        $on = new DateTime('2026-01-10');
+        $on = new DateTime(self::OPENING_DATE);
 
         $document = $this->stock->post(
             $company,
