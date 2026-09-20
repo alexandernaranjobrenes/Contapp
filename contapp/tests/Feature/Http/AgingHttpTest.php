@@ -7,9 +7,10 @@ use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 
-function setUpAgingCompany(\App\Domains\Core\Models\Company $company): array
+function setUpAgingCompany(Company $company): array
 {
     ExchangeRate::factory()->create([
         'company_id' => $company->id,
@@ -37,7 +38,7 @@ function setUpAgingCompany(\App\Domains\Core\Models\Company $company): array
     return compact('cxc', 'sales', 'client', 'documentType');
 }
 
-function postAgingOpenSale(\App\Domains\Core\Models\Company $company, ChartOfAccount $cxc, ChartOfAccount $sales, BusinessPartner $client, DocumentType $documentType, string $amount, string $dueDate): void
+function postAgingOpenSale(Company $company, ChartOfAccount $cxc, ChartOfAccount $sales, BusinessPartner $client, DocumentType $documentType, string $amount, string $dueDate): void
 {
     app(PostJournalService::class)->post(
         $company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'),
@@ -56,11 +57,11 @@ it('muestra la antigüedad de saldos con los buckets correctos', function () {
 
     $response = $this->get(route('reports.aging.index', ['as_of' => '2026-03-01']))->assertOk();
     $response->assertInertia(fn ($page) => $page
-            ->component('Reports/Aging')
-            ->where('result.bucket_labels.d_1_30', '1-30 días')
-            ->where('result.groups.0.bucket_totals.d_1_30', '200.00')
-            ->where('result.groups.0.rows.0.buckets.d_1_30', '200.00')
-        );
+        ->component('Reports/Aging')
+        ->where('result.bucket_labels.d_1_30', '1-30 días')
+        ->where('result.groups.0.bucket_totals.d_1_30', '200.00')
+        ->where('result.groups.0.rows.0.buckets.d_1_30', '200.00')
+    );
 });
 
 it('acepta cortes de días personalizados y devuelve los buckets con esos cortes', function () {
@@ -116,7 +117,7 @@ it('aísla la antigüedad de saldos entre compañías', function () {
     ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpAgingCompany($company);
     postAgingOpenSale($company, $cxc, $sales, $client, $documentType, '200', '2026-02-15');
 
-    $otherCompany = \App\Domains\Core\Models\Company::factory()->create();
+    $otherCompany = Company::factory()->create();
     $other = setUpAgingCompany($otherCompany);
     postAgingOpenSale($otherCompany, $other['cxc'], $other['sales'], $other['client'], $other['documentType'], '900', '2026-02-15');
 

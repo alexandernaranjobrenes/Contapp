@@ -10,6 +10,7 @@ use App\Domains\Billing\DataTransferObjects\SalesLineInput;
 use App\Domains\Billing\DataTransferObjects\SalesTaxInput;
 use App\Domains\Billing\Models\CompanyEconomicActivity;
 use App\Domains\Billing\Models\SalesDocument;
+use App\Domains\Billing\Models\SalesOrder;
 use App\Domains\Billing\Services\PostSalesDocumentService;
 use App\Domains\Billing\Services\SalesDocumentXmlBuilder;
 use App\Domains\Billing\Support\FiscalCatalogs;
@@ -56,9 +57,13 @@ class SalesDocumentController extends Controller
      * Los catálogos de la norma van como constantes (no son configuración);
      * los datos maestros sí salen de la base.
      */
-    public function create(HaciendaSigner $signer, HaciendaTransport $transport): Response
+    public function create(Request $request, HaciendaSigner $signer, HaciendaTransport $transport): Response
     {
         return Inertia::render('Billing/Sales/Create', [
+            // "Copiar a": la pantalla es la misma, precargada desde el pedido
+            // que se va a cumplir o desde el comprobante que se va a corregir.
+            'sourceOrder' => $this->sourceOrder($request),
+            'sourceDocument' => $this->sourceDocument($request),
             'catalogs' => [
                 'documentTypes' => FiscalCatalogs::DOCUMENT_TYPES,
                 'identificationTypes' => FiscalCatalogs::IDENTIFICATION_TYPES,
@@ -96,6 +101,98 @@ class SalesDocumentController extends Controller
                 'transport_configured' => $transport->isConfigured(),
             ],
         ]);
+    }
+
+    /**
+     * Pedido a cumplir, con lo que sigue pendiente de entregar por línea. La
+     * pantalla lo usa para armar la factura sin volver a digitar nada.
+     */
+    private function sourceOrder(Request $request): ?array
+    {
+        $order = SalesOrder::with(['lines.item:id,code,name,cabys_code,fiscal_unit_code,iva_rate_code', 'businessPartner:id,code,name'])
+            ->where('status', 'open')
+            ->find($request->integer('order') ?: 0);
+
+        if (! $order) {
+            return null;
+        }
+
+        return [
+            'id' => $order->id,
+            'number' => $order->number,
+            'business_partner_id' => $order->business_partner_id,
+            'customer' => $order->businessPartner?->code.' — '.$order->businessPartner?->name,
+            'lines' => $order->lines
+                ->filter(fn ($line) => bccomp($line->pending(), '0.000000', 6) > 0)
+                ->map(fn ($line) => [
+                    'item_id' => $line->item_id,
+                    'warehouse_id' => $line->warehouse_id,
+                    'item_code' => $line->item?->code,
+                    'description' => $line->description ?: $line->item?->name,
+                    'cabys_code' => $line->item?->cabys_code,
+                    'unit_code' => $line->item?->fiscal_unit_code,
+                    'iva_rate_code' => $line->item?->iva_rate_code,
+                    'quantity' => (float) $line->pending(),
+                    'unit_price' => (float) $line->unit_price,
+                ])->values(),
+        ];
+    }
+
+    /**
+     * Comprobante a corregir con una nota de crédito, con lo que todavía se
+     * puede devolver de cada línea.
+     */
+    private function sourceDocument(Request $request): ?array
+    {
+        $document = SalesDocument::with(['lines.item:id,code,name', 'businessPartner:id,code,name'])
+            ->where('status', 'posted')
+            ->where('fiscal_document_type', '!=', SalesDocument::CREDIT_NOTE)
+            ->find($request->integer('correct') ?: 0);
+
+        if (! $document) {
+            return null;
+        }
+
+        $returned = [];
+
+        foreach (SalesDocument::where('original_sales_document_id', $document->id)
+            ->where('status', 'posted')->with('lines')->get() as $note) {
+            foreach ($note->lines as $line) {
+                $key = $line->item_id.':'.$line->warehouse_id;
+                $returned[$key] = bcadd($returned[$key] ?? '0.000000', (string) $line->quantity, 6);
+            }
+        }
+
+        return [
+            'id' => $document->id,
+            'consecutive' => $document->consecutive,
+            'clave' => $document->clave,
+            'document_date' => $document->document_date->format('Y-m-d'),
+            'fiscal_document_type' => $document->fiscal_document_type,
+            'business_partner_id' => $document->business_partner_id,
+            'customer' => $document->businessPartner?->code.' — '.$document->businessPartner?->name,
+            'sale_condition' => $document->sale_condition,
+            'credit_term_days' => $document->credit_term_days,
+            'currency_id' => $document->currency_id,
+            'lines' => $document->lines->map(function ($line) use ($returned) {
+                $key = $line->item_id.':'.$line->warehouse_id;
+                $pending = $line->item_id
+                    ? bcsub((string) $line->quantity, $returned[$key] ?? '0.000000', 6)
+                    : (string) $line->quantity;
+
+                return [
+                    'item_id' => $line->item_id,
+                    'warehouse_id' => $line->warehouse_id,
+                    'item_code' => $line->item_code,
+                    'description' => $line->description,
+                    'cabys_code' => $line->cabys_code,
+                    'unit_code' => $line->unit_code,
+                    'is_service' => (bool) $line->is_service,
+                    'quantity' => (float) $pending,
+                    'unit_price' => (float) $line->unit_price,
+                ];
+            })->filter(fn (array $line) => $line['quantity'] > 0)->values(),
+        ];
     }
 
     public function show(int $salesDocument): Response
@@ -186,6 +283,9 @@ class SalesDocumentController extends Controller
             payments: $validated['payments'] ?? [],
             references: $validated['references'] ?? [],
             notes: $validated['notes'] ?? null,
+            originalSalesDocumentId: isset($validated['original_sales_document_id'])
+                ? (int) $validated['original_sales_document_id'] : null,
+            salesOrderId: isset($validated['sales_order_id']) ? (int) $validated['sales_order_id'] : null,
         );
 
         try {
@@ -227,6 +327,16 @@ class SalesDocumentController extends Controller
             'document_date' => ['required', 'date'],
             'posting_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:255'],
+
+            // Enlaces internos del ciclo: el pedido que esta factura cumple y
+            // el comprobante que una nota de crédito corrige. Que sean
+            // coherentes (mismo cliente, mercancía que corresponde) lo valida
+            // el servicio, que es quien conoce la regla.
+            'sales_order_id' => ['nullable', Rule::exists('sales_orders', 'id')->where('company_id', $companyId)],
+            'original_sales_document_id' => [
+                'nullable',
+                Rule::exists('sales_documents', 'id')->where('company_id', $companyId),
+            ],
 
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.cabys_code' => ['required', 'string', 'size:13'],

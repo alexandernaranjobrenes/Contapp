@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Scopes\CompanyScope;
 
 function periodCloseHttpFixture(bool $superAdmin = false): array
 {
@@ -101,7 +102,7 @@ it('crea el año fiscal siguiente sin exigir que el año actual esté cerrado', 
     $this->post(route('period-close.create-year'))
         ->assertSessionHasNoErrors();
 
-    $created = FiscalYear::withoutGlobalScope(\App\Domains\Core\Scopes\CompanyScope::class)
+    $created = FiscalYear::withoutGlobalScope(CompanyScope::class)
         ->where('company_id', $fx['company']->id)->where('year', $nextYear)->sole();
     expect($created->status)->toBe('open')
         ->and($created->periods)->toHaveCount(12);
@@ -118,7 +119,7 @@ it('rechaza crear el año fiscal siguiente para una compañía a la que no se pe
     // El año se crea para la compañía ACTIVA del usuario autenticado, nunca
     // para una compañía arbitraria — no hay forma de pedirlo por otra vía,
     // así que esto confirma que no se filtró nada hacia companyB.
-    expect(FiscalYear::withoutGlobalScope(\App\Domains\Core\Scopes\CompanyScope::class)->where('company_id', $companyB->id)->count())->toBe(0);
+    expect(FiscalYear::withoutGlobalScope(CompanyScope::class)->where('company_id', $companyB->id)->count())->toBe(0);
 });
 
 it('cierra el año fiscal creando de oficio el tipo de documento ACC si todavía no existe', function () {
@@ -150,7 +151,7 @@ it('cierra el año fiscal creando de oficio el tipo de documento ACC si todavía
         'retained_earnings_account_id' => $retainedEarnings->id,
     ])->assertSessionHasNoErrors();
 
-    $acc = DocumentType::withoutGlobalScope(\App\Domains\Core\Scopes\CompanyScope::class)
+    $acc = DocumentType::withoutGlobalScope(CompanyScope::class)
         ->where('company_id', $company->id)->where('code', 'ACC')->sole();
     expect($acc->is_closing_type)->toBeTrue()
         ->and($fiscalYear->fresh()->status)->toBe('closed');

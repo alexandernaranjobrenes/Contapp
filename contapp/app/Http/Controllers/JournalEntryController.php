@@ -24,6 +24,8 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\DataTransferObjects\ReportHeader;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -76,7 +78,7 @@ class JournalEntryController extends Controller
         ];
     }
 
-    private function filteredEntriesQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    private function filteredEntriesQuery(array $filters): Builder
     {
         return JournalEntry::with(['documentType:id,code,name', 'numberSeries:id,name,holder_name'])
             ->when($filters['document_number'], fn ($q, $v) => $q->where('document_number', 'like', "%{$v}%"))
@@ -476,7 +478,7 @@ class JournalEntryController extends Controller
      * original). Busca por código de tipo, número de documento o
      * descripción — no exige coincidencia exacta.
      */
-    public function search(Request $request): \Illuminate\Http\JsonResponse
+    public function search(Request $request): JsonResponse
     {
         $q = trim((string) $request->query('q', ''));
 

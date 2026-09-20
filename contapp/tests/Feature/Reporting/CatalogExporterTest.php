@@ -3,7 +3,6 @@
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostAllocationRule;
 use App\Domains\Accounting\Models\CostCenter;
-use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Services\CatalogExporter;
@@ -15,7 +14,7 @@ use OpenSpout\Reader\XLSX\Reader;
  */
 function readWorkbook(string $path): array
 {
-    $reader = new Reader();
+    $reader = new Reader;
     $reader->open($path);
 
     $sheets = [];

@@ -26,7 +26,7 @@ class ItemController extends Controller
             ->orderBy('code')
             ->get([
                 'id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
-                'is_inventory_item', 'is_sales_item', 'is_purchase_item',
+                'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots',
                 'tax_rate_id', 'avg_cost_local', 'avg_cost_foreign', 'status',
             ]);
 
@@ -121,6 +121,7 @@ class ItemController extends Controller
             'is_inventory_item' => ['boolean'],
             'is_sales_item' => ['boolean'],
             'is_purchase_item' => ['boolean'],
+            'tracks_lots' => ['boolean'],
             // company_id NULL en tax_rates es el catálogo nacional compartido
             // (ver GlobalOrOwnCompanyScope): exigir company_id = la compañía
             // rechazaría el IVA nacional, que es el caso normal.
@@ -146,6 +147,9 @@ class ItemController extends Controller
             'is_inventory_item' => $validated['is_inventory_item'] ?? false,
             'is_sales_item' => $validated['is_sales_item'] ?? false,
             'is_purchase_item' => $validated['is_purchase_item'] ?? false,
+            // Un servicio no lleva kardex, así que tampoco puede llevar lotes:
+            // no hay existencia que rastrear.
+            'tracks_lots' => ($validated['is_inventory_item'] ?? false) && ($validated['tracks_lots'] ?? false),
             'tax_rate_id' => $validated['tax_rate_id'] ?? null,
             'status' => $validated['status'],
         ];

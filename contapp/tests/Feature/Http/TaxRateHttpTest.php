@@ -8,6 +8,7 @@ use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\TaxRate;
 use App\Domains\Tax\Models\TaxType;
 
@@ -22,7 +23,7 @@ function postExpenseWithOwnTax(Company $company, TaxRate $rate): void
     // (GlobalOrOwnCompanyScope), y este helper llama al servicio directo, sin
     // pasar por el middleware SetCurrentCompany de una request real — hay que
     // setearlo a mano, igual que el resto de este archivo hace con logInAsCompanyUser().
-    app(\App\Domains\Core\Support\CurrentCompany::class)->set($company);
+    app(CurrentCompany::class)->set($company);
 
     ExchangeRate::factory()->create([
         'company_id' => $company->id, 'currency_id' => $company->foreign_currency_id,

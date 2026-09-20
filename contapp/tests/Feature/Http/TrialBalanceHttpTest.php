@@ -6,9 +6,10 @@ use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\PostJournalService;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 
-function postTrialBalanceFixtureSale(\App\Domains\Core\Models\Company $company, ChartOfAccount $cash, ChartOfAccount $sales, DocumentType $documentType, string $date, string $amount): void
+function postTrialBalanceFixtureSale(Company $company, ChartOfAccount $cash, ChartOfAccount $sales, DocumentType $documentType, string $date, string $amount): void
 {
     app(PostJournalService::class)->post(
         $company, $documentType, new DateTime($date), new DateTime($date),
@@ -19,7 +20,7 @@ function postTrialBalanceFixtureSale(\App\Domains\Core\Models\Company $company, 
     );
 }
 
-function setUpTrialBalanceCompany(\App\Domains\Core\Models\Company $company): array
+function setUpTrialBalanceCompany(Company $company): array
 {
     ExchangeRate::factory()->create([
         'company_id' => $company->id,
@@ -82,7 +83,7 @@ it('aísla el balance de comprobación entre compañías', function () {
     ['cash' => $cash, 'sales' => $sales, 'documentType' => $documentType] = setUpTrialBalanceCompany($company);
     postTrialBalanceFixtureSale($company, $cash, $sales, $documentType, '2026-01-15', '300');
 
-    $otherCompany = \App\Domains\Core\Models\Company::factory()->create();
+    $otherCompany = Company::factory()->create();
     $other = setUpTrialBalanceCompany($otherCompany);
     postTrialBalanceFixtureSale($otherCompany, $other['cash'], $other['sales'], $other['documentType'], '2026-01-15', '900');
 

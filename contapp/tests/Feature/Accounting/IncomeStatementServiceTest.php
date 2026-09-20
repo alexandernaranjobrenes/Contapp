@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\IncomeStatementService;
+use App\Domains\Accounting\Services\PeriodCloseService;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
@@ -54,7 +55,7 @@ function incomeStatementFixture(): array
     return compact('company', 'cash', 'sales', 'costOfSales', 'expense', 'otherIncome', 'otherExpense', 'documentType');
 }
 
-function post2(array $fx, \App\Domains\Accounting\Models\ChartOfAccount $debitAccount, \App\Domains\Accounting\Models\ChartOfAccount $creditAccount, string $amount, string $date = '2026-01-15'): void
+function post2(array $fx, ChartOfAccount $debitAccount, ChartOfAccount $creditAccount, string $amount, string $date = '2026-01-15'): void
 {
     app(PostJournalService::class)->post(
         $fx['company'], $fx['documentType'], new DateTime($date), new DateTime($date),
@@ -111,7 +112,7 @@ it('excluye el asiento de cierre anual del estado de resultados', function () {
         new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 0, credit: 400),
     ], 'Gasto operativo');
 
-    $closeService = app(\App\Domains\Accounting\Services\PeriodCloseService::class);
+    $closeService = app(PeriodCloseService::class);
     $closeService->close($fx['company'], $fx['jan']);
     $closeService->closeYear($fx['company'], $fx['fiscalYear'], $fx['acc'], $fx['retainedEarnings']);
 

@@ -3,45 +3,11 @@
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
-use App\Domains\Core\Models\DocumentType;
-use App\Domains\Inventory\Models\GlDetermination;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\LandedCostDocument;
 
-function purchaseHttpFixture(): array
-{
-    $f = movementFixture();
-
-    $f['grIr'] = ChartOfAccount::factory()->create([
-        'company_id' => $f['company']->id, 'account_type' => 'liability',
-    ]);
-
-    GlDetermination::factory()->create([
-        'company_id' => $f['company']->id, 'scope_level' => 'company', 'scope_id' => null,
-        'category' => 'gr_ir_clearing', 'account_id' => $f['grIr']->id,
-    ]);
-
-    $f['supplier'] = BusinessPartner::factory()->create([
-        'company_id' => $f['company']->id, 'code' => 'P-001', 'type' => 'supplier',
-        'gl_account_id' => ChartOfAccount::factory()->create(['company_id' => $f['company']->id])->id,
-    ]);
-
-    $f['invoiceType'] = DocumentType::factory()->create([
-        'company_id' => $f['company']->id, 'code' => 'FCP', 'origin_module' => 'compras',
-    ]);
-
-    return $f;
-}
-
-function postReceiptHttp(array $f): InventoryDocument
-{
-    $payload = movementPayload($f, 'purchase_receipt');
-    $payload['business_partner_id'] = $f['supplier']->id;
-
-    test()->post(route('inventory-movements.store'), $payload)->assertSessionHasNoErrors();
-
-    return InventoryDocument::where('company_id', $f['company']->id)->latest('id')->first();
-}
+// purchaseHttpFixture() y postReceiptHttp() viven en tests/Pest.php: los
+// comparte el test de notas de crédito.
 
 it('exige proveedor por HTTP cuando la operación es entrada por compra', function () {
     $f = purchaseHttpFixture();
@@ -143,21 +109,8 @@ it('el detalle de la recepción muestra si sigue pendiente de facturar', functio
 
 // --- Costos de importación y diferencia de precio (Fase 5) ---
 
-function landedCostHttpFixture(): array
-{
-    $f = purchaseHttpFixture();
-
-    $f['priceDifference'] = ChartOfAccount::factory()->create([
-        'company_id' => $f['company']->id, 'account_type' => 'cost_of_sales',
-    ]);
-
-    GlDetermination::factory()->create([
-        'company_id' => $f['company']->id, 'scope_level' => 'company', 'scope_id' => null,
-        'category' => 'price_difference', 'account_id' => $f['priceDifference']->id,
-    ]);
-
-    return $f;
-}
+// landedCostHttpFixture() vive en tests/Pest.php: la comparte el test de
+// rubros de nacionalización.
 
 it('aplica un costo de importación por HTTP y lo capitaliza al artículo', function () {
     $f = landedCostHttpFixture();

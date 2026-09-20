@@ -7,6 +7,7 @@ use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\LedgerService;
+use App\Domains\Accounting\Services\PeriodCloseService;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
@@ -164,7 +165,7 @@ it('excluye el asiento de cierre anual del mayor de cuentas de resultados, pero 
         new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 0, credit: 400),
     ], 'Gasto operativo');
 
-    $closeService = app(\App\Domains\Accounting\Services\PeriodCloseService::class);
+    $closeService = app(PeriodCloseService::class);
     $closeService->close($fx['company'], $fx['jan']);
     $closeService->closeYear($fx['company'], $fx['fiscalYear'], $fx['acc'], $fx['retainedEarnings']);
 

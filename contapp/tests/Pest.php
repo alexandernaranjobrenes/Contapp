@@ -17,8 +17,10 @@ use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Models\Module;
 use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Inventory\DataTransferObjects\ImportDetailsInput;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Models\GlDetermination;
+use App\Domains\Inventory\Models\ImportCostDocument;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\Warehouse;
@@ -297,7 +299,11 @@ function purchaseFixture(string $rate = '500.000000'): array
     return $f;
 }
 
-function postPurchaseReceipt(array $f, $quantity = 100, $unitCost = 5000): InventoryDocument
+/**
+ * $import marca la entrada como importación, que es lo que después habilita
+ * cargarle rubros de nacionalización.
+ */
+function postPurchaseReceipt(array $f, $quantity = 100, $unitCost = 5000, bool $import = false): InventoryDocument
 {
     return app(PostStockMovementService::class)->post(
         $f['company'], $f['documentType'], 'purchase_receipt', now(), now(),
@@ -305,7 +311,33 @@ function postPurchaseReceipt(array $f, $quantity = 100, $unitCost = 5000): Inven
             $f['item']->id, $f['warehouse']->id, quantity: $quantity, unitCostLocal: $unitCost
         )],
         businessPartnerId: $f['supplier']->id,
+        import: $import ? new ImportDetailsInput(
+            customsDeclaration: '005-2026-000001',
+            customsOffice: 'caldera',
+            originCountry: 'China',
+        ) : null,
     );
+}
+
+/**
+ * Entrada por compra marcada como importación, registrada por HTTP con sus
+ * datos de aduana.
+ */
+function importReceiptHttp(array $f, array $overrides = []): InventoryDocument
+{
+    $payload = movementPayload($f, 'purchase_receipt');
+    $payload['business_partner_id'] = $f['supplier']->id;
+
+    test()->post(route('inventory-movements.store'), array_merge($payload, array_merge([
+        'is_import' => true,
+        'customs_declaration' => '005-2026-123456',
+        'customs_office' => 'caldera',
+        'transport_document' => 'MSCU-7788990',
+        'origin_country' => 'China',
+        'customs_date' => now()->format('Y-m-d'),
+    ], $overrides)))->assertSessionHasNoErrors();
+
+    return InventoryDocument::latest('id')->first();
 }
 
 function movementPayload(array $f, string $operation, array $lineOverrides = []): array
@@ -322,6 +354,106 @@ function movementPayload(array $f, string $operation, array $lineOverrides = [])
             'unit_cost_local' => 1000,
         ], $lineOverrides)],
     ];
+}
+
+/**
+ * Compra recibida por HTTP, con su cuenta puente, proveedor y tipo de documento
+ * de compras. La comparten el test de facturas de proveedor y el de notas de
+ * crédito: una función declarada dentro de un archivo de test solo existe si
+ * ESE archivo se cargó.
+ */
+function purchaseHttpFixture(): array
+{
+    $f = movementFixture();
+
+    $f['grIr'] = ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'account_type' => 'liability',
+    ]);
+
+    GlDetermination::factory()->create([
+        'company_id' => $f['company']->id, 'scope_level' => 'company', 'scope_id' => null,
+        'category' => 'gr_ir_clearing', 'account_id' => $f['grIr']->id,
+    ]);
+
+    $f['supplier'] = BusinessPartner::factory()->create([
+        'company_id' => $f['company']->id, 'code' => 'P-001', 'type' => 'supplier',
+        'gl_account_id' => ChartOfAccount::factory()->create(['company_id' => $f['company']->id])->id,
+    ]);
+
+    $f['invoiceType'] = DocumentType::factory()->create([
+        'company_id' => $f['company']->id, 'code' => 'FCP', 'origin_module' => 'compras',
+    ]);
+
+    return $f;
+}
+
+function postReceiptHttp(array $f): InventoryDocument
+{
+    $payload = movementPayload($f, 'purchase_receipt');
+    $payload['business_partner_id'] = $f['supplier']->id;
+
+    test()->post(route('inventory-movements.store'), $payload)->assertSessionHasNoErrors();
+
+    return InventoryDocument::where('company_id', $f['company']->id)->latest('id')->first();
+}
+
+/**
+ * Agrega la cuenta de diferencia de precio, que es la que recibe la parte de
+ * un costo de importación que llega cuando la mercancía ya salió.
+ */
+function landedCostHttpFixture(): array
+{
+    $f = purchaseHttpFixture();
+
+    $f['priceDifference'] = ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'account_type' => 'cost_of_sales',
+    ]);
+
+    GlDetermination::factory()->create([
+        'company_id' => $f['company']->id, 'scope_level' => 'company', 'scope_id' => null,
+        'category' => 'price_difference', 'account_id' => $f['priceDifference']->id,
+    ]);
+
+    return $f;
+}
+
+/**
+ * Agrega la transitoria de costos de importación por asignar y una agencia
+ * aduanal que factura la nacionalización.
+ */
+function importCostHttpFixture(): array
+{
+    $f = landedCostHttpFixture();
+
+    $f['importClearing'] = ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'account_type' => 'liability',
+    ]);
+
+    GlDetermination::factory()->create([
+        'company_id' => $f['company']->id, 'scope_level' => 'company', 'scope_id' => null,
+        'category' => 'landed_cost_clearing', 'account_id' => $f['importClearing']->id,
+    ]);
+
+    $f['agency'] = BusinessPartner::factory()->create([
+        'company_id' => $f['company']->id, 'code' => 'AG-100', 'type' => 'supplier',
+        'gl_account_id' => ChartOfAccount::factory()->create(['company_id' => $f['company']->id])->id,
+    ]);
+
+    return $f;
+}
+
+function accrueHttp(array $f, $amount = 2000, array $overrides = []): ImportCostDocument
+{
+    test()->post(route('import-costs.store'), array_merge([
+        'document_type_id' => $f['invoiceType']->id,
+        'business_partner_id' => $f['agency']->id,
+        'concept' => 'flete',
+        'amount' => $amount,
+        'document_date' => now()->format('Y-m-d'),
+        'posting_date' => now()->format('Y-m-d'),
+    ], $overrides))->assertSessionHasNoErrors();
+
+    return ImportCostDocument::latest('id')->first();
 }
 
 /*
@@ -434,6 +566,10 @@ function postSale(array $f, array $overrides = []): SalesDocument
         creditTermDays: array_key_exists('creditTermDays', $overrides) ? $overrides['creditTermDays'] : 30,
         payments: $overrides['payments'] ?? [],
         references: $overrides['references'] ?? [],
+        // array_key_exists y no ??: una nota sin enlace interno es un caso que
+        // se prueba a propósito, y ?? lo pisaría con el default.
+        originalSalesDocumentId: array_key_exists('originalId', $overrides) ? $overrides['originalId'] : null,
+        salesOrderId: array_key_exists('orderId', $overrides) ? $overrides['orderId'] : null,
     );
 
     return app(PostSalesDocumentService::class)->post($f['company'], $input);

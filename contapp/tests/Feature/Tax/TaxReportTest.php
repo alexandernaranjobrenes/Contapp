@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
+use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
@@ -52,7 +53,7 @@ function taxFixture(): array
     return compact('company', 'cxc', 'sales', 'ivaDevengado', 'client', 'fve', 'taxRate');
 }
 
-function postSaleWithTax(array $fx): \App\Domains\Accounting\Models\JournalEntry
+function postSaleWithTax(array $fx): JournalEntry
 {
     return app(PostJournalService::class)->post(
         $fx['company'], $fx['fve'], new DateTime('2026-01-05'), new DateTime('2026-01-05'),

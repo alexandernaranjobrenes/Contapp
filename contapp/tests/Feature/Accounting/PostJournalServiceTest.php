@@ -15,7 +15,6 @@ use App\Domains\Accounting\Exceptions\NumberSeriesExhaustedException;
 use App\Domains\Accounting\Exceptions\TaxRateNotEffectiveException;
 use App\Domains\Accounting\Exceptions\UnbalancedJournalEntryException;
 use App\Domains\Accounting\Exceptions\UnreversibleJournalEntryException;
-use App\Domains\Accounting\Models\AccountReconciliation;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostAllocationRule;
 use App\Domains\Accounting\Models\CostCenter;
@@ -31,9 +30,10 @@ use App\Domains\BusinessPartners\Models\BpPaymentApplication;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\BusinessPartners\Services\ApplyPaymentService;
 use App\Domains\Core\Models\Company;
-use App\Domains\Core\Models\DocumentTypeNumberSeries;
 use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Models\DocumentTypeNumberSeries;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\TaxRate;
 use App\Models\User;
 
@@ -442,7 +442,7 @@ it('rechaza contabilizar contra una serie inactiva', function () {
 
 it('rechaza contabilizar contra una serie que pertenece a otro tipo de documento', function () {
     ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
-    $otherType = \App\Domains\Core\Models\DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'OTR']);
+    $otherType = DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'OTR']);
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $otherType->id,
     ]);
@@ -1209,7 +1209,7 @@ it('rechaza anular una línea que ya forma parte de una reconciliación interna'
     // AccountReconciliationService espera contexto de request normal
     // (CurrentCompany ambiental) — este test, como el resto del archivo,
     // corre sin ese ambiente, así que hay que setearlo a mano para este paso.
-    app(\App\Domains\Core\Support\CurrentCompany::class)->set($company);
+    app(CurrentCompany::class)->set($company);
     app(AccountReconciliationService::class)->reconcile($suspense, [
         ['journal_detail_id' => $d1->id, 'amount' => '300'],
         ['journal_detail_id' => $d2->id, 'amount' => '300'],
@@ -1232,7 +1232,7 @@ it('rechaza anular un asiento de otra compañía', function () {
     );
 
     $service->reverse($company, $originalB, new DateTime('2026-01-20'));
-})->throws(\InvalidArgumentException::class);
+})->throws(InvalidArgumentException::class);
 
 // --- Protocolo de control de socio de negocio por tipo de documento
 // (aplica/vencimiento/ambos/ninguno) — ver DocumentType::BP_LINE_REQUIREMENTS,
@@ -1270,7 +1270,7 @@ it('rechaza una línea que intenta abrir partida y aplicar a una partida existen
         1, 1, debit: 100, credit: 0,
         businessPartnerId: 1, opensItem: true, applyToOpenItemId: 5,
     );
-})->throws(\InvalidArgumentException::class);
+})->throws(InvalidArgumentException::class);
 
 it('rechaza una línea con socio sin vencimiento ni aplicación cuando el tipo de documento exige "due_date"', function () {
     $fx = bpControlFixture();

@@ -9,6 +9,7 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -53,7 +54,7 @@ class BalanceSheetController extends Controller
         CurrentCompany $currentCompany,
         BalanceSheetService $service,
         ReportHeaderFactory $headerFactory,
-    ): \Illuminate\Http\Response {
+    ): Response {
         $asOf = $this->resolveAsOf($request);
         $company = Company::findOrFail($currentCompany->id());
 

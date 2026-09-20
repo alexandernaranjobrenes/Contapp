@@ -31,14 +31,20 @@ use App\Http\Controllers\DocumentTypeRegisterController;
 use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\FxRevaluationController;
 use App\Http\Controllers\GlDeterminationController;
+use App\Http\Controllers\ImportCostController;
 use App\Http\Controllers\IncomeStatementController;
+use App\Http\Controllers\InventoryAgingController;
 use App\Http\Controllers\InventoryDocumentController;
+use App\Http\Controllers\InventoryValuationController;
+use App\Http\Controllers\InventoryWriteDownController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemGroupController;
+use App\Http\Controllers\ItemLotController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
 use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
+use App\Http\Controllers\LotExpiryController;
 use App\Http\Controllers\LicenseCategoryController;
 use App\Http\Controllers\LicenseController;
 use App\Http\Controllers\MultiCompanyComparisonController;
@@ -48,8 +54,11 @@ use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
 use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\SalesDocumentController;
+use App\Http\Controllers\SalesOrderController;
 use App\Http\Controllers\SavedReportController;
+use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\StockTransferController;
+use App\Http\Controllers\SupplierCreditNoteController;
 use App\Http\Controllers\SupplierInvoiceController;
 use App\Http\Controllers\TaxRateController;
 use App\Http\Controllers\TaxReportController;
@@ -174,10 +183,31 @@ Route::middleware('auth')->group(function () {
         Route::get('inventory-movements/create', [InventoryDocumentController::class, 'create'])->name('inventory-movements.create');
         Route::get('inventory-movements/{inventoryDocument}', [InventoryDocumentController::class, 'show'])->name('inventory-movements.show');
         Route::get('supplier-invoices', [SupplierInvoiceController::class, 'index'])->name('supplier-invoices.index');
+        Route::get('supplier-credit-notes/{inventoryDocument}/create', [SupplierCreditNoteController::class, 'create'])->name('supplier-credit-notes.create');
         Route::get('landed-costs', [LandedCostController::class, 'index'])->name('landed-costs.index');
+        Route::get('import-costs', [ImportCostController::class, 'index'])->name('import-costs.index');
+        Route::get('import-costs/allocate', [ImportCostController::class, 'allocation'])->name('import-costs.allocation');
         Route::get('production-orders', [ProductionOrderController::class, 'index'])->name('production-orders.index');
         Route::get('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'index'])->name('warehouse-bins.index');
+
+        // Lotes (Fase 8). Cuelgan del artículo igual que las ubicaciones del
+        // almacén: fuera de él no significan nada.
+        Route::get('items/{item}/lots', [ItemLotController::class, 'index'])->name('item-lots.index');
+        Route::get('items/{item}/lots/options', [ItemLotController::class, 'options'])->name('item-lots.options');
+        Route::get('items/{item}/lots/{lot}/trace', [ItemLotController::class, 'trace'])->name('item-lots.trace');
+        Route::get('lot-expiry', [LotExpiryController::class, 'index'])->name('lot-expiry.index');
+
+        // Deterioro NIC 2. Vive en el módulo de inventario y no en reportería
+        // porque contabiliza: es un proceso, no una consulta.
+        Route::get('inventory-write-downs', [InventoryWriteDownController::class, 'index'])->name('inventory-write-downs.index');
+        Route::get('inventory-write-downs/create', [InventoryWriteDownController::class, 'create'])->name('inventory-write-downs.create');
+        Route::get('inventory-write-downs/{inventoryWriteDown}', [InventoryWriteDownController::class, 'show'])->name('inventory-write-downs.show');
+
         Route::get('stock-transfers', [StockTransferController::class, 'index'])->name('stock-transfers.index');
+        Route::get('stock-counts', [StockCountController::class, 'index'])->name('stock-counts.index');
+        Route::get('stock-counts/create', [StockCountController::class, 'create'])->name('stock-counts.create');
+        Route::get('stock-counts/{stockCount}', [StockCountController::class, 'show'])->name('stock-counts.show');
+        Route::get('stock-counts/{stockCount}/print', [StockCountController::class, 'print'])->name('stock-counts.print');
     });
 
     Route::middleware('module-access:inventory,read_write')->group(function () {
@@ -202,10 +232,19 @@ Route::middleware('auth')->group(function () {
         Route::delete('gl-determinations/{glDetermination}', [GlDeterminationController::class, 'destroy'])->name('gl-determinations.destroy');
 
         Route::post('inventory-movements', [InventoryDocumentController::class, 'store'])->name('inventory-movements.store');
+        Route::post('inventory-movements/{inventoryDocument}/void', [InventoryDocumentController::class, 'void'])->name('inventory-movements.void');
         Route::post('supplier-invoices', [SupplierInvoiceController::class, 'store'])->name('supplier-invoices.store');
+        Route::post('supplier-credit-notes/{inventoryDocument}', [SupplierCreditNoteController::class, 'store'])->name('supplier-credit-notes.store');
         Route::post('landed-costs', [LandedCostController::class, 'store'])->name('landed-costs.store');
+        Route::post('import-costs', [ImportCostController::class, 'store'])->name('import-costs.store');
+        Route::post('import-costs/allocate', [ImportCostController::class, 'allocate'])->name('import-costs.allocate');
+        Route::post('import-costs/{importCost}/cancel', [ImportCostController::class, 'cancel'])->name('import-costs.cancel');
 
         Route::post('stock-transfers', [StockTransferController::class, 'store'])->name('stock-transfers.store');
+        Route::post('stock-counts', [StockCountController::class, 'store'])->name('stock-counts.store');
+        Route::post('stock-counts/{stockCount}/capture', [StockCountController::class, 'capture'])->name('stock-counts.capture');
+        Route::post('stock-counts/{stockCount}/post', [StockCountController::class, 'post'])->name('stock-counts.post');
+        Route::post('stock-counts/{stockCount}/cancel', [StockCountController::class, 'cancel'])->name('stock-counts.cancel');
 
         Route::post('production-orders', [ProductionOrderController::class, 'store'])->name('production-orders.store');
         Route::post('production-orders/{productionOrder}/issue', [ProductionOrderController::class, 'issue'])->name('production-orders.issue');
@@ -215,6 +254,14 @@ Route::middleware('auth')->group(function () {
         Route::post('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'store'])->name('warehouse-bins.store');
         Route::put('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'update'])->name('warehouse-bins.update');
         Route::delete('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'destroy'])->name('warehouse-bins.destroy');
+
+        Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
+
+        Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
+
+        Route::post('items/{item}/lots', [ItemLotController::class, 'store'])->name('item-lots.store');
+        Route::put('items/{item}/lots/{lot}', [ItemLotController::class, 'update'])->name('item-lots.update');
+        Route::delete('items/{item}/lots/{lot}', [ItemLotController::class, 'destroy'])->name('item-lots.destroy');
     });
 
     // Séptimo módulo del rollout de enforcement: facturación electrónica.
@@ -223,11 +270,16 @@ Route::middleware('auth')->group(function () {
         Route::get('sales-documents/create', [SalesDocumentController::class, 'create'])->name('sales-documents.create');
         Route::get('sales-documents/{salesDocument}', [SalesDocumentController::class, 'show'])->name('sales-documents.show');
         Route::get('sales-documents/{salesDocument}/xml', [SalesDocumentController::class, 'xml'])->name('sales-documents.xml');
+        Route::get('sales-orders', [SalesOrderController::class, 'index'])->name('sales-orders.index');
+        Route::get('sales-orders/create', [SalesOrderController::class, 'create'])->name('sales-orders.create');
+        Route::get('sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->name('sales-orders.show');
         Route::get('billing-settings', [BillingSettingsController::class, 'index'])->name('billing-settings.index');
     });
 
     Route::middleware('module-access:billing,read_write')->group(function () {
         Route::post('sales-documents', [SalesDocumentController::class, 'store'])->name('sales-documents.store');
+        Route::post('sales-orders', [SalesOrderController::class, 'store'])->name('sales-orders.store');
+        Route::post('sales-orders/{salesOrder}/cancel', [SalesOrderController::class, 'cancel'])->name('sales-orders.cancel');
 
         Route::post('billing-settings/activities', [BillingSettingsController::class, 'storeActivity'])->name('billing-settings.activities.store');
         Route::delete('billing-settings/activities/{activity}', [BillingSettingsController::class, 'destroyActivity'])->name('billing-settings.activities.destroy');
@@ -337,6 +389,18 @@ Route::middleware('auth')->group(function () {
     // "reports" (Superusuario siempre pasa). tax-report queda fuera a
     // propósito — es del módulo "tax", no de esta iniciativa de reportería.
     Route::middleware('module-access:reports,read')->group(function () {
+        // Existencias valorizadas: vive en reportería y no en el módulo de
+        // inventario porque su razón de ser es contable — amarrar el kardex
+        // con la cuenta de inventario del balance — y porque el permiso que
+        // corresponde es el de ver reportes, no el de mover mercancía.
+        Route::get('reports/inventory-aging', [InventoryAgingController::class, 'index'])->name('reports.inventory-aging.index');
+        Route::get('reports/inventory-aging/export', [InventoryAgingController::class, 'export'])->name('reports.inventory-aging.export');
+        Route::get('reports/inventory-aging/export-pdf', [InventoryAgingController::class, 'exportPdf'])->name('reports.inventory-aging.export-pdf');
+
+        Route::get('reports/inventory-valuation', [InventoryValuationController::class, 'index'])->name('reports.inventory-valuation.index');
+        Route::get('reports/inventory-valuation/export', [InventoryValuationController::class, 'export'])->name('reports.inventory-valuation.export');
+        Route::get('reports/inventory-valuation/export-pdf', [InventoryValuationController::class, 'exportPdf'])->name('reports.inventory-valuation.export-pdf');
+
         Route::get('reports/trial-balance', [TrialBalanceController::class, 'index'])->name('reports.trial-balance.index');
         Route::get('reports/trial-balance/export', [TrialBalanceController::class, 'export'])->name('reports.trial-balance.export');
         Route::get('reports/trial-balance/export-pdf', [TrialBalanceController::class, 'exportPdf'])->name('reports.trial-balance.export-pdf');

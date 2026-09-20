@@ -12,7 +12,9 @@ use App\Domains\Banking\Services\BankReconciliationReportService;
 use App\Domains\Banking\Services\BankReconciliationService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
+use App\Models\User;
 use OpenSpout\Reader\XLSX\Reader;
 
 /**
@@ -20,7 +22,7 @@ use OpenSpout\Reader\XLSX\Reader;
  */
 function readBankReconciliationReportRows(string $path): array
 {
-    $reader = new Reader();
+    $reader = new Reader;
     $reader->open($path);
 
     $rows = [];
@@ -41,7 +43,7 @@ function readBankReconciliationReportRows(string $path): array
 function bankReconciliationReportFixture(): array
 {
     $company = Company::factory()->create();
-    app(App\Domains\Core\Support\CurrentCompany::class)->set($company);
+    app(CurrentCompany::class)->set($company);
 
     ExchangeRate::factory()->create([
         'company_id' => $company->id,
@@ -98,7 +100,7 @@ it('el XLSX incluye el detalle de línea, marcando lo pendiente de confirmar en 
 
     $rows = app(BankReconciliationReportService::class)->build($fx['bankAccount'], 2026, 1);
     $header = app(ReportHeaderFactory::class)->make(
-        $fx['company'], \App\Models\User::factory()->create(['default_company_id' => $fx['company']->id]),
+        $fx['company'], User::factory()->create(['default_company_id' => $fx['company']->id]),
         'Conciliaciones bancarias', 'Prueba',
     );
 
@@ -120,7 +122,7 @@ it('el XLSX no revienta cuando el período no tiene conciliaciones', function ()
 
     $rows = app(BankReconciliationReportService::class)->build($fx['bankAccount'], 2026, 6);
     $header = app(ReportHeaderFactory::class)->make(
-        $fx['company'], \App\Models\User::factory()->create(['default_company_id' => $fx['company']->id]),
+        $fx['company'], User::factory()->create(['default_company_id' => $fx['company']->id]),
         'Conciliaciones bancarias', 'Prueba',
     );
 

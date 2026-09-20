@@ -5,6 +5,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
+use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Banking\Exceptions\UnbalancedReconciliationException;
 use App\Domains\Banking\Models\BankAccount;
@@ -228,7 +229,7 @@ it('delete() elimina la conciliación y sus líneas sin tocar los journal_detail
         ->and(BankReconciliationLine::where('bank_reconciliation_id', $reconciliationId)->count())->toBe(0);
 
     foreach ($detailIds as $detailId) {
-        expect(\App\Domains\Accounting\Models\JournalDetail::find($detailId))->not->toBeNull();
+        expect(JournalDetail::find($detailId))->not->toBeNull();
     }
 });
 

@@ -9,6 +9,7 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -57,7 +58,7 @@ class MultiCompanyComparisonController extends Controller
         CurrentCompany $currentCompany,
         MultiCompanyComparisonService $service,
         ReportHeaderFactory $headerFactory,
-    ): \Illuminate\Http\Response {
+    ): Response {
         $filters = $this->validateFilters($request);
         $companies = $this->resolveGroupCompanies($request, $currentCompany);
         $currentCompanyModel = Company::findOrFail($currentCompany->id());

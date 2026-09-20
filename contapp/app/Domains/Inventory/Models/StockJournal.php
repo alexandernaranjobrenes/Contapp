@@ -31,7 +31,7 @@ class StockJournal extends Model
     ];
 
     protected $fillable = [
-        'company_id', 'item_id', 'warehouse_id', 'warehouse_bin_id', 'inventory_document_line_id',
+        'company_id', 'item_id', 'warehouse_id', 'warehouse_bin_id', 'item_lot_id', 'inventory_document_line_id',
         'landed_cost_allocation_id',
         'journal_entry_id', 'posting_date', 'direction', 'quantity',
         'unit_cost_local', 'unit_cost_foreign', 'total_cost_local', 'total_cost_foreign',
@@ -59,6 +59,16 @@ class StockJournal extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function bin(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseBin::class, 'warehouse_bin_id');
+    }
+
+    public function lot(): BelongsTo
+    {
+        return $this->belongsTo(ItemLot::class, 'item_lot_id');
     }
 
     public function journalEntry(): BelongsTo

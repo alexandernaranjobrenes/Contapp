@@ -10,12 +10,16 @@ use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Inventory\DataTransferObjects\ImportDetailsInput;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Exceptions\InsufficientStockException;
 use App\Domains\Inventory\Exceptions\InvalidStockMovementException;
+use App\Domains\Inventory\Exceptions\UnvoidableInventoryDocumentException;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemBin;
+use App\Domains\Inventory\Models\ItemLot;
+use App\Domains\Inventory\Models\ItemLotStock;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\StockJournal;
 use App\Domains\Inventory\Models\Warehouse;
@@ -41,6 +45,7 @@ class PostStockMovementService
         private readonly PostJournalService $postJournalService,
         private readonly GlDeterminationResolver $glResolver,
         private readonly WarehouseBinResolver $binResolver,
+        private readonly ItemLotResolver $lotResolver,
     ) {}
 
     /**
@@ -57,9 +62,20 @@ class PostStockMovementService
         ?int $createdBy = null,
         ?int $businessPartnerId = null,
         ?int $productionOrderId = null,
+        ?int $sourceDocumentId = null,
+        ?ImportDetailsInput $import = null,
     ): InventoryDocument {
         if (! array_key_exists($operation, InventoryDocument::OPERATIONS)) {
             throw new InvalidStockMovementException("Operación de inventario desconocida: {$operation}.");
+        }
+
+        // Solo una compra puede ser importación: un ajuste o una emisión a
+        // producción no pasan por aduana, y marcarlos habilitaría cargarles
+        // costos de nacionalización que no les corresponden.
+        if ($import !== null && $operation !== 'purchase_receipt') {
+            throw new InvalidStockMovementException(
+                'Solo una entrada por compra puede marcarse como importación.'
+            );
         }
 
         if (in_array($operation, InventoryDocument::PRODUCTION_OPERATIONS, true) && $productionOrderId === null) {
@@ -69,7 +85,7 @@ class PostStockMovementService
         // Una entrada por compra genera un pasivo provisional contra el
         // proveedor (cuenta puente GR/IR) hasta que llegue su factura: sin
         // saber a quién se le debe, esa provisión no se puede liquidar.
-        if ($operation === 'purchase_receipt' && $businessPartnerId === null) {
+        if (in_array($operation, InventoryDocument::PURCHASE_OPERATIONS, true) && $businessPartnerId === null) {
             throw new InvalidStockMovementException('Una entrada por compra requiere indicar el proveedor.');
         }
 
@@ -81,7 +97,7 @@ class PostStockMovementService
             throw new \InvalidArgumentException('Un movimiento de inventario requiere al menos una línea.');
         }
 
-        return DB::transaction(function () use ($company, $documentType, $operation, $documentDate, $postingDate, $lines, $description, $createdBy, $businessPartnerId, $productionOrderId) {
+        return DB::transaction(function () use ($company, $documentType, $operation, $documentDate, $postingDate, $lines, $description, $createdBy, $businessPartnerId, $productionOrderId, $sourceDocumentId, $import) {
             $itemIds = array_values(array_unique(array_map(fn (StockLineInput $l) => $l->itemId, $lines)));
             $warehouseIds = array_values(array_unique(array_map(fn (StockLineInput $l) => $l->warehouseId, $lines)));
 
@@ -109,8 +125,10 @@ class PostStockMovementService
             $stockRows = ItemWarehouse::whereIn('item_id', $itemIds)->lockForUpdate()->get();
 
             $onHand = [];
+            $reserved = [];
             foreach ($stockRows as $row) {
                 $onHand[$row->item_id][$row->warehouse_id] = (string) $row->on_hand;
+                $reserved[$row->item_id][$row->warehouse_id] = (string) $row->reserved;
             }
 
             // Ubicaciones (Fase 7): solo para los almacenes que las usan. En
@@ -121,6 +139,16 @@ class PostStockMovementService
             $binOnHand = [];
             foreach (ItemBin::whereIn('item_id', $itemIds)->lockForUpdate()->get() as $row) {
                 $binOnHand[$row->item_id][$row->warehouse_bin_id] = (string) $row->on_hand;
+            }
+
+            // Lotes (Fase 8): solo para los artículos que los manejan. En los
+            // demás estos arreglos quedan vacíos y nada cambia respecto de
+            // antes — igual que las ubicaciones, el costeo no los mira nunca.
+            $lots = ItemLot::whereIn('item_id', $itemIds)->get()->keyBy('id');
+
+            $lotOnHand = [];
+            foreach (ItemLotStock::whereIn('item_lot_id', $lots->keys())->lockForUpdate()->get() as $row) {
+                $lotOnHand[$row->item_lot_id][$this->lotSlot($row->warehouse_id, $row->warehouse_bin_id)] = (string) $row->on_hand;
             }
 
             $avgLocal = [];
@@ -170,6 +198,7 @@ class PostStockMovementService
                 }
 
                 $bin = $this->binResolver->resolve($warehouse, $line->warehouseBinId, $bins);
+                $lot = $this->lotResolver->resolve($item, $line->itemLotId, $lots, $operation, $postingDate);
 
                 $warehouseQty = $onHand[$item->id][$warehouse->id] ?? '0.000000';
                 $globalQty = $this->globalQuantity($onHand, $item->id);
@@ -177,15 +206,30 @@ class PostStockMovementService
                 // Con ubicaciones, la existencia disponible es la de la
                 // ubicación indicada, no la del almacén entero: sacar de un
                 // estante vacío no es válido aunque el almacén tenga stock.
-                $availableQty = $bin
-                    ? ($binOnHand[$item->id][$bin->id] ?? '0.000000')
-                    : $warehouseQty;
+                //
+                // Con lotes manda el lote, que es el nivel más fino: sacar 10
+                // de un lote que solo tiene 3 no es válido aunque la
+                // ubicación tenga 50 repartidas en otros lotes. La precedencia
+                // es lote > ubicación > almacén.
+                $lotSlot = $this->lotSlot($warehouse->id, $bin?->id);
+
+                $availableQty = match (true) {
+                    $lot !== null => $lotOnHand[$lot->id][$lotSlot] ?? '0.000000',
+                    $bin !== null => $binOnHand[$item->id][$bin->id] ?? '0.000000',
+                    default => $warehouseQty,
+                };
+
+                // Lo apartado por órdenes de pedido no está libre: una venta
+                // a otro cliente no puede llevárselo. La reserva es por
+                // almacén, así que acota la existencia del almacén aunque el
+                // conteo disponible venga de una ubicación.
+                $freeQty = bcsub($warehouseQty, $reserved[$item->id][$warehouse->id] ?? '0.000000', 6);
 
                 $movement = $this->resolveMovement(
                     $operation, $line, $item, $warehouse,
                     $warehouseQty, $availableQty, $globalQty,
                     $avgLocal[$item->id], $avgForeign[$item->id],
-                    $rateToday,
+                    $rateToday, $freeQty,
                 );
 
                 // Un conteo que coincide con la existencia no mueve nada:
@@ -211,10 +255,19 @@ class PostStockMovementService
                         : bcsub($current, $movement['quantity'], 6);
                 }
 
+                if ($lot) {
+                    $current = $lotOnHand[$lot->id][$lotSlot] ?? '0.000000';
+
+                    $lotOnHand[$lot->id][$lotSlot] = $movement['direction'] === 'in'
+                        ? bcadd($current, $movement['quantity'], 6)
+                        : bcsub($current, $movement['quantity'], 6);
+                }
+
                 $movement['line_index'] = $index;
                 $movement['item'] = $item;
                 $movement['warehouse'] = $warehouse;
                 $movement['bin'] = $bin;
+                $movement['lot'] = $lot;
                 $movement['balance_quantity'] = $newWarehouseQty;
                 $movements[] = $movement;
 
@@ -229,11 +282,13 @@ class PostStockMovementService
                 // comparten la misma contracuenta y solo cambia el sentido.
                 $isIn = $movement['direction'] === 'in';
                 $counterpartCategory = match (true) {
-                    $operation === 'purchase_receipt' => 'gr_ir_clearing',
+                    in_array($operation, InventoryDocument::PURCHASE_OPERATIONS, true) => 'gr_ir_clearing',
                     in_array($operation, InventoryDocument::PRODUCTION_OPERATIONS, true) => 'wip',
                     // Una salida por venta no es una baja: es el costo de lo
-                    // vendido, y va a resultados por su propia cuenta.
-                    $operation === 'sales_issue' => 'cogs',
+                    // vendido, y va a resultados por su propia cuenta. La
+                    // devolución del cliente usa la misma cuenta al revés:
+                    // reingresa la mercancía descargando ese costo.
+                    in_array($operation, ['sales_issue', 'sales_return'], true) => 'cogs',
                     $isIn => 'stock_increase',
                     default => 'stock_decrease',
                 };
@@ -293,12 +348,13 @@ class PostStockMovementService
                 'operation' => $operation,
                 'business_partner_id' => $businessPartnerId,
                 'production_order_id' => $productionOrderId,
+                'source_document_id' => $sourceDocumentId,
                 'document_date' => $documentDate->format('Y-m-d'),
                 'posting_date' => $postingDate->format('Y-m-d'),
                 'description' => $description,
                 'status' => 'posted',
                 'created_by' => $createdBy,
-            ]);
+            ] + ($import?->toAttributes() ?? []));
 
             foreach ($movements as $position => $movement) {
                 $documentLine = $document->lines()->create([
@@ -306,6 +362,7 @@ class PostStockMovementService
                     'item_id' => $movement['item']->id,
                     'warehouse_id' => $movement['warehouse']->id,
                     'warehouse_bin_id' => $movement['bin']?->id,
+                    'item_lot_id' => $movement['lot']?->id,
                     'quantity' => $movement['quantity'],
                     'unit_cost_local' => $movement['unit_cost_local'],
                     'unit_cost_foreign' => $movement['unit_cost_foreign'],
@@ -317,6 +374,7 @@ class PostStockMovementService
                     'item_id' => $movement['item']->id,
                     'warehouse_id' => $movement['warehouse']->id,
                     'warehouse_bin_id' => $movement['bin']?->id,
+                    'item_lot_id' => $movement['lot']?->id,
                     'inventory_document_line_id' => $documentLine->id,
                     'journal_entry_id' => $journalEntry->id,
                     'posting_date' => $postingDate->format('Y-m-d'),
@@ -358,8 +416,42 @@ class PostStockMovementService
                 }
             }
 
+            $this->persistLotStock($lotOnHand);
+
             return $document->load('lines');
         });
+    }
+
+    /**
+     * Clave de la existencia de un lote: un lote puede estar repartido entre
+     * almacenes y, dentro de uno, entre ubicaciones. El 0 representa "sin
+     * ubicación" para que un almacén que no las usa tenga una clave estable
+     * (null no sirve como índice de arreglo en PHP).
+     */
+    private function lotSlot(int $warehouseId, ?int $binId): string
+    {
+        return $warehouseId.':'.($binId ?? 0);
+    }
+
+    /**
+     * @param  array<int, array<string, string>>  $lotOnHand
+     */
+    private function persistLotStock(array $lotOnHand): void
+    {
+        foreach ($lotOnHand as $lotId => $bySlot) {
+            foreach ($bySlot as $slot => $quantity) {
+                [$warehouseId, $binId] = explode(':', $slot);
+
+                ItemLotStock::updateOrCreate(
+                    [
+                        'item_lot_id' => $lotId,
+                        'warehouse_id' => (int) $warehouseId,
+                        'warehouse_bin_id' => ((int) $binId) ?: null,
+                    ],
+                    ['on_hand' => $quantity],
+                );
+            }
+        }
     }
 
     /**
@@ -380,13 +472,18 @@ class PostStockMovementService
         string $avgLocal,
         string $avgForeign,
         string $rateToday,
+        string $freeQty = '0.000000',
     ): ?array {
         // Toda entrada se costea igual —promedio ponderado con el costo
         // digitado—; lo único que cambia entre ellas es contra qué cuenta se
         // acredita, y eso se resuelve fuera de este método. En un recibo de
         // producción ese costo no lo digita el usuario: se lo pasa
         // PostProductionService, que lo deriva del WIP acumulado.
-        if (in_array($operation, ['goods_receipt', 'purchase_receipt', 'production_receipt'], true)) {
+        // La devolución de un cliente entra como cualquier otra entrada, pero
+        // su costo no lo digita nadie: se lo pasa PostSalesDocumentService,
+        // que lo toma de la salida original. Reingresar al promedio de hoy
+        // dejaría el costo de ventas sin cerrar.
+        if (in_array($operation, ['goods_receipt', 'purchase_receipt', 'production_receipt', 'sales_return'], true)) {
             if (bccomp($line->quantity, '0.000000', 6) <= 0) {
                 throw new InvalidStockMovementException("La entrada del artículo {$item->code} requiere una cantidad mayor a cero.");
             }
@@ -419,12 +516,13 @@ class PostStockMovementService
             return $this->movement('in', $quantity, $unitLocal, $unitForeign, $rateToday, $avgLocalAfter, $avgForeignAfter);
         }
 
-        if (in_array($operation, ['goods_issue', 'production_issue', 'sales_issue'], true)) {
+        if (in_array($operation, ['goods_issue', 'production_issue', 'sales_issue', 'purchase_return'], true)) {
             if (bccomp($line->quantity, '0.000000', 6) <= 0) {
                 throw new InvalidStockMovementException("La salida del artículo {$item->code} requiere una cantidad mayor a cero.");
             }
 
             $this->assertEnoughStock($item, $warehouse, $availableQty, $line->quantity);
+            $this->assertNotReserved($item, $warehouse, $freeQty, $line->quantity);
             $this->assertHasCost($item, $avgLocal, $avgForeign);
 
             $rate = bcdiv($avgLocal, $avgForeign, 6);
@@ -493,6 +591,22 @@ class PostStockMovementService
         }
     }
 
+    /**
+     * Lo apartado por una orden de pedido no está disponible para otra salida.
+     * Se valida aparte de la existencia para poder decir POR QUÉ no alcanza:
+     * "hay 100 pero 80 están apartadas" es un problema distinto de "hay 20".
+     */
+    private function assertNotReserved(Item $item, Warehouse $warehouse, string $free, string $requested): void
+    {
+        if (bccomp($requested, $free, 6) > 0) {
+            throw new InsufficientStockException(
+                "No hay existencia libre de {$item->code} en el almacén {$warehouse->code}: ".
+                'se piden '.rtrim(rtrim($requested, '0'), '.').' y solo '.rtrim(rtrim($free, '0'), '.').
+                ' están sin apartar por órdenes de pedido.'
+            );
+        }
+    }
+
     private function assertHasCost(Item $item, string $avgLocal, string $avgForeign): void
     {
         if (bccomp($avgLocal, '0.000000', 6) <= 0 || bccomp($avgForeign, '0.000000', 6) <= 0) {
@@ -534,5 +648,317 @@ class PostStockMovementService
     private function money(string $value): string
     {
         return number_format((float) $value, 2, '.', '');
+    }
+
+    /**
+     * Anula una entrada por compra que todavía nadie facturó. No borra nada:
+     * el original queda en status='voided' y nace un documento espejo que
+     * saca del kardex la MISMA cantidad al MISMO costo con que entró —no al
+     * promedio de hoy—, apuntado con reversal_of_id, y cuyo asiento es la
+     * reversión exacta del asiento original (PostJournalService::reverse(),
+     * mismos tipos de cambio), de modo que la cuenta puente GR/IR vuelve a
+     * cerrar en cero y el inventario queda como si la compra nunca hubiera
+     * ocurrido.
+     *
+     * El reverso al costo original —y no al promedio— es lo que hace la
+     * anulación exacta: si entre medio entró más mercancía del mismo artículo
+     * a otro precio, sacar al promedio dejaría un residuo en la cuenta de
+     * inventario que nadie podría explicar.
+     */
+    public function void(
+        Company $company,
+        InventoryDocument $document,
+        \DateTimeInterface $postingDate,
+        ?string $description = null,
+        ?int $createdBy = null,
+    ): InventoryDocument {
+        if ($document->company_id !== $company->id) {
+            throw new \InvalidArgumentException('El documento a anular no pertenece a la compañía indicada.');
+        }
+
+        return DB::transaction(function () use ($company, $document, $postingDate, $description, $createdBy) {
+            // Relectura bajo lock: entre que la pantalla mostró el botón y
+            // llegó este POST, otra sesión pudo facturar o anular el mismo
+            // documento. El estado que vale es el que se lee acá adentro.
+            $receipt = InventoryDocument::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', $company->id)
+                ->lockForUpdate()
+                ->findOrFail($document->id);
+
+            $this->assertVoidable($receipt);
+
+            $receipt->load('lines');
+
+            $original = StockJournal::withoutGlobalScope(CompanyScope::class)
+                ->whereIn('inventory_document_line_id', $receipt->lines->pluck('id'))
+                ->get()
+                ->keyBy('inventory_document_line_id');
+
+            $itemIds = $receipt->lines->pluck('item_id')->unique()->values()->all();
+            $warehouseIds = $receipt->lines->pluck('warehouse_id')->unique()->values()->all();
+
+            // Mismo lock ordenado por id que post(): sin él, una salida
+            // concurrente del mismo artículo podría colarse entre la
+            // validación de existencia y la escritura del kardex.
+            $items = Item::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', $company->id)
+                ->whereIn('id', $itemIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            $warehouses = Warehouse::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', $company->id)
+                ->whereIn('id', $warehouseIds)
+                ->get()
+                ->keyBy('id');
+
+            $onHand = [];
+            foreach (ItemWarehouse::whereIn('item_id', $itemIds)->lockForUpdate()->get() as $row) {
+                $onHand[$row->item_id][$row->warehouse_id] = (string) $row->on_hand;
+            }
+
+            $binOnHand = [];
+            foreach (ItemBin::whereIn('item_id', $itemIds)->lockForUpdate()->get() as $row) {
+                $binOnHand[$row->item_id][$row->warehouse_bin_id] = (string) $row->on_hand;
+            }
+
+            // La existencia por lote se revierte igual que la del almacén y
+            // la de la ubicación: si la entrada trajo lote, la anulación lo
+            // devuelve. Un documento anterior a la Fase 8 no tiene lote y
+            // este arreglo queda vacío.
+            $lotIds = $receipt->lines->pluck('item_lot_id')->filter()->unique()->values();
+
+            $lotOnHand = [];
+            foreach (ItemLotStock::whereIn('item_lot_id', $lotIds)->lockForUpdate()->get() as $row) {
+                $lotOnHand[$row->item_lot_id][$this->lotSlot($row->warehouse_id, $row->warehouse_bin_id)] = (string) $row->on_hand;
+            }
+
+            $avgLocal = [];
+            $avgForeign = [];
+            foreach ($items as $item) {
+                $avgLocal[$item->id] = (string) $item->avg_cost_local;
+                $avgForeign[$item->id] = (string) $item->avg_cost_foreign;
+            }
+
+            $movements = [];
+
+            foreach ($receipt->lines as $line) {
+                $item = $items->get($line->item_id);
+                $warehouse = $warehouses->get($line->warehouse_id);
+                $kardex = $original->get($line->id);
+
+                if (! $kardex) {
+                    throw new UnvoidableInventoryDocumentException(
+                        "La línea {$line->line_number} no tiene movimiento de kardex; el documento está incompleto y no se puede anular."
+                    );
+                }
+
+                $quantity = (string) $kardex->quantity;
+
+                // La mercancía tiene que seguir donde se recibió: si ya salió
+                // —vendida, trasladada, emitida a producción— la anulación
+                // dejaría la existencia negativa. La vía en ese caso es
+                // facturar y emitir la nota de crédito.
+                // Misma precedencia que en post(): lote > ubicación > almacén.
+                // Anular una entrada cuyo lote ya salió tiene que fallar
+                // aunque el almacén siga teniendo unidades de otros lotes.
+                $lotSlot = $this->lotSlot($warehouse->id, $line->warehouse_bin_id);
+
+                $available = match (true) {
+                    $line->item_lot_id !== null => $lotOnHand[$line->item_lot_id][$lotSlot] ?? '0.000000',
+                    $line->warehouse_bin_id !== null => $binOnHand[$item->id][$line->warehouse_bin_id] ?? '0.000000',
+                    default => $onHand[$item->id][$warehouse->id] ?? '0.000000',
+                };
+
+                $this->assertEnoughStock($item, $warehouse, $available, $quantity);
+
+                $globalQty = $this->globalQuantity($onHand, $item->id);
+                $newGlobal = bcsub($globalQty, $quantity, 6);
+
+                // Se retira del acumulado exactamente el valor que la entrada
+                // había aportado. Si eso dejara el inventario valiendo menos
+                // que cero, es que esa mercancía ya se consumió mezclada en el
+                // promedio y la anulación ya no puede ser exacta.
+                $valueLocal = bcsub(
+                    bcmul($globalQty, $avgLocal[$item->id], 12),
+                    bcmul($quantity, (string) $kardex->unit_cost_local, 12), 12
+                );
+
+                $valueForeign = bcsub(
+                    bcmul($globalQty, $avgForeign[$item->id], 12),
+                    bcmul($quantity, (string) $kardex->unit_cost_foreign, 12), 12
+                );
+
+                if (bccomp($valueLocal, '0', 6) < 0 || bccomp($valueForeign, '0', 6) < 0) {
+                    throw new UnvoidableInventoryDocumentException(
+                        "La mercancía de {$item->code} ya se consumió mezclada en el costo promedio; anular dejaría el inventario ".
+                        'valiendo menos que cero. Facturá la entrada y emití una nota de crédito en su lugar.'
+                    );
+                }
+
+                // Con el artículo agotado no queda promedio que recalcular: el
+                // valor es cero por definición y el último costo se conserva,
+                // igual que hace una salida común.
+                if (bccomp($newGlobal, '0.000000', 6) > 0) {
+                    $avgLocal[$item->id] = bcdiv($valueLocal, $newGlobal, 6);
+                    $avgForeign[$item->id] = bcdiv($valueForeign, $newGlobal, 6);
+                }
+
+                $onHand[$item->id][$warehouse->id] = bcsub(
+                    $onHand[$item->id][$warehouse->id] ?? '0.000000', $quantity, 6
+                );
+
+                if ($line->warehouse_bin_id) {
+                    $binOnHand[$item->id][$line->warehouse_bin_id] = bcsub(
+                        $binOnHand[$item->id][$line->warehouse_bin_id] ?? '0.000000', $quantity, 6
+                    );
+                }
+
+                if ($line->item_lot_id) {
+                    $lotOnHand[$line->item_lot_id][$lotSlot] = bcsub(
+                        $lotOnHand[$line->item_lot_id][$lotSlot] ?? '0.000000', $quantity, 6
+                    );
+                }
+
+                $movements[] = [
+                    'line' => $line,
+                    'kardex' => $kardex,
+                    'item' => $item,
+                    'warehouse' => $warehouse,
+                    'quantity' => $quantity,
+                    'balance_quantity' => $onHand[$item->id][$warehouse->id],
+                    'avg_local_after' => $avgLocal[$item->id],
+                    'avg_foreign_after' => $avgForeign[$item->id],
+                ];
+            }
+
+            // El asiento espejo lo arma PostJournalService: invierte línea por
+            // línea en las tres monedas con los tipos de cambio originales, y
+            // deja el asiento de la entrada en 'voided'. Acá no se recalcula
+            // nada de contabilidad.
+            $reversalEntry = $this->postJournalService->reverse(
+                company: $company,
+                original: $receipt->journalEntry()->withoutGlobalScope(CompanyScope::class)->firstOrFail(),
+                postingDate: $postingDate,
+                description: $description ?? "Anulación de entrada por compra #{$receipt->id}",
+                createdBy: $createdBy,
+            );
+
+            $reversal = InventoryDocument::create([
+                'company_id' => $company->id,
+                'document_type_id' => $receipt->document_type_id,
+                'journal_entry_id' => $reversalEntry->id,
+                'operation' => 'purchase_receipt_void',
+                'business_partner_id' => $receipt->business_partner_id,
+                'source_document_id' => $receipt->source_document_id,
+                'document_date' => $postingDate->format('Y-m-d'),
+                'posting_date' => $postingDate->format('Y-m-d'),
+                'description' => $description ?? "Anulación de entrada por compra #{$receipt->id}",
+                'status' => 'posted',
+                'reversal_of_id' => $receipt->id,
+                'created_by' => $createdBy,
+            ]);
+
+            foreach ($movements as $position => $movement) {
+                $kardex = $movement['kardex'];
+
+                $reversalLine = $reversal->lines()->create([
+                    'line_number' => $position + 1,
+                    'item_id' => $movement['item']->id,
+                    'warehouse_id' => $movement['warehouse']->id,
+                    'warehouse_bin_id' => $movement['line']->warehouse_bin_id,
+                    'item_lot_id' => $movement['line']->item_lot_id,
+                    'quantity' => $movement['quantity'],
+                    'unit_cost_local' => $kardex->unit_cost_local,
+                    'unit_cost_foreign' => $kardex->unit_cost_foreign,
+                    'description' => $movement['line']->description,
+                ]);
+
+                StockJournal::create([
+                    'company_id' => $company->id,
+                    'item_id' => $movement['item']->id,
+                    'warehouse_id' => $movement['warehouse']->id,
+                    'warehouse_bin_id' => $movement['line']->warehouse_bin_id,
+                    'item_lot_id' => $movement['line']->item_lot_id,
+                    'inventory_document_line_id' => $reversalLine->id,
+                    'journal_entry_id' => $reversalEntry->id,
+                    'posting_date' => $postingDate->format('Y-m-d'),
+                    'direction' => 'out',
+                    'quantity' => $movement['quantity'],
+                    // Los mismos importes de la fila original, con el signo
+                    // contrario: el kardex y el mayor se mueven por el mismo
+                    // monto, que es la única forma de que sigan cuadrando.
+                    'unit_cost_local' => $kardex->unit_cost_local,
+                    'unit_cost_foreign' => $kardex->unit_cost_foreign,
+                    'total_cost_local' => $kardex->total_cost_local,
+                    'total_cost_foreign' => $kardex->total_cost_foreign,
+                    'balance_quantity' => $movement['balance_quantity'],
+                    'avg_cost_local_after' => $movement['avg_local_after'],
+                    'avg_cost_foreign_after' => $movement['avg_foreign_after'],
+                    'reversal_of_id' => $kardex->id,
+                    'created_by' => $createdBy,
+                ]);
+            }
+
+            foreach ($items as $item) {
+                $item->update([
+                    'avg_cost_local' => $avgLocal[$item->id],
+                    'avg_cost_foreign' => $avgForeign[$item->id],
+                ]);
+            }
+
+            foreach ($onHand as $itemId => $byWarehouse) {
+                foreach ($byWarehouse as $warehouseId => $stock) {
+                    ItemWarehouse::updateOrCreate(
+                        ['item_id' => $itemId, 'warehouse_id' => $warehouseId],
+                        ['on_hand' => $stock],
+                    );
+                }
+            }
+
+            foreach ($binOnHand as $itemId => $byBin) {
+                foreach ($byBin as $binId => $stock) {
+                    ItemBin::updateOrCreate(
+                        ['item_id' => $itemId, 'warehouse_bin_id' => $binId],
+                        ['on_hand' => $stock],
+                    );
+                }
+            }
+
+            $this->persistLotStock($lotOnHand);
+
+            $receipt->update(['status' => 'voided']);
+
+            return $reversal->load('lines');
+        });
+    }
+
+    private function assertVoidable(InventoryDocument $receipt): void
+    {
+        if (! in_array($receipt->operation, InventoryDocument::VOIDABLE_OPERATIONS, true)) {
+            throw new UnvoidableInventoryDocumentException(
+                'Solo una entrada por compra se anula; el resto del ciclo se corrige con su documento espejo.'
+            );
+        }
+
+        if ($receipt->status !== 'posted') {
+            throw new UnvoidableInventoryDocumentException('El documento ya fue anulado.');
+        }
+
+        if ($receipt->invoice_journal_entry_id !== null) {
+            throw new UnvoidableInventoryDocumentException(
+                'La entrada ya tiene factura del proveedor: la deuda es real y se deshace con una nota de crédito, no anulando.'
+            );
+        }
+
+        // Un costo de importación ya capitalizado movió el promedio de los
+        // artículos por su cuenta; deshacerlo no es parte de esta anulación.
+        if ($receipt->landedCostDocuments()->where('status', 'posted')->exists()) {
+            throw new UnvoidableInventoryDocumentException(
+                'La entrada tiene costos de importación aplicados; anulá primero esos documentos.'
+            );
+        }
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostAllocationRule;
 use App\Domains\Accounting\Models\CostCenter;
@@ -8,6 +9,8 @@ use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\JournalEntryTemplateExporter;
+use App\Domains\Accounting\Services\PostJournalService;
+use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
@@ -17,6 +20,7 @@ use App\Domains\Tax\Models\JournalDetailTax;
 use App\Domains\Tax\Models\TaxRate;
 use Illuminate\Http\UploadedFile;
 use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
 
 /**
@@ -28,7 +32,7 @@ function makeJournalEntryXlsx(array $rows, ?array $headers = null): UploadedFile
 
     $path = tempnam(sys_get_temp_dir(), 'je_import_').'.xlsx';
 
-    $writer = new Writer();
+    $writer = new Writer;
     $writer->openToFile($path);
     $writer->addRow(Row::fromValues($headers));
 
@@ -263,7 +267,7 @@ it('el formulario de creación trae las partidas abiertas de la compañía activ
         ],
     ])->assertRedirect(route('journal-entries.index'));
 
-    $openItem = \App\Domains\BusinessPartners\Models\BpOpenItem::sole();
+    $openItem = BpOpenItem::sole();
 
     $this->get(route('journal-entries.create'))
         ->assertOk()
@@ -330,7 +334,7 @@ it('contabiliza una línea que aplica a una partida existente y cierra su saldo,
         ],
     ])->assertRedirect(route('journal-entries.index'));
 
-    $openItem = \App\Domains\BusinessPartners\Models\BpOpenItem::sole();
+    $openItem = BpOpenItem::sole();
     $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
 
     $this->post(route('journal-entries.store'), [
@@ -476,12 +480,12 @@ it('guarda un asiento como preliminar con intent=draft, sin exigir que cuadre', 
 
 it('muestra el formulario de edición de un borrador existente con sus líneas', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
         'Un borrador',
     );
 
@@ -496,19 +500,19 @@ it('muestra el formulario de edición de un borrador existente con sus líneas',
 
 it('el formulario de edición de un borrador también trae la navegación entre documentos', function () {
     $fx = journalHttpFixture();
-    $service = app(\App\Domains\Accounting\Services\PostJournalService::class);
+    $service = app(PostJournalService::class);
 
     $older = $service->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
     $middle = $service->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
     $newer = $service->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->get(route('journal-entries.edit', $middle->id))
@@ -543,12 +547,12 @@ it('el formulario de edición devuelve 404 para un borrador de otra compañía',
     $companyB = Company::factory()->create();
     $accountB = ChartOfAccount::factory()->create(['company_id' => $companyB->id]);
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    $draftB = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draftB = app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->get(route('journal-entries.edit', $draftB->id))->assertNotFound();
@@ -556,12 +560,12 @@ it('el formulario de edición devuelve 404 para un borrador de otra compañía',
 
 it('actualiza un borrador existente vía intent=draft, reemplazando sus líneas', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->put(route('journal-entries.update', $draft->id), [
@@ -584,12 +588,12 @@ it('actualiza un borrador existente vía intent=draft, reemplazando sus líneas'
 
 it('contabiliza formalmente un borrador vía intent=post en update', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->put(route('journal-entries.update', $draft->id), [
@@ -610,12 +614,12 @@ it('contabiliza formalmente un borrador vía intent=post en update', function ()
 
 it('elimina un borrador', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->delete(route('journal-entries.destroy', $draft->id))
@@ -648,12 +652,12 @@ it('rechaza eliminar un borrador de otra compañía', function () {
     $companyB = Company::factory()->create();
     $accountB = ChartOfAccount::factory()->create(['company_id' => $companyB->id]);
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    $draftB = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draftB = app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->delete(route('journal-entries.destroy', $draftB->id))->assertNotFound();
@@ -766,12 +770,12 @@ it('muestra el detalle de un asiento contabilizado, con el tipo de cambio aplica
 
 it('muestra el detalle de un borrador, todavía sin tipo de cambio resuelto', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->get(route('journal-entries.show', $draft->id))
@@ -788,12 +792,12 @@ it('rechaza ver el detalle de un asiento de otra compañía', function () {
     $companyB = Company::factory()->create();
     $accountB = ChartOfAccount::factory()->create(['company_id' => $companyB->id]);
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    $draftB = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draftB = app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->get(route('journal-entries.show', $draftB->id))->assertNotFound();
@@ -840,10 +844,10 @@ it('importa un asiento cuando la columna "fecha" trae una fecha real de Excel, n
     // igual que hace Excel de verdad al escribir una fecha).
     $fx = journalHttpFixture();
     $fecha = new DateTimeImmutable(now()->format('Y-m-d'));
-    $dateStyle = (new \OpenSpout\Common\Entity\Style\Style())->setFormat('yyyy-mm-dd');
+    $dateStyle = (new Style)->setFormat('yyyy-mm-dd');
 
     $path = tempnam(sys_get_temp_dir(), 'je_import_').'.xlsx';
-    $writer = new Writer();
+    $writer = new Writer;
     $writer->openToFile($path);
     $writer->addRow(Row::fromValues(JournalEntryTemplateExporter::HEADERS));
     $writer->addRow(Row::fromValuesWithStyles(
@@ -1328,10 +1332,10 @@ it('permite la misma clave electrónica en compañías distintas', function () {
 
     $companyB = Company::factory()->create();
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    app(PostJournalService::class)->saveDraft(
         $companyB, $typeB, new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+        [new JournalLineInput(
             ChartOfAccount::factory()->create(['company_id' => $companyB->id])->id,
             $companyB->local_currency_id, debit: 100, credit: 0,
             electronicKey: $key,
@@ -1355,10 +1359,10 @@ it('permite la misma clave electrónica en compañías distintas', function () {
 it('permite editar un borrador conservando su propia clave electrónica, sin rechazarla como duplicada', function () {
     $fx = journalHttpFixture();
     $key = str_repeat('7', 50);
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, electronicKey: $key)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, electronicKey: $key)],
     );
 
     $this->put(route('journal-entries.update', $draft->id), [
@@ -1520,20 +1524,20 @@ it('corrige el vencimiento de una línea de un asiento ya contabilizado, sin toc
         'gl_account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'status' => 'active',
     ]);
 
-    $entry = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entry = app(PostJournalService::class)->post(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+            new JournalLineInput(
                 $cxc->id, $fx['company']->local_currency_id, debit: 1000, credit: 0,
                 businessPartnerId: $partner->id, dueDate: '2026-02-04', opensItem: true,
             ),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 1000),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 1000),
         ],
         'Venta a crédito'
     );
 
     $cxcDetail = $entry->details->firstWhere('business_partner_id', $partner->id);
-    $openItem = \App\Domains\BusinessPartners\Models\BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->sole();
+    $openItem = BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->sole();
 
     $this->put(route('journal-entries.lines.update-due-date', [$entry->id, $cxcDetail->id]), [
         'due_date' => '2026-03-20',
@@ -1559,25 +1563,25 @@ it('abre una partida retroactiva al definir el vencimiento de una línea que nun
     // Sin dueDate ni opensItem: el mismo error real que motivó la reparación
     // masiva (OpenItemBackfillService) — el monto ya está contabilizado,
     // pero nunca quedó nada en bp_open_items para poder aplicarle un cobro.
-    $entry = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entry = app(PostJournalService::class)->post(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+            new JournalLineInput(
                 $cxc->id, $fx['company']->local_currency_id, debit: 800, credit: 0, businessPartnerId: $partner->id,
             ),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 800),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 800),
         ],
         'Venta a crédito sin partida'
     );
 
     $cxcDetail = $entry->details->firstWhere('business_partner_id', $partner->id);
-    expect(\App\Domains\BusinessPartners\Models\BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->exists())->toBeFalse();
+    expect(BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->exists())->toBeFalse();
 
     $this->put(route('journal-entries.lines.update-due-date', [$entry->id, $cxcDetail->id]), [
         'due_date' => '2026-04-10',
     ])->assertSessionHasNoErrors();
 
-    $openItem = \App\Domains\BusinessPartners\Models\BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->sole();
+    $openItem = BpOpenItem::where('origin_journal_detail_id', $cxcDetail->id)->sole();
 
     expect($openItem->balance)->toEqual('800.00')
         ->and($openItem->original_amount)->toEqual('800.00')
@@ -1599,11 +1603,11 @@ it('vincula un socio de negocio a una línea posteada sin uno, y abre su partida
     // real que un saldo inicial cargado antes de terminar de dar de alta a
     // los socios. Sí tiene vencimiento (dueDate directo, sin opensItem),
     // simulando que ya se corrigió con updateLineDueDate.
-    $entry = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entry = app(PostJournalService::class)->post(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0, dueDate: '2026-05-01'),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
+            new JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0, dueDate: '2026-05-01'),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
         ],
         'Saldo inicial sin socio todavía'
     );
@@ -1614,7 +1618,7 @@ it('vincula un socio de negocio a una línea posteada sin uno, y abre su partida
         'business_partner_id' => $partner->id,
     ])->assertSessionHasNoErrors();
 
-    $openItem = \App\Domains\BusinessPartners\Models\BpOpenItem::where('origin_journal_detail_id', $detail->id)->sole();
+    $openItem = BpOpenItem::where('origin_journal_detail_id', $detail->id)->sole();
 
     expect($detail->fresh()->business_partner_id)->toBe($partner->id)
         ->and($openItem->business_partner_id)->toBe($partner->id)
@@ -1635,11 +1639,11 @@ it('rechaza vincular un socio cuya cuenta de control no coincide con la cuenta y
         'gl_account_id' => $otherAccount->id, 'currency_id' => $fx['company']->local_currency_id, 'status' => 'active',
     ]);
 
-    $entry = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entry = app(PostJournalService::class)->post(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
+            new JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
         ],
     );
 
@@ -1661,11 +1665,11 @@ it('rechaza vincular un socio a una línea que ya tiene uno', function () {
     ]);
     $otherPartner = BusinessPartner::factory()->create(['company_id' => $fx['company']->id, 'gl_account_id' => $cxc->id]);
 
-    $entry = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entry = app(PostJournalService::class)->post(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0, businessPartnerId: $partner->id),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
+            new JournalLineInput($cxc->id, $fx['company']->local_currency_id, debit: 500, credit: 0, businessPartnerId: $partner->id),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
         ],
     );
 
@@ -1681,10 +1685,10 @@ it('rechaza vincular un socio a una línea que ya tiene uno', function () {
 it('rechaza vincular un socio de negocio en una línea de un asiento en borrador', function () {
     $fx = journalHttpFixture();
 
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 500, credit: 0, allowZeroAmount: true),
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 500, credit: 0, allowZeroAmount: true),
         ],
         'Preliminar'
     );
@@ -1700,10 +1704,10 @@ it('rechaza vincular un socio de negocio en una línea de un asiento en borrador
 it('rechaza corregir el vencimiento de una línea de un asiento en borrador (se edita completo desde el formulario)', function () {
     $fx = journalHttpFixture();
 
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'], $fx['add'], new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 500, credit: 0, allowZeroAmount: true),
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 500, credit: 0, allowZeroAmount: true),
         ],
         'Preliminar'
     );
@@ -1770,12 +1774,12 @@ it('el detalle de un asiento anulado muestra el enlace al asiento de reversión,
 
 it('rechaza anular un borrador y muestra el error del service', function () {
     $fx = journalHttpFixture();
-    $draft = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draft = app(PostJournalService::class)->saveDraft(
         $fx['company'],
         $fx['add'],
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0)],
     );
 
     $this->post(route('journal-entries.reverse', $draft->id))->assertSessionHasErrors('reversal');
@@ -1803,14 +1807,14 @@ it('rechaza anular un asiento de otra compañía (404, igual que ver/editar/borr
         'rate_date' => now()->format('Y-m-d'),
         'rate' => '520.000000',
     ]);
-    $entryB = app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    $entryB = app(PostJournalService::class)->post(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB2->id, $companyB->local_currency_id, debit: 0, credit: 100),
+            new JournalLineInput($accountB->id, $companyB->local_currency_id, debit: 100, credit: 0),
+            new JournalLineInput($accountB2->id, $companyB->local_currency_id, debit: 0, credit: 100),
         ],
     );
 
@@ -1922,12 +1926,12 @@ it('la búsqueda de asientos no trae resultados de otra compañía', function ()
     $fx = journalHttpFixture();
     $companyB = Company::factory()->create();
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+        [new JournalLineInput(
             ChartOfAccount::factory()->create(['company_id' => $companyB->id])->id,
             $companyB->local_currency_id,
             debit: 100,
@@ -2048,12 +2052,12 @@ it('presentar/exportar un asiento de otra compañía da 404', function () {
     journalHttpFixture();
     $companyB = Company::factory()->create();
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    $draftB = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draftB = app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+        [new JournalLineInput(
             ChartOfAccount::factory()->create(['company_id' => $companyB->id])->id,
             $companyB->local_currency_id,
             debit: 100,
@@ -2069,12 +2073,12 @@ it('exporta un asiento de otra compañía da 404', function () {
     journalHttpFixture();
     $companyB = Company::factory()->create();
     $typeB = DocumentType::factory()->create(['company_id' => $companyB->id]);
-    $draftB = app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    $draftB = app(PostJournalService::class)->saveDraft(
         $companyB,
         $typeB,
         new DateTime(now()->format('Y-m-d')),
         new DateTime(now()->format('Y-m-d')),
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput(
+        [new JournalLineInput(
             ChartOfAccount::factory()->create(['company_id' => $companyB->id])->id,
             $companyB->local_currency_id,
             debit: 100,
@@ -2150,13 +2154,13 @@ it('un preliminar que no cuadra se sigue rechazando al intentar contabilizarlo f
 
 // --- Buscador y exportación del listado de Registros (JournalEntries/Index) -
 
-function postSimpleEntry(array $fx, string $description, string $postingDate, ?\App\Domains\Core\Models\DocumentType $documentType = null): void
+function postSimpleEntry(array $fx, string $description, string $postingDate, ?DocumentType $documentType = null): void
 {
-    app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    app(PostJournalService::class)->post(
         $fx['company'], $documentType ?? $fx['add'], new DateTime($postingDate), new DateTime($postingDate),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 100),
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0),
+            new JournalLineInput($fx['capital']->id, $fx['company']->local_currency_id, debit: 0, credit: 100),
         ],
         description: $description,
     );
@@ -2253,11 +2257,11 @@ it('el listado de asientos no trae ni exporta documentos de otra compañía', fu
         'company_id' => $companyB->id, 'currency_id' => $companyB->foreign_currency_id,
         'rate_date' => now()->format('Y-m-d'), 'rate' => '520.000000',
     ]);
-    app(\App\Domains\Accounting\Services\PostJournalService::class)->post(
+    app(PostJournalService::class)->post(
         $companyB, $typeB, new DateTime(now()->format('Y-m-d')), new DateTime(now()->format('Y-m-d')),
         [
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB1->id, $companyB->local_currency_id, debit: 100, credit: 0),
-            new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($accountB2->id, $companyB->local_currency_id, debit: 0, credit: 100),
+            new JournalLineInput($accountB1->id, $companyB->local_currency_id, debit: 100, credit: 0),
+            new JournalLineInput($accountB2->id, $companyB->local_currency_id, debit: 0, credit: 100),
         ],
         description: 'Ajeno',
     );

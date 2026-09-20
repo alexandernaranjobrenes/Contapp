@@ -7,7 +7,6 @@ use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
-use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
 use Illuminate\Http\UploadedFile;
@@ -21,7 +20,7 @@ function makeOpeningBalanceXlsx(array $rows): UploadedFile
 {
     $path = tempnam(sys_get_temp_dir(), 'ob_import_').'.xlsx';
 
-    $writer = new Writer();
+    $writer = new Writer;
     $writer->openToFile($path);
     $writer->addRow(Row::fromValues(['cuenta', 'socio', 'moneda', 'debito', 'credito', 'centro_costo', 'descripcion_linea']));
 

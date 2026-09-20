@@ -263,6 +263,8 @@ it('la pantalla lista los traslados con su origen y destino', function () {
             ->component('Inventory/Transfers/Index')
             ->has('transfers', 1)
             ->where('transfers.0.lines.0.to_warehouse.code', 'ALM2')
-            ->where('transfers.0.journal_entry_id', null)
+            // El traslado sí deja asiento —misma cuenta al debe y al haber,
+            // por trazabilidad— aunque no cambie ningún saldo.
+            ->where('transfers.0.journal_entry_id', fn ($v) => $v !== null)
         );
 });

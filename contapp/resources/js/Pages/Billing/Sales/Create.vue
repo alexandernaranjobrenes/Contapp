@@ -13,6 +13,10 @@ const props = defineProps({
     bins: { type: Array, default: () => [] },
     currencies: { type: Array, default: () => [] },
     hacienda: { type: Object, default: () => ({}) },
+    // "Copiar a": pedido que esta factura cumple, o comprobante que esta nota
+    // de crédito corrige. Solo uno de los dos viene lleno.
+    sourceOrder: { type: Object, default: null },
+    sourceDocument: { type: Object, default: null },
 });
 
 const page = usePage();
@@ -39,6 +43,9 @@ const form = useForm({
     lines: [blankLine()],
     payments: [],
     references: [],
+    // Enlaces internos del ciclo; los llena el "Copiar a" de su origen.
+    sales_order_id: null,
+    original_sales_document_id: null,
 });
 
 function blankLine() {
@@ -53,6 +60,49 @@ function blankLine() {
 
 function money(value) {
     return Number(value ?? 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// --- "Copiar a": el documento llega armado desde su origen ---
+
+function lineFromSource(source) {
+    return {
+        ...blankLine(),
+        item_id: source.item_id ?? '',
+        warehouse_id: source.warehouse_id ?? '',
+        item_code: source.item_code ?? '',
+        cabys_code: source.cabys_code ?? '',
+        description: source.description ?? '',
+        unit_code: source.unit_code || 'Unid',
+        is_service: source.is_service ?? false,
+        quantity: source.quantity,
+        unit_price: source.unit_price,
+        taxes: [{ tax_code: '01', iva_rate_code: source.iva_rate_code || '08' }],
+    };
+}
+
+if (props.sourceOrder) {
+    form.business_partner_id = props.sourceOrder.business_partner_id;
+    form.sales_order_id = props.sourceOrder.id;
+    form.lines = props.sourceOrder.lines.map(lineFromSource);
+}
+
+if (props.sourceDocument) {
+    // Una nota de crédito hereda del comprobante que corrige todo lo que la
+    // hace ser "la misma venta al revés": cliente, condición y moneda.
+    form.fiscal_document_type = '03';
+    form.business_partner_id = props.sourceDocument.business_partner_id;
+    form.sale_condition = props.sourceDocument.sale_condition;
+    form.credit_term_days = props.sourceDocument.credit_term_days ?? '';
+    form.currency_id = props.sourceDocument.currency_id;
+    form.original_sales_document_id = props.sourceDocument.id;
+    form.lines = props.sourceDocument.lines.map(lineFromSource);
+    form.references = [{
+        document_type: props.sourceDocument.fiscal_document_type,
+        number: props.sourceDocument.clave,
+        issued_at: props.sourceDocument.document_date,
+        reason_code: '01',
+        reason: 'Devolución de mercancía',
+    }];
 }
 
 // --- Panel 1: partes ---

@@ -1,6 +1,6 @@
 <script setup>
 import { Head, useForm, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -10,6 +10,7 @@ const props = defineProps({
     warehouses: { type: Array, default: () => [] },
     bins: { type: Array, default: () => [] },
     suppliers: { type: Array, default: () => [] },
+    customsOffices: { type: Object, default: () => ({}) },
 });
 
 function usesBins(warehouseId) {
@@ -22,6 +23,52 @@ function binsOf(warehouseId) {
 
 const anyWarehouseUsesBins = () => props.warehouses.some((w) => w.uses_bins);
 
+function tracksLots(itemId) {
+    return props.items.find((i) => i.id === itemId)?.tracks_lots ?? false;
+}
+
+const anyItemTracksLots = () => props.items.some((i) => i.tracks_lots);
+
+/**
+ * Opciones de lote por línea, pedidas al servidor en vez de venir en los
+ * props: un artículo con rotación alta acumula cientos de lotes al año y
+ * mandarlos todos en cada carga del formulario crece sin techo.
+ *
+ * En una salida el servidor devuelve la sugerencia FEFO —ya sin vencidos,
+ * retenidos ni sin saldo— y el primero de la lista es el que conviene tomar.
+ * Es una sugerencia: se puede elegir otro y el motor solo exige que sea
+ * despachable.
+ */
+const lotOptions = ref({});
+
+async function loadLots(index) {
+    const line = form.lines[index];
+
+    if (! line.item_id || ! tracksLots(line.item_id)) {
+        lotOptions.value[index] = null;
+        return;
+    }
+
+    const params = new URLSearchParams({ operation: form.operation });
+    if (line.warehouse_id) params.set('warehouse_id', line.warehouse_id);
+    if (line.warehouse_bin_id) params.set('warehouse_bin_id', line.warehouse_bin_id);
+
+    try {
+        const res = await fetch(`${route('item-lots.options', line.item_id)}?${params}`, {
+            headers: { Accept: 'application/json' },
+        });
+
+        lotOptions.value[index] = await res.json();
+    } catch {
+        lotOptions.value[index] = null;
+    }
+}
+
+function onLineContextChange(index) {
+    form.lines[index].item_lot_id = '';
+    loadLots(index);
+}
+
 const page = usePage();
 const today = new Date().toISOString().slice(0, 10);
 
@@ -32,6 +79,12 @@ const form = useForm({
     posting_date: today,
     description: '',
     business_partner_id: '',
+    is_import: false,
+    customs_declaration: '',
+    customs_office: '',
+    transport_document: '',
+    origin_country: '',
+    customs_date: '',
     lines: [blankLine()],
 });
 
@@ -39,8 +92,12 @@ const form = useForm({
 // cuenta puente GR/IR que después liquida su factura.
 const needsSupplier = computed(() => form.operation === 'purchase_receipt');
 
+// Marcar la entrada como importación es lo que después habilita cargarle
+// rubros de nacionalización; sin la marca, esos costos no se le pueden asignar.
+const canBeImport = computed(() => form.operation === 'purchase_receipt');
+
 function blankLine() {
-    return { item_id: '', warehouse_id: '', warehouse_bin_id: '', quantity: '', unit_cost_local: '', description: '' };
+    return { item_id: '', warehouse_id: '', warehouse_bin_id: '', item_lot_id: '', quantity: '', unit_cost_local: '', description: '' };
 }
 
 // El costo unitario solo se digita en una entrada. En una salida y en un
@@ -53,6 +110,14 @@ const costIsEditable = computed(() =>
 const quantityLabel = computed(() => form.operation === 'count_adjustment' ? 'Cantidad contada' : 'Cantidad');
 
 const ready = computed(() => props.documentTypes.length && props.items.length && props.warehouses.length);
+
+// Cambiar de operación cambia qué lotes son elegibles: una salida solo
+// ofrece los despachables con saldo (FEFO), una entrada ofrece todos los
+// vigentes. Sin esto, la lista quedaría con las opciones de la operación
+// anterior.
+watch(() => form.operation, () => {
+    form.lines.forEach((_, index) => onLineContextChange(index));
+});
 
 function addLine() {
     form.lines.push(blankLine());
@@ -73,9 +138,18 @@ function submit() {
         .transform((data) => ({
             ...data,
             business_partner_id: needsSupplier.value && data.business_partner_id !== '' ? data.business_partner_id : null,
+            // Si la operación no admite importación, los campos viajan vacíos
+            // aunque hayan quedado escritos antes de cambiar de operación.
+            is_import: canBeImport.value && data.is_import,
+            customs_declaration: canBeImport.value && data.customs_declaration !== '' ? data.customs_declaration : null,
+            customs_office: canBeImport.value && data.customs_office !== '' ? data.customs_office : null,
+            transport_document: canBeImport.value && data.transport_document !== '' ? data.transport_document : null,
+            origin_country: canBeImport.value && data.origin_country !== '' ? data.origin_country : null,
+            customs_date: canBeImport.value && data.customs_date !== '' ? data.customs_date : null,
             lines: data.lines.map((line) => ({
                 ...line,
                 warehouse_bin_id: line.warehouse_bin_id === '' ? null : line.warehouse_bin_id,
+                item_lot_id: line.item_lot_id === '' ? null : line.item_lot_id,
                 unit_cost_local: costIsEditable.value && line.unit_cost_local !== '' ? line.unit_cost_local : null,
                 description: line.description === '' ? null : line.description,
             })),
@@ -146,6 +220,51 @@ function submit() {
                 poder liquidarla desde "Facturas de proveedor".
             </p>
 
+            <template v-if="canBeImport">
+                <label class="check">
+                    <input v-model="form.is_import" type="checkbox">
+                    <span>
+                        <strong>Esta entrada es una importación</strong>
+                        <span class="muted small">
+                            Marcarla es lo que permite cargarle después los rubros de nacionalización —flete,
+                            aranceles, agencia—. Una compra local no los admite.
+                        </span>
+                    </span>
+                </label>
+
+                <div v-if="form.is_import" class="import-box">
+                    <div class="grid-3">
+                        <div class="field">
+                            <label>Número de DUA</label>
+                            <input v-model="form.customs_declaration" type="text" maxlength="40" placeholder="005-2026-123456">
+                            <span v-if="form.errors.customs_declaration" class="error">{{ form.errors.customs_declaration }}</span>
+                        </div>
+                        <div class="field">
+                            <label>Aduana</label>
+                            <select v-model="form.customs_office">
+                                <option value="">— Sin indicar —</option>
+                                <option v-for="(label, key) in customsOffices" :key="key" :value="key">{{ label }}</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Fecha del DUA</label>
+                            <input v-model="form.customs_date" type="date">
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="field">
+                            <label>Documento de transporte</label>
+                            <input v-model="form.transport_document" type="text" maxlength="60" placeholder="BL, guía aérea o carta de porte">
+                        </div>
+                        <div class="field">
+                            <label>País de origen</label>
+                            <input v-model="form.origin_country" type="text" maxlength="60">
+                        </div>
+                    </div>
+                </div>
+            </template>
+
             <p v-if="form.operation === 'count_adjustment'" class="hint">
                 En un conteo físico, la cantidad es la <strong>existencia contada</strong>, no la diferencia: el sistema
                 calcula el ajuste contra lo que tiene registrado. Una línea que coincide no genera movimiento.
@@ -158,6 +277,7 @@ function submit() {
                             <th>Artículo</th>
                             <th>Almacén</th>
                             <th v-if="anyWarehouseUsesBins()">Ubicación</th>
+                            <th v-if="anyItemTracksLots()">Lote</th>
                             <th class="right">{{ quantityLabel }}</th>
                             <th class="right">Costo unitario</th>
                             <th>Detalle</th>
@@ -167,22 +287,49 @@ function submit() {
                     <tbody>
                         <tr v-for="(line, index) in form.lines" :key="index">
                             <td>
-                                <select v-model="line.item_id" required>
+                                <select v-model="line.item_id" required @change="onLineContextChange(index)">
                                     <option value="" disabled>— Elegir —</option>
                                     <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
                                 </select>
                             </td>
                             <td>
-                                <select v-model="line.warehouse_id" required @change="line.warehouse_bin_id = ''">
+                                <select
+                                    v-model="line.warehouse_id"
+                                    required
+                                    @change="line.warehouse_bin_id = ''; onLineContextChange(index)"
+                                >
                                     <option value="" disabled>— Elegir —</option>
                                     <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
                                 </select>
                             </td>
                             <td v-if="anyWarehouseUsesBins()">
-                                <select v-if="usesBins(line.warehouse_id)" v-model="line.warehouse_bin_id" required>
+                                <select
+                                    v-if="usesBins(line.warehouse_id)"
+                                    v-model="line.warehouse_bin_id"
+                                    required
+                                    @change="onLineContextChange(index)"
+                                >
                                     <option value="" disabled>— Elegir —</option>
                                     <option v-for="b in binsOf(line.warehouse_id)" :key="b.id" :value="b.id">{{ b.code }}</option>
                                 </select>
+                                <span v-else class="muted small">—</span>
+                            </td>
+                            <td v-if="anyItemTracksLots()">
+                                <template v-if="tracksLots(line.item_id)">
+                                    <select v-model="line.item_lot_id" required>
+                                        <option value="" disabled>— Elegir —</option>
+                                        <option
+                                            v-for="(l, pos) in (lotOptions[index]?.lots ?? [])"
+                                            :key="l.id"
+                                            :value="l.id"
+                                        >
+                                            {{ l.code }}{{ l.expires_at ? ` · vence ${l.expires_at}` : '' }}{{ l.on_hand !== null ? ` · ${l.on_hand}` : '' }}{{ lotOptions[index]?.fefo && pos === 0 ? ' · sugerido' : '' }}
+                                        </option>
+                                    </select>
+                                    <span v-if="lotOptions[index] && !lotOptions[index].lots.length" class="error small">
+                                        Sin lotes disponibles acá.
+                                    </span>
+                                </template>
                                 <span v-else class="muted small">—</span>
                             </td>
                             <td>
@@ -234,6 +381,23 @@ function submit() {
 
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 1rem; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1rem; }
+
+.check { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.25rem 0 0.75rem; }
+.check span { display: flex; flex-direction: column; gap: 0.1rem; }
+.muted { color: var(--color-text-muted); }
+.small { font-size: 0.76rem; }
+
+/* Los datos del trámite aduanal, separados del resto del encabezado: son de
+   otra naturaleza y solo aparecen cuando la entrada es importación. */
+.import-box {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm, 6px);
+    padding: 0.85rem 1rem 0.1rem;
+    margin-bottom: 0.75rem;
+}
+
+@media (max-width: 720px) { .grid-3 { grid-template-columns: 1fr; } }
 
 .field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.75rem; }
 .field label { font-size: 0.78rem; color: var(--color-text-muted); }

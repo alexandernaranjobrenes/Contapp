@@ -5,6 +5,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
+use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Accounting\Services\TrialBalanceService;
 use App\Domains\Core\Models\Company;
@@ -44,7 +45,7 @@ function trialBalanceFixture(): array
     return compact('company', 'cash', 'sales', 'unused', 'documentType');
 }
 
-function postCashSale(array $fx, string $date, string $amount): \App\Domains\Accounting\Models\JournalEntry
+function postCashSale(array $fx, string $date, string $amount): JournalEntry
 {
     return app(PostJournalService::class)->post(
         $fx['company'], $fx['documentType'], new DateTime($date), new DateTime($date),

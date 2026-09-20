@@ -6,9 +6,10 @@ use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\PostJournalService;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 
-function setUpBalanceSheetCompany(\App\Domains\Core\Models\Company $company): array
+function setUpBalanceSheetCompany(Company $company): array
 {
     ExchangeRate::factory()->create([
         'company_id' => $company->id,
@@ -33,7 +34,7 @@ function setUpBalanceSheetCompany(\App\Domains\Core\Models\Company $company): ar
     return compact('cash', 'capital', 'documentType');
 }
 
-function postBalanceSheetContribution(\App\Domains\Core\Models\Company $company, ChartOfAccount $cash, ChartOfAccount $capital, DocumentType $documentType, string $date, string $amount): void
+function postBalanceSheetContribution(Company $company, ChartOfAccount $cash, ChartOfAccount $capital, DocumentType $documentType, string $date, string $amount): void
 {
     app(PostJournalService::class)->post(
         $company, $documentType, new DateTime($date), new DateTime($date),
@@ -82,7 +83,7 @@ it('aísla el balance general entre compañías', function () {
     ['cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = setUpBalanceSheetCompany($company);
     postBalanceSheetContribution($company, $cash, $capital, $documentType, '2026-01-15', '500');
 
-    $otherCompany = \App\Domains\Core\Models\Company::factory()->create();
+    $otherCompany = Company::factory()->create();
     $other = setUpBalanceSheetCompany($otherCompany);
     postBalanceSheetContribution($otherCompany, $other['cash'], $other['capital'], $other['documentType'], '2026-01-15', '9000');
 

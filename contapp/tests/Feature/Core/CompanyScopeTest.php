@@ -2,6 +2,7 @@
 
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Core\Support\CurrentCompany;
 
 it('no expone filas de ninguna compañía cuando no hay compañía activa', function () {
@@ -35,5 +36,5 @@ it('permite cruzar compañías explícitamente vía withoutGlobalScope', functio
     ChartOfAccount::factory()->create(['company_id' => $companyA->id]);
     ChartOfAccount::factory()->create(['company_id' => $companyB->id]);
 
-    expect(ChartOfAccount::withoutGlobalScope(\App\Domains\Core\Scopes\CompanyScope::class)->count())->toBe(2);
+    expect(ChartOfAccount::withoutGlobalScope(CompanyScope::class)->count())->toBe(2);
 });

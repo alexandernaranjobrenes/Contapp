@@ -26,8 +26,20 @@ class SalesDocument extends Model
         'total_taxed_services', 'total_exempt_services', 'total_exonerated_services', 'total_no_subject_services',
         'total_taxed_goods', 'total_exempt_goods', 'total_exonerated_goods', 'total_no_subject_goods',
         'total_sale', 'total_discounts', 'total_net_sale', 'total_tax', 'total_document',
-        'notes', 'status', 'journal_entry_id', 'inventory_document_id', 'created_by',
+        'notes', 'status', 'journal_entry_id', 'inventory_document_id',
+        'original_sales_document_id', 'sales_order_id', 'created_by',
     ];
+
+    /**
+     * Una nota de crédito corrige exactamente un comprobante: de ahí salen el
+     * costo con que devolver la mercancía y la partida contra la que acreditar.
+     */
+    public const CREDIT_NOTE = '03';
+
+    public function isCreditNote(): bool
+    {
+        return $this->fiscal_document_type === self::CREDIT_NOTE;
+    }
 
     protected function casts(): array
     {

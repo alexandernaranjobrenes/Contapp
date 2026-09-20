@@ -5,6 +5,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
+use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Exceptions\InvalidNettingLineException;
 use App\Domains\BusinessPartners\Exceptions\OpenItemAlreadyClosedException;
@@ -53,7 +54,7 @@ function cxcFixture(): array
     return compact('company', 'cash', 'cxc', 'sales', 'client', 'fve', 'trb');
 }
 
-function postInvoice(array $fx, string $amount = '1000'): \App\Domains\Accounting\Models\JournalEntry
+function postInvoice(array $fx, string $amount = '1000'): JournalEntry
 {
     return app(PostJournalService::class)->post(
         $fx['company'],

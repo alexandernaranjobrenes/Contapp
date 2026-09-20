@@ -2,7 +2,6 @@
 
 use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\JournalEntry;
-use App\Domains\Accounting\Models\JournalEntrySchedule;
 use App\Domains\Accounting\Services\JournalEntryScheduleService;
 use App\Domains\Core\Scopes\CompanyScope;
 

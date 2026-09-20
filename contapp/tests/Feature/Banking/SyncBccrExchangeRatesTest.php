@@ -5,8 +5,9 @@ use App\Domains\Banking\Contracts\BccrExchangeRateClient;
 use App\Domains\Banking\Services\SyncBccrExchangeRatesService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Scopes\CompanyScope;
+use Illuminate\Database\Eloquent\Builder;
 
-function unscopedExchangeRates(): \Illuminate\Database\Eloquent\Builder
+function unscopedExchangeRates(): Builder
 {
     return ExchangeRate::withoutGlobalScope(CompanyScope::class);
 }
@@ -17,7 +18,7 @@ function bindFakeBccrClient(?string $rate): void
     {
         public function __construct(private readonly ?string $rate) {}
 
-        public function fetchRate(string $currencyCode, \DateTimeInterface $date): ?string
+        public function fetchRate(string $currencyCode, DateTimeInterface $date): ?string
         {
             return $currencyCode === 'USD' ? $this->rate : null;
         }

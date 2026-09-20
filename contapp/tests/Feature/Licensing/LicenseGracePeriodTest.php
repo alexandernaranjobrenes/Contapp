@@ -20,7 +20,7 @@ it('maskedCode oculta los dos segmentos del medio del código de licencia', func
 });
 
 it('CurrentCompany::clear() también apaga el modo de gracia', function () {
-    $currentCompany = new CurrentCompany();
+    $currentCompany = new CurrentCompany;
     $currentCompany->set(1);
     $currentCompany->setGraceMode(true);
 

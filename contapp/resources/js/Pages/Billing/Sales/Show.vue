@@ -16,6 +16,10 @@ function quantity(value) {
 }
 
 const currency = props.document.currency?.code ?? '';
+
+// Una nota de crédito no se corrige con otra nota: lo que corresponde ahí es
+// una nota de débito, que es otro documento.
+const canCredit = props.document.fiscal_document_type !== '03' && props.document.status === 'posted';
 </script>
 
 <template>
@@ -24,6 +28,13 @@ const currency = props.document.currency?.code ?? '';
     <AppLayout :title="`${catalogs.documentTypes[document.fiscal_document_type]} ${document.consecutive}`">
         <template #actions>
             <a :href="route('sales-documents.xml', document.id)" class="btn btn-ghost">Descargar XML</a>
+            <Link
+                v-if="canCredit"
+                :href="route('sales-documents.create', { correct: document.id })"
+                class="btn btn-primary"
+            >
+                Copiar a → Nota de crédito
+            </Link>
         </template>
 
         <div class="card summary">

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Models\JournalEntrySchedule;
 use App\Domains\Accounting\Services\JournalEntryScheduleService;
@@ -81,7 +82,7 @@ it('"procesar ahora" genera un borrador preliminar cuando la próxima corrida ya
     $schedule = $service->create(
         $fx['company'],
         $fx['add'],
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
         'days',
         1,
         new DateTime(now()->subDay()->format('Y-m-d')),
@@ -102,7 +103,7 @@ it('cancela una programación activa, y "procesar ahora" ya no la toca', functio
     $schedule = $service->create(
         $fx['company'],
         $fx['add'],
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
         'days',
         1,
         new DateTime(now()->subDay()->format('Y-m-d')),
@@ -121,7 +122,7 @@ it('rechaza cancelar una programación que ya no está activa', function () {
     $schedule = $service->create(
         $fx['company'],
         $fx['add'],
-        [new \App\Domains\Accounting\DataTransferObjects\JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
+        [new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 100, credit: 0, allowZeroAmount: true)],
         'days',
         1,
         new DateTime(now()->format('Y-m-d')),

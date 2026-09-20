@@ -3,9 +3,16 @@
 namespace App\Domains\BusinessPartners\Support;
 
 /**
+ * NOTA DE UBICACIÓN: esta clase ya no es de BusinessPartners — desde que
+ * InventoryAgingService la usa, es un utilitario genérico de cortes por día
+ * y su namespace quedó desactualizado. Mover el archivo a un Support
+ * compartido es un refactor con alcance en tres dominios y sus tests, y se
+ * deja anotado acá en vez de hacerlo de contrabando dentro de otra entrega.
+ *
  * Cortes de días configurables, compartidos entre AgingService (antigüedad
- * de saldos: días de ATRASO desde el vencimiento) y CashFlowProjectionService
- * (proyección: días HASTA el vencimiento) — antes cada uno tenía sus buckets
+ * de saldos: días de ATRASO desde el vencimiento), CashFlowProjectionService
+ * (proyección: días HASTA el vencimiento) e InventoryAgingService
+ * (antigüedad de inventario: días SIN ROTAR) — antes cada uno tenía sus buckets
  * fijos en código (30/60/90 y 15/30/60/90 respectivamente); ahora el usuario
  * puede definir sus propios cortes, y ambos reportes generan sus columnas
  * dinámicamente a partir de la misma lista de enteros ascendentes.
@@ -29,6 +36,14 @@ class DayBucketScheme
     public const AGING_DEFAULT = [30, 60, 90];
 
     public const CASH_FLOW_DEFAULT = [15, 30, 60, 90];
+
+    /**
+     * Inventario: cortes más largos que los de cartera. Una factura a 90 días
+     * ya está muy vencida; una existencia de 90 días puede ser rotación
+     * normal, y lo que interesa cazar es lo que lleva medio año o más sin
+     * moverse.
+     */
+    public const INVENTORY_DEFAULT = [30, 60, 90, 180, 360];
 
     private const MAX_BOUNDARIES = 12;
 
@@ -138,6 +153,46 @@ class DayBucketScheme
         $prev = -1;
         foreach ($this->boundaries as $b) {
             if ($daysUntilDue <= $b) {
+                return "d_{$this->plus($prev)}_{$b}";
+            }
+            $prev = $b;
+        }
+
+        return 'over';
+    }
+
+    /**
+     * Antigüedad de inventario: días que una existencia lleva SIN ROTAR.
+     *
+     * Tercera lectura de la misma lista de cortes. No reusa overdueLabels()
+     * ni untilDueLabels() porque ninguna de las dos calza: los días sin rotar
+     * nunca son negativos, así que "Vigente" y "Vencido" —los buckets que
+     * esas dos reservan para el signo— quedarían siempre vacíos y confundirían
+     * la lectura del reporte.
+     *
+     * @return array<string, string>
+     */
+    public function idleLabels(): array
+    {
+        $labels = [];
+        $prev = -1;
+
+        foreach ($this->boundaries as $b) {
+            $labels["d_{$this->plus($prev)}_{$b}"] = "{$this->plus($prev)}-{$b} días";
+            $prev = $b;
+        }
+
+        $labels['over'] = "+{$prev} días";
+
+        return $labels;
+    }
+
+    public function resolveIdleKey(int $daysIdle): string
+    {
+        $prev = -1;
+
+        foreach ($this->boundaries as $b) {
+            if ($daysIdle <= $b) {
                 return "d_{$this->plus($prev)}_{$b}";
             }
             $prev = $b;

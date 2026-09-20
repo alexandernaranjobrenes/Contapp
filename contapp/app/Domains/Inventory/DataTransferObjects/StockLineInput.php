@@ -30,6 +30,10 @@ class StockLineInput
         // Obligatoria si el almacén usa ubicaciones, prohibida si no
         // (lo valida PostStockMovementService contra warehouses.uses_bins).
         public readonly ?int $warehouseBinId = null,
+        // Obligatorio si el artículo maneja lotes, prohibido si no (lo valida
+        // ItemLotResolver contra items.tracks_lots). Último parámetro y con
+        // default: los call-sites que no manejan lotes no cambian.
+        public readonly ?int $itemLotId = null,
     ) {
         $this->quantity = number_format((float) $quantity, 6, '.', '');
         $this->unitCostLocal = $unitCostLocal === null ? null : number_format((float) $unitCostLocal, 6, '.', '');

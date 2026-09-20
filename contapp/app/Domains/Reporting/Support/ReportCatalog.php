@@ -23,6 +23,30 @@ final class ReportCatalog
     public static function definitions(): array
     {
         return [
+            'inventory-aging' => [
+                'label' => 'Antigüedad de inventario',
+                'route_index' => 'reports.inventory-aging.index',
+                'route_export' => 'reports.inventory-aging.export',
+                'route_export_pdf' => 'reports.inventory-aging.export-pdf',
+                'parameters' => [
+                    'as_of' => ['type' => 'date', 'required' => true],
+                    'buckets' => ['type' => 'text', 'required' => false],
+                    'warehouse_id' => ['type' => 'integer', 'required' => false],
+                    'item_group_id' => ['type' => 'integer', 'required' => false],
+                ],
+            ],
+            'inventory-valuation' => [
+                'label' => 'Existencias valorizadas',
+                'route_index' => 'reports.inventory-valuation.index',
+                'route_export' => 'reports.inventory-valuation.export',
+                'route_export_pdf' => 'reports.inventory-valuation.export-pdf',
+                'parameters' => [
+                    'as_of' => ['type' => 'date', 'required' => true],
+                    'warehouse_id' => ['type' => 'integer', 'required' => false],
+                    'item_group_id' => ['type' => 'integer', 'required' => false],
+                    'hide_zero' => ['type' => 'boolean', 'required' => false],
+                ],
+            ],
             'trial-balance' => [
                 'label' => 'Balance de comprobación',
                 'route_index' => 'reports.trial-balance.index',

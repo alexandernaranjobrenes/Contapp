@@ -36,6 +36,18 @@ class SalesDocumentInput
         /** @var array<int, array<string, mixed>> */
         public readonly array $references = [],
         public readonly ?string $notes = null,
+        /**
+         * Comprobante nuestro que esta nota de crédito corrige. Es distinto de
+         * $references, que es la referencia fiscal que exige Hacienda y puede
+         * apuntar a un documento externo: este enlace es el que permite
+         * devolver la mercancía al costo con que salió.
+         */
+        public readonly ?int $originalSalesDocumentId = null,
+        /**
+         * Orden de pedido que esta factura cumple. Al facturarla se libera la
+         * reserva de lo entregado, antes de rebajar la existencia.
+         */
+        public readonly ?int $salesOrderId = null,
     ) {
         $this->exchangeRate = number_format((float) $exchangeRate, 5, '.', '');
     }

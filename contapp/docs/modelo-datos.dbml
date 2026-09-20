@@ -709,6 +709,7 @@ Table item_warehouses {
   item_id bigint [ref: > items.id]
   warehouse_id bigint [ref: > warehouses.id]
   on_hand decimal(18,6) [default: 0]
+  reserved decimal(18,6) [default: 0, note: 'apartado por órdenes de pedido abiertas. Disponible = on_hand - reserved: TODA salida (venta, traslado, emisión) valida contra lo libre, no contra la existencia (decisiones 2026-09-19)']
 
   indexes {
     (item_id, warehouse_id) [unique]
@@ -725,7 +726,7 @@ Table gl_determinations {
   company_id bigint [ref: > companies.id]
   scope_level varchar [note: 'company|warehouse|item_group|item']
   scope_id bigint [note: 'null solo cuando scope_level=company']
-  category varchar [note: 'inventory|gr_ir_clearing|cogs|stock_increase|stock_decrease|landed_cost_clearing|price_difference|wip|production_variance|write_down_allowance|write_down_expense']
+  category varchar [note: 'inventory|gr_ir_clearing|cogs|stock_increase|stock_decrease|landed_cost_clearing|price_difference|wip|production_variance|write_down_allowance|write_down_expense']  // landed_cost_clearing activa desde 2026-09-20
   account_id bigint [ref: > chart_of_accounts.id]
   cost_allocation_rule_id bigint [ref: > cost_allocation_rules.id, note: 'obligatorio si la cuenta tiene requires_cost_center']
   created_at timestamp
@@ -740,16 +741,23 @@ Table inventory_documents {
   id bigint [pk, increment]
   company_id bigint [ref: > companies.id]
   document_type_id bigint [ref: > document_types.id]
-  journal_entry_id bigint [ref: > journal_entries.id, note: 'null SOLO en un traslado cuyos almacenes comparten cuenta: no cambia el valor del inventario, así que no hay nada que contabilizar (decisiones 2026-09-15)']
-  invoice_journal_entry_id bigint [ref: > journal_entries.id, note: 'asiento de la factura que liquidó la cuenta puente GR/IR; null = pendiente de facturar']
-  operation varchar [note: 'goods_receipt|purchase_receipt|goods_issue|count_adjustment|production_issue|production_receipt|sales_issue|transfer']
+  journal_entry_id bigint [ref: > journal_entries.id, note: 'un traslado SÍ genera asiento, con la misma cuenta al debe y al haber (decisiones 2026-09-20); queda null solo si el valor trasladado es cero, y en documentos históricos anteriores a esa regla']
+  invoice_journal_entry_id bigint [ref: > journal_entries.id, note: 'en una recepción, el asiento de la factura que liquidó la cuenta puente GR/IR (null = pendiente de facturar); en una devolución, el asiento de la nota de crédito que la liquidó']
+  operation varchar [note: 'goods_receipt|purchase_receipt|goods_issue|count_adjustment|production_issue|production_receipt|sales_issue|sales_return|transfer|purchase_return|purchase_receipt_void']
   production_order_id bigint [ref: > production_orders.id, note: 'obligatorio en las dos operaciones de producción, null en el resto']
+  source_document_id bigint [ref: > inventory_documents.id, note: 'recepción de origen; solo en purchase_return. Es el tope de cuánto se puede devolver y contra qué factura acredita la nota']
   document_date date
   posting_date date [note: 'fecha rectora, la misma del asiento']
   description varchar
-  business_partner_id bigint [ref: > business_partners.id, note: 'proveedor; obligatorio en purchase_receipt, null en el resto']
-  status varchar [default: 'posted', note: 'posted|voided — sin borrador, ver Fase 0']
-  reversal_of_id bigint [ref: > inventory_documents.id]
+  business_partner_id bigint [ref: > business_partners.id, note: 'proveedor; obligatorio en purchase_receipt y purchase_return, null en el resto']
+  is_import boolean [default: false, note: 'solo una entrada por compra puede serlo. Es lo que habilita asignarle rubros de nacionalización: sin la marca, PostLandedCostService los rechaza (decisiones 2026-09-20)']
+  customs_declaration varchar [note: 'número de DUA']
+  customs_office varchar [note: 'aduana de ingreso; ver InventoryDocument::CUSTOMS_OFFICES']
+  transport_document varchar [note: 'conocimiento de embarque, guía aérea o carta de porte']
+  origin_country varchar
+  customs_date date [note: 'fecha del DUA; puede diferir de la de recepción']
+  status varchar [default: 'posted', note: 'posted|voided — sin borrador, ver Fase 0. Un documento voided sale de pendingInvoice() y ya no admite factura']
+  reversal_of_id bigint [ref: > inventory_documents.id, note: 'documento que este anula; solo en purchase_receipt_void. El original queda status=voided y nunca se borra']
   created_by bigint [ref: > users.id]
   posted_by bigint [ref: > users.id]
   posted_at timestamp
@@ -789,7 +797,7 @@ Table landed_cost_documents {
   document_type_id bigint [ref: > document_types.id]
   journal_entry_id bigint [ref: > journal_entries.id]
   inventory_document_id bigint [ref: > inventory_documents.id, note: 'la recepción cuyo costo se incrementa']
-  business_partner_id bigint [ref: > business_partners.id, note: 'quien cobra el flete/arancel']
+  business_partner_id bigint [ref: > business_partners.id, note: 'quien cobra el flete/arancel en la vía directa. NULL cuando el costeo se financió con rubros acumulados: ahí puede haber varios proveedores y cada uno vive en import_cost_documents (decisiones 2026-09-20)']
   document_date date
   posting_date date
   amount decimal(18,2) [note: 'total a repartir, en moneda local']
@@ -876,6 +884,42 @@ Table item_bins {
 
   indexes {
     (item_id, warehouse_bin_id) [unique]
+  }
+}
+
+// Fase 8 — Lotes. Capa de TRAZABILIDAD, no de valoración: un lote no guarda
+// costo y el motor de costeo no lo mira (el promedio sigue siendo global por
+// artículo). A diferencia de las ubicaciones, que son propiedad del almacén,
+// los lotes son propiedad del ARTÍCULO (items.tracks_lots).
+Table item_lots {
+  id bigint [pk, increment]
+  item_id bigint [ref: > items.id]
+  code varchar(40)
+  expires_at date [null, note: 'null = no caduca']
+  status varchar [default: 'active', note: 'active | blocked (retenido por calidad)']
+  notes varchar [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (item_id, code) [unique]
+    (item_id, expires_at)
+  }
+}
+
+// Desglosa item_warehouses y item_bins: la suma de los lotes de un almacén
+// iguala su on_hand, y la de los lotes de una ubicación iguala la suya.
+Table item_lot_stock {
+  id bigint [pk, increment]
+  item_lot_id bigint [ref: > item_lots.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  warehouse_bin_id bigint [null, ref: > warehouse_bins.id]
+  on_hand decimal(18,6) [default: 0]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (item_lot_id, warehouse_id, warehouse_bin_id) [unique, name: 'item_lot_stock_unique']
   }
 }
 
@@ -1032,6 +1076,8 @@ Table sales_documents {
   status varchar [default: 'draft', note: 'draft|posted|voided']
   journal_entry_id bigint [ref: > journal_entries.id, note: 'asiento de la venta']
   inventory_document_id bigint [ref: > inventory_documents.id, note: 'salida con su costo de ventas; null si no mueve stock']
+  original_sales_document_id bigint [ref: > sales_documents.id, note: 'comprobante que esta nota de crédito corrige. Distinto de la referencia fiscal (sales_references), que es texto libre: este enlace es el que trae el costo al que devolver la mercancía y la partida de CxC a cancelar']
+  sales_order_id bigint [ref: > sales_orders.id, note: 'pedido que esta factura cumple; null en una venta sin pedido previo']
   created_by bigint [ref: > users.id]
   created_at timestamp
   updated_at timestamp
@@ -1120,4 +1166,132 @@ Table sales_references {
   reason varchar [note: 'entre 3 y 180 caracteres']
   created_at timestamp
   updated_at timestamp
+}
+
+// Órdenes de pedido: el compromiso con el cliente ANTES de la factura. No
+// tienen asiento ni consecutivo fiscal —no son un hecho económico, son una
+// promesa— pero sí apartan mercancía vía item_warehouses.reserved
+// (decisiones 2026-09-19).
+Table sales_orders {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  number varchar [note: 'consecutivo interno por compañía; NO es fiscal']
+  business_partner_id bigint [ref: > business_partners.id, note: 'cliente; obligatorio']
+  order_date date
+  delivery_date date
+  status varchar [default: 'open', note: 'open|invoiced|cancelled — solo una orden open reserva']
+  description varchar
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, number) [unique]
+    (company_id, status)
+  }
+}
+
+Table sales_order_lines {
+  id bigint [pk, increment]
+  sales_order_id bigint [ref: > sales_orders.id]
+  line_number int
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  quantity decimal(18,6)
+  quantity_invoiced decimal(18,6) [default: 0, note: 'la reserva viva es quantity - quantity_invoiced']
+  unit_price decimal(18,5) [default: 0, note: 'precio pactado, informativo: la factura manda']
+  description varchar
+
+  indexes {
+    (item_id, warehouse_id)
+  }
+}
+
+// Toma física de inventario. Un conteo es un PROCESO: se congela la
+// existencia teórica al corte, se imprime, se cuenta en papel y recién
+// después se ajusta. El ajuste lo genera count_adjustment vía
+// PostStockMovementService (decisiones 2026-09-20).
+Table stock_counts {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  number varchar [note: 'consecutivo interno por compañía; no es fiscal']
+  document_type_id bigint [ref: > document_types.id, note: 'con el que se contabiliza el ajuste al cerrar']
+  cutoff_date date [note: 'fecha a la que se congeló la existencia teórica, leída del kardex y NO de item_warehouses']
+  warehouse_id bigint [ref: > warehouses.id, note: 'un almacén admite una sola toma abierta a la vez']
+  item_group_id bigint [ref: > item_groups.id, note: 'familia contada; null = todas. Permite repartir el inventario en varias jornadas']
+  blind boolean [default: false, note: 'conteo a ciegas: la hoja impresa oculta la existencia teórica para no sesgar el conteo']
+  status varchar [default: 'open', note: 'open|posted|cancelled']
+  inventory_document_id bigint [ref: > inventory_documents.id, note: 'ajuste generado al cerrar; null si el conteo cuadró y no hubo nada que ajustar']
+  description varchar
+  created_by bigint [ref: > users.id]
+  posted_by bigint [ref: > users.id]
+  posted_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, number) [unique]
+    (company_id, status)
+  }
+}
+
+Table stock_count_lines {
+  id bigint [pk, increment]
+  stock_count_id bigint [ref: > stock_counts.id]
+  line_number int
+  item_id bigint [ref: > items.id]
+  warehouse_id bigint [ref: > warehouses.id]
+  warehouse_bin_id bigint [ref: > warehouse_bins.id, note: 'solo si el almacén usa ubicaciones']
+  theoretical_quantity decimal(18,6) [note: 'lo que el kardex decía al corte; congelado al abrir. Al cerrar se verifica que siga vigente']
+  counted_quantity decimal(18,6) [note: 'lo contado; null mientras la línea siga pendiente. Cerrar exige todas contadas']
+  unit_cost_local decimal(18,6) [default: 0, note: 'costo promedio congelado al abrir, para valorar la diferencia']
+  description varchar
+
+  indexes {
+    (stock_count_id, line_number)
+  }
+}
+
+// Costos de nacionalización, fase 1: el rubro de cada proveedor acumulado
+// contra la transitoria antes de saber a qué importación se carga. La fase 2
+// es landed_cost_documents, que ya existía (decisiones 2026-09-20).
+Table import_cost_documents {
+  id bigint [pk, increment]
+  company_id bigint [ref: > companies.id]
+  number varchar [note: 'consecutivo interno por compañía; no es fiscal']
+  document_type_id bigint [ref: > document_types.id]
+  journal_entry_id bigint [ref: > journal_entries.id, note: 'Debe transitoria / Haber CxP del proveedor']
+  business_partner_id bigint [ref: > business_partners.id, note: 'quién prestó el servicio de nacionalización']
+  concept varchar [note: 'flete|seguro|aranceles|almacenaje|agencia|transporte_interno|otros']
+  document_date date
+  posting_date date
+  due_date date [note: 'la deuda con la agencia es real desde la fase 1']
+  amount decimal(18,2)
+  allocated_amount decimal(18,2) [default: 0, note: 'ya cargado a importaciones; lo pendiente es amount - allocated_amount']
+  status varchar [default: 'pending', note: 'pending|partial|allocated|cancelled']
+  description varchar
+  created_by bigint [ref: > users.id]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (company_id, number) [unique]
+    (company_id, status)
+  }
+}
+
+// Es tabla y no columna porque la relación es de muchos a muchos: un flete se
+// reparte entre varios contenedores y una importación acumula flete,
+// aranceles y agencia. De acá sale la trazabilidad en las dos direcciones.
+Table import_cost_allocations {
+  id bigint [pk, increment]
+  import_cost_document_id bigint [ref: > import_cost_documents.id]
+  landed_cost_document_id bigint [ref: > landed_cost_documents.id]
+  amount decimal(18,2) [note: 'cuánto de este rubro se asignó a esa importación']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (import_cost_document_id, landed_cost_document_id)
+  }
 }

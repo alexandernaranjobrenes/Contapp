@@ -34,6 +34,15 @@ class LandedCostDocument extends Model
         return $date->format('Y-m-d');
     }
 
+    /**
+     * Rubros acumulados que financiaron este costeo. Vacío cuando el costo se
+     * registró con la vía directa (factura del proveedor al momento).
+     */
+    public function importCostAllocations(): HasMany
+    {
+        return $this->hasMany(ImportCostAllocation::class, 'landed_cost_document_id');
+    }
+
     public function allocations(): HasMany
     {
         return $this->hasMany(LandedCostAllocation::class);

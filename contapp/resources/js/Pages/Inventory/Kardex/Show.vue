@@ -9,14 +9,23 @@ const props = defineProps({
     warehouses: { type: Array, default: () => [] },
     selectedWarehouseId: { type: Number, default: null },
     movements: { type: Array, default: () => [] },
+    from: { type: String, default: null },
+    to: { type: String, default: null },
+    opening: { type: Object, default: null },
 });
 
 const warehouseFilter = ref(props.selectedWarehouseId ?? '');
+const from = ref(props.from ?? '');
+const to = ref(props.to ?? '');
 
 function applyFilter() {
     router.get(
         route('items.kardex', props.item.id),
-        warehouseFilter.value === '' ? {} : { warehouse_id: warehouseFilter.value },
+        {
+            warehouse_id: warehouseFilter.value === '' ? undefined : warehouseFilter.value,
+            from: from.value === '' ? undefined : from.value,
+            to: to.value === '' ? undefined : to.value,
+        },
         { preserveState: true, preserveScroll: true },
     );
 }
@@ -33,7 +42,10 @@ function quantity(value) {
 // un almacén coincide con balance_quantity del kardex; sin filtro no, porque
 // esa columna es el saldo de su propio almacén, no el consolidado.
 const rows = computed(() => {
-    let running = 0;
+    // Arranca en el saldo inicial, no en cero: con un rango de fechas, los
+    // movimientos anteriores están resumidos en esa línea y el saldo
+    // corriente tiene que continuarla.
+    let running = Number(props.opening?.quantity ?? 0);
 
     return props.movements.map((m) => {
         running += (m.direction === 'in' ? 1 : -1) * Number(m.quantity);
@@ -59,6 +71,9 @@ const totalOut = computed(() => props.movements
                 <option value="">Todos los almacenes</option>
                 <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
             </select>
+            <input v-model="from" type="date" class="filter-select" title="Desde">
+            <input v-model="to" type="date" class="filter-select" title="Hasta">
+            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
         </template>
 
         <div class="card summary">
@@ -103,6 +118,18 @@ const totalOut = computed(() => props.movements
                         </tr>
                     </thead>
                     <tbody>
+                        <tr v-if="opening" class="opening-row">
+                            <td class="num">{{ from }}</td>
+                            <td colspan="2"><strong>Saldo inicial</strong></td>
+                            <td class="num right">—</td>
+                            <td class="num right">{{ money(opening.unit_cost_local) }}</td>
+                            <td class="num right">{{ money(opening.value_local) }}</td>
+                            <td class="num right">—</td>
+                            <td class="num right">—</td>
+                            <td class="num right"><strong>{{ quantity(opening.quantity) }}</strong></td>
+                            <td class="num right">—</td>
+                            <td>—</td>
+                        </tr>
                         <tr v-for="m in rows" :key="m.id">
                             <td class="num">{{ m.posting_date }}</td>
                             <td class="code-cell">{{ m.warehouse_code }}</td>
@@ -146,6 +173,7 @@ const totalOut = computed(() => props.movements
 </template>
 
 <style scoped>
+.opening-row { background: #f5f7fa; }
 .filter-select {
     background: var(--color-surface);
     border: 1px solid var(--color-border);

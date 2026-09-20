@@ -19,6 +19,11 @@ class StockTransferLineInput
         public readonly ?int $fromWarehouseBinId = null,
         public readonly ?int $toWarehouseBinId = null,
         public readonly ?string $description = null,
+        // UN solo lote para las dos puntas: un traslado mueve de lugar el
+        // lote L, no lo convierte en otro. Poder indicar un lote distinto en
+        // destino sería un cambio de identidad encubierto y rompería la
+        // trazabilidad, que es toda la razón de manejar lotes.
+        public readonly ?int $itemLotId = null,
     ) {
         $this->quantity = number_format((float) $quantity, 6, '.', '');
 

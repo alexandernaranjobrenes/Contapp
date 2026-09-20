@@ -3,9 +3,9 @@
 use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\AccountReconciliation;
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
-use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;

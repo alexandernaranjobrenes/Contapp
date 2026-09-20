@@ -22,7 +22,7 @@ class SupplierInvoiceController extends Controller
      * Bandeja de recepciones pendientes de facturar: el saldo vivo de la
      * cuenta puente GR/IR, visto desde el lado logístico.
      */
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $pending = InventoryDocument::pendingInvoice()
             ->with(['businessPartner:id,code,name', 'documentType:id,code', 'journalEntry:id,document_number'])
@@ -30,7 +30,13 @@ class SupplierInvoiceController extends Controller
             ->orderBy('posting_date')
             ->get();
 
+        // El "Copiar a" de una recepción llega con ?receipt=N: la bandeja es la
+        // misma, pero abre el formulario ya apuntando a ese documento. Si la
+        // recepción ya no está pendiente, el parámetro se ignora.
+        $preselected = $request->integer('receipt') ?: null;
+
         return Inertia::render('Inventory/SupplierInvoices/Index', [
+            'preselected' => $pending->contains('id', $preselected) ? $preselected : null,
             'pending' => $pending->map(fn (InventoryDocument $d) => [
                 'id' => $d->id,
                 'posting_date' => $d->posting_date->format('Y-m-d'),

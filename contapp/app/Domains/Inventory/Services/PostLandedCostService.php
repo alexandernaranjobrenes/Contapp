@@ -11,6 +11,8 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Inventory\Exceptions\InvalidLandedCostException;
+use App\Domains\Inventory\Models\ImportCostAllocation;
+use App\Domains\Inventory\Models\ImportCostDocument;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemWarehouse;
@@ -31,10 +33,17 @@ use Illuminate\Support\Facades\DB;
  * deja fila en el kardex (`direction = 'revaluation'`, cantidad cero), porque
  * si no, el promedio cambiaría sin ningún registro que lo explique.
  *
- * Se acredita directo a la cuenta de control del proveedor, no a una cuenta
- * puente: el caso normal es registrar el costo CUANDO llega su factura. La
- * variante de provisionarlo antes es el mismo patrón que GR/IR y se agregará
- * si aparece la necesidad (por eso `landed_cost_clearing` sigue sin activarse).
+ * El crédito depende de quién financia el costo, y son dos caminos:
+ *
+ *   FACTURA DIRECTA — se acredita la cuenta de control del proveedor y se abre
+ *   partida en CxP. Es el caso simple: la factura del transportista llega
+ *   cuando ya se sabe sobre qué importación cae.
+ *
+ *   RUBROS ACUMULADOS — se acredita la transitoria `landed_cost_clearing`.
+ *   La deuda con la agencia ya se abrió al acumular el rubro (ver
+ *   PostImportCostService); acá solo se liquida esa transitoria contra el
+ *   inventario. Un costeo puede consumir varios rubros y un rubro puede
+ *   repartirse entre varias importaciones (decisiones 2026-09-20).
  */
 class PostLandedCostService
 {
@@ -44,18 +53,50 @@ class PostLandedCostService
         private readonly StockRevaluationSplitter $splitter,
     ) {}
 
+    /**
+     * @param  array<int, int|float|string>  $accruals  [id de rubro acumulado => monto a asignar].
+     *                                                  Cuando viene lleno, el costo NO se le debe a un
+     *                                                  proveedor: ya se le debía, y lo que se hace acá es
+     *                                                  liquidar la transitoria contra el inventario. En ese
+     *                                                  caso $businessPartnerId y $amount se ignoran, porque
+     *                                                  los rubros ya traen su proveedor y su monto.
+     */
     public function post(
         Company $company,
         DocumentType $documentType,
         InventoryDocument $receipt,
-        int $businessPartnerId,
+        ?int $businessPartnerId,
         int|float|string $amount,
         \DateTimeInterface $documentDate,
         \DateTimeInterface $postingDate,
         ?\DateTimeInterface $dueDate = null,
         ?string $description = null,
         ?int $createdBy = null,
+        array $accruals = [],
     ): LandedCostDocument {
+        $fromAccruals = ! empty($accruals);
+
+        if (! $fromAccruals && $businessPartnerId === null) {
+            throw new InvalidLandedCostException(
+                'Un costo de importación necesita su proveedor, o los rubros acumulados que lo financian.'
+            );
+        }
+
+        // Los rubros acumulados son costos de NACIONALIZACIÓN: solo tienen
+        // sentido sobre una entrada marcada como importación. Sin este corte,
+        // el flete de un contenedor podría terminar cargado a una compra
+        // hecha en San José.
+        if ($fromAccruals && ! $receipt->is_import) {
+            throw new InvalidLandedCostException(
+                'Los rubros de nacionalización solo se pueden asignar a una entrada marcada como importación. '.
+                'Si esta compra sí lo es, marcala al registrarla; si no, usá la vía directa de costos de importación.'
+            );
+        }
+
+        if ($fromAccruals) {
+            $amount = $this->accrualsTotal($accruals);
+        }
+
         if ($receipt->company_id !== $company->id) {
             throw new \InvalidArgumentException('La recepción no pertenece a la compañía indicada.');
         }
@@ -74,7 +115,7 @@ class PostLandedCostService
             throw new InvalidLandedCostException('El costo de importación debe ser mayor a cero.');
         }
 
-        return DB::transaction(function () use ($company, $documentType, $receipt, $businessPartnerId, $total, $documentDate, $postingDate, $dueDate, $description, $createdBy) {
+        return DB::transaction(function () use ($company, $documentType, $receipt, $businessPartnerId, $total, $documentDate, $postingDate, $dueDate, $description, $createdBy, $accruals, $fromAccruals) {
             // El almacén de cada línea lo necesita el resolver de la matriz
             // (es uno de sus niveles de precedencia).
             $receipt->loadMissing('lines.warehouse');
@@ -83,12 +124,22 @@ class PostLandedCostService
                 throw new InvalidLandedCostException('La recepción no tiene líneas sobre las que repartir el costo.');
             }
 
-            $supplier = BusinessPartner::withoutGlobalScope(CompanyScope::class)
-                ->where('company_id', $company->id)
-                ->find($businessPartnerId);
+            // Financiado por rubros acumulados: se bloquean y se valida que
+            // cada uno tenga saldo suficiente ANTES de escribir nada.
+            $lockedAccruals = $fromAccruals
+                ? $this->lockAccruals($company, $accruals)
+                : [];
 
-            if (! $supplier) {
-                throw new InvalidLandedCostException("El socio de negocio id {$businessPartnerId} no existe en la compañía.");
+            $supplier = null;
+
+            if (! $fromAccruals) {
+                $supplier = BusinessPartner::withoutGlobalScope(CompanyScope::class)
+                    ->where('company_id', $company->id)
+                    ->find($businessPartnerId);
+
+                if (! $supplier) {
+                    throw new InvalidLandedCostException("El socio de negocio id {$businessPartnerId} no existe en la compañía.");
+                }
             }
 
             $itemIds = $receipt->lines->pluck('item_id')->unique()->values()->all();
@@ -182,17 +233,37 @@ class PostLandedCostService
                 );
             }
 
-            $journalLines[] = new JournalLineInput(
-                accountId: $supplier->gl_account_id,
-                currencyId: $company->local_currency_id,
-                debit: 0,
-                credit: $total,
-                description: $description ?? "Costos de importación — {$supplier->name}",
-                businessPartnerId: $supplier->id,
-                dueDate: $dueDate?->format('Y-m-d'),
-                opensItem: true,
-                frozenExchangeRate: $rate,
-            );
+            // El crédito depende de quién financia el costo. Con factura
+            // directa se le debe al proveedor y se abre partida; con rubros
+            // acumulados la deuda ya se abrió cuando se acumularon, y lo que
+            // toca acá es liquidar la transitoria contra el inventario.
+            if ($fromAccruals) {
+                $clearing = $this->glResolver->resolveForCompany(
+                    $rules, 'landed_cost_clearing', $documentType, 'credit'
+                );
+
+                $journalLines[] = new JournalLineInput(
+                    accountId: $clearing['account_id'],
+                    currencyId: $company->local_currency_id,
+                    debit: 0,
+                    credit: $total,
+                    description: $description ?? 'Liquidación de costos de importación por asignar',
+                    costAllocationRuleId: $clearing['cost_allocation_rule_id'],
+                    frozenExchangeRate: $rate,
+                );
+            } else {
+                $journalLines[] = new JournalLineInput(
+                    accountId: $supplier->gl_account_id,
+                    currencyId: $company->local_currency_id,
+                    debit: 0,
+                    credit: $total,
+                    description: $description ?? "Costos de importación — {$supplier->name}",
+                    businessPartnerId: $supplier->id,
+                    dueDate: $dueDate?->format('Y-m-d'),
+                    opensItem: true,
+                    frozenExchangeRate: $rate,
+                );
+            }
 
             $entry = $this->postJournalService->post(
                 company: $company,
@@ -210,7 +281,10 @@ class PostLandedCostService
                 'document_type_id' => $documentType->id,
                 'journal_entry_id' => $entry->id,
                 'inventory_document_id' => $receipt->id,
-                'business_partner_id' => $supplier->id,
+                // Con rubros acumulados el costo puede venir de varios
+                // proveedores a la vez, así que no hay uno solo que anotar:
+                // quién prestó cada servicio vive en los rubros.
+                'business_partner_id' => $supplier?->id,
                 'document_date' => $documentDate->format('Y-m-d'),
                 'posting_date' => $postingDate->format('Y-m-d'),
                 'amount' => $total,
@@ -284,8 +358,91 @@ class PostLandedCostService
                 ]);
             }
 
+            // Recién acá se descuenta el saldo de cada rubro: si algo de lo
+            // anterior falla, la transacción entera se revierte y los rubros
+            // quedan intactos, disponibles para volver a asignarse.
+            foreach ($lockedAccruals as $accrual) {
+                ImportCostAllocation::create([
+                    'import_cost_document_id' => $accrual['document']->id,
+                    'landed_cost_document_id' => $document->id,
+                    'amount' => $accrual['amount'],
+                ]);
+
+                $allocated = bcadd((string) $accrual['document']->allocated_amount, $accrual['amount'], 2);
+
+                $accrual['document']->update([
+                    'allocated_amount' => $allocated,
+                    'status' => bccomp($allocated, (string) $accrual['document']->amount, 2) >= 0
+                        ? 'allocated'
+                        : 'partial',
+                ]);
+            }
+
             return $document->load('allocations');
         });
+    }
+
+    /**
+     * @param  array<int, int|float|string>  $accruals
+     */
+    private function accrualsTotal(array $accruals): string
+    {
+        $total = '0.00';
+
+        foreach ($accruals as $amount) {
+            $total = bcadd($total, number_format((float) $amount, 2, '.', ''), 2);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Bloquea los rubros y valida que cada uno tenga saldo suficiente. El lock
+     * ordenado por id evita que dos costeos simultáneos se lleven el mismo
+     * saldo pendiente.
+     *
+     * @param  array<int, int|float|string>  $accruals
+     * @return array<int, array{document: ImportCostDocument, amount: string}>
+     */
+    private function lockAccruals(Company $company, array $accruals): array
+    {
+        $documents = ImportCostDocument::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->whereIn('id', array_keys($accruals))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        $locked = [];
+
+        foreach ($accruals as $id => $amount) {
+            $document = $documents->get((int) $id);
+
+            if (! $document) {
+                throw new InvalidLandedCostException("El rubro de importación id {$id} no existe en la compañía.");
+            }
+
+            if ($document->status === 'cancelled') {
+                throw new InvalidLandedCostException("El rubro #{$document->number} está cancelado; no se puede asignar.");
+            }
+
+            $requested = number_format((float) $amount, 2, '.', '');
+
+            if (bccomp($requested, '0.00', 2) <= 0) {
+                throw new InvalidLandedCostException("El monto a asignar del rubro #{$document->number} debe ser mayor a cero.");
+            }
+
+            if (bccomp($requested, $document->pendingAmount(), 2) > 0) {
+                throw new InvalidLandedCostException(
+                    "El rubro #{$document->number} solo tiene {$document->pendingAmount()} por asignar y se piden {$requested}."
+                );
+            }
+
+            $locked[] = ['document' => $document, 'amount' => $requested];
+        }
+
+        return $locked;
     }
 
     /**

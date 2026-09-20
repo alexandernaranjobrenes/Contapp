@@ -7,6 +7,8 @@ const props = defineProps({
     pending: { type: Array, default: () => [] },
     invoiceTypes: { type: Array, default: () => [] },
     taxAccounts: { type: Array, default: () => [] },
+    // Recepción señalada por el "Copiar a" de su documento de entrada.
+    preselected: { type: Number, default: null },
 });
 
 const page = usePage();
@@ -41,6 +43,16 @@ function openInvoice(receipt) {
     form.net_amount = receipt.total_local.toFixed(2);
     form.description = '';
     invoicing.value = receipt;
+}
+
+// Llegar desde el "Copiar a" de una recepción equivale a pulsar su botón
+// "Facturar": el formulario es el mismo, solo que ya viene apuntado.
+if (props.preselected) {
+    const receipt = props.pending.find((r) => r.id === props.preselected);
+
+    if (receipt) {
+        openInvoice(receipt);
+    }
 }
 
 const selectedTaxAccount = computed(() =>

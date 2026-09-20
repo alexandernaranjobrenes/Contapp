@@ -9,6 +9,7 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -55,7 +56,7 @@ class AgingController extends Controller
         CurrentCompany $currentCompany,
         AgingService $service,
         ReportHeaderFactory $headerFactory,
-    ): \Illuminate\Http\Response {
+    ): Response {
         $validated = $this->validateFilters($request);
         $company = Company::findOrFail($currentCompany->id());
 

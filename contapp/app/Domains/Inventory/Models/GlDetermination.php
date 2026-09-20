@@ -30,22 +30,27 @@ class GlDetermination extends Model
     ];
 
     /**
-     * Solo las categorías que hoy tienen un consumidor real. El diseño de
-     * Fase 0 define otras cuatro (cogs, landed_cost_clearing,
-     * write_down_allowance, write_down_expense) que se agregan cuando llegue
-     * la fase que las use: una categoría configurable que ningún asiento lee
-     * sería exactamente el esquema muerto que este módulo se comprometió a no
-     * repetir.
+     * Las once categorías del diseño de Fase 0, ya todas con consumidor real.
+     * Las dos últimas —deterioro NIC 2— se activaron con
+     * PostInventoryWriteDownService, que es la fase que por fin las usa; la
+     * regla de no declarar categorías que ningún asiento lee se mantuvo hasta
+     * ese momento.
      */
     public const CATEGORIES = [
         'inventory' => 'Inventario de mercancías',
         'gr_ir_clearing' => 'Transitoria de compras (GR/IR)',
+        'landed_cost_clearing' => 'Costos de importación por asignar',
         'stock_increase' => 'Ajuste de inventario — aumento',
         'stock_decrease' => 'Ajuste de inventario — disminución',
         'price_difference' => 'Diferencia de precio (mercancía ya vendida)',
         'wip' => 'Producto en proceso (WIP)',
         'production_variance' => 'Desviación de fabricación',
         'cogs' => 'Costo de mercancías vendidas',
+        // NIC 2 §28. La estimación es CONTRA-ACTIVO: no rebaja el costo del
+        // inventario (eso corrompería el promedio móvil y separaría el kardex
+        // de la contabilidad), lo presenta neto.
+        'write_down_allowance' => 'Estimación por deterioro de inventario',
+        'write_down_expense' => 'Gasto por deterioro de inventario',
     ];
 
     protected $fillable = [

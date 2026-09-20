@@ -13,6 +13,8 @@ use App\Domains\Inventory\Exceptions\InvalidStockMovementException;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemBin;
+use App\Domains\Inventory\Models\ItemLot;
+use App\Domains\Inventory\Models\ItemLotStock;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\StockJournal;
 use App\Domains\Inventory\Models\Warehouse;
@@ -32,9 +34,12 @@ use Illuminate\Support\Facades\DB;
  * promedio. El costeo de este proyecto es global por artículo, así que mover
  * una unidad de estante cambia dónde está, no cuánto vale.
  *
- * Y por eso mismo puede no generar asiento. Ver la migración
- * 2026_09_15_140000: la invariante del módulo es "todo cambio en el VALOR del
- * inventario tiene su asiento", no "todo documento tiene asiento".
+ * Y tampoco cambia el saldo de la cuenta de inventario: su asiento lleva la
+ * MISMA cuenta al debe y al haber —la del almacén de origen—, de modo que el
+ * documento queda con rastro contable sin mover un colón de una cuenta a otra
+ * (decisiones 2026-09-20). Si el almacén de destino tiene configurada otra
+ * cuenta de inventario, esa regla gobierna sus entradas y salidas, no los
+ * traslados.
  */
 class PostStockTransferService
 {
@@ -42,6 +47,7 @@ class PostStockTransferService
         private readonly PostJournalService $postJournalService,
         private readonly GlDeterminationResolver $glResolver,
         private readonly WarehouseBinResolver $binResolver,
+        private readonly ItemLotResolver $lotResolver,
     ) {}
 
     /**
@@ -90,8 +96,10 @@ class PostStockTransferService
                 ->keyBy('id');
 
             $onHand = [];
+            $reserved = [];
             foreach (ItemWarehouse::whereIn('item_id', $itemIds)->lockForUpdate()->get() as $row) {
                 $onHand[$row->item_id][$row->warehouse_id] = (string) $row->on_hand;
+                $reserved[$row->item_id][$row->warehouse_id] = (string) $row->reserved;
             }
 
             $bins = WarehouseBin::whereIn('warehouse_id', $warehouseIds)->get()->keyBy('id');
@@ -99,6 +107,15 @@ class PostStockTransferService
             $binOnHand = [];
             foreach (ItemBin::whereIn('item_id', $itemIds)->lockForUpdate()->get() as $row) {
                 $binOnHand[$row->item_id][$row->warehouse_bin_id] = (string) $row->on_hand;
+            }
+
+            // Lotes (Fase 8): el lote viaja con la mercancía, no cambia de
+            // identidad al cambiar de lugar.
+            $lots = ItemLot::whereIn('item_id', $itemIds)->get()->keyBy('id');
+
+            $lotOnHand = [];
+            foreach (ItemLotStock::whereIn('item_lot_id', $lots->keys())->lockForUpdate()->get() as $row) {
+                $lotOnHand[$row->item_lot_id][$this->lotSlot($row->warehouse_id, $row->warehouse_bin_id)] = (string) $row->on_hand;
             }
 
             $rules = $this->glResolver->load($company);
@@ -131,14 +148,40 @@ class PostStockTransferService
                     );
                 }
 
-                $available = $fromBin
-                    ? ($binOnHand[$item->id][$fromBin->id] ?? '0.000000')
-                    : ($onHand[$item->id][$from->id] ?? '0.000000');
+                // Un traslado admite lote vencido o retenido a propósito: es
+                // justamente la vía para llevarlo a cuarentena o a la bodega
+                // de destrucción (ver ItemLotResolver::RESTRICTED_OPERATIONS).
+                $lot = $this->lotResolver->resolve($item, $line->itemLotId, $lots, 'transfer', $postingDate);
+
+                $fromSlot = $this->lotSlot($from->id, $fromBin?->id);
+                $toSlot = $this->lotSlot($to->id, $toBin?->id);
+
+                $available = match (true) {
+                    $lot !== null => $lotOnHand[$lot->id][$fromSlot] ?? '0.000000',
+                    $fromBin !== null => $binOnHand[$item->id][$fromBin->id] ?? '0.000000',
+                    default => $onHand[$item->id][$from->id] ?? '0.000000',
+                };
 
                 if (bccomp($line->quantity, $available, 6) > 0) {
                     throw new InsufficientStockException(
                         "No hay existencia suficiente de {$item->code} en el almacén {$from->code}: ".
                         'se piden '.$this->trim($line->quantity).' y hay '.$this->trim($available).'.'
+                    );
+                }
+
+                // Lo apartado por una orden de pedido tampoco se puede mover
+                // de almacén: la reserva es contra un almacén concreto, que es
+                // de donde el cliente espera que salga su mercancía.
+                $free = bcsub(
+                    $onHand[$item->id][$from->id] ?? '0.000000',
+                    $reserved[$item->id][$from->id] ?? '0.000000', 6
+                );
+
+                if (bccomp($line->quantity, $free, 6) > 0) {
+                    throw new InsufficientStockException(
+                        "No hay existencia libre de {$item->code} en el almacén {$from->code}: ".
+                        'se piden '.$this->trim($line->quantity).' y solo '.$this->trim($free).
+                        ' están sin apartar por órdenes de pedido.'
                     );
                 }
 
@@ -170,48 +213,64 @@ class PostStockTransferService
                     );
                 }
 
-                $movements[] = compact('line', 'item', 'from', 'to', 'fromBin', 'toBin')
-                    + ['unit_local' => $unitLocal, 'unit_foreign' => $unitForeign,
-                        'total_local' => $totalLocal, 'from_balance' => $fromQty, 'to_balance' => $toQty];
+                // Secuencial por el mismo motivo que arriba: en un traslado
+                // entre ubicaciones del mismo almacén, origen y destino del
+                // lote comparten fila y calcularlos en paralelo la inflaría.
+                if ($lot) {
+                    $lotOnHand[$lot->id][$fromSlot] = bcsub(
+                        $lotOnHand[$lot->id][$fromSlot] ?? '0.000000', $line->quantity, 6
+                    );
 
-                $sourceAccount = $this->glResolver->resolve($rules, 'inventory', $item, $from, $documentType, 'credit');
-                $destinationAccount = $this->glResolver->resolve($rules, 'inventory', $item, $to, $documentType, 'debit');
-
-                // Si ambos almacenes resuelven a la misma cuenta Y la misma
-                // norma de reparto, no hay nada que reclasificar: el asiento
-                // sería Debe X / Haber X por el mismo monto. Ver la migración
-                // 2026_09_15_140000 para el razonamiento completo.
-                if ($this->sameAccounting($sourceAccount, $destinationAccount)) {
-                    continue;
-                }
-
-                if (bccomp($totalLocal, '0.00', 2) <= 0) {
-                    throw new InvalidStockMovementException(
-                        "El artículo {$item->code} no tiene costo promedio registrado; ".
-                        'un traslado entre cuentas distintas no puede reclasificar un valor de cero.'
+                    $lotOnHand[$lot->id][$toSlot] = bcadd(
+                        $lotOnHand[$lot->id][$toSlot] ?? '0.000000', $line->quantity, 6
                     );
                 }
 
-                $rate = bcdiv($unitLocal, $unitForeign, 6);
-                $label = $line->description ?? "{$item->code}: {$from->code} → {$to->code}";
+                $movements[] = compact('line', 'item', 'from', 'to', 'fromBin', 'toBin', 'lot')
+                    + ['unit_local' => $unitLocal, 'unit_foreign' => $unitForeign,
+                        'total_local' => $totalLocal, 'from_balance' => $fromQty, 'to_balance' => $toQty];
 
+                // Un traslado NO cambia el valor del inventario, así que su
+                // asiento tampoco puede cambiarlo: la MISMA cuenta va al debe
+                // y al haber. Por eso se resuelve una sola —la del almacén de
+                // ORIGEN, donde el valor está hoy— en vez de reclasificar
+                // entre la del origen y la del destino.
+                //
+                // El asiento existe solo para dejar rastro del movimiento. Si
+                // el almacén de destino tuviera configurada otra cuenta de
+                // inventario, esa regla NO participa acá: sigue gobernando las
+                // entradas y salidas de ese almacén, no los traslados.
+                $account = $this->glResolver->resolve($rules, 'inventory', $item, $from, $documentType, 'credit');
+
+                // Sin valor no hay línea de asiento posible —PostJournalService
+                // rechaza montos en cero— y tampoco hay nada que rastrear.
+                if (bccomp($totalLocal, '0.00', 2) <= 0) {
+                    continue;
+                }
+
+                $rate = bcdiv($unitLocal, $unitForeign, 6);
+                $label = $line->description ?? $item->code;
+
+                // Ambas líneas llevan la misma cuenta, así que lo que las
+                // distingue en el mayor es la descripción: de dónde salió y a
+                // dónde entró.
                 $journalLines[] = new JournalLineInput(
-                    accountId: $destinationAccount['account_id'],
+                    accountId: $account['account_id'],
                     currencyId: $company->local_currency_id,
                     debit: $totalLocal,
                     credit: 0,
-                    description: $label,
-                    costAllocationRuleId: $destinationAccount['cost_allocation_rule_id'],
+                    description: "{$label} — entrada a {$to->code}",
+                    costAllocationRuleId: $account['cost_allocation_rule_id'],
                     frozenExchangeRate: $rate,
                 );
 
                 $journalLines[] = new JournalLineInput(
-                    accountId: $sourceAccount['account_id'],
+                    accountId: $account['account_id'],
                     currencyId: $company->local_currency_id,
                     debit: 0,
                     credit: $totalLocal,
-                    description: $label,
-                    costAllocationRuleId: $sourceAccount['cost_allocation_rule_id'],
+                    description: "{$label} — salida de {$from->code}",
+                    costAllocationRuleId: $account['cost_allocation_rule_id'],
                     frozenExchangeRate: $rate,
                 );
             }
@@ -246,6 +305,7 @@ class PostStockTransferService
                     'warehouse_bin_id' => $movement['fromBin']?->id,
                     'to_warehouse_id' => $movement['to']->id,
                     'to_warehouse_bin_id' => $movement['toBin']?->id,
+                    'item_lot_id' => $movement['lot']?->id,
                     'quantity' => $movement['line']->quantity,
                     'unit_cost_local' => $movement['unit_local'],
                     'unit_cost_foreign' => $movement['unit_foreign'],
@@ -277,8 +337,32 @@ class PostStockTransferService
                 }
             }
 
+            foreach ($lotOnHand as $lotId => $bySlot) {
+                foreach ($bySlot as $slot => $quantity) {
+                    [$warehouseId, $binId] = explode(':', $slot);
+
+                    ItemLotStock::updateOrCreate(
+                        [
+                            'item_lot_id' => $lotId,
+                            'warehouse_id' => (int) $warehouseId,
+                            'warehouse_bin_id' => ((int) $binId) ?: null,
+                        ],
+                        ['on_hand' => $quantity],
+                    );
+                }
+            }
+
             return $document->load('lines');
         });
+    }
+
+    /**
+     * Misma clave que usa PostStockMovementService: un lote puede estar
+     * repartido entre almacenes y, dentro de uno, entre ubicaciones.
+     */
+    private function lotSlot(int $warehouseId, ?int $binId): string
+    {
+        return $warehouseId.':'.($binId ?? 0);
     }
 
     private function writeKardex(
@@ -297,6 +381,9 @@ class PostStockTransferService
             'item_id' => $movement['item']->id,
             'warehouse_id' => $isOut ? $movement['from']->id : $movement['to']->id,
             'warehouse_bin_id' => $isOut ? $movement['fromBin']?->id : $movement['toBin']?->id,
+            // El mismo lote en las dos filas: es la mercancía moviéndose, no
+            // dos lotes distintos.
+            'item_lot_id' => $movement['lot']?->id,
             'inventory_document_line_id' => $documentLineId,
             'journal_entry_id' => $journalEntryId,
             'posting_date' => $postingDate->format('Y-m-d'),
@@ -327,12 +414,6 @@ class PostStockTransferService
         }
 
         return $warehouse;
-    }
-
-    private function sameAccounting(array $source, array $destination): bool
-    {
-        return $source['account_id'] === $destination['account_id']
-            && $source['cost_allocation_rule_id'] === $destination['cost_allocation_rule_id'];
     }
 
     private function trim(string $value): string

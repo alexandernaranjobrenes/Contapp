@@ -17,7 +17,7 @@ use OpenSpout\Reader\XLSX\Reader;
  */
 function readFirstSheetRows(string $path): array
 {
-    $reader = new Reader();
+    $reader = new Reader;
     $reader->open($path);
 
     $rows = [];

@@ -47,8 +47,13 @@ it('genera un XML bien formado con el nodo raíz del tipo de comprobante', funct
 it('el nodo raíz cambia según el tipo de comprobante', function () {
     $f = salesFixture();
 
+    // Una nota de crédito con mercancía necesita la venta que corrige: de ahí
+    // sale el costo al que la mercancía vuelve al inventario.
+    $venta = postSale($f);
+
     $xml = buildXml($f, [
         'fiscalType' => '03',
+        'originalId' => $venta->id,
         'references' => [[
             'document_type' => '01',
             'number' => str_repeat('1', 50),
@@ -161,9 +166,11 @@ it('un tiquete electrónico a consumidor final no lleva receptor', function () {
 
 it('la nota de crédito arrastra su documento de referencia', function () {
     $f = salesFixture();
+    $venta = postSale($f);
 
     $xml = buildXml($f, [
         'fiscalType' => '03',
+        'originalId' => $venta->id,
         'references' => [[
             'document_type' => '01',
             'number' => str_repeat('9', 50),

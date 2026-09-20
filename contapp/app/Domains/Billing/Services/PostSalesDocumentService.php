@@ -11,13 +11,17 @@ use App\Domains\Billing\Models\BillingPaymentAccount;
 use App\Domains\Billing\Models\BillingTaxAccount;
 use App\Domains\Billing\Models\CompanyEconomicActivity;
 use App\Domains\Billing\Models\SalesDocument;
+use App\Domains\Billing\Models\SalesDocumentLine;
+use App\Domains\Billing\Models\SalesOrder;
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Models\InventoryDocument;
+use App\Domains\Inventory\Models\InventoryDocumentLine;
 use App\Domains\Inventory\Services\PostStockMovementService;
 use Illuminate\Support\Facades\DB;
 
@@ -35,6 +39,12 @@ use Illuminate\Support\Facades\DB;
  * stock, ni asiento. Servicios llamándose entre sí dentro de una transacción,
  * no eventos — mismo criterio que todo el módulo de inventario.
  *
+ * Una NOTA DE CRÉDITO (tipo 03) recorre el mismo camino al revés: reingresa la
+ * mercancía al costo con que salió, debita el ingreso y el IVA que la venta
+ * acreditó, y cancela la partida de CxC que aquella abrió. Necesita saber qué
+ * comprobante corrige (originalSalesDocumentId): sin eso no hay costo al que
+ * devolver ni partida que cancelar.
+ *
  * El XML, la firma y el envío a Hacienda NO ocurren acá: son una fase aparte
  * que consume este documento ya emitido.
  */
@@ -45,6 +55,7 @@ class PostSalesDocumentService
         private readonly FiscalKeyGenerator $keyGenerator,
         private readonly PostStockMovementService $postStockMovementService,
         private readonly PostJournalService $postJournalService,
+        private readonly SalesOrderService $salesOrderService,
     ) {}
 
     public function post(Company $company, SalesDocumentInput $input, ?int $createdBy = null): SalesDocument
@@ -69,7 +80,12 @@ class PostSalesDocumentService
             $this->persistLines($document, $computed['lines']);
             $this->persistPaymentsAndReferences($document, $input);
 
-            $inventoryDocument = $this->issueStock($company, $documentType, $input, $document, $createdBy);
+            // Antes de rebajar la existencia: la orden tiene que soltar lo que
+            // apartó, o su propia reserva haría ver la mercancía como no
+            // disponible y la factura se bloquearía a sí misma.
+            $this->consumeOrder($company, $input, $document);
+
+            $inventoryDocument = $this->moveStock($company, $documentType, $input, $document, $createdBy);
 
             $entry = $this->postSale($company, $documentType, $input, $document, $partner, $activity, $computed, $createdBy);
 
@@ -266,6 +282,7 @@ class PostSalesDocumentService
             'due_date' => $dueDate?->format('Y-m-d'),
             'notes' => $input->notes,
             'status' => 'draft',
+            'original_sales_document_id' => $input->originalSalesDocumentId,
             'created_by' => $createdBy,
         ]);
     }
@@ -322,44 +339,244 @@ class PostSalesDocumentService
     /**
      * Solo las líneas de mercancía con artículo y bodega mueven stock: un
      * servicio no tiene kardex, y una línea de concepto libre tampoco.
+     *
+     * Una factura saca la mercancía al costo promedio; una nota de crédito la
+     * REINGRESA al costo con que salió, que es lo único que deja el costo de
+     * ventas cerrado. Por eso la nota necesita saber qué comprobante corrige.
      */
-    private function issueStock(
+    private function moveStock(
         Company $company,
         DocumentType $documentType,
         SalesDocumentInput $input,
         SalesDocument $document,
         ?int $createdBy,
     ): ?InventoryDocument {
+        $isReturn = $input->fiscalDocumentType === SalesDocument::CREDIT_NOTE;
+        $merchandise = array_filter(
+            $input->lines,
+            fn (SalesLineInput $line) => ! $line->isService && $line->itemId !== null && $line->warehouseId !== null
+        );
+
+        if (empty($merchandise)) {
+            return null;
+        }
+
+        $costs = [];
+        $returnable = [];
+
+        if ($isReturn) {
+            $original = $this->resolveOriginalDocument($company, $input);
+            $costs = $this->originalCosts($original);
+            $returnable = $this->returnableQuantities($original, $costs);
+        }
+
         $stockLines = [];
 
-        foreach ($input->lines as $line) {
-            if ($line->isService || $line->itemId === null || $line->warehouseId === null) {
-                continue;
+        foreach ($merchandise as $line) {
+            $key = $line->itemId.':'.$line->warehouseId;
+            $unitCost = null;
+
+            if ($isReturn) {
+                if (! isset($costs[$key])) {
+                    throw new InvalidSalesDocumentException(
+                        "La línea \"{$line->description}\" no corresponde a ninguna mercancía del comprobante que se corrige."
+                    );
+                }
+
+                if (bccomp($line->quantity, $returnable[$key], 6) > 0) {
+                    throw new InvalidSalesDocumentException(
+                        "No se puede devolver {$line->quantity} de \"{$line->description}\": ".
+                        'quedan '.rtrim(rtrim($returnable[$key], '0'), '.').' por devolver del comprobante original.'
+                    );
+                }
+
+                $returnable[$key] = bcsub($returnable[$key], $line->quantity, 6);
+                $unitCost = $costs[$key];
             }
 
             $stockLines[] = new StockLineInput(
                 itemId: $line->itemId,
                 warehouseId: $line->warehouseId,
                 quantity: $line->quantity,
+                unitCostLocal: $unitCost,
                 description: $line->description,
                 warehouseBinId: $line->warehouseBinId,
             );
         }
 
-        if (empty($stockLines)) {
-            return null;
-        }
-
         return $this->postStockMovementService->post(
             company: $company,
             documentType: $documentType,
-            operation: 'sales_issue',
+            operation: $isReturn ? 'sales_return' : 'sales_issue',
             documentDate: $input->documentDate,
             postingDate: $input->postingDate,
             lines: $stockLines,
-            description: "Salida por venta — {$document->consecutive}",
+            description: ($isReturn ? 'Devolución de cliente — ' : 'Salida por venta — ').$document->consecutive,
             createdBy: $createdBy,
         );
+    }
+
+    /**
+     * El comprobante que la nota corrige. Se exige el enlace interno —no basta
+     * la referencia fiscal, que es texto libre— porque de ahí salen el costo
+     * con que volver a entrar la mercancía y el tope de cuánto se puede
+     * devolver.
+     */
+    private function resolveOriginalDocument(Company $company, SalesDocumentInput $input): SalesDocument
+    {
+        if ($input->originalSalesDocumentId === null) {
+            throw new InvalidSalesDocumentException(
+                'Una nota de crédito con líneas de mercancía debe indicar cuál comprobante corrige: '.
+                'sin eso no se sabe a qué costo devolver la mercancía al inventario.'
+            );
+        }
+
+        $original = SalesDocument::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->find($input->originalSalesDocumentId);
+
+        if (! $original || $original->status !== 'posted') {
+            throw new InvalidSalesDocumentException('El comprobante que se corrige no existe o no está emitido.');
+        }
+
+        if ($original->isCreditNote()) {
+            throw new InvalidSalesDocumentException('Una nota de crédito no corrige a otra nota de crédito.');
+        }
+
+        if ($original->inventory_document_id === null) {
+            throw new InvalidSalesDocumentException(
+                'El comprobante que se corrige no movió inventario; una nota sobre él no puede devolver mercancía.'
+            );
+        }
+
+        return $original;
+    }
+
+    /**
+     * Libera la reserva de la orden que esta factura cumple y la deja
+     * enlazada. Una nota de crédito nunca consume pedido: devuelve mercancía,
+     * no la entrega.
+     */
+    private function consumeOrder(Company $company, SalesDocumentInput $input, SalesDocument $document): void
+    {
+        if ($input->salesOrderId === null || $input->fiscalDocumentType === SalesDocument::CREDIT_NOTE) {
+            return;
+        }
+
+        $order = SalesOrder::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->find($input->salesOrderId);
+
+        if (! $order) {
+            throw new InvalidSalesDocumentException('La orden de pedido indicada no existe en la compañía.');
+        }
+
+        if ($order->business_partner_id !== $document->business_partner_id) {
+            throw new InvalidSalesDocumentException(
+                'La orden de pedido es de otro cliente; una factura no puede cumplir el pedido de un tercero.'
+            );
+        }
+
+        $invoiced = [];
+
+        foreach ($input->lines as $line) {
+            if ($line->isService || $line->itemId === null || $line->warehouseId === null) {
+                continue;
+            }
+
+            $key = $line->itemId.':'.$line->warehouseId;
+
+            $invoiced[$key] = [
+                'item_id' => $line->itemId,
+                'warehouse_id' => $line->warehouseId,
+                'quantity' => bcadd($invoiced[$key]['quantity'] ?? '0.000000', $line->quantity, 6),
+            ];
+        }
+
+        if (empty($invoiced)) {
+            throw new InvalidSalesDocumentException(
+                'Una factura contra una orden de pedido debe entregar mercancía; solo con servicios no hay pedido que cumplir.'
+            );
+        }
+
+        $this->salesOrderService->consume($company, $order, array_values($invoiced));
+
+        $document->update(['sales_order_id' => $order->id]);
+    }
+
+    /**
+     * La partida de CxC que abrió la venta original, para que la nota la
+     * cancele en vez de abrir una segunda partida que la contradiga. Devuelve
+     * null si la venta fue de contado o si ya no queda partida abierta: en
+     * ese caso la nota simplemente acredita la cuenta del cliente.
+     */
+    private function originalOpenItemId(SalesDocumentInput $input): ?int
+    {
+        if ($input->originalSalesDocumentId === null) {
+            return null;
+        }
+
+        $original = SalesDocument::withoutGlobalScope(CompanyScope::class)
+            ->find($input->originalSalesDocumentId);
+
+        if (! $original?->journal_entry_id) {
+            return null;
+        }
+
+        return BpOpenItem::whereHas(
+            'originJournalDetail',
+            fn ($q) => $q->where('journal_entry_id', $original->journal_entry_id)
+        )->value('id');
+    }
+
+    /**
+     * Costo unitario con que cada artículo salió en la venta original, leído
+     * del kardex: es el costo que el asiento de esa venta llevó a resultados.
+     *
+     * @return array<string, string>
+     */
+    private function originalCosts(SalesDocument $original): array
+    {
+        $costs = [];
+
+        $lines = InventoryDocumentLine::whereIn(
+            'inventory_document_id', [$original->inventory_document_id]
+        )->get();
+
+        foreach ($lines as $line) {
+            $costs[$line->item_id.':'.$line->warehouse_id] = (string) $line->unit_cost_local;
+        }
+
+        return $costs;
+    }
+
+    /**
+     * Cuánto queda por devolver de cada artículo: lo vendido menos lo que
+     * notas de crédito anteriores ya devolvieron.
+     *
+     * @param  array<string, string>  $costs
+     * @return array<string, string>
+     */
+    private function returnableQuantities(SalesDocument $original, array $costs): array
+    {
+        $sold = [];
+
+        foreach ($original->lines()->whereNotNull('item_id')->get() as $line) {
+            $key = $line->item_id.':'.$line->warehouse_id;
+            $sold[$key] = bcadd($sold[$key] ?? '0.000000', (string) $line->quantity, 6);
+        }
+
+        $notes = SalesDocument::withoutGlobalScope(CompanyScope::class)
+            ->where('original_sales_document_id', $original->id)
+            ->where('status', 'posted')
+            ->pluck('id');
+
+        foreach (SalesDocumentLine::whereIn('sales_document_id', $notes)->whereNotNull('item_id')->get() as $line) {
+            $key = $line->item_id.':'.$line->warehouse_id;
+            $sold[$key] = bcsub($sold[$key] ?? '0.000000', (string) $line->quantity, 6);
+        }
+
+        return array_intersect_key($sold, $costs);
     }
 
     /**
@@ -401,6 +618,11 @@ class PostSalesDocumentService
 
         $taxAccounts = $this->resolveTaxAccounts($company, array_keys($taxByRate));
 
+        // Una nota de crédito es el espejo de la venta: el IVA y el ingreso
+        // que aquella acreditó, esta los debita, y el cobro al cliente se
+        // convierte en un crédito que cancela la partida abierta.
+        $isReturn = $input->fiscalDocumentType === SalesDocument::CREDIT_NOTE;
+
         $lines = [];
         $totalTaxPosted = '0.00';
 
@@ -412,9 +634,9 @@ class PostSalesDocumentService
             $lines[] = new JournalLineInput(
                 accountId: $config->account_id,
                 currencyId: $input->currencyId,
-                debit: 0,
-                credit: $rounded,
-                description: "IVA débito fiscal {$rateCode}",
+                debit: $isReturn ? $rounded : 0,
+                credit: $isReturn ? 0 : $rounded,
+                description: ($isReturn ? 'Reversión de IVA débito fiscal ' : 'IVA débito fiscal ').$rateCode,
                 // Solo se enlaza al indicador de impuesto cuando el monto es
                 // exactamente base × tarifa. Con exoneración no lo es por
                 // definición, y PostJournalService rechazaría el asiento.
@@ -431,14 +653,14 @@ class PostSalesDocumentService
         $lines[] = new JournalLineInput(
             accountId: $activity->revenue_account_id,
             currencyId: $input->currencyId,
-            debit: 0,
-            credit: $revenue,
-            description: "Ingresos — {$activity->name}",
+            debit: $isReturn ? $revenue : 0,
+            credit: $isReturn ? 0 : $revenue,
+            description: ($isReturn ? 'Reversión de ingresos — ' : 'Ingresos — ').$activity->name,
             frozenExchangeRate: $frozenRate,
         );
 
-        foreach ($this->debitLines($company, $input, $document, $partner, $totalDocument, $frozenRate) as $debit) {
-            $lines[] = $debit;
+        foreach ($this->counterpartLines($company, $input, $document, $partner, $totalDocument, $frozenRate) as $line) {
+            $lines[] = $line;
         }
 
         return $this->postJournalService->post(
@@ -456,7 +678,7 @@ class PostSalesDocumentService
     /**
      * @return JournalLineInput[]
      */
-    private function debitLines(
+    private function counterpartLines(
         Company $company,
         SalesDocumentInput $input,
         SalesDocument $document,
@@ -464,29 +686,40 @@ class PostSalesDocumentService
         string $total,
         ?string $frozenRate,
     ): array {
+        $isReturn = $input->fiscalDocumentType === SalesDocument::CREDIT_NOTE;
+
         if ($this->isCredit($input->saleCondition)) {
             if (! $partner) {
                 throw new InvalidSalesDocumentException('Una venta a crédito requiere un cliente identificado.');
             }
 
+            // En una nota de crédito la línea del cliente no abre una partida
+            // nueva: cancela la que abrió la venta original, que es lo que
+            // hace bajar el saldo en antigüedad en vez de dejar dos partidas
+            // sueltas que se anulan entre sí.
+            $appliesTo = $isReturn ? $this->originalOpenItemId($input) : null;
+
             return [new JournalLineInput(
                 accountId: $partner->gl_account_id,
                 currencyId: $input->currencyId,
-                debit: $total,
-                credit: 0,
-                description: "Venta a crédito — {$partner->name}",
+                debit: $isReturn ? 0 : $total,
+                credit: $isReturn ? $total : 0,
+                description: ($isReturn ? 'Nota de crédito — ' : 'Venta a crédito — ').$partner->name,
                 businessPartnerId: $partner->id,
-                dueDate: $document->due_date?->format('Y-m-d'),
+                dueDate: $isReturn ? null : $document->due_date?->format('Y-m-d'),
                 // Abre la partida en CxC: sin esto la venta quedaría
                 // contabilizada pero invisible para antigüedad de saldos.
-                opensItem: true,
+                opensItem: ! $isReturn,
+                applyToOpenItemId: $appliesTo,
                 frozenExchangeRate: $frozenRate,
             )];
         }
 
         if (empty($input->payments)) {
             throw new InvalidSalesDocumentException(
-                'Una venta de contado requiere indicar con qué medios de pago se cobró.'
+                $isReturn
+                    ? 'Una nota de crédito sobre una venta de contado requiere indicar por qué medio se devuelve el dinero.'
+                    : 'Una venta de contado requiere indicar con qué medios de pago se cobró.'
             );
         }
 
@@ -521,9 +754,9 @@ class PostSalesDocumentService
             $lines[] = new JournalLineInput(
                 accountId: $config->account_id,
                 currencyId: $input->currencyId,
-                debit: $amount,
-                credit: 0,
-                description: FiscalCatalogs::PAYMENT_METHODS[$payment['method_code']],
+                debit: $isReturn ? 0 : $amount,
+                credit: $isReturn ? $amount : 0,
+                description: ($isReturn ? 'Devolución por ' : '').FiscalCatalogs::PAYMENT_METHODS[$payment['method_code']],
                 frozenExchangeRate: $frozenRate,
             );
         }

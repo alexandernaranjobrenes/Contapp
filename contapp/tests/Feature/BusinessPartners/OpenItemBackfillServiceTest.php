@@ -1,12 +1,12 @@
 <?php
 
+use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
-use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\BusinessPartners\Services\OpenItemBackfillService;
@@ -125,7 +125,7 @@ it('no toca líneas cuyo asiento todavía está en borrador', function () {
     $fx = backfillFixture();
     $partner = BusinessPartner::factory()->create(['company_id' => $fx['company']->id, 'code' => 'F-01', 'gl_account_id' => $fx['cxc']->id, 'payment_terms_days' => 30]);
 
-    app(\App\Domains\Accounting\Services\PostJournalService::class)->saveDraft(
+    app(PostJournalService::class)->saveDraft(
         $fx['company'], $fx['documentType'], new DateTime('2026-01-13'), new DateTime('2026-01-31'),
         [
             new JournalLineInput($fx['cxc']->id, $fx['company']->local_currency_id, debit: '400', credit: 0, businessPartnerId: $partner->id, allowZeroAmount: true),

@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\BalanceSheetService;
+use App\Domains\Accounting\Services\PeriodCloseService;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
@@ -94,7 +95,7 @@ it('no duplica la utilidad del ejercicio si el año ya se cerró: la utilidad ac
         new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 0, credit: 400),
     ], 'Gasto operativo');
 
-    $closeService = app(\App\Domains\Accounting\Services\PeriodCloseService::class);
+    $closeService = app(PeriodCloseService::class);
     $closeService->close($fx['company'], $fx['jan']);
     $closeService->closeYear($fx['company'], $fx['fiscalYear'], $fx['acc'], $fx['retainedEarnings']);
 

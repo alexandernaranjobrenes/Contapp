@@ -3,6 +3,7 @@
 use App\Domains\Licensing\Models\CommercialFollowUp;
 use App\Domains\Licensing\Models\CommercialProfile;
 use App\Domains\Licensing\Models\License;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 it('muestra la ficha comercial de una licencia aunque todavía no tenga perfil', function () {
     loginAsPropietario();
@@ -69,8 +70,8 @@ it('rechaza un tipo de interacción inválido', function () {
 });
 
 it('no existe ninguna ruta para editar o borrar una interacción (append-only reforzado en el enrutamiento)', function () {
-    expect(fn () => route('backoffice.commercial-interactions.update', 1))->toThrow(\Symfony\Component\Routing\Exception\RouteNotFoundException::class)
-        ->and(fn () => route('backoffice.commercial-interactions.destroy', 1))->toThrow(\Symfony\Component\Routing\Exception\RouteNotFoundException::class);
+    expect(fn () => route('backoffice.commercial-interactions.update', 1))->toThrow(RouteNotFoundException::class)
+        ->and(fn () => route('backoffice.commercial-interactions.destroy', 1))->toThrow(RouteNotFoundException::class);
 });
 
 it('agenda un seguimiento y lo marca como completado', function () {

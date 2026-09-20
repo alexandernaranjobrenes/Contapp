@@ -7,9 +7,10 @@ use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 
-function setUpCashFlowCompany(\App\Domains\Core\Models\Company $company): array
+function setUpCashFlowCompany(Company $company): array
 {
     ExchangeRate::factory()->create([
         'company_id' => $company->id,
@@ -37,7 +38,7 @@ function setUpCashFlowCompany(\App\Domains\Core\Models\Company $company): array
     return compact('cxc', 'sales', 'client', 'documentType');
 }
 
-function postCashFlowReceivable(\App\Domains\Core\Models\Company $company, ChartOfAccount $cxc, ChartOfAccount $sales, BusinessPartner $client, DocumentType $documentType, string $amount, string $dueDate): void
+function postCashFlowReceivable(Company $company, ChartOfAccount $cxc, ChartOfAccount $sales, BusinessPartner $client, DocumentType $documentType, string $amount, string $dueDate): void
 {
     app(PostJournalService::class)->post(
         $company, $documentType, new DateTime('2026-01-01'), new DateTime('2026-01-01'),
@@ -100,7 +101,7 @@ it('aísla la proyección de cobros y pagos entre compañías', function () {
     ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpCashFlowCompany($company);
     postCashFlowReceivable($company, $cxc, $sales, $client, $documentType, '100', '2026-01-10');
 
-    $otherCompany = \App\Domains\Core\Models\Company::factory()->create();
+    $otherCompany = Company::factory()->create();
     $other = setUpCashFlowCompany($otherCompany);
     postCashFlowReceivable($otherCompany, $other['cxc'], $other['sales'], $other['client'], $other['documentType'], '900', '2026-01-10');
 

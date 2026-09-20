@@ -8,6 +8,7 @@ use App\Domains\Banking\Services\BankReconciliationReportService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -45,7 +46,7 @@ class BankReconciliationReportController extends Controller
         BankReconciliationReportService $service,
         BankReconciliationReportExporter $exporter,
         ReportHeaderFactory $headerFactory,
-    ): StreamedResponse|\Illuminate\Http\RedirectResponse {
+    ): StreamedResponse|RedirectResponse {
         $companyId = $currentCompany->id();
         $validated = $this->validateFilters($request, $companyId);
 

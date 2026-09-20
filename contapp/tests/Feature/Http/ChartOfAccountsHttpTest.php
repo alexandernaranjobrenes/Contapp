@@ -24,7 +24,7 @@ function makeChartOfAccountsXlsx(array $rows, ?array $headers = null): UploadedF
 
     $path = tempnam(sys_get_temp_dir(), 'coa_import_').'.xlsx';
 
-    $writer = new Writer();
+    $writer = new Writer;
     $writer->openToFile($path);
     $writer->addRow(Row::fromValues($headers));
 

@@ -15,7 +15,7 @@ class Item extends Model
 
     protected $fillable = [
         'company_id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
-        'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tax_rate_id',
+        'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'tax_rate_id',
         'avg_cost_local', 'avg_cost_foreign', 'status',
     ];
 
@@ -25,7 +25,18 @@ class Item extends Model
             'is_inventory_item' => 'boolean',
             'is_sales_item' => 'boolean',
             'is_purchase_item' => 'boolean',
+            'tracks_lots' => 'boolean',
         ];
+    }
+
+    /**
+     * Los lotes son propiedad del ARTÍCULO, no del almacén (a diferencia de
+     * las ubicaciones): un medicamento necesita lote en todos los almacenes
+     * y un cable no lo necesita en ninguno.
+     */
+    public function lots(): HasMany
+    {
+        return $this->hasMany(ItemLot::class);
     }
 
     public function itemGroup(): BelongsTo

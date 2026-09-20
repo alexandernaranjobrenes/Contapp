@@ -61,67 +61,97 @@ it('mueve la existencia de un almacén a otro sin cambiar el total ni el costo',
         ->and((float) $f['item']->fresh()->avg_cost_local)->toBe(1000.0);
 });
 
-it('LA PRUEBA CENTRAL: con la misma cuenta en ambos almacenes NO genera asiento', function () {
+it('LA PRUEBA CENTRAL: el traslado deja la cuenta de inventario exactamente igual', function () {
     $f = transferFixture();
 
-    $asientosAntes = JournalEntry::count();
-    $consecutivoAntes = $f['documentType']->fresh()->next_consecutive;
+    $antes = JournalDetail::where('account_id', $f['accounts']['inventory']->id)
+        ->get()->sum(fn ($r) => (float) $r->debit_local - (float) $r->credit_local);
 
-    $document = transfer($f, 30);
+    transfer($f, 30);
 
-    // Un asiento Debe X / Haber X por el mismo monto no cambiaría nada y
-    // consumiría un consecutivo del libro diario.
-    expect($document->journal_entry_id)->toBeNull()
-        ->and(JournalEntry::count())->toBe($asientosAntes)
-        ->and($f['documentType']->fresh()->next_consecutive)->toBe($consecutivoAntes)
-        // Pero el movimiento sí queda registrado en el kardex.
-        ->and(StockJournal::where('inventory_document_line_id', $document->lines->first()->id)->count())->toBe(2);
+    $despues = JournalDetail::where('account_id', $f['accounts']['inventory']->id)
+        ->get()->sum(fn ($r) => (float) $r->debit_local - (float) $r->credit_local);
+
+    // Mover mercancía de estante no la vuelve más ni menos valiosa: el saldo
+    // de la cuenta es el mismo antes y después.
+    expect($despues)->toBe($antes)
+        ->and($despues)->toBe(100000.0);
 });
 
-it('con cuentas distintas por almacén SÍ reclasifica el valor entre ellas', function () {
+it('el asiento lleva la MISMA cuenta al debe y al haber', function () {
     $f = transferFixture();
 
-    $cuentaDestino = ChartOfAccount::factory()->create(['company_id' => $f['company']->id]);
+    $document = transfer($f, 30);
+    $entry = JournalEntry::find($document->journal_entry_id);
+
+    expect($document->journal_entry_id)->not->toBeNull()
+        ->and($entry->details)->toHaveCount(2)
+        // Las dos líneas son de la cuenta de inventario: ₡30.000 al debe y
+        // ₡30.000 al haber, que es lo que deja el saldo intacto.
+        ->and($entry->details->pluck('account_id')->unique()->values()->all())
+        ->toBe([$f['accounts']['inventory']->id])
+        ->and((float) $entry->details->firstWhere('debit_local', '>', 0)->debit_local)->toBe(30000.0)
+        ->and((float) $entry->details->firstWhere('credit_local', '>', 0)->credit_local)->toBe(30000.0);
+});
+
+it('las dos líneas se distinguen por su descripción: de dónde sale y a dónde entra', function () {
+    $f = transferFixture();
+
+    $document = transfer($f, 30);
+    $entry = JournalEntry::find($document->journal_entry_id);
+
+    expect($entry->details->firstWhere('debit_local', '>', 0)->description)
+        ->toContain("entrada a {$f['destination']->code}")
+        ->and($entry->details->firstWhere('credit_local', '>', 0)->description)
+        ->toContain("salida de {$f['warehouse']->code}");
+});
+
+it('LO QUE EL USUARIO PIDIÓ: otra cuenta en el almacén de destino NO entra en el asiento', function () {
+    $f = transferFixture();
+
+    // Una regla de almacén como la de una bodega de tránsito.
+    $cuentaTransito = ChartOfAccount::factory()->create(['company_id' => $f['company']->id, 'account_type' => 'asset']);
 
     GlDetermination::factory()->create([
         'company_id' => $f['company']->id,
         'scope_level' => 'warehouse',
         'scope_id' => $f['destination']->id,
         'category' => 'inventory',
-        'account_id' => $cuentaDestino->id,
+        'account_id' => $cuentaTransito->id,
     ]);
 
     $document = transfer($f, 30);
     $entry = JournalEntry::find($document->journal_entry_id);
 
-    expect($document->journal_entry_id)->not->toBeNull()
-        // 30 u × ₡1.000 = ₡30.000 reclasificados
-        ->and((float) $entry->details->firstWhere('account_id', $cuentaDestino->id)->debit_local)->toBe(30000.0)
-        ->and((float) $entry->details->firstWhere('account_id', $f['accounts']['inventory']->id)->credit_local)->toBe(30000.0);
+    // Esa regla gobierna las entradas y salidas de ese almacén, no los
+    // traslados: el traslado no reclasifica valor de una cuenta a otra.
+    expect($entry->details->firstWhere('account_id', $cuentaTransito->id))->toBeNull()
+        ->and($entry->details->pluck('account_id')->unique()->values()->all())
+        ->toBe([$f['accounts']['inventory']->id]);
 });
 
-it('el asiento del traslado no toca resultados: el inventario total no cambia', function () {
+it('un traslado entre almacenes con cuentas distintas tampoco mueve saldo entre ellas', function () {
     $f = transferFixture();
 
-    $cuentaDestino = ChartOfAccount::factory()->create(['company_id' => $f['company']->id, 'account_type' => 'asset']);
+    $cuentaTransito = ChartOfAccount::factory()->create(['company_id' => $f['company']->id, 'account_type' => 'asset']);
 
     GlDetermination::factory()->create([
         'company_id' => $f['company']->id, 'scope_level' => 'warehouse', 'scope_id' => $f['destination']->id,
-        'category' => 'inventory', 'account_id' => $cuentaDestino->id,
+        'category' => 'inventory', 'account_id' => $cuentaTransito->id,
     ]);
 
-    $document = transfer($f, 30);
+    transfer($f, 30);
 
-    $saldoOrigen = JournalDetail::where('account_id', $f['accounts']['inventory']->id)
+    $saldoInventario = JournalDetail::where('account_id', $f['accounts']['inventory']->id)
         ->get()->sum(fn ($r) => (float) $r->debit_local - (float) $r->credit_local);
-    $saldoDestino = JournalDetail::where('account_id', $cuentaDestino->id)
+    $saldoTransito = JournalDetail::where('account_id', $cuentaTransito->id)
         ->get()->sum(fn ($r) => (float) $r->debit_local - (float) $r->credit_local);
 
-    // La entrada original dejó ₡100.000 en origen; tras trasladar ₡30.000
-    // quedan ₡70.000 ahí y ₡30.000 en destino: el total sigue en ₡100.000.
-    expect($saldoOrigen)->toBe(70000.0)
-        ->and($saldoDestino)->toBe(30000.0)
-        ->and($saldoOrigen + $saldoDestino)->toBe(100000.0);
+    // Los ₡100.000 siguen enteros donde estaban; la cuenta de tránsito ni se
+    // tocó.
+    // (float) explícito: sumar una colección vacía devuelve int 0, no 0.0.
+    expect($saldoInventario)->toBe(100000.0)
+        ->and((float) $saldoTransito)->toBe(0.0);
 });
 
 it('deja dos filas de kardex: una salida del origen y una entrada al destino', function () {

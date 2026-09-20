@@ -1,7 +1,9 @@
 <?php
 
-use App\Domains\Licensing\Models\License;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Services\PermissionGrantService;
+use App\Domains\Licensing\Models\License;
+use App\Domains\Licensing\Models\LicenseCategory;
 use App\Models\User;
 
 it('rechaza activar con un código que no existe', function () {
@@ -177,7 +179,7 @@ it('cambiar a una segunda compañía "pega" en el siguiente request, con el id l
 it('un propietario puede emitir, renovar, suspender, reactivar y revocar licencias', function () {
     loginAsPropietario();
 
-    $category = \App\Domains\Licensing\Models\LicenseCategory::factory()->create(['max_companies' => 3]);
+    $category = LicenseCategory::factory()->create(['max_companies' => 3]);
 
     $this->post(route('backoffice.licenses.store'), [
         'category_id' => $category->id,
@@ -318,7 +320,7 @@ it('rechaza agregar una compañía adicional a un usuario que no es el superusua
     $superuser = User::where('email', 'ana@example.com')->sole();
     $company = Company::where('legal_name', 'Primera Empresa')->sole();
 
-    $admin = app(\App\Domains\Core\Services\PermissionGrantService::class)->createUser(
+    $admin = app(PermissionGrantService::class)->createUser(
         $superuser,
         $company,
         ['name' => 'Beto Admin', 'email' => 'beto-admin@example.com', 'password' => 'secreto123'],

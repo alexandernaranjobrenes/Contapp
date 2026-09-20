@@ -17,7 +17,7 @@ class InventoryDocumentLine extends Model
 
     protected $fillable = [
         'inventory_document_id', 'line_number', 'item_id', 'warehouse_id', 'warehouse_bin_id',
-        'to_warehouse_id', 'to_warehouse_bin_id',
+        'to_warehouse_id', 'to_warehouse_bin_id', 'item_lot_id',
         'quantity', 'unit_cost_local', 'unit_cost_foreign', 'description',
     ];
 

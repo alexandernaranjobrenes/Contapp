@@ -1,6 +1,8 @@
 <?php
 
 use App\Domains\Licensing\Models\License;
+use App\Domains\Licensing\Models\LicenseCategory;
+use App\Domains\Licensing\Services\LicenseService;
 
 it('displayStatus refleja revocada/suspendida por encima de cualquier fecha', function () {
     $revoked = License::factory()->expired()->revoked()->create();
@@ -28,9 +30,9 @@ it('isBlocked es verdadero para suspendida y revocada, falso para activa o venci
 });
 
 it('una licencia guarda el max_companies de su categoría al emitirse, sin quedar atada a cambios futuros de la categoría', function () {
-    $category = \App\Domains\Licensing\Models\LicenseCategory::factory()->create(['max_companies' => 5]);
+    $category = LicenseCategory::factory()->create(['max_companies' => 5]);
 
-    $license = app(\App\Domains\Licensing\Services\LicenseService::class)->issue(
+    $license = app(LicenseService::class)->issue(
         $category, new DateTime('+1 year'), null, null
     );
 

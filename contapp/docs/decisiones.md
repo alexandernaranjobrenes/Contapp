@@ -3,6 +3,382 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — Deterioro de inventario (NIC 2 §28-33): se cierran las once categorías de la Fase 0
+
+**Último pendiente declarado del módulo.** La Fase 0 reservó `write_down_allowance` y `write_down_expense` diciendo "es un proceso periódico manual, no un asiento automático por transacción, y no se construye hasta que se pida". Con esta entrega las **once categorías** del diseño original tienen consumidor real y la regla de no declarar esquema muerto se sostuvo hasta el final.
+
+**La decisión de fondo: la estimación NO rebaja el costo del inventario.** Es un contra-activo que lo presenta neto. Rebajar el costo habría sido lo intuitivo y habría roto dos cosas a la vez:
+
+1. El **promedio ponderado móvil**, que es dependiente de la trayectoria y no se puede "corregir" hacia atrás sin reproducir toda la secuencia de movimientos.
+2. La **igualdad entre el kardex y la contabilidad**, que es la invariante que sostiene el módulo entero y que el reporte de existencias valorizadas existe para demostrar.
+
+Con la estimación aparte, ese reporte sigue cuadrando contra la cuenta de inventario y el deterioro se lee en su propia cuenta. Hay dos tests dedicados: uno verifica que el kardex y `avg_cost_local` no se tocan, y otro que el reporte sigue mostrando el costo y no el neto.
+
+Por lo mismo, un avalúo **no es un movimiento de inventario** y no vive en `inventory_documents`: no cambia cantidades. Es un asiento con su propio registro.
+
+**La reversión del §33 no es un caso especial, es la misma fórmula.** NIC 2 EXIGE reversar cuando desaparecen las circunstancias que causaron la rebaja, con tope en lo previamente reconocido — diferencia real con US GAAP, donde la rebaja es permanente. Un diseño apurado implementa "deteriorar" y deja la reversión para después, o la construye como un flujo aparte que puede divergir. Acá cada avalúo calcula la estimación que DEBERÍA existir y contabiliza solo el delta:
+
+```
+objetivo   = max(0, costo − VNR)
+movimiento = objetivo − estimación acumulada
+```
+
+Positivo deteriora, negativo reversa. **El tope del §33 sale solo**: como el objetivo nunca es negativo, la estimación acumulada no puede bajar de cero, así que es imposible reversar más de lo reconocido. Y re-avaluar con el mismo VNR contabiliza cero, que es lo correcto — el servicio lo rechaza con un mensaje claro en vez de generar un asiento vacío.
+
+**La reversión se acredita a la MISMA cuenta de gasto**, no a un ingreso: §33 la define como una reducción del importe de los inventarios reconocido como gasto en el periodo.
+
+**La estimación acumulada por artículo no se almacena**: es la suma de los movimientos de los avalúos anteriores. Una suma se comporta como cualquier otro saldo del sistema (CLAUDE.md), a diferencia del costo promedio, que sí es irreducible.
+
+**El costo sale de `InventoryValuationService`**, el mismo que alimenta el reporte. La base del deterioro tiene que ser por construcción idéntica a la que el reporte muestra; calcularla aparte habría permitido que un avalúo rebajara un costo que ningún reporte enseña.
+
+**El VNR lo digita quien avalúa, y eso es deliberado.** NIC 2 §30 lo hace depender de "la evidencia más fiable disponible": es un juicio, no una fórmula que el sistema pueda derivar. Los reportes de antigüedad de inventario y de lotes por vencer —las dos entregas anteriores— son los insumos de ese juicio, y por eso este era el orden correcto.
+
+**El avalúo es por ARTÍCULO, no por almacén** (§29, partida por partida): el valor neto realizable es una condición del mercado, no del estante donde está guardado. Eso obligó a que `GlDeterminationResolver::resolve()` acepte almacén nulo y salte ese nivel de la escalera, igual que ya saltaba el de grupo para un artículo sin grupo. Se resolvió con un parámetro nulable y no con un método aparte para que la precedencia siga viviendo en un solo lugar: dos implementaciones de la misma escalera es justo lo que esa clase existe para evitar.
+
+**El tipo de documento `DET` se crea de oficio**, mismo criterio que el `ACC` del cierre anual y el `APE` de saldos iniciales: es un documento del sistema, no algo que el usuario deba configurar antes de poder deteriorar.
+
+**Cómo aplicar:** cuando una norma contable tenga una simetría (reconocer / reversar), buscar la formulación que haga que las dos salgan del mismo cálculo. Implementar la mitad fácil y dejar la otra como flujo aparte es cómo se terminan con dos caminos que no cuadran entre sí.
+
+**Verificado con 24 tests nuevos** (16 en `InventoryWriteDownServiceTest`, 8 HTTP en `InventoryWriteDownsHttpTest`). Los dos centrales son la reversión del §33 —incluido que no pueda exceder lo reconocido— y que el kardex, el costo promedio y el reporte de existencias queden intactos. Suite completa: **1097 tests, 4475 assertions, sin fallos**. `vite build` compila las tres pantallas nuevas y la modificada sin errores.
+
+**Fuera de alcance:** no se anula un avalúo (la columna `reversal_of_id` existe pero ningún flujo la usa todavía — la vía natural es un avalúo nuevo con el VNR corregido, que es exactamente lo que el §33 contempla). Tampoco hay exportación XLSX/PDF del avalúo: es un proceso, no un reporte del catálogo.
+
+---
+
+## 2026-09-20 — Antigüedad de inventario: se mide desde la última salida, no desde el último movimiento
+
+**Segundo reporte del módulo de inventario**, después de existencias valorizadas, y el paso previo al deterioro de NIC 2 §28 que sigue pendiente.
+
+**La decisión de fondo es qué significa "antigüedad" para una existencia.** Había tres definiciones posibles y dos están mal:
+
+| Se mide desde… | Por qué no sirve |
+|---|---|
+| El último movimiento, sea cual sea | Un artículo al que se le sigue COMPRANDO pero que no se vende aparecería como "recién movido" justo cuando es el caso más grave. La compra nueva escondería el problema. |
+| La primera entrada | Incorrecto para un artículo que rota bien: su existencia actual es reciente aunque el artículo lleve años en el catálogo. |
+| **La última salida** | Es lo que mide rotación de verdad: cuánto hace que esta mercancía no se consume. |
+
+Un artículo que **nunca** tuvo salida se cuenta desde su primera entrada —lleva parado desde que llegó— y se marca aparte (`never_issued`). No es lo mismo que "rotaba y dejó de rotar": uno puede ser un error de compra y el otro un cambio de demanda, y merecen decisiones distintas.
+
+**Lo que ya salió completo no aparece.** Sin existencia no hay riesgo de obsolescencia, aunque el kardex tenga filas viejas. Se descarta en PHP y no en el SQL porque el saldo es la resta de las dos direcciones.
+
+**El valor se deriva de los movimientos**, exactamente igual que en `InventoryValuationService` y por las mismas dos razones: el promedio de hoy no sirve para valuar un corte pasado, y las columnas `*_after` del kardex son foto de auditoría y no fuente de verdad para un reporte (Fase 0).
+
+**Se reusó `DayBucketScheme` en vez de duplicar los cortes**, agregándole una tercera lectura (`idleLabels()`/`resolveIdleKey()`) junto a las dos que ya tenía. No se reusaron las existentes porque ninguna calza: los días sin rotar nunca son negativos, así que los buckets "Vigente" y "Vencido" —que esas dos reservan para el signo— quedarían siempre vacíos y confundirían la lectura. El default de inventario es más largo que el de cartera (30/60/90/180/360 contra 30/60/90): una factura a 90 días ya está muy vencida, una existencia de 90 días puede ser rotación normal.
+
+**Queda anotado que `DayBucketScheme` ya no pertenece a BusinessPartners.** Desde que lo usa inventario es un utilitario genérico y su namespace quedó desactualizado. Moverlo es un refactor con alcance en tres dominios y sus tests; se dejó la nota en el docblock en vez de hacerlo de contrabando dentro de esta entrega.
+
+**Lo que este reporte NO hace:** no calcula ni contabiliza el deterioro. Sigue siendo un proceso periódico manual (`write_down_allowance`/`write_down_expense` continúan siendo las 2 categorías de 11 sin activar). Este reporte es de dónde sale la lista que hay que revisar, no la decisión.
+
+**Cómo aplicar:** cuando un reporte mide "hace cuánto", la fecha de referencia es una decisión de negocio, no un detalle de implementación. Elegir la más fácil de consultar —el último movimiento— habría producido un reporte que miente justo en el caso que existe para detectar.
+
+**Verificado con 18 tests nuevos** (11 en `InventoryAgingServiceTest`, 7 HTTP en `InventoryAgingHttpTest`, incluidas las dos exportaciones). El test que fija la definición contabiliza una entrada hace 100 días, una salida hace 80 y otra entrada hace 5, y exige que el resultado sea 80. Suite completa: **1073 tests, 4374 assertions, sin fallos**. `vite build` compila la pantalla nueva y la modificada sin errores.
+
+**Colisión encontrada al correr la suite completa:** Pest carga todos los archivos de test en el mismo espacio global de funciones, y `agingFixture()` ya existía en `AgingServiceTest` (cartera). Los helpers nuevos se renombraron a `inventoryAging*`. Los tests del archivo pasaban aislados y solo fallaba la suite completa — buen recordatorio de que un archivo verde por separado no garantiza nada.
+
+---
+
+## 2026-09-20 — Existencias valorizadas: el reporte que amarra el kardex con el balance
+
+**Origen:** un análisis del módulo de inventario pedido por el usuario. El hallazgo que lo motivó: el módulo tenía 9 fases, 11 operaciones y 160 tests, pero **cero reportes**. Los 13 exportadores del proyecto eran todos contables y el catálogo de reportería no tenía ninguna entrada de inventario. En la práctica eso significaba que no había forma de demostrar que la cuenta contable de inventario cuadraba con el inventario valorizado a una fecha pasada — justo lo que pide un auditor en un cierre. El módulo registraba bien y mostraba mal.
+
+**La decisión de fondo: el valor se DERIVA de los movimientos, no se lee de ningún saldo almacenado.** Había tres fuentes posibles y dos son trampas:
+
+| Fuente | Por qué no |
+|---|---|
+| `items.avg_cost_local` | Es el promedio de HOY. Multiplicarlo por la cantidad de una fecha pasada valúa el inventario de ayer a precios de hoy. |
+| `stock_journals.avg_cost_*_after` / `balance_quantity` | La Fase 0 las declaró "foto de auditoría, **nunca** fuente de verdad para un reporte". Además un movimiento contabilizado con fecha retroactiva deja esa foto desordenada respecto de la fecha. |
+| **Σ de movimientos hasta el corte** | Exacta, y es lo que el resto del proyecto ya hace con todo saldo. |
+
+Queda entonces:
+
+```
+cantidad = Σ entradas − Σ salidas        (hasta la fecha de corte)
+valor    = Σ total_cost de entradas − Σ total_cost de salidas
+```
+
+**Esto no es una aproximación: `total_cost_local` de cada fila del kardex es literalmente el monto que esa misma operación llevó al mayor.** Por construcción el total del reporte tiene que ser igual al saldo de las cuentas de inventario en esa fecha, y hay un test dedicado que lo comprueba — es la razón de ser del reporte, no un extra.
+
+**El costo unitario de cada fila es derivado (valor / cantidad), no leído.** A una fecha pasada el promedio vigente era ese. Hay un test que lo fija explícitamente: con 10 u a ₡1.000 y una compra posterior a ₡3.000 que sube el promedio actual a ₡2.000, el corte anterior sigue valiendo ₡10.000 y no ₡20.000.
+
+**Granularidad artículo × almacén, no solo artículo.** La matriz de determinación puede mandar almacenes distintos a cuentas de inventario distintas; un reporte que no separa por almacén no se puede conciliar contra esas cuentas.
+
+**Una fila con existencia en cero y valor distinto de cero se resalta en la pantalla.** No es un dato, es un síntoma: promedio que dejó residuo en una cuenta sin mercancía que lo respalde. Por eso el filtro "ocultar existencias en cero" oculta solo las que tienen cantidad Y valor en cero.
+
+**Vive en reportería, no en el módulo de inventario.** Su razón de ser es contable y el permiso que corresponde es el de ver reportes (`module-access:reports,read`), no el de mover mercancía. Entra al catálogo de reportes guardables como cualquier otro, con `as_of`, almacén, grupo y "ocultar ceros" como parámetros — no como condicionales fijos en el controlador (CLAUDE.md secc. 9).
+
+**Rendimiento:** UNA consulta agregada para toda la compañía, mismo criterio que `TrialBalanceService`. Recorrer artículo por artículo sería N+1 sobre la tabla que más crece del módulo. El filtro entra por `(company_id, posting_date)`; conviene vigilar ese índice cuando el kardex pase de algunos cientos de miles de filas.
+
+### Deuda técnica cerrada de paso: el kardex traía todo el histórico
+
+`InventoryDocumentController::kardex()` hacía `->get()` sobre **todos** los movimientos del artículo, sin rango ni paginación. Con dos o tres años de operación deja de ser usable. Ahora acepta `from`/`to` y arranca por defecto en el año fiscal vigente, que además es el corte natural para un contador.
+
+**El rango obligó a agregar saldo inicial**, y esa es la parte que importa: un kardex filtrado sin saldo inicial muestra un saldo corriente que no cuadra con nada. Se calcula con la misma derivación que el reporte —Σ de movimientos anteriores al corte— y no con `balance_quantity`, por la misma razón de arriba. Vaciar el campo sigue trayendo todo: es una decisión explícita de quien consulta, no el comportamiento por omisión.
+
+**Cómo aplicar:** cuando un módulo tenga que rendir cuentas contra la contabilidad, el reporte que lo demuestra es parte del módulo, no un extra. Y si el dato que ese reporte necesita ya está declarado como "foto de auditoría", hay que derivarlo de nuevo, no reusarlo.
+
+**Fuera de alcance, explícito:** no se agregó rotación/antigüedad de inventario ni el deterioro de NIC 2 §28 (`write_down_allowance`/`write_down_expense` siguen siendo las 2 categorías de 11 sin activar). Este reporte es insumo de ambos, no su reemplazo.
+
+**Verificado con 17 tests nuevos** (10 en `InventoryValuationServiceTest`, 7 HTTP en `InventoryValuationHttpTest`, incluidas las dos exportaciones). Suite completa: **1055 tests, 4310 assertions, sin fallos**. `vite build` compila la pantalla nueva y las dos modificadas sin errores.
+
+---
+
+## 2026-09-20 — Módulo de inventario, Fase 8: lotes con vencimiento y trazabilidad
+
+**Pedido:** incorporar el manejo de artículos con números de lote.
+
+**La decisión de fondo, tomada antes de escribir código: un lote es trazabilidad, no valoración.** Se le planteó al usuario explícitamente porque partía el trabajo en dos proyectos distintos:
+
+| | Qué da | Qué cuesta |
+|---|---|---|
+| Lote como capa de trazabilidad | De dónde viene cada unidad, cuándo vence, dónde está | No toca el motor de costeo |
+| Lote como capa de valoración | Identificación específica: cada lote con su costo | Reescribir el núcleo de costeo con 160 tests encima |
+
+Se eligió la primera. **NIC 2 §25 admite promedio ponderado para bienes ordinariamente intercambiables entre sí**, que es el caso que cubre este diseño: dos lotes del mismo medicamento son el mismo producto, y que uno haya costado distinto no cambia cuánto vale una unidad en existencia. La identificación específica que exige el §23 es para mercancía que NO es intercambiable, y eso es otro motor de costeo, no una columna más. Hay un test que fija esa frontera: una salida de un lote que entró a ₡1.000 se valúa al promedio global de ₡1.500.
+
+**Es la misma decisión que se tomó con las ubicaciones en la Fase 7, y por eso el diseño la calca.** `item_lot_stock` **desglosa** —nunca reemplaza— a `item_warehouses` y a `item_bins`: la suma de los lotes de un almacén iguala su `on_hand`, y el motor de costeo no los mira jamás. Eso es lo que permitió agregar la fase sin tocar una sola línea del cálculo de promedios.
+
+**Pero a diferencia de las ubicaciones, el lote es propiedad del ARTÍCULO, no del almacén.** `items.tracks_lots`, no `warehouses.uses_lots`: un medicamento necesita lote en todos los almacenes y un cable no lo necesita en ninguno. Las dos dimensiones conviven — un artículo con lotes en un almacén con ubicaciones se controla por las dos a la vez, y la precedencia de existencia disponible es **lote > ubicación > almacén**.
+
+**El hallazgo real de esta fase: bloquear todas las salidas de un lote vencido lo dejaría atrapado en el inventario para siempre.** El primer diseño rechazaba cualquier salida de un lote vencido. Eso impide darlo de baja — el sistema estaría obligando a mantener como activo algo que hay que destruir. La regla quedó acotada a lo que de verdad no debe pasar:
+
+- **Prohibido** en `sales_issue` y `production_issue`: no se le entrega a un cliente ni se incorpora a un producto.
+- **Permitido** en `goods_issue`, `count_adjustment` y `transfer`: son justamente las vías para darlo de baja, ajustarlo o llevarlo a cuarentena.
+
+Lo mismo para un lote retenido por calidad (`status = 'blocked'`), que sigue contando en el inventario pero no se puede despachar. Hay un test dedicado a cada mitad de esa regla, porque la segunda es la que un diseño apurado rompe.
+
+**El vencimiento se evalúa contra la fecha de contabilización, no contra el reloj del servidor.** Un despacho retroactivo al 1.º de marzo se juzga con el estado del lote ese día. Es el mismo criterio que ya rige para vigencia de tarifas de impuesto y de normas de reparto.
+
+**FEFO es una sugerencia de la pantalla, no una regla del motor.** El servidor devuelve los lotes ordenados por vencimiento más próximo (los sin fecha al final, no al principio: no compiten en ese criterio), ya sin vencidos, retenidos ni sin saldo. Pero el motor acepta cualquier lote despachable: hay razones legítimas para elegir otro —un cliente pide un lote específico, una orden de producción exige continuidad— e imponer FEFO en el service convertiría una buena práctica de rotación en una regla contable, que no lo es.
+
+**Un traslado mueve el lote sin cambiarle la identidad.** El DTO lleva UN solo `itemLotId` para las dos puntas; poder indicar uno distinto en destino sería un cambio de identidad encubierto y rompería la trazabilidad, que es toda la razón de manejar lotes. Las dos filas de kardex del traslado llevan el mismo lote.
+
+**`item_lot_id` es nullable en el kardex y no puede no serlo**, por la misma razón que `warehouse_bin_id` en la Fase 7: los movimientos contabilizados antes de esta fase no tienen lote, y el kardex es inviolable. Un lote con movimientos tampoco se borra jamás — se retiene.
+
+**Las opciones de lote del formulario son un endpoint aparte, no un prop de la pantalla.** Un artículo con rotación alta acumula cientos de lotes al año; mandarlos todos en cada carga del formulario crece sin techo. El endpoint trae solo los de la línea que se está digitando. El reporte de próximos a vencer entra por `(item_lot_id, posting_date)` y por eso ese índice existe.
+
+**Fuera de alcance, explícito:** el reporte de vencimientos NO calcula ni contabiliza el deterioro. NIC 2 §28 obliga a valuar al menor entre costo y valor neto realizable y la obsolescencia por vencimiento es la causa típica de que el VNR caiga, pero ese sigue siendo un proceso periódico manual —igual que se decidió en la Fase 7 para las dos categorías de deterioro que siguen sin activar—. Este reporte es el insumo para decidirlo, no el asiento. Tampoco se exporta todavía a XLSX/PDF: es una pantalla operativa, no un reporte del catálogo de la secc. 5.
+
+**Cómo aplicar:** antes de agregar una dimensión al inventario, decidir si es logística o de valoración. Si es logística, desglosa las tablas de existencia y no toca el costeo; si es de valoración, es un motor nuevo. Meter media capa de valoración en el motor de promedio es el error que esta fase y la 7 evitaron a propósito.
+
+**Verificado con 41 tests nuevos** (26 en `ItemLotsTest`, 15 HTTP en `ItemLotsHttpTest`), **con los 160 anteriores de inventario intactos** — que era la comprobación importante, porque esta fase volvió a tocar el motor ya estabilizado. Suite completa del proyecto: **1038 tests, 4245 assertions, sin fallos**. `vite build` compila las tres pantallas nuevas y las dos modificadas sin errores.
+
+---
+
+## 2026-09-20 — Una importación se identifica como tal, y eso es lo que habilita el costeo
+
+**El hueco:** hasta acá una importación era, para el sistema, indistinguible de una compra local — solo una entrada a la que alguien le cargaba flete. Eso significaba que **nada impedía asignarle rubros de nacionalización a una compra hecha en San José**, y que no había forma de listar "importaciones pendientes de liquidar". Lo detectó el usuario preguntando, simplemente, cómo se identifica una entrada por importación. No se identificaba.
+
+**Decisión:** la marca vive en la entrada (`inventory_documents.is_import`), no en el tipo de documento. Se evaluaron tres opciones —marca en el tipo de documento, marca en la entrada, o un expediente de importación que agrupe todo bajo un número de DUA— y se eligió la segunda: es donde vive el dato real y no amarra la clasificación a una decisión de configuración. El expediente queda como camino natural si algún día el volumen lo pide.
+
+**Los campos son los del trámite aduanal costarricense:** número de DUA, aduana de ingreso, documento de transporte (BL, guía aérea o carta de porte), país de origen y fecha del DUA. Antes vivían en la cabeza del encargado o en el campo de descripción.
+
+**La regla que justifica todo:** los rubros de nacionalización **solo se asignan a una entrada marcada como importación**. La validación está en `PostLandedCostService`, no solo en el filtro de la pantalla — un filtro de UI no es una regla. La pantalla de costeo además ya no ofrece compras locales.
+
+**Lo que NO se restringió, y por qué:** la vía directa de costos de importación sigue admitiendo compras locales. Un flete interno sobre una compra nacional es un costo capitalizable legítimo; lo que no tiene sentido es cargarle *aranceles* a algo que nunca pasó por aduana. La restricción aplica al camino de dos fases, que es específicamente de nacionalización.
+
+**Solo una entrada por compra puede ser importación.** Un ajuste de inventario o una emisión a producción no pasan por aduana, y marcarlos habilitaría cargarles costos que no les corresponden. El servicio lo rechaza.
+
+**Consecuencia en el mapa del ciclo:** el nodo raíz de una importación se titula "Importación" en vez de "Entrada por compra", y su detalle lleva el DUA, la aduana y el origen. En una importación el DUA identifica el trámite mejor que el proveedor: es el número por el que se la busca y se la reclama.
+
+**Cómo aplicar:** cuando una funcionalidad dependa de que un documento sea "de cierto tipo", la marca tiene que ser explícita y verificable, no inferida de sus efectos. Antes de esto, "es importación" se deducía de que tuviera flete asignado — circular, porque el flete se asigna *porque* es importación.
+
+---
+
+## 2026-09-20 — Costos de nacionalización en dos fases: acumular y después costear
+
+**Decisión:** El costo de importación ahora tiene dos caminos, y el que se use depende de cuándo se sabe a qué mercancía pertenece:
+
+| | Cuándo | Crédito |
+|---|---|---|
+| **Vía directa** (la que ya existía) | La factura del transportista llega cuando ya se sabe sobre qué importación cae | Cuenta de control del proveedor, abre partida |
+| **Dos fases** (nueva) | Varios proveedores facturan la nacionalización antes de decidir el reparto | Transitoria `landed_cost_clearing` |
+
+**Esto estaba previsto desde la Fase 0.** `landed_cost_clearing` es una de las once categorías de la matriz de determinación y quedó sin activar esperando exactamente este caso; el propio `PostLandedCostService` lo decía en su docblock. Se activó ahora sin inventar nada nuevo.
+
+**Los asientos:**
+
+```
+Fase 1 — acumular el rubro (PostImportCostService)
+  Debe   Costos de importación por asignar
+  Haber  Cuentas por pagar — agencia aduanal      ← abre partida con vencimiento
+
+Fase 2 — asignar a la importación (PostLandedCostService)
+  Debe   Inventario                                ← la parte con existencia
+  Debe   Diferencia de precio                      ← la parte ya vendida
+  Haber  Costos de importación por asignar         ← liquida la transitoria
+```
+
+**La deuda es real desde la fase 1.** Al acumular ya se le debe a la agencia y la partida de CxP se abre con su vencimiento: lo que falta no es el pasivo, es saber sobre qué mercancía cae el costo. Asignar después NO vuelve a abrir deuda con nadie — hay una prueba dedicada a eso, porque duplicar el pasivo sería el error natural de este diseño.
+
+**La asignación es de muchos a muchos, y por eso es una tabla y no una columna.** Un flete se reparte entre varios contenedores; una importación acumula flete, aranceles y agencia. `import_cost_allocations` guarda cuánto de cada rubro fue a cada costeo, y de ahí sale la trazabilidad en las dos direcciones.
+
+**Cuatro decisiones tomadas explícitamente (el usuario confirmó las recomendaciones):**
+
+| | |
+|---|---|
+| Un rubro **se reparte** entre varias importaciones | Sin eso habría que partir a mano la factura de la agencia, que es donde se cometen errores |
+| **Una sola** cuenta transitoria, con el rubro como campo | Ver flete vs. aranceles por separado es un reporte, no una razón para multiplicar cuentas en el balance |
+| Prorrateo **solo por valor** de línea | Es el criterio CIF habitual; peso/volumen se agrega si alguna agencia factura así |
+| **Asignación parcial** permitida | Mismo motivo que el reparto |
+
+**Consecuencia — `landed_cost_documents.business_partner_id` pasó a nullable.** Un costeo financiado por rubros puede venir de varios proveedores a la vez, así que ya no hay UNO que anotar: quién prestó cada servicio vive en los rubros.
+
+**Consecuencia — `GlDeterminationResolver::resolveForCompany()`.** La transitoria se resuelve sin artículo ni almacén, porque al acumular el rubro todavía no se sabe sobre qué mercancía va a caer: la precedencia artículo > grupo > almacén no tiene con qué operar y la única regla aplicable es la de compañía.
+
+**Consecuencia — lo que llega tarde no se capitaliza.** Con dos fases pasa más tiempo entre la compra y el costeo, así que es más probable que parte de la mercancía ya se haya vendido. Esa porción va a resultados; lo resuelve `StockRevaluationSplitter`, que ya existía. El saldo vivo de la transitoria, mientras tanto, dice exactamente cuánta nacionalización queda sin asignar — es una cifra de control, no un subproducto.
+
+**Cómo aplicar:** el patrón de bisagra (una cuenta que se debita en un momento y se acredita en otro, y cuyo saldo vivo es una cifra de control) va por su tercera aplicación en el proyecto: GR/IR en compras, la reserva en pedidos, y ahora esta. Cuando aparezca un cuarto proceso con el mismo hueco temporal entre un hecho y su asignación, es este molde el que se copia.
+
+---
+
+## 2026-09-20 — Toma física de inventario: un proceso, no un instante
+
+**Decisión:** La toma física es un **documento con ciclo propio** (`stock_counts`), no un ajuste directo. Se abre con sus parámetros, se imprime, se cuenta en papel, se captura y recién ahí se cierra generando el ajuste.
+
+**Motivo:** entre el corte y el ajuste pasan horas o días. Lo que alguien contó el viernes hay que poder compararlo contra lo que el sistema decía **ese viernes**, no contra lo que dice hoy. Un ajuste directo no tiene dónde guardar esa comparación.
+
+**Parámetros que definen qué contar:** fecha de corte, almacén, y familia de artículos (opcional). Contar por familia es lo que permite repartir un inventario grande en varias jornadas sin cerrar la bodega entera.
+
+**La existencia teórica se calcula del KARDEX, no de `item_warehouses`.** Esa tabla dice "ahora"; la hoja tiene que decir lo que había al corte. Se suman las filas de `stock_journals` con `posting_date <= corte`, contando `in` como positivo y `out` como negativo — las de `revaluation` (landed cost, diferencia de precio) no mueven unidades y quedan fuera. El costo promedio también se congela por línea, para poder valorar la diferencia en la hoja.
+
+**El ajuste no estrena nada.** Lo genera `PostStockMovementService` con la operación `count_adjustment` que ya existía: el kardex sigue teniendo un solo dueño. `StockCountService` solo decide qué contar, congela contra qué comparar, y traduce lo contado a líneas de ajuste.
+
+**La guarda que evita el error silencioso:** al cerrar se verifica que la existencia actual siga siendo igual a la teórica congelada. Si algo entró o salió después del corte, se rechaza. El motivo es que `count_adjustment` calcula el delta contra la existencia de HOY: aplicar lo contado sin esa guarda **borraría** el movimiento intermedio. Es exactamente la razón por la que un almacén se congela mientras se cuenta; cuando salta, lo correcto es abrir una toma nueva con corte al día.
+
+**Decisiones menores, cada una con su porqué:**
+
+| | |
+|---|---|
+| Un almacén admite **una sola toma abierta** | Dos tomas ajustarían contra la misma existencia y la segunda pisaría a la primera |
+| Cerrar exige **todas** las líneas contadas | Una línea en blanco es ambigua: ¿no se contó, o se contó y había cero? Si no apareció, se cuenta en cero |
+| Un conteo **sin diferencias** cierra igual, sin ajuste | Contar y que todo cuadre también es un resultado, y queda la constancia de que se contó |
+| **Conteo a ciegas** (`blind`) oculta la existencia en la hoja | Ver el número que "tiene que dar" sesga el conteo; es el modo recomendado |
+| Se incluyen artículos con existencia **cero** al corte | Encontrar mercancía donde el sistema dice que no hay es justamente uno de los hallazgos que una toma busca |
+
+**La hoja impresa** reutiliza la infraestructura de reportes que ya existía (`ReportHeaderFactory` + `reports.partials.header` + dompdf): mismo encabezado de identidad de empresa y misma trazabilidad de quién la generó. Lleva columna en blanco para anotar a mano, observaciones, y pie de firmas (contó / revisó / autorizó).
+
+**Cómo aplicar:** cualquier proceso nuevo que compare "lo que el sistema dice" contra "lo que alguien constató" necesita las tres piezas de este: congelar la referencia al abrir, guardar lo constatado aparte, y verificar al cerrar que la referencia siga vigente. Sin la tercera, el ajuste puede borrar en silencio lo que pasó en el medio.
+
+---
+
+## 2026-09-20 — El traslado entre almacenes no mueve saldo: misma cuenta al debe y al haber
+
+**Corrige la decisión del 2026-09-15.** Aquella decía que un traslado entre almacenes con la MISMA cuenta no generaba asiento (para no consumir un consecutivo en un asiento nulo), y que con cuentas DISTINTAS reclasificaba el valor de una a otra. Ambas mitades cambian.
+
+**Regla nueva:** un traslado **nunca** cambia el saldo de ninguna cuenta de inventario. Su asiento lleva **la misma cuenta al debe y al haber** —la del almacén de origen, que es donde el valor está—, y siempre se genera, por trazabilidad.
+
+**Motivo (reportado por el usuario sobre datos reales):** el seeder de demo configura ALM02 como "Bodega de tránsito" con una regla de almacén que apunta a `1-01-03-01-002 Mercadería en tránsito`. Un traslado ALM01 → ALM02 producía entonces:
+
+```
+Debe   Mercadería en tránsito      12.000
+Haber  Inventario de mercadería    12.000
+```
+
+Es decir, mover mercancía de un estante a otro **sacaba ₡12.000 de la cuenta de inventario**. Contablemente eso no es un traslado, es una reclasificación — y el criterio del negocio es que trasladar no reclasifica nada: la mercancía sigue siendo el mismo inventario, en otro lugar.
+
+**Qué pasa ahora con las cuentas por almacén:** la regla de almacén sigue existiendo y sigue gobernando **las entradas y salidas** de ese almacén; lo que ya no hace es participar en los traslados. Si una compañía no quiere esa cuenta en absoluto, lo que corresponde es quitar la regla de la matriz de determinación, no cambiar el código.
+
+**Consecuencia — el asiento vuelve a existir siempre.** `inventory_documents.journal_entry_id` sigue siendo nullable (la columna no se toca, y hay documentos históricos que la tienen en null), pero un traslado nuevo solo la deja vacía si el valor trasladado es cero, caso en que no hay línea de asiento posible (`PostJournalService` rechaza montos en cero) ni nada que rastrear.
+
+**Consecuencia — las dos líneas se distinguen por la descripción, no por la cuenta.** Como la cuenta es la misma, el mayor mostraría dos filas idénticas; por eso el débito dice "— entrada a ALM02" y el crédito "— salida de ALM01". Es lo único que hace legible el asiento.
+
+**Cómo aplicar:** la invariante del módulo se afina una vez más. Ya no es "todo cambio en el VALOR del inventario tiene su asiento" sino: **el asiento refleja dónde está el valor y cuánto es; un movimiento que no cambia ninguna de las dos cosas se registra, pero neto en cero.** Si mañana aparece un caso que sí deba reclasificar entre cuentas de inventario (una consignación, una zona franca con tratamiento fiscal propio), no es un traslado: es su propio tipo de operación, con su propia categoría en la matriz.
+
+---
+
+## 2026-09-19 — El ciclo de ventas completo: pedido que reserva, y nota de crédito que devuelve mercancía
+
+**El hueco que se cerró:** el módulo de facturación rebajaba inventario en CUALQUIER comprobante con líneas de mercancía, sin mirar el tipo. Una nota de crédito electrónica (tipo 03) —el caso normal de "el cliente devolvió producto"— **volvía a descontar** esa mercancía en vez de devolverla, y contabilizaba un asiento de venta en lugar de una reversión. El ciclo estaba construido solo para los documentos que sacan mercancía.
+
+**Decisión 1 — la nota de crédito es la venta al revés.** `PostSalesDocumentService` ahora recorre el mismo camino en sentido contrario cuando el comprobante es tipo 03:
+
+```
+Venta:  salida   Debe Costo de ventas / Haber Inventario
+        asiento  Debe CxC             / Haber Ingresos + Haber IVA débito
+Nota:   entrada  Debe Inventario      / Haber Costo de ventas
+        asiento  Debe Ingresos + Debe IVA / Haber CxC (cancelando la partida)
+```
+
+**La regla que lo hace exacto: reingresa al costo con que SALIÓ, no al promedio de hoy.** Si entre la venta y la devolución entró mercancía más cara, devolver al promedio dejaría el costo de ventas sin cerrar. La prueba central lo fija: vendidas 10 u a ₡1.000 de costo, con el promedio ya movido a ₡1.900, la devolución entra a ₡1.000 y **el costo de ventas queda en cero**.
+
+**Consecuencia — la nota necesita saber qué comprobante corrige.** Se agregó `sales_documents.original_sales_document_id`, distinto de la referencia fiscal (`sales_references`) que exige Hacienda: esa es texto libre y puede apuntar a una factura de papel. El enlace interno es el que trae el costo original, el tope de cuánto queda por devolver, y la partida de CxC a cancelar. Una nota con mercancía sin ese enlace se rechaza.
+
+**Consecuencia — la nota CANCELA la partida, no abre otra.** La línea del cliente usa `applyToOpenItemId` contra la partida que abrió la venta. Sin eso quedarían dos partidas que se anulan entre sí y la antigüedad de saldos mostraría deuda que no existe.
+
+**Decisión 2 — la orden de pedido reserva stock sin tocar contabilidad.** Una orden es una promesa, no un hecho económico: **no genera asiento ni consecutivo fiscal**. Lo único que cambia es `item_warehouses.reserved`, al lado de `on_hand`, porque es la misma pregunta desde dos ángulos: cuánto hay y cuánto de eso ya tiene dueño. `SalesOrderService` es su dueño único, con tres momentos:
+
+| | |
+|---|---|
+| `place()` | aparta — `reserved += lo pedido` |
+| `consume()` | libera al facturar — `reserved -= lo facturado` |
+| `cancel()` | libera sin facturar — `reserved -= lo que quedaba` |
+
+**El orden importa y es la trampa del diseño:** `consume()` corre **antes** de que la factura rebaje la existencia. Si no, una orden que apartó toda la existencia se bloquearía a sí misma —su propia reserva haría ver la mercancía como no disponible. Hay una prueba dedicada que aparta las 100 unidades y factura las 100.
+
+**Consecuencia — "disponible" ya no es "existencia".** Toda salida valida contra lo LIBRE (`on_hand - reserved`), no contra `on_hand`: ventas, salidas de mercancía, emisiones a producción y **también traslados** (`PostStockTransferService` tiene su propia copia de la validación y se actualizó igual — la reserva es contra un almacén concreto, que es de donde el cliente espera su mercancía). El mensaje de error distingue los dos casos, porque son problemas distintos: "hay 20" es falta de inventario, "hay 100 pero 80 están apartadas" es un conflicto de compromisos.
+
+**Regla elegida (revisable):** no se puede apartar más de lo libre. Prometer mercancía que no hay no es apartar, y es coherente con la regla del módulo de no aceptar existencia negativa. Si el negocio necesita tomar pedidos sin stock (backorder), es un cambio localizado en `SalesOrderService::place()`.
+
+**Cómo aplicar:** cualquier salida nueva de inventario debe validar contra lo libre, no contra `on_hand` — y si se escribe fuera de `PostStockMovementService`, hay que replicar la validación como se hizo en traslados. Y todo documento que corrija a otro necesita su enlace interno además de la referencia fiscal: son dos cosas distintas y solo la primera sirve para calcular.
+
+---
+
+## 2026-09-19 — Anulación de la entrada por compra y mapa del ciclo
+
+**Decisión (anulación):** Una entrada por compra **todavía no facturada** se puede anular desde su propia pantalla. `PostStockMovementService::void()` —el mismo servicio que ya era dueño único del kardex— saca la mercancía y crea un documento espejo con `operation = 'purchase_receipt_void'` y `reversal_of_id` apuntando al original, que queda en `status = 'voided'`. Nada se borra.
+
+**La regla que define el diseño: se revierte al costo ORIGINAL, no al promedio de hoy.** Si entre la entrada y su anulación llegó más mercancía del mismo artículo a otro precio, sacar al promedio dejaría un residuo inexplicable en la cuenta de inventario. Sacando al costo con que entró, lo que queda es exactamente lo que habría quedado si la compra nunca hubiera ocurrido. Hay una prueba dedicada: dos entradas de 100 u a ₡1.000 y a ₡3.000 dan promedio ₡2.000; al anular la primera el artículo queda valuado en ₡3.000 —no en ₡1.000, que es lo que habría dado revertir al promedio— y el valor del inventario coincide con el saldo de la cuenta contable.
+
+**El asiento no se recalcula:** lo arma `PostJournalService::reverse()`, que ya existía y espeja línea por línea en las tres monedas con los tipos de cambio ORIGINALES. Así la cuenta puente GR/IR vuelve a cero sin depender del tipo de cambio del día de la anulación.
+
+**Cuándo se rechaza —y por qué cada caso:**
+
+| Caso | Motivo |
+|---|---|
+| Ya tiene factura del proveedor | La deuda es real; deshacerla es una nota de crédito, no una anulación |
+| Ya fue anulada | `status` ya no es `posted` |
+| No es una entrada por compra | El resto del ciclo se corrige con su documento espejo |
+| Tiene costos de importación aplicados | Ese documento movió el promedio por su cuenta; hay que anularlo primero |
+| La mercancía ya salió del almacén | Anular dejaría la existencia negativa |
+| La mercancía ya se consumió mezclada en el promedio | Retirar su valor original dejaría el inventario valiendo **menos que cero** |
+
+El último caso es el sutil: hay existencia suficiente pero no valor suficiente. Ocurre cuando una entrada cara se diluyó en un promedio que después se consumió (10 u a ₡10.000 + 990 u a ₡100, se emiten 990 al promedio de ₡199: quedan 10 unidades que valen ₡199, no ₡10.000). Se detecta comparando el valor acumulado del artículo contra el que la entrada aportó, **antes** de escribir nada, y el mensaje redirige a la vía correcta: facturar y emitir nota de crédito.
+
+**Decisión (mapa del ciclo):** `PurchaseCycleService` arma un mapa de solo lectura —entrada → costos de importación → factura → notas de crédito, o bien entrada → anulación— que se muestra en la pantalla de cualquier documento del ciclo. Siempre devuelve el ciclo completo visto desde su raíz, con el documento consultado marcado: verlo desde una nota de crédito o desde la anulación da exactamente el mismo mapa.
+
+**Motivo:** la factura del proveedor **no es un documento de inventario** —vive solo como asiento contable—, así que sin un mapa no había forma de ver el ciclo completo desde un solo lugar. El nodo de la factura pendiente es además el que señala el siguiente paso, y enlaza a la bandeja apuntando a esa recepción (`?receipt=N`, ver la entrada anterior de hoy).
+
+**Consecuencia:** una entrada anulada **no muestra el nodo de factura pendiente**: esa rama ya no va a ocurrir y mostrarla sería mentira. El mapa de una entrada anulada tiene exactamente dos nodos.
+
+**Cómo aplicar:** el mapa lee, nunca decide. Las reglas de qué se puede hacer viven en el modelo (`isVoidable()`) y en los servicios; la pantalla solo las refleja. Si mañana el ciclo gana un paso (una orden de compra antes de la entrada, un pago después de la factura), se agrega un nodo en `PurchaseCycleService` y la pantalla no cambia.
+
+---
+
+## 2026-09-19 — "Copiar a": la devolución al proveedor es el espejo exacto de la compra
+
+**Decisión:** El ciclo de compra se navega con una acción **"Copiar a"** en el propio documento de entrada (`Inventory/Movements/Show.vue`), cuyo destino depende del punto del ciclo: mientras la recepción no está facturada ofrece **Factura de compra**; una vez facturada ofrece **Nota de crédito**. La nota de crédito **no estrenó tablas**: se modeló como una operación más de `inventory_documents` (`purchase_return`) apuntando a su recepción con `source_document_id`.
+
+**Motivo:** La devolución es el espejo contable de la compra, y ese espejo lo da la cuenta puente GR/IR que ya existía:
+
+```
+Compra:     recepción  Debe Inventario / Haber GR/IR
+            factura    Debe GR/IR      / Haber Cuentas por Pagar
+Devolución: salida     Debe GR/IR      / Haber Inventario
+            nota       Debe CxP        / Haber GR/IR + Haber IVA
+```
+
+Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga siendo la misma —**la cuenta puente cierra en cero**— y evita un modelo paralelo de devoluciones. Lo único que hacía falta era saber de qué recepción viene cada devolución, que es `source_document_id`: de ahí sale el precio original, el tope de cuánto queda por devolver y contra qué partida de CxP acredita la nota.
+
+**Consecuencia — el tope es por artículo y almacén, no por línea:** `PostSupplierCreditNoteService` suma lo ya devuelto agrupando por `item_id + warehouse_id`, no por línea de recepción. Si una recepción trae el mismo artículo dos veces, ambas comparten el mismo saldo devolvible, y la pantalla lo muestra así. Devolver más de lo recibido lanza `InvalidPurchaseReturnException`.
+
+**Consecuencia — lo acreditado puede diferir del costo:** si el proveedor acredita menos (cargo por reposición) o más que el costo al que entró la mercancía, la diferencia **no** toca el inventario —lo que salió, salió a su costo promedio— sino que va a `price_difference`. Es la misma cuenta y el mismo criterio que ya usaba la diferencia de precio de factura (Fase 5).
+
+**Consecuencia — se cerró la captura manual de operaciones derivadas:** se agregó `InventoryDocument::MANUAL_OPERATIONS` (`goods_receipt`, `purchase_receipt`, `goods_issue`, `count_adjustment`) y tanto el formulario de movimientos como su validación ahora se limitan a esa lista. Antes el formulario genérico ofrecía las nueve operaciones: una `purchase_return` capturada suelta habría **debitado la cuenta puente sin recepción que la cerrara**, dejándola descuadrada para siempre. Las derivadas (producción, venta, traslado, devolución) solo nacen de su servicio, que es quien las deja enlazadas.
+
+**Cómo aplicar:** cualquier operación nueva de inventario que nazca de un documento previo debe (a) quedar fuera de `MANUAL_OPERATIONS`, (b) guardar su origen en `source_document_id` y (c) entrar por un servicio propio que valide el enlace. La regla de oro sigue siendo la de la Fase 2: el servicio de stock es el único dueño del kardex, y todo pasa dentro de una sola `DB::transaction()` — la prueba de atomicidad de la nota borra la determinación de `price_difference` y verifica que no quede ni salida de mercancía ni asiento.
+
+---
+
 
 ## 2026-09-15 — Traslados entre almacenes: la fase que la Fase 2 dejó pendiente a propósito
 

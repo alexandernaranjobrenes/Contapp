@@ -43,6 +43,7 @@ const blank = {
     is_inventory_item: true,
     is_sales_item: true,
     is_purchase_item: true,
+    tracks_lots: false,
     tax_rate_id: '',
     status: 'active',
 };
@@ -80,6 +81,7 @@ function openEdit(item) {
     editForm.is_inventory_item = item.is_inventory_item;
     editForm.is_sales_item = item.is_sales_item;
     editForm.is_purchase_item = item.is_purchase_item;
+    editForm.tracks_lots = item.tracks_lots;
     editForm.tax_rate_id = item.tax_rate_id ?? '';
     editForm.status = item.status;
     editing.value = item;
@@ -172,6 +174,9 @@ function destroy(item) {
                             <td class="actions-cell">
                                 <Link v-if="i.is_inventory_item" :href="route('items.kardex', i.id)" class="btn btn-ghost">
                                     Kardex
+                                </Link>
+                                <Link v-if="i.tracks_lots" :href="route('item-lots.index', i.id)" class="btn btn-ghost">
+                                    Lotes
                                 </Link>
                                 <button type="button" class="btn btn-ghost" @click="openEdit(i)">Editar</button>
                                 <button type="button" class="btn btn-ghost" @click="destroy(i)">Eliminar</button>
@@ -269,6 +274,16 @@ function destroy(item) {
                     <input v-model="activeForm.is_sales_item" type="checkbox">
                     Se vende
                 </label>
+
+                <label class="check-row">
+                    <input v-model="activeForm.tracks_lots" type="checkbox" :disabled="!activeForm.is_inventory_item">
+                    Maneja lotes (cada movimiento va a exigir número de lote)
+                </label>
+                <span class="hint small">
+                    Los lotes son trazabilidad y vencimiento, no valoración: el costo sigue siendo promedio global
+                    del artículo. Activalo para medicamentos, alimentos, químicos o cualquier cosa que haya que poder
+                    rastrear o que caduque.
+                </span>
 
                 <div class="field">
                     <label>Estado</label>
