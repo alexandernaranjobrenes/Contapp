@@ -54,6 +54,7 @@ use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
 use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\ReorderController;
 use App\Http\Controllers\SalesDocumentController;
 use App\Http\Controllers\SalesOrderController;
 use App\Http\Controllers\SavedReportController;
@@ -200,6 +201,9 @@ Route::middleware('auth')->group(function () {
 
         // Deterioro NIC 2. Vive en el módulo de inventario y no en reportería
         // porque contabiliza: es un proceso, no una consulta.
+        Route::get('reorder', [ReorderController::class, 'index'])->name('reorder.index');
+        Route::get('items/{item}/reorder-levels', [ReorderController::class, 'levels'])->name('reorder.levels');
+
         Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
         Route::get('purchase-orders/create', [PurchaseOrderController::class, 'create'])->name('purchase-orders.create');
         Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->name('purchase-orders.show');
@@ -259,6 +263,9 @@ Route::middleware('auth')->group(function () {
         Route::post('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'store'])->name('warehouse-bins.store');
         Route::put('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'update'])->name('warehouse-bins.update');
         Route::delete('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'destroy'])->name('warehouse-bins.destroy');
+
+        Route::post('reorder/order', [ReorderController::class, 'order'])->name('reorder.order');
+        Route::put('items/{item}/reorder-levels', [ReorderController::class, 'updateLevels'])->name('reorder.levels.update');
 
         Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->name('purchase-orders.store');
         Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchase-orders.cancel');

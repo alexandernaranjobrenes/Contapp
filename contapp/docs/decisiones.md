@@ -3,6 +3,48 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — Punto de reorden: "disponible" no es la existencia
+
+**Última pieza de la lista salida del análisis del módulo.** Cierra el ciclo: los reportes dicen qué hay y qué no rota, la orden de compra declara qué viene, y esto dice qué falta comprar.
+
+**La fórmula es toda la entrega:**
+
+```
+disponible = on_hand − reserved + ordered
+falta      = objetivo − disponible        (si disponible <= mínimo)
+```
+
+**`− reserved`:** lo apartado por un pedido de venta ya tiene dueño. Contarlo como disponible haría creer que hay mercancía para demanda nueva cuando está comprometida, y el quiebre se descubriría tarde. Hay un test central: 20 unidades en existencia, 15 apartadas, mínimo 10 → **sí** hay que comprar, aunque la existencia se vea sana.
+
+**`+ ordered`:** lo que viene en una orden abierta sí cubre la demanda. Omitirlo es el error clásico de este reporte —sugerir comprar de nuevo algo que ya se pidió— y termina en inventario duplicado. Es la razón concreta de que la orden de compra tuviera que construirse antes que esto, y hay un test que lo recorre entero: el artículo aparece, se crea la orden, desaparece; se cancela la orden, vuelve a aparecer.
+
+**El disparo es `<=` pero la lista solo muestra lo que tiene algo que comprar.** Un test escrito a la ligera me hizo ver la ambigüedad: estar EXACTAMENTE en el mínimo sin máximo configurado da cantidad sugerida cero. La regla quedó explícita en dos casos:
+
+| Situación | Resultado |
+|---|---|
+| En el mínimo, sin máximo | No aparece — estar en el piso que uno fijó no es nada que comprar |
+| En el mínimo, con máximo | Aparece y repone hasta el máximo — para eso se configura un máximo |
+
+Emitir una fila con cantidad cero habría sido ruido, y no disparar nunca al tocar el piso habría vuelto inútil el máximo.
+
+**Un mínimo en cero significa SIN control de reorden, no "el piso es cero".** Sin ese filtro, todo artículo agotado del catálogo aparecería como urgente y la lista sería inservible el primer día. Está dicho en la pantalla, porque es el malentendido natural.
+
+**Los niveles viven en `item_warehouses`, mezclando configuración con saldos**, y eso normalmente no se hace. Acá sí, por dos razones verificadas: la identidad es la misma —(artículo, almacén)—, y **las únicas vías que borran filas de esa tabla lo hacen junto con su artículo o su almacén**. Se revisó `ItemController::destroy` y `WarehouseController::destroy` antes de decidirlo: perder la configuración de algo que se está eliminando es correcto. Si alguna vez aparece un borrado de filas en cero sin borrar el padre, esta decisión hay que revisarla.
+
+**Un máximo por debajo del mínimo se rechaza al guardar.** Dejaría la cantidad sugerida en cero y el artículo no se repondría nunca, sin que nada lo avisara — el peor tipo de error de configuración: silencioso.
+
+**De la sugerencia sale la orden sin reimplantar nada.** El endpoint arma las líneas y llama al mismo `PurchaseOrderService::place()` que usa el formulario manual, así una orden nacida de una sugerencia es indistinguible de una digitada y pasa por las mismas validaciones. Hay un test que manda un cliente en vez de un proveedor y confirma que se rechaza igual.
+
+**Las cantidades son editables antes de ordenar.** La sugerencia es un punto de partida: quien compra ajusta por empaque, descuento por volumen o lo que diga el proveedor.
+
+**Lo que NO hace, explícito:** no calcula el punto de reorden a partir de consumo histórico ni de plazo de entrega. El mínimo lo fija quien conoce el negocio; derivarlo de la demanda pasada es otra decisión y otra discusión. Tampoco elige proveedor: no existe proveedor preferido por artículo en el esquema, y suponerlo sería inventar un dato.
+
+**Cómo aplicar:** cuando un cálculo diga "disponible", escribir cuáles de los tres saldos entran y por qué. La diferencia entre `on_hand` y `on_hand − reserved + ordered` no se ve en la pantalla, pero es la diferencia entre un sistema que ayuda a comprar y uno que hace comprar de más.
+
+**Verificado con 25 tests nuevos** (16 en `ReorderSuggestionServiceTest`, 9 HTTP en `ReorderHttpTest`). Suite completa: **1161 tests, 4777 assertions, sin fallos**. `vite build` compila las dos pantallas nuevas y las dos modificadas.
+
+---
+
 ## 2026-09-20 — Orden de compra: cierra la asimetría entre los dos ciclos
 
 **El hueco:** ventas tenía pedido → reserva → factura, y compras arrancaba directo en la recepción. No existía la orden de compra, y por lo tanto tampoco el **pendiente por recibir** ni la comparación entre lo pedido y lo recibido. Era la asimetría más visible del módulo.

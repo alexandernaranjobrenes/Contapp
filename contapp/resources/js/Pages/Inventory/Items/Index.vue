@@ -206,6 +206,9 @@ function destroy(item) {
                                 <Link v-if="i.tracks_lots" :href="route('item-lots.index', i.id)" class="btn btn-ghost">
                                     Lotes
                                 </Link>
+                                <Link v-if="i.is_inventory_item" :href="route('reorder.levels', i.id)" class="btn btn-ghost">
+                                    Niveles
+                                </Link>
                                 <button type="button" class="btn btn-ghost" @click="openEdit(i)">Editar</button>
                                 <button type="button" class="btn btn-ghost" @click="destroy(i)">Eliminar</button>
                             </td>
