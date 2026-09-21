@@ -16,22 +16,43 @@ use Inertia\Response;
 
 class ItemController extends Controller
 {
-    public function index(): Response
+    /**
+     * Paginado y con filtros: un catálogo de artículos crece sin techo y
+     * traerlo entero deja la pantalla inservible al primer cliente con
+     * inventario de verdad. Los filtros van de la mano — una lista paginada
+     * sin buscador obliga a pasar páginas para encontrar un código.
+     */
+    public function index(Request $request): Response
     {
+        $filters = $this->validateListFilters($request);
+
         $items = Item::with([
             'itemGroup:id,code,name',
             'unitOfMeasure:id,code,name',
         ])
-            ->withSum('stockLevels as on_hand', 'on_hand')
-            ->orderBy('code')
-            ->get([
+            // El select() va ANTES de withSum(): withSum agrega su subconsulta
+            // al select ya armado, así que declararlo después le pisaba la
+            // columna on_hand y la fila llegaba sin existencia.
+            ->select([
                 'id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
                 'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots',
                 'tax_rate_id', 'avg_cost_local', 'avg_cost_foreign', 'status',
-            ]);
+            ])
+            ->withSum('stockLevels as on_hand', 'on_hand')
+            ->when($filters['search'] !== null, function ($query) use ($filters) {
+                $term = '%'.$filters['search'].'%';
+
+                $query->where(fn ($q) => $q->where('code', 'like', $term)->orWhere('name', 'like', $term));
+            })
+            ->when($filters['item_group_id'] !== null, fn ($q) => $q->where('item_group_id', $filters['item_group_id']))
+            ->when($filters['status'] !== null, fn ($q) => $q->where('status', $filters['status']))
+            ->orderBy('code')
+            ->paginate(50)
+            ->withQueryString();
 
         return Inertia::render('Inventory/Items/Index', [
             'items' => $items,
+            'filters' => $filters,
             'itemGroups' => ItemGroup::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'unitsOfMeasure' => UnitOfMeasure::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'taxRates' => TaxRate::orderBy('code')->get(['id', 'code', 'name', 'percentage']),
@@ -102,6 +123,26 @@ class ItemController extends Controller
         $item->delete();
 
         return back()->with('success', "Artículo {$item->code} eliminado.");
+    }
+
+    /**
+     * @return array{search: ?string, item_group_id: ?int, status: ?string}
+     */
+    private function validateListFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'item_group_id' => ['nullable', 'integer'],
+            'status' => ['nullable', 'in:active,inactive'],
+        ]);
+
+        $search = isset($validated['search']) ? trim($validated['search']) : '';
+
+        return [
+            'search' => $search === '' ? null : $search,
+            'item_group_id' => isset($validated['item_group_id']) ? (int) $validated['item_group_id'] : null,
+            'status' => $validated['status'] ?? null,
+        ];
     }
 
     private function rules(int $companyId): array

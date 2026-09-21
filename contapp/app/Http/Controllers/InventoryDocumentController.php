@@ -26,15 +26,38 @@ class InventoryDocumentController extends Controller
 {
     public function __construct(private readonly PostStockMovementService $postStockMovementService) {}
 
-    public function index(): Response
+    /**
+     * Antes traía los últimos 200 documentos con un limit() duro. Eso no es
+     * una cota de rendimiento sino un agujero: a partir del documento 201 la
+     * información deja de existir para la pantalla, sin que nada lo avise.
+     * Paginado y con filtros, todo sigue alcanzable.
+     */
+    public function index(Request $request): Response
     {
+        $filters = $request->validate([
+            'operation' => ['nullable', 'string', Rule::in(array_keys(InventoryDocument::OPERATIONS))],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+        ]);
+
+        $documents = InventoryDocument::with(['documentType:id,code', 'journalEntry:id,document_number'])
+            ->withCount('lines')
+            ->when($filters['operation'] ?? null, fn ($q, $op) => $q->where('operation', $op))
+            ->when($filters['from'] ?? null, fn ($q, $from) => $q->whereDate('posting_date', '>=', $from))
+            ->when($filters['to'] ?? null, fn ($q, $to) => $q->whereDate('posting_date', '<=', $to))
+            ->orderByDesc('posting_date')
+            ->orderByDesc('id')
+            ->select(['id', 'document_type_id', 'journal_entry_id', 'operation', 'posting_date', 'description', 'status'])
+            ->paginate(50)
+            ->withQueryString();
+
         return Inertia::render('Inventory/Movements/Index', [
-            'documents' => InventoryDocument::with(['documentType:id,code', 'journalEntry:id,document_number'])
-                ->withCount('lines')
-                ->orderByDesc('posting_date')
-                ->orderByDesc('id')
-                ->limit(200)
-                ->get(['id', 'document_type_id', 'journal_entry_id', 'operation', 'posting_date', 'description', 'status']),
+            'documents' => $documents,
+            'filters' => [
+                'operation' => $filters['operation'] ?? null,
+                'from' => $filters['from'] ?? null,
+                'to' => $filters['to'] ?? null,
+            ],
             'operations' => InventoryDocument::OPERATIONS,
         ]);
     }

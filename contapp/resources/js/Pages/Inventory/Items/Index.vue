@@ -5,26 +5,39 @@ import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 
 const props = defineProps({
-    items: { type: Array, default: () => [] },
+    items: { type: Object, required: true },
+    filters: { type: Object, default: () => ({}) },
     itemGroups: { type: Array, default: () => [] },
     unitsOfMeasure: { type: Array, default: () => [] },
     taxRates: { type: Array, default: () => [] },
 });
 
 const page = usePage();
-const search = ref('');
 
-const filtered = computed(() => {
-    const q = search.value.trim().toLowerCase();
-    const sorted = [...props.items].sort((a, b) => a.code.localeCompare(b.code));
-    if (! q) return sorted;
+// La búsqueda pasó al servidor cuando el listado se paginó: filtrar en el
+// cliente solo alcanzaba mientras venían todos los artículos, y con
+// paginación buscaría únicamente dentro de la página que está a la vista.
+const search = ref(props.filters?.search ?? '');
+const itemGroupId = ref(props.filters?.item_group_id ?? '');
+const status = ref(props.filters?.status ?? '');
 
-    return sorted.filter((i) =>
-        i.code.toLowerCase().includes(q)
-        || i.name.toLowerCase().includes(q)
-        || (i.barcode ?? '').toLowerCase().includes(q)
-    );
-});
+let searchTimer = null;
+
+function applyFilters() {
+    router.get(route('items.index'), {
+        search: search.value.trim() === '' ? undefined : search.value.trim(),
+        item_group_id: itemGroupId.value === '' ? undefined : itemGroupId.value,
+        status: status.value === '' ? undefined : status.value,
+    }, { preserveState: true, replace: true, preserveScroll: true });
+}
+
+// Con debounce: sin esto cada tecla dispara una request al servidor.
+function onSearchInput() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applyFilters, 350);
+}
+
+const rows = computed(() => props.items.data ?? []);
 
 function money(value) {
     return Number(value ?? 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -117,7 +130,22 @@ function destroy(item) {
 
     <AppLayout title="Artículos">
         <template #actions>
-            <input v-model="search" type="search" placeholder="Buscar código, nombre o código de barras..." class="search-input">
+            <input
+                v-model="search"
+                type="search"
+                placeholder="Buscar código o nombre..."
+                class="search-input"
+                @input="onSearchInput"
+            >
+            <select v-model="itemGroupId" class="search-input" @change="applyFilters">
+                <option value="">Todos los grupos</option>
+                <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
+            </select>
+            <select v-model="status" class="search-input" @change="applyFilters">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+            </select>
         </template>
 
         <DocumentToolbar can-create @new="openCreate()" />
@@ -130,7 +158,7 @@ function destroy(item) {
 
         <div class="card">
             <div class="card-header">
-                <span class="muted">{{ filtered.length }} artículo(s)</span>
+                <span class="muted">{{ items.total }} artículo(s)</span>
                 <button type="button" class="btn btn-primary" :disabled="!unitsOfMeasure.length" @click="openCreate()">
                     + Nuevo artículo
                 </button>
@@ -153,7 +181,7 @@ function destroy(item) {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="i in filtered" :key="i.id">
+                        <tr v-for="i in rows" :key="i.id">
                             <td class="num code-cell">{{ i.code }}</td>
                             <td>{{ i.name }}</td>
                             <td class="muted small">{{ i.item_group?.code ?? '—' }}</td>
@@ -182,12 +210,27 @@ function destroy(item) {
                                 <button type="button" class="btn btn-ghost" @click="destroy(i)">Eliminar</button>
                             </td>
                         </tr>
-                        <tr v-if="!filtered.length">
-                            <td colspan="10" class="muted empty-row">Todavía no hay artículos registrados.</td>
+                        <tr v-if="!rows.length">
+                            <td colspan="10" class="muted empty-row">
+                                {{ filters.search || filters.item_group_id || filters.status
+                                    ? 'Ningún artículo coincide con los filtros.'
+                                    : 'Todavía no hay artículos registrados.' }}
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+
+            <nav v-if="items.links.length > 3" class="pagination">
+                <Link
+                    v-for="(link, i) in items.links"
+                    :key="i"
+                    :href="link.url ?? '#'"
+                    class="page-link"
+                    :class="{ active: link.active, disabled: !link.url }"
+                    v-html="link.label"
+                />
+            </nav>
         </div>
 
         <p class="hint">
@@ -305,6 +348,11 @@ function destroy(item) {
 </template>
 
 <style scoped>
+.pagination { display: flex; gap: 0.25rem; padding: 0.75rem 1.1rem; flex-wrap: wrap; }
+.page-link { padding: 0.3rem 0.6rem; border-radius: var(--radius-sm); font-size: 0.78rem; text-decoration: none; color: var(--color-text-muted); }
+.page-link.active { background: var(--color-primary); color: #fff; }
+.page-link.disabled { opacity: 0.4; pointer-events: none; }
+
 .search-input {
     background: var(--color-surface);
     border: 1px solid var(--color-border);

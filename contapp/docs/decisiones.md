@@ -3,6 +3,29 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — Paginación en inventario: el `limit(200)` era un agujero, no una cota
+
+**Deuda técnica señalada en el análisis del módulo y atacada acá.** Dos listados crecían sin control:
+
+- **Artículos**: `->get()` sin límite. Un catálogo real deja la pantalla inservible.
+- **Movimientos**: `->limit(200)`. Peor que no tener nada, y vale la pena explicar por qué.
+
+**Un `limit()` duro en un listado no es una optimización: es pérdida de información silenciosa.** A partir del documento 201 el movimiento dejaba de existir para la pantalla — sin mensaje, sin señal, sin forma de llegar a él. Un usuario que buscara un ajuste del año pasado habría concluido que nunca se hizo. Paginar cuesta lo mismo y no esconde nada.
+
+**La búsqueda tuvo que mudarse al servidor.** El listado de artículos filtraba en el cliente sobre el arreglo completo, lo cual funcionaba solo mientras venían todos. Con paginación, ese mismo filtro buscaría únicamente dentro de los 50 que están a la vista: encontraría o no encontraría según en qué página estuviera parado el usuario. Hay un test dedicado a eso — crea 60 artículos y busca uno cuyo código lo deja fuera de la primera página.
+
+**Paginar sin filtrar no alcanza.** Una lista de 50 en 50 sin buscador obliga a pasar páginas para encontrar un código, así que los filtros son parte de la misma entrega y no un extra: artículos por texto/grupo/estado, movimientos por operación y rango de fechas. Se reusó el patrón que ya existía en `JournalEntryController` (`paginate()->withQueryString()` + `links` en el componente) en vez de inventar otro.
+
+**La búsqueda lleva debounce de 350 ms**: sin eso cada tecla dispara una request.
+
+**Test existente actualizado, no borrado:** `InventoryCatalogsHttpTest` afirmaba `items.0.on_hand` y ahora las filas viven en `items.data.0`. Cambiar la forma de un prop rompe a quien lo consume, y el test hizo exactamente su trabajo.
+
+**Cómo aplicar:** si un listado necesita un tope para rendir, necesita paginación — el tope solo por sí mismo convierte un problema de rendimiento en uno de corrección. Y al paginar, revisar siempre si había filtrado en el cliente: es el bug que viaja de contrabando con el cambio.
+
+**Verificado con 9 tests nuevos** (`InventoryPaginationHttpTest`): que pagine, que la segunda página traiga el resto sin repetir, que la búsqueda encuentre lo que está fuera de la página visible, los filtros de ambos listados, y que una operación inexistente se rechace. Suite completa sin fallos. `vite build` compila las dos pantallas modificadas.
+
+---
+
 ## 2026-09-20 — Deterioro de inventario (NIC 2 §28-33): se cierran las once categorías de la Fase 0
 
 **Último pendiente declarado del módulo.** La Fase 0 reservó `write_down_allowance` y `write_down_expense` diciendo "es un proceso periódico manual, no un asiento automático por transacción, y no se construye hasta que se pida". Con esta entrega las **once categorías** del diseño original tienen consumidor real y la regla de no declarar esquema muerto se sostuvo hasta el final.

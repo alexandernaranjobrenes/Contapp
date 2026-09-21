@@ -237,7 +237,9 @@ it('expone la existencia total del artículo sumando sus almacenes', function ()
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('Inventory/Items/Index')
-            ->where('items.0.on_hand', fn ($value) => (float) $value === 10.5)
+            // items pasó a ser un paginador cuando el listado dejó de traer
+            // el catálogo entero: las filas viven en items.data.
+            ->where('items.data.0.on_hand', fn ($value) => (float) $value === 10.5)
         );
 
     expect((float) $item->onHand())->toBe(10.5);
