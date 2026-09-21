@@ -53,6 +53,7 @@ use App\Http\Controllers\OpenItemController;
 use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
 use App\Http\Controllers\ProductionOrderController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SalesDocumentController;
 use App\Http\Controllers\SalesOrderController;
 use App\Http\Controllers\SavedReportController;
@@ -199,6 +200,10 @@ Route::middleware('auth')->group(function () {
 
         // Deterioro NIC 2. Vive en el módulo de inventario y no en reportería
         // porque contabiliza: es un proceso, no una consulta.
+        Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
+        Route::get('purchase-orders/create', [PurchaseOrderController::class, 'create'])->name('purchase-orders.create');
+        Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->name('purchase-orders.show');
+
         Route::get('inventory-write-downs', [InventoryWriteDownController::class, 'index'])->name('inventory-write-downs.index');
         Route::get('inventory-write-downs/create', [InventoryWriteDownController::class, 'create'])->name('inventory-write-downs.create');
         Route::get('inventory-write-downs/{inventoryWriteDown}', [InventoryWriteDownController::class, 'show'])->name('inventory-write-downs.show');
@@ -254,6 +259,10 @@ Route::middleware('auth')->group(function () {
         Route::post('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'store'])->name('warehouse-bins.store');
         Route::put('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'update'])->name('warehouse-bins.update');
         Route::delete('warehouses/{warehouse}/bins/{bin}', [WarehouseBinController::class, 'destroy'])->name('warehouse-bins.destroy');
+
+        Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->name('purchase-orders.store');
+        Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchase-orders.cancel');
+        Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'close'])->name('purchase-orders.close');
 
         Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
 

@@ -21,6 +21,7 @@ use App\Domains\Inventory\Models\ItemBin;
 use App\Domains\Inventory\Models\ItemLot;
 use App\Domains\Inventory\Models\ItemLotStock;
 use App\Domains\Inventory\Models\ItemWarehouse;
+use App\Domains\Inventory\Models\PurchaseOrder;
 use App\Domains\Inventory\Models\StockJournal;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Models\WarehouseBin;
@@ -46,6 +47,7 @@ class PostStockMovementService
         private readonly GlDeterminationResolver $glResolver,
         private readonly WarehouseBinResolver $binResolver,
         private readonly ItemLotResolver $lotResolver,
+        private readonly PurchaseOrderService $purchaseOrders,
     ) {}
 
     /**
@@ -64,6 +66,10 @@ class PostStockMovementService
         ?int $productionOrderId = null,
         ?int $sourceDocumentId = null,
         ?ImportDetailsInput $import = null,
+        // Orden de compra que origina esta recepción. Nullable a propósito:
+        // no toda compra pasa por una orden formal, y exigirla rompería el
+        // flujo que ya funciona.
+        ?int $purchaseOrderId = null,
     ): InventoryDocument {
         if (! array_key_exists($operation, InventoryDocument::OPERATIONS)) {
             throw new InvalidStockMovementException("Operación de inventario desconocida: {$operation}.");
@@ -97,7 +103,7 @@ class PostStockMovementService
             throw new \InvalidArgumentException('Un movimiento de inventario requiere al menos una línea.');
         }
 
-        return DB::transaction(function () use ($company, $documentType, $operation, $documentDate, $postingDate, $lines, $description, $createdBy, $businessPartnerId, $productionOrderId, $sourceDocumentId, $import) {
+        return DB::transaction(function () use ($company, $documentType, $operation, $documentDate, $postingDate, $lines, $description, $createdBy, $businessPartnerId, $productionOrderId, $sourceDocumentId, $import, $purchaseOrderId) {
             $itemIds = array_values(array_unique(array_map(fn (StockLineInput $l) => $l->itemId, $lines)));
             $warehouseIds = array_values(array_unique(array_map(fn (StockLineInput $l) => $l->warehouseId, $lines)));
 
@@ -349,6 +355,7 @@ class PostStockMovementService
                 'business_partner_id' => $businessPartnerId,
                 'production_order_id' => $productionOrderId,
                 'source_document_id' => $sourceDocumentId,
+                'purchase_order_id' => $purchaseOrderId,
                 'document_date' => $documentDate->format('Y-m-d'),
                 'posting_date' => $postingDate->format('Y-m-d'),
                 'description' => $description,
@@ -417,6 +424,32 @@ class PostStockMovementService
             }
 
             $this->persistLotStock($lotOnHand);
+
+            // Descarga el pendiente de la orden de compra DENTRO de la misma
+            // transacción, igual que la factura consume el pedido de venta:
+            // si el asiento o el kardex fallan, la orden tampoco queda
+            // marcada como recibida.
+            if ($purchaseOrderId !== null) {
+                $order = PurchaseOrder::withoutGlobalScope(CompanyScope::class)
+                    ->where('company_id', $company->id)
+                    ->find($purchaseOrderId);
+
+                if (! $order) {
+                    throw new InvalidStockMovementException("La orden de compra id {$purchaseOrderId} no existe en la compañía.");
+                }
+
+                if ($order->business_partner_id !== $businessPartnerId) {
+                    throw new InvalidStockMovementException(
+                        "La orden de compra {$order->number} es de otro proveedor."
+                    );
+                }
+
+                $this->purchaseOrders->receive($order, array_map(fn (array $m) => [
+                    'item_id' => $m['item']->id,
+                    'warehouse_id' => $m['warehouse']->id,
+                    'quantity' => $m['quantity'],
+                ], $movements));
+            }
 
             return $document->load('lines');
         });

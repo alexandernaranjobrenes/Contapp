@@ -3,6 +3,43 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — Orden de compra: cierra la asimetría entre los dos ciclos
+
+**El hueco:** ventas tenía pedido → reserva → factura, y compras arrancaba directo en la recepción. No existía la orden de compra, y por lo tanto tampoco el **pendiente por recibir** ni la comparación entre lo pedido y lo recibido. Era la asimetría más visible del módulo.
+
+**Igual que la orden de pedido, una OC no genera asiento ni consecutivo fiscal.** Es un compromiso, no un hecho económico: todavía no hay mercancía ni pasivo. Eso llega con la entrada por compra (contra GR/IR) y su factura. Hay un test dedicado que lo fija.
+
+**La asimetría con la reserva, que es deliberada y vale más que el código:**
+
+| | `reserved` (pedido de venta) | `ordered` (orden de compra) |
+|---|---|---|
+| Qué hace | **Restringe** | **Informa** |
+| Efecto | Lo apartado no se le puede vender a otro | Saber que vienen 100 no cambia lo que se puede hacer hoy |
+| Tope | No se puede apartar más de lo libre | **No hay tope**: pedir lo que no hay es para lo que sirve |
+| Impacto | Obligó a actualizar toda salida, hasta traslados | No tocó ni una validación existente |
+
+Esa diferencia es la razón de que esta fase fuera mucho menos riesgosa que la de la reserva: agregar una columna que nadie consulta para decidir no puede romper nada.
+
+**Su consumidor natural es el punto de reorden**, que es lo siguiente: lo que hay que comprar es `mínimo − (existencia − apartado + en camino)`. Sin `ordered`, ese cálculo mandaría a comprar de nuevo algo que ya se pidió.
+
+**`PurchaseOrderService` es el dueño único de `ordered`**, igual que `SalesOrderService` lo es de `reserved` y `PostStockMovementService` de la existencia. Cuatro momentos lo mueven: `place()`, `receive()`, `cancel()` y `close()`.
+
+**Cancelar y cerrar hacen lo mismo y significan cosas distintas.** Cancelar es "esta orden no debió existir"; cerrar es "ya recibí lo que iba a recibir, el resto no llega". Contablemente ninguna hace nada, así que la diferencia es puramente de trazabilidad — y por eso son dos estados y no uno. Una orden que ya recibió mercancía **no se puede cancelar**: se cierra, y lo recibido queda registrado.
+
+**Recibir de más se topa a lo pendiente, no se rechaza.** Que un proveedor mande unidades de sobra es un hecho real y la mercancía igual entró al kardex; lo que no puede pasar es que "en camino" quede negativo. La orden descarga hasta su pendiente y el excedente entra al inventario como cualquier otra entrada.
+
+**El enlace recepción → orden corre DENTRO de la transacción del movimiento**, igual que la factura consume el pedido de venta: si el asiento o el kardex fallan, la orden tampoco queda marcada como recibida. Hay un test de atomicidad que borra una determinación contable y confirma que la orden sigue abierta con su pendiente intacto.
+
+**`inventory_documents.purchase_order_id` es nullable a propósito:** no toda compra pasa por una orden formal, y exigirla habría roto el flujo que ya funcionaba.
+
+**Segunda vez que muerde la misma trampa:** Pest carga todos los tests en un espacio global de funciones y `placeOrder()` ya existía en `SalesOrderTest`. Los helpers se renombraron a `placePurchaseOrder`/`purchaseOrderedOf`/`receiveAgainstOrder`. Ya había pasado con `agingFixture()` en la entrega de antigüedad — conviene prefijar los helpers con el dominio desde el principio.
+
+**Cómo aplicar:** antes de agregar una columna de estado al inventario, decidir si restringe o informa. Si restringe, hay que auditar TODA vía que consulte disponibilidad; si informa, el cambio es local. Confundir las dos es cómo se terminan con validaciones a medias.
+
+**Verificado con 30 tests nuevos** (21 en `PurchaseOrderServiceTest`, 9 HTTP en `PurchaseOrdersHttpTest`). Suite completa: **1136 tests, 4689 assertions, sin fallos**. `vite build` compila las tres pantallas nuevas y las dos modificadas.
+
+---
+
 ## 2026-09-20 — Paginación en inventario: el `limit(200)` era un agujero, no una cota
 
 **Deuda técnica señalada en el análisis del módulo y atacada acá.** Dos listados crecían sin control:

@@ -18,7 +18,7 @@ class ItemWarehouse extends Model
     use HasFactory;
 
     protected $fillable = [
-        'item_id', 'warehouse_id', 'on_hand', 'reserved',
+        'item_id', 'warehouse_id', 'on_hand', 'reserved', 'ordered',
     ];
 
     public function item(): BelongsTo

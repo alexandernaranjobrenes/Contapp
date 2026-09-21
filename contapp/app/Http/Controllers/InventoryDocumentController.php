@@ -11,6 +11,7 @@ use App\Domains\Inventory\DataTransferObjects\ImportDetailsInput;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\Item;
+use App\Domains\Inventory\Models\PurchaseOrder;
 use App\Domains\Inventory\Models\StockJournal;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Models\WarehouseBin;
@@ -82,6 +83,17 @@ class InventoryDocumentController extends Controller
                 ->where('status', 'active')
                 ->orderBy('code')
                 ->get(['id', 'warehouse_id', 'code']),
+            // Solo las órdenes que todavía esperan mercancía: enlazar una
+            // recepción a una orden ya recibida o cancelada no significa nada.
+            'purchaseOrders' => PurchaseOrder::pending()
+                ->with('businessPartner:id,code')
+                ->orderByDesc('order_date')
+                ->get(['id', 'number', 'business_partner_id', 'order_date'])
+                ->map(fn (PurchaseOrder $order) => [
+                    'id' => $order->id,
+                    'label' => $order->number.' — '.$order->businessPartner?->code,
+                    'business_partner_id' => $order->business_partner_id,
+                ]),
             'suppliers' => BusinessPartner::whereIn('type', ['supplier', 'both'])
                 ->where('status', 'active')
                 ->orderBy('code')
@@ -191,6 +203,7 @@ class InventoryDocumentController extends Controller
             // exigencia según tracks_lots y el vencimiento los valida
             // ItemLotResolver, que es quien conoce la regla.
             'lines.*.item_lot_id' => ['nullable', 'integer'],
+            'purchase_order_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0'],
             'lines.*.unit_cost_local' => ['nullable', 'numeric', 'min:0'],
             'lines.*.description' => ['nullable', 'string', 'max:255'],
@@ -225,6 +238,11 @@ class InventoryDocumentController extends Controller
                     customsDate: isset($validated['customs_date'])
                         ? new \DateTimeImmutable($validated['customs_date']) : null,
                 ) : null,
+                // La pertenencia a la compañía y al proveedor la valida el
+                // service, que es quien conoce la regla.
+                purchaseOrderId: isset($validated['purchase_order_id'])
+                    ? (int) $validated['purchase_order_id']
+                    : null,
             );
         } catch (\RuntimeException $e) {
             // Toda excepción de dominio (existencia insuficiente, cuenta sin

@@ -10,6 +10,7 @@ const props = defineProps({
     warehouses: { type: Array, default: () => [] },
     bins: { type: Array, default: () => [] },
     suppliers: { type: Array, default: () => [] },
+    purchaseOrders: { type: Array, default: () => [] },
     customsOffices: { type: Object, default: () => ({}) },
 });
 
@@ -79,6 +80,7 @@ const form = useForm({
     posting_date: today,
     description: '',
     business_partner_id: '',
+    purchase_order_id: '',
     is_import: false,
     customs_declaration: '',
     customs_office: '',
@@ -91,6 +93,11 @@ const form = useForm({
 // El proveedor solo aplica a una entrada por compra: es lo que crea la
 // cuenta puente GR/IR que después liquida su factura.
 const needsSupplier = computed(() => form.operation === 'purchase_receipt');
+
+// Solo las órdenes del proveedor elegido: ofrecer las de otro invita a un
+// enlace que el service va a rechazar igual.
+const ordersOfSupplier = computed(() => props.purchaseOrders
+    .filter((o) => o.business_partner_id === form.business_partner_id));
 
 // Marcar la entrada como importación es lo que después habilita cargarle
 // rubros de nacionalización; sin la marca, esos costos no se le pueden asignar.
@@ -138,6 +145,7 @@ function submit() {
         .transform((data) => ({
             ...data,
             business_partner_id: needsSupplier.value && data.business_partner_id !== '' ? data.business_partner_id : null,
+            purchase_order_id: needsSupplier.value && data.purchase_order_id !== '' ? data.purchase_order_id : null,
             // Si la operación no admite importación, los campos viajan vacíos
             // aunque hayan quedado escritos antes de cambiar de operación.
             is_import: canBeImport.value && data.is_import,
@@ -207,6 +215,17 @@ function submit() {
                         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.code }} — {{ s.name }}</option>
                     </select>
                     <span v-if="form.errors.business_partner_id" class="error">{{ form.errors.business_partner_id }}</span>
+                </div>
+
+                <div v-if="needsSupplier" class="field">
+                    <label>Orden de compra (opcional)</label>
+                    <select v-model="form.purchase_order_id">
+                        <option value="">Sin orden previa</option>
+                        <option v-for="o in ordersOfSupplier" :key="o.id" :value="o.id">{{ o.label }}</option>
+                    </select>
+                    <span class="hint small">
+                        Enlazarla descarga lo recibido de su pendiente. No toda compra pasa por una orden formal.
+                    </span>
                 </div>
 
                 <div class="field">

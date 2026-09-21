@@ -54,6 +54,7 @@ const nav = computed(() => {
                 { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex'] },
                 { label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
                 { label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
+                { label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
                 { label: 'Tomas físicas', href: route('stock-counts.index'), match: ['stock-counts.*'] },
                 { label: 'Deterioro (NIC 2)', href: route('inventory-write-downs.index'), match: ['inventory-write-downs.*'] },
                 { label: 'Lotes por vencer', href: route('lot-expiry.index'), match: ['lot-expiry.*'] },

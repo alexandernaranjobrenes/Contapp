@@ -81,7 +81,7 @@ class InventoryDocument extends Model
 
     protected $fillable = [
         'company_id', 'document_type_id', 'journal_entry_id', 'invoice_journal_entry_id',
-        'operation', 'business_partner_id', 'production_order_id', 'source_document_id',
+        'operation', 'business_partner_id', 'production_order_id', 'source_document_id', 'purchase_order_id',
         'is_import', 'customs_declaration', 'customs_office', 'transport_document',
         'origin_country', 'customs_date',
         'document_date', 'posting_date',
