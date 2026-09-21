@@ -3,6 +3,38 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — CAByS en la ficha: la columna existía, el camino para llenarla no
+
+**Pedido del usuario:** que el CAByS esté en la ficha del artículo y ligado a la factura electrónica, para que al facturar el dato se localice en cada artículo.
+
+**El diagnóstico fue el hallazgo.** `items.cabys_code`, `items.fiscal_unit_code` e `items.iva_rate_code` ya eran columnas reales; `SalesDocumentController` ya las leía y `Billing/Sales/Create.vue` ya precargaba cada línea con ellas (`line.cabys_code = item.cabys_code ?? ''`). Toda la mitad de lectura estaba construida. Lo que faltaba era la mitad de escritura: los tres campos **no estaban en `Item::$fillable` ni en `ItemController::rules()`**, así que ninguna pantalla podía guardarlos y en la práctica siempre llegaban vacíos. El resultado visible era que había que teclear el CAByS en cada factura, aunque el sistema estaba preparado para no tener que hacerlo.
+
+Vale la pena nombrarlo como patrón: **una columna sin ruta de escritura es peor que una columna ausente**, porque el código que la consume parece funcionar y el hueco solo aparece en el uso diario.
+
+**Los tres campos van juntos, no solo el CAByS.** La línea de factura exige CAByS, unidad y tarifa de IVA. Traer uno solo desde la ficha dejaría los otros dos para digitar y el ahorro sería a medias.
+
+**Nullable a propósito.** Exigir el CAByS al crear el artículo bloquearía dar de alta el catálogo antes de haber investigado los códigos, que es como se trabaja de verdad. La factura sí lo exige por línea; la ficha avisa en vez de bloquear, y el listado marca con `sin CAByS` todo artículo que se vende y no lo tiene, para poder barrer el catálogo pendiente.
+
+**La guarda que justifica el trabajo: dos datos de impuesto que tienen que decir lo mismo.** El artículo lleva `tax_rate_id` —el indicador interno con el que se **contabiliza**— y `iva_rate_code` —el código con el que se **declara** ante Hacienda—. Si no coinciden, el XML declara un porcentaje y el asiento registra otro. Esa diferencia no salta a la vista en ninguna pantalla y aparece recién en una fiscalización, que es la peor forma de enterarse.
+
+**Se comparan por porcentaje, no por código**, y la razón es que no hay correspondencia uno a uno:
+
+| Códigos de Hacienda | Porcentaje |
+|---|---|
+| `01`, `05`, `10`, `11` | 0,00 % |
+| `04`, `06` | 4,00 % |
+
+Cuál de los cuatro ceros corresponde —exento, transitorio, con o sin derecho a crédito— es una decisión fiscal del usuario y el sistema no tiene con qué tomarla. Lo único que puede exigir es que el número cuadre. Hay un test que recorre los cuatro códigos de 0 % contra una tarifa interna del 0 % y los acepta a todos, y otro que rechaza 13 % interno contra `04`.
+
+**El CAByS se valida como exactamente 13 dígitos.** Corto, largo o con letras lo rechaza Hacienda al recibir el comprobante, y ahí el error cuesta mucho más caro que en la ficha.
+
+**Un bug latente que la prueba destapó.** `ItemController::update()` leía `$validated['is_inventory_item']` directo, pero la regla es `boolean` y no `required`: un payload sin ese campo reventaba con *Undefined array key*. En la pantalla nunca pasaba porque el checkbox siempre viaja, pero cualquier otro cliente del endpoint lo habría encontrado. Quedó con `?? false`, igual que en `normalize()` — ausente significa lo mismo que desmarcado.
+
+**Cómo aplicar:** antes de agregar un campo, revisar si la columna ya existe y qué la consume. Acá la lectura estaba entera y el trabajo real era la escritura y la coherencia entre dos datos que ya convivían mal.
+
+**Verificado con 9 tests nuevos**, entre ellos el que cierra el círculo: se guarda el CAByS por la ficha —por la misma vía que usa el usuario, no tocando el modelo— y se comprueba que llega precargado a la pantalla de emisión. Suite completa: **1176 tests, 4850 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-20 — El mínimo en la ficha del artículo: precedencia, no un segundo campo
 
 **Pedido del usuario:** el mínimo de existencia no estaba en la ficha del artículo, y hacía falta para poder analizar compras por almacén o por categoría.

@@ -10,6 +10,8 @@ const props = defineProps({
     itemGroups: { type: Array, default: () => [] },
     unitsOfMeasure: { type: Array, default: () => [] },
     taxRates: { type: Array, default: () => [] },
+    fiscalUnits: { type: Object, default: () => ({}) },
+    fiscalIvaRates: { type: Object, default: () => ({}) },
 });
 
 const page = usePage();
@@ -59,6 +61,9 @@ const blank = {
     tracks_lots: false,
     minimum_stock: 0,
     maximum_stock: '',
+    cabys_code: '',
+    fiscal_unit_code: '',
+    iva_rate_code: '',
     tax_rate_id: '',
     status: 'active',
 };
@@ -99,6 +104,9 @@ function openEdit(item) {
     editForm.tracks_lots = item.tracks_lots;
     editForm.minimum_stock = item.minimum_stock ?? 0;
     editForm.maximum_stock = item.maximum_stock ?? '';
+    editForm.cabys_code = item.cabys_code ?? '';
+    editForm.fiscal_unit_code = item.fiscal_unit_code ?? '';
+    editForm.iva_rate_code = item.iva_rate_code ?? '';
     editForm.tax_rate_id = item.tax_rate_id ?? '';
     editForm.status = item.status;
     editing.value = item;
@@ -118,6 +126,9 @@ function normalize(data) {
         ...data,
         item_group_id: data.item_group_id === '' ? null : data.item_group_id,
         maximum_stock: data.maximum_stock === '' ? null : data.maximum_stock,
+        cabys_code: data.cabys_code === '' ? null : data.cabys_code,
+        fiscal_unit_code: data.fiscal_unit_code === '' ? null : data.fiscal_unit_code,
+        iva_rate_code: data.iva_rate_code === '' ? null : data.iva_rate_code,
         tax_rate_id: data.tax_rate_id === '' ? null : data.tax_rate_id,
         barcode: data.barcode === '' ? null : data.barcode,
     };
@@ -187,7 +198,14 @@ function destroy(item) {
                     </thead>
                     <tbody>
                         <tr v-for="i in rows" :key="i.id">
-                            <td class="num code-cell">{{ i.code }}</td>
+                            <td class="num code-cell">
+                                {{ i.code }}
+                                <span
+                                    v-if="i.is_sales_item && !i.cabys_code"
+                                    class="needs-cabys"
+                                    title="Se vende pero no tiene código CAByS: habrá que teclearlo en cada factura"
+                                >sin CAByS</span>
+                            </td>
                             <td>{{ i.name }}</td>
                             <td class="muted small">{{ i.item_group?.code ?? '—' }}</td>
                             <td class="muted small">{{ i.unit_of_measure?.code ?? '—' }}</td>
@@ -361,6 +379,58 @@ function destroy(item) {
                     En cero significa <strong>sin control de reorden</strong>.
                 </span>
 
+                <h3 class="section-heading">Datos para factura electrónica</h3>
+
+                <div class="field">
+                    <label>Código CAByS</label>
+                    <input
+                        v-model="activeForm.cabys_code"
+                        type="text" inputmode="numeric" maxlength="13" placeholder="13 dígitos"
+                        class="cabys-input"
+                    >
+                    <span v-if="activeForm.errors.cabys_code" class="error">{{ activeForm.errors.cabys_code }}</span>
+                    <span class="hint small">
+                        Se precarga en cada línea de la factura electrónica. Hacienda lo exige por línea, así que
+                        un artículo que se vende y no lo tenga acá obliga a teclearlo en <strong>cada</strong>
+                        factura.
+                    </span>
+                </div>
+
+                <div class="grid-2">
+                    <div class="field">
+                        <label>Unidad de medida de Hacienda</label>
+                        <select v-model="activeForm.fiscal_unit_code">
+                            <option value="">— Sin definir —</option>
+                            <option v-for="(label, code) in fiscalUnits" :key="code" :value="code">
+                                {{ code }} — {{ label }}
+                            </option>
+                        </select>
+                        <span v-if="activeForm.errors.fiscal_unit_code" class="error">
+                            {{ activeForm.errors.fiscal_unit_code }}
+                        </span>
+                    </div>
+
+                    <div class="field">
+                        <label>Tarifa de IVA de Hacienda</label>
+                        <select v-model="activeForm.iva_rate_code">
+                            <option value="">— Sin definir —</option>
+                            <option v-for="(label, code) in fiscalIvaRates" :key="code" :value="code">
+                                {{ label }}
+                            </option>
+                        </select>
+                        <span v-if="activeForm.errors.iva_rate_code" class="error">
+                            {{ activeForm.errors.iva_rate_code }}
+                        </span>
+                    </div>
+                </div>
+
+                <span class="hint small">
+                    La unidad de Hacienda es distinta de la unidad de medida interna: aquella es un catálogo
+                    cerrado del XML. Y la tarifa de Hacienda tiene que decir el mismo porcentaje que el indicador
+                    de impuesto de arriba — si no, la factura declararía un porcentaje y el asiento registraría
+                    otro; el sistema lo rechaza.
+                </span>
+
                 <div class="field">
                     <label>Estado</label>
                     <select v-model="activeForm.status">
@@ -381,6 +451,9 @@ function destroy(item) {
 </template>
 
 <style scoped>
+.section-heading { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin: 1rem 0 0.25rem; }
+.cabys-input { font-variant-numeric: tabular-nums; }
+.needs-cabys { display: inline-block; margin-left: 0.4rem; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; background: #fdf0ea; color: #a04000; font-weight: 600; }
 .pagination { display: flex; gap: 0.25rem; padding: 0.75rem 1.1rem; flex-wrap: wrap; }
 .page-link { padding: 0.3rem 0.6rem; border-radius: var(--radius-sm); font-size: 0.78rem; text-decoration: none; color: var(--color-text-muted); }
 .page-link.active { background: var(--color-primary); color: #fff; }

@@ -256,3 +256,32 @@ it('bloquea el módulo a un usuario sin permiso de facturación', function () {
     $this->get(route('sales-documents.index'))->assertForbidden();
     $this->get(route('billing-settings.index'))->assertForbidden();
 });
+
+it('EL CIERRE DEL CÍRCULO: el CAByS guardado en la ficha llega a la pantalla de emisión', function () {
+    $f = billingHttpFixture();
+
+    // Se guarda por la misma vía que usa el usuario —la ficha del artículo—
+    // y no tocando el modelo: lo que se está probando es justamente que ese
+    // camino existe. Antes el campo era columna en la tabla pero ninguna
+    // pantalla podía escribirlo, así que había que teclear el CAByS en cada
+    // factura.
+    $this->put(route('items.update', $f['item']->id), [
+        'name' => $f['item']->name,
+        'uom_id' => $f['item']->uom_id,
+        'is_inventory_item' => true,
+        'is_sales_item' => true,
+        'status' => 'active',
+        'cabys_code' => '2310110000000',
+        'fiscal_unit_code' => 'kg',
+        'iva_rate_code' => '08',
+    ])->assertSessionHasNoErrors();
+
+    $this->get(route('sales-documents.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Billing/Sales/Create')
+            ->where('items.0.cabys_code', '2310110000000')
+            ->where('items.0.fiscal_unit_code', 'kg')
+            ->where('items.0.iva_rate_code', '08')
+        );
+});

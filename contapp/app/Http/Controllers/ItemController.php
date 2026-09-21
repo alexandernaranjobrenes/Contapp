@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemGroup;
@@ -36,7 +37,8 @@ class ItemController extends Controller
             ->select([
                 'id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
                 'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'minimum_stock', 'maximum_stock',
-                'tax_rate_id', 'avg_cost_local', 'avg_cost_foreign', 'status',
+                'tax_rate_id', 'cabys_code', 'fiscal_unit_code', 'iva_rate_code',
+                'avg_cost_local', 'avg_cost_foreign', 'status',
             ])
             ->withSum('stockLevels as on_hand', 'on_hand')
             ->when($filters['search'] !== null, function ($query) use ($filters) {
@@ -56,6 +58,12 @@ class ItemController extends Controller
             'itemGroups' => ItemGroup::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'unitsOfMeasure' => UnitOfMeasure::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'taxRates' => TaxRate::orderBy('code')->get(['id', 'code', 'name', 'percentage']),
+            'fiscalUnits' => FiscalCatalogs::UNITS,
+            // Los dos catálogos de Hacienda que la ficha necesita ofrecer,
+            // como código => etiqueta legible.
+            'fiscalIvaRates' => collect(FiscalCatalogs::IVA_RATES)
+                ->map(fn (array $rate, string $code) => $code.' — '.$rate['label'])
+                ->all(),
         ]);
     }
 
@@ -71,6 +79,10 @@ class ItemController extends Controller
 
         if ($error = $this->reorderLevelsError($validated)) {
             return back()->withErrors(['maximum_stock' => $error])->withInput();
+        }
+
+        if ($error = $this->taxConsistencyError($validated)) {
+            return back()->withErrors(['iva_rate_code' => $error])->withInput();
         }
 
         Item::create([
@@ -96,7 +108,11 @@ class ItemController extends Controller
             collect($this->rules($currentCompany->id()))->except('code')->all()
         );
 
-        if (! $validated['is_inventory_item'] && $item->is_inventory_item) {
+        // Con ?? false igual que en normalize(): la regla es 'boolean' y no
+        // 'required', así que un checkbox ausente no llega al array validado
+        // y leerlo directo reventaba. Ausente significa lo mismo que
+        // desmarcado: es un servicio.
+        if (! ($validated['is_inventory_item'] ?? false) && $item->is_inventory_item) {
             if (bccomp($item->onHand(), '0.000000', 6) !== 0) {
                 return back()->withErrors([
                     'is_inventory_item' => "El artículo {$item->code} todavía tiene existencias; no se puede convertir en servicio hasta dejarlo en cero.",
@@ -106,6 +122,10 @@ class ItemController extends Controller
 
         if ($error = $this->reorderLevelsError($validated)) {
             return back()->withErrors(['maximum_stock' => $error])->withInput();
+        }
+
+        if ($error = $this->taxConsistencyError($validated)) {
+            return back()->withErrors(['iva_rate_code' => $error])->withInput();
         }
 
         $item->update($this->normalize($validated));
@@ -176,6 +196,13 @@ class ItemController extends Controller
             // aplica cuando no lo hace.
             'minimum_stock' => ['nullable', 'numeric', 'min:0'],
             'maximum_stock' => ['nullable', 'numeric', 'min:0'],
+            // Datos fiscales de Hacienda. Nullable a propósito: obligar el
+            // CAByS acá bloquearía dar de alta el catálogo antes de haber
+            // investigado los códigos, que es como se trabaja en la práctica.
+            // La factura sí lo exige por línea, y la ficha avisa.
+            'cabys_code' => ['nullable', 'string', 'size:13', 'regex:/^\d{13}$/'],
+            'fiscal_unit_code' => ['nullable', Rule::in(array_keys(FiscalCatalogs::UNITS))],
+            'iva_rate_code' => ['nullable', Rule::in(array_keys(FiscalCatalogs::IVA_RATES))],
             // company_id NULL en tax_rates es el catálogo nacional compartido
             // (ver GlobalOrOwnCompanyScope): exigir company_id = la compañía
             // rechazaría el IVA nacional, que es el caso normal.
@@ -196,6 +223,46 @@ class ItemController extends Controller
      * mínimo dejaría la cantidad sugerida en cero y el artículo no se
      * repondría nunca, sin que nada lo avisara.
      */
+    /**
+     * El artículo lleva DOS datos de impuesto que tienen que decir lo mismo:
+     * `tax_rate_id`, que es el indicador interno con el que se contabiliza, y
+     * `iva_rate_code`, que es el código con el que la factura se declara ante
+     * Hacienda. Si no coinciden, el XML declara un porcentaje y el asiento
+     * registra otro — una diferencia que no salta a la vista en ninguna
+     * pantalla y que aparece recién en una fiscalización.
+     *
+     * Se comparan por PORCENTAJE y no por código porque no hay
+     * correspondencia uno a uno: el catálogo de Hacienda tiene cuatro códigos
+     * distintos que valen 0% (exento, transitorio, con y sin derecho a
+     * crédito) y dos que valen 4%. Cuál de ellos corresponde es una decisión
+     * fiscal del usuario; lo que el sistema puede exigir es que el número
+     * cuadre.
+     */
+    private function taxConsistencyError(array $validated): ?string
+    {
+        $rateId = $validated['tax_rate_id'] ?? null;
+        $code = $validated['iva_rate_code'] ?? null;
+
+        if ($rateId === null || $code === null) {
+            return null;
+        }
+
+        $rate = TaxRate::find($rateId);
+
+        if ($rate === null) {
+            return null;
+        }
+
+        $fiscal = FiscalCatalogs::IVA_RATES[$code]['percentage'] ?? null;
+
+        if ($fiscal === null || bccomp((string) $rate->percentage, $fiscal, 2) === 0) {
+            return null;
+        }
+
+        return "El indicador de impuesto {$rate->code} es del {$rate->percentage}%, pero la tarifa de Hacienda ".
+            "elegida ({$code}) es del {$fiscal}%. La factura declararía un porcentaje distinto al que se contabiliza.";
+    }
+
     private function reorderLevelsError(array $validated): ?string
     {
         $minimum = (string) ($validated['minimum_stock'] ?? 0);
@@ -230,6 +297,9 @@ class ItemController extends Controller
                 ? ($validated['maximum_stock'] ?? null)
                 : null,
             'tax_rate_id' => $validated['tax_rate_id'] ?? null,
+            'cabys_code' => $validated['cabys_code'] ?? null,
+            'fiscal_unit_code' => $validated['fiscal_unit_code'] ?? null,
+            'iva_rate_code' => $validated['iva_rate_code'] ?? null,
             'status' => $validated['status'],
         ];
     }

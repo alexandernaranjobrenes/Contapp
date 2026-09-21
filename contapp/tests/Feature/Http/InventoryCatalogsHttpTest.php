@@ -244,3 +244,155 @@ it('expone la existencia total del artículo sumando sus almacenes', function ()
 
     expect((float) $item->onHand())->toBe(10.5);
 });
+
+// --- Datos fiscales del artículo (CAByS y compañía) ---
+
+/**
+ * Crea un artículo por HTTP con lo mínimo obligatorio más lo que se le pase.
+ * Los datos fiscales son opcionales, así que cada prueba agrega solo el campo
+ * que está ejercitando.
+ */
+function itemFiscalPayload(array $company, array $overrides = []): array
+{
+    return array_merge([
+        'code' => 'ART-CAB',
+        'name' => 'Artículo con datos de Hacienda',
+        'uom_id' => $company['uom']->id,
+        'is_inventory_item' => true,
+        'is_sales_item' => true,
+        'status' => 'active',
+    ], $overrides);
+}
+
+function companyWithUom(): array
+{
+    ['company' => $company] = logInAsCompanyUser();
+
+    return ['company' => $company, 'uom' => UnitOfMeasure::factory()->create(['company_id' => $company->id])];
+}
+
+it('LA PRUEBA DE LA FICHA: guarda el CAByS y los demás datos de Hacienda', function () {
+    $f = companyWithUom();
+
+    $this->post(route('items.store'), itemFiscalPayload($f, [
+        'cabys_code' => '2310110000000',
+        'fiscal_unit_code' => 'Unid',
+        'iva_rate_code' => '08',
+    ]))->assertSessionHasNoErrors();
+
+    $item = Item::where('company_id', $f['company']->id)->sole();
+
+    expect($item->cabys_code)->toBe('2310110000000')
+        ->and($item->fiscal_unit_code)->toBe('Unid')
+        ->and($item->iva_rate_code)->toBe('08');
+});
+
+it('deja el CAByS vacío: el catálogo se da de alta antes de investigar los códigos', function () {
+    $f = companyWithUom();
+
+    $this->post(route('items.store'), itemFiscalPayload($f))->assertSessionHasNoErrors();
+
+    expect(Item::where('company_id', $f['company']->id)->sole()->cabys_code)->toBeNull();
+});
+
+it('rechaza un CAByS que no son exactamente 13 dígitos', function () {
+    $f = companyWithUom();
+
+    // Corto, largo y con letras: los tres los rechaza Hacienda al recibir el
+    // XML, y ahí el error cuesta mucho más caro que acá.
+    foreach (['231011', '23101100000000', '23101100000AB'] as $malo) {
+        $this->post(route('items.store'), itemFiscalPayload($f, ['cabys_code' => $malo]))
+            ->assertSessionHasErrors('cabys_code');
+    }
+
+    expect(Item::where('company_id', $f['company']->id)->count())->toBe(0);
+});
+
+it('rechaza una unidad o una tarifa que no están en el catálogo de Hacienda', function () {
+    $f = companyWithUom();
+
+    $this->post(route('items.store'), itemFiscalPayload($f, ['fiscal_unit_code' => 'CAJA']))
+        ->assertSessionHasErrors('fiscal_unit_code');
+
+    $this->post(route('items.store'), itemFiscalPayload($f, ['iva_rate_code' => '99']))
+        ->assertSessionHasErrors('iva_rate_code');
+
+    expect(Item::where('company_id', $f['company']->id)->count())->toBe(0);
+});
+
+it('LA PRUEBA CENTRAL: no deja que el indicador interno y la tarifa de Hacienda digan porcentajes distintos', function () {
+    $f = companyWithUom();
+
+    $iva13 = TaxRate::factory()->create([
+        'company_id' => null, 'code' => 'IVA-13', 'percentage' => '13.00',
+        'tax_type_id' => TaxType::factory()->create(['company_id' => null])->id,
+    ]);
+
+    // El asiento registraría 13% y el XML declararía 4%. La diferencia no se
+    // ve en ninguna pantalla y aparece recién en una fiscalización.
+    $this->post(route('items.store'), itemFiscalPayload($f, [
+        'tax_rate_id' => $iva13->id,
+        'iva_rate_code' => '04',
+    ]))->assertSessionHasErrors('iva_rate_code');
+
+    expect(Item::where('company_id', $f['company']->id)->count())->toBe(0);
+
+    $this->post(route('items.store'), itemFiscalPayload($f, [
+        'tax_rate_id' => $iva13->id,
+        'iva_rate_code' => '08',
+    ]))->assertSessionHasNoErrors();
+
+    expect(Item::where('company_id', $f['company']->id)->sole()->iva_rate_code)->toBe('08');
+});
+
+it('compara por porcentaje y no por código: exento y sin derecho a crédito valen ambos 0%', function () {
+    $f = companyWithUom();
+
+    $exento = TaxRate::factory()->create([
+        'company_id' => null, 'code' => 'IVA-0', 'percentage' => '0.00',
+        'tax_type_id' => TaxType::factory()->create(['company_id' => null])->id,
+    ]);
+
+    // El catálogo tiene cuatro códigos distintos que valen 0% y cuál
+    // corresponde es una decisión fiscal del usuario, no del sistema. Lo
+    // único que se exige es que el número cuadre.
+    foreach (['01', '05', '10', '11'] as $code) {
+        $this->post(route('items.store'), itemFiscalPayload($f, [
+            'code' => 'ART-'.$code,
+            'tax_rate_id' => $exento->id,
+            'iva_rate_code' => $code,
+        ]))->assertSessionHasNoErrors();
+    }
+
+    expect(Item::where('company_id', $f['company']->id)->count())->toBe(4);
+});
+
+it('la misma guarda aplica al editar, no solo al crear', function () {
+    $f = companyWithUom();
+
+    $item = Item::factory()->create(['company_id' => $f['company']->id, 'uom_id' => $f['uom']->id]);
+
+    $iva13 = TaxRate::factory()->create([
+        'company_id' => null, 'code' => 'IVA-13', 'percentage' => '13.00',
+        'tax_type_id' => TaxType::factory()->create(['company_id' => null])->id,
+    ]);
+
+    $this->put(route('items.update', $item->id), [
+        'name' => $item->name, 'uom_id' => $f['uom']->id, 'status' => 'active',
+        'tax_rate_id' => $iva13->id, 'iva_rate_code' => '02',
+    ])->assertSessionHasErrors('iva_rate_code');
+
+    expect($item->fresh()->iva_rate_code)->toBeNull();
+});
+
+it('la ficha recibe los catálogos de Hacienda para poder ofrecerlos', function () {
+    companyWithUom();
+
+    $this->get(route('items.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Inventory/Items/Index')
+            ->where('fiscalUnits.Unid', 'Unidad')
+            ->where('fiscalIvaRates.08', '08 — Tarifa general 13%')
+        );
+});

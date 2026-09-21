@@ -16,6 +16,9 @@ class Item extends Model
     protected $fillable = [
         'company_id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
         'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'minimum_stock', 'maximum_stock', 'tax_rate_id',
+        // Datos fiscales de Hacienda: los lee la factura electrónica para
+        // precargar cada línea (SalesDocumentController).
+        'cabys_code', 'fiscal_unit_code', 'iva_rate_code',
         'avg_cost_local', 'avg_cost_foreign', 'status',
     ];
 
