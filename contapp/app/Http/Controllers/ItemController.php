@@ -35,7 +35,7 @@ class ItemController extends Controller
             // columna on_hand y la fila llegaba sin existencia.
             ->select([
                 'id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
-                'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots',
+                'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'minimum_stock', 'maximum_stock',
                 'tax_rate_id', 'avg_cost_local', 'avg_cost_foreign', 'status',
             ])
             ->withSum('stockLevels as on_hand', 'on_hand')
@@ -69,6 +69,10 @@ class ItemController extends Controller
             return back()->withErrors(['code' => "Ya existe un artículo con el código {$validated['code']}."])->withInput();
         }
 
+        if ($error = $this->reorderLevelsError($validated)) {
+            return back()->withErrors(['maximum_stock' => $error])->withInput();
+        }
+
         Item::create([
             ...$this->normalize($validated),
             'code' => $validated['code'],
@@ -98,6 +102,10 @@ class ItemController extends Controller
                     'is_inventory_item' => "El artículo {$item->code} todavía tiene existencias; no se puede convertir en servicio hasta dejarlo en cero.",
                 ]);
             }
+        }
+
+        if ($error = $this->reorderLevelsError($validated)) {
+            return back()->withErrors(['maximum_stock' => $error])->withInput();
         }
 
         $item->update($this->normalize($validated));
@@ -163,6 +171,11 @@ class ItemController extends Controller
             'is_sales_item' => ['boolean'],
             'is_purchase_item' => ['boolean'],
             'tracks_lots' => ['boolean'],
+            // Niveles por defecto del artículo. Cada almacén puede
+            // sobrescribirlos desde su propia pantalla; acá se fija lo que
+            // aplica cuando no lo hace.
+            'minimum_stock' => ['nullable', 'numeric', 'min:0'],
+            'maximum_stock' => ['nullable', 'numeric', 'min:0'],
             // company_id NULL en tax_rates es el catálogo nacional compartido
             // (ver GlobalOrOwnCompanyScope): exigir company_id = la compañía
             // rechazaría el IVA nacional, que es el caso normal.
@@ -178,6 +191,23 @@ class ItemController extends Controller
         ];
     }
 
+    /**
+     * Misma guarda que en los niveles por almacén: un máximo por debajo del
+     * mínimo dejaría la cantidad sugerida en cero y el artículo no se
+     * repondría nunca, sin que nada lo avisara.
+     */
+    private function reorderLevelsError(array $validated): ?string
+    {
+        $minimum = (string) ($validated['minimum_stock'] ?? 0);
+        $maximum = $validated['maximum_stock'] ?? null;
+
+        if ($maximum !== null && bccomp((string) $maximum, $minimum, 6) < 0) {
+            return 'El máximo no puede ser menor que el mínimo: la sugerencia de compra quedaría en cero y el artículo no se repondría nunca.';
+        }
+
+        return null;
+    }
+
     private function normalize(array $validated): array
     {
         return [
@@ -191,6 +221,14 @@ class ItemController extends Controller
             // Un servicio no lleva kardex, así que tampoco puede llevar lotes:
             // no hay existencia que rastrear.
             'tracks_lots' => ($validated['is_inventory_item'] ?? false) && ($validated['tracks_lots'] ?? false),
+            // Por la misma razón, un servicio no tiene nivel de reposición:
+            // no hay existencia que reponer.
+            'minimum_stock' => ($validated['is_inventory_item'] ?? false)
+                ? ($validated['minimum_stock'] ?? 0)
+                : 0,
+            'maximum_stock' => ($validated['is_inventory_item'] ?? false)
+                ? ($validated['maximum_stock'] ?? null)
+                : null,
             'tax_rate_id' => $validated['tax_rate_id'] ?? null,
             'status' => $validated['status'],
         ];

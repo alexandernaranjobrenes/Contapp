@@ -243,3 +243,88 @@ it('aísla por compañía', function () {
 
     expect(suggestions(purchaseFixture()))->toHaveCount(0);
 });
+
+// ── Precedencia ficha → almacén ──────────────────────────────────────────
+
+it('LA PRUEBA DE LA FICHA: el mínimo del artículo aplica sin configurar el almacén', function () {
+    $f = purchaseFixture();
+
+    receiveStock($f, 3);
+    $f['item']->update(['minimum_stock' => 10]);
+
+    $s = suggestions($f);
+
+    expect($s)->toHaveCount(1)
+        ->and((float) $s[0]['minimum_stock'])->toBe(10.0)
+        ->and((float) $s[0]['suggested_quantity'])->toBe(7.0)
+        ->and($s[0]['minimum_is_override'])->toBeFalse();
+});
+
+it('un artículo NUEVO con mínimo en su ficha y sin movimientos aparece igual', function () {
+    $f = purchaseFixture();
+
+    // Nunca se movió: no hay fila en item_warehouses. Sin la rama del almacén
+    // predeterminado sería invisible, que es justo el caso de dar de alta un
+    // producto y esperar que el sistema mande comprar el primer lote.
+    $f['item']->update(['minimum_stock' => 25]);
+    $f['warehouse']->update(['is_default' => true]);
+
+    $s = suggestions($f);
+
+    expect($s)->toHaveCount(1)
+        ->and((float) $s[0]['on_hand'])->toBe(0.0)
+        ->and((float) $s[0]['suggested_quantity'])->toBe(25.0);
+});
+
+it('el almacén sobrescribe el mínimo de la ficha', function () {
+    $f = purchaseFixture();
+
+    receiveStock($f, 30);
+    $f['item']->update(['minimum_stock' => 10]);
+
+    // Con el de la ficha (10) no habría nada que comprar; este almacén
+    // necesita 50.
+    expect(suggestions($f))->toHaveCount(0);
+
+    setLevels($f, 50);
+
+    $s = suggestions($f);
+
+    expect($s)->toHaveCount(1)
+        ->and((float) $s[0]['minimum_stock'])->toBe(50.0)
+        ->and($s[0]['minimum_is_override'])->toBeTrue();
+});
+
+it('LA OTRA PRUEBA: cero en el almacén apaga el reorden aunque la ficha tenga mínimo', function () {
+    $f = purchaseFixture();
+
+    receiveStock($f, 3);
+    $f['item']->update(['minimum_stock' => 10]);
+
+    expect(suggestions($f))->toHaveCount(1);
+
+    // Bodega de tránsito: existe para estar vacía. Cero es una decisión, no
+    // ausencia de configuración, y tiene que ganarle a la ficha.
+    setLevels($f, 0);
+
+    expect(suggestions($f))->toHaveCount(0);
+});
+
+it('el máximo también hereda de la ficha', function () {
+    $f = purchaseFixture();
+
+    receiveStock($f, 3);
+    $f['item']->update(['minimum_stock' => 10, 'maximum_stock' => 40]);
+
+    expect((float) suggestions($f)[0]['suggested_quantity'])->toBe(37.0);
+});
+
+it('el máximo del almacén le gana al de la ficha', function () {
+    $f = purchaseFixture();
+
+    receiveStock($f, 3);
+    $f['item']->update(['minimum_stock' => 10, 'maximum_stock' => 40]);
+    setLevels($f, null, 100);
+
+    expect((float) suggestions($f)[0]['suggested_quantity'])->toBe(97.0);
+});

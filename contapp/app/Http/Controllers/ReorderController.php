@@ -119,7 +119,13 @@ class ReorderController extends Controller
             ->keyBy('warehouse_id');
 
         return Inertia::render('Inventory/Items/ReorderLevels', [
-            'item' => $item->only(['id', 'code', 'name', 'is_inventory_item']),
+            'item' => [
+                ...$item->only(['id', 'code', 'name', 'is_inventory_item']),
+                // Los niveles de la ficha: lo que aplica en cada almacén que
+                // no defina el suyo.
+                'default_minimum' => (float) $item->minimum_stock,
+                'default_maximum' => $item->maximum_stock !== null ? (float) $item->maximum_stock : null,
+            ],
             'rows' => $warehouses->map(fn (Warehouse $w) => [
                 'warehouse_id' => $w->id,
                 'warehouse_code' => $w->code,
@@ -127,10 +133,16 @@ class ReorderController extends Controller
                 'on_hand' => (float) ($levels[$w->id]->on_hand ?? 0),
                 'reserved' => (float) ($levels[$w->id]->reserved ?? 0),
                 'ordered' => (float) ($levels[$w->id]->ordered ?? 0),
-                'minimum_stock' => (float) ($levels[$w->id]->minimum_stock ?? 0),
+                // null = hereda de la ficha. Es distinto de 0, que significa
+                // "este almacén NO lleva control de reorden" aunque el
+                // artículo sí — el caso de una bodega de tránsito.
+                'minimum_stock' => $levels[$w->id]->minimum_stock !== null
+                    ? (float) $levels[$w->id]->minimum_stock
+                    : null,
                 'maximum_stock' => $levels[$w->id]->maximum_stock !== null
                     ? (float) $levels[$w->id]->maximum_stock
                     : null,
+                'effective_minimum' => (float) ($levels[$w->id]->minimum_stock ?? $item->minimum_stock),
             ]),
         ]);
     }
@@ -143,17 +155,23 @@ class ReorderController extends Controller
         $validated = $request->validate([
             'levels' => ['required', 'array'],
             'levels.*.warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
-            'levels.*.minimum_stock' => ['required', 'numeric', 'min:0'],
+            // Nullable: dejar el campo vacío es "heredar el de la ficha", que
+            // es distinto de poner 0 ("este almacén no lleva reorden").
+            'levels.*.minimum_stock' => ['nullable', 'numeric', 'min:0'],
             'levels.*.maximum_stock' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         foreach ($validated['levels'] as $level) {
-            $minimum = (string) $level['minimum_stock'];
+            $minimum = $level['minimum_stock'] ?? null;
             $maximum = $level['maximum_stock'] ?? null;
+
+            // Se compara contra el mínimo que de verdad va a regir: si este
+            // almacén hereda, el tope lo pone la ficha.
+            $effectiveMinimum = (string) ($minimum ?? $item->minimum_stock);
 
             // Un máximo por debajo del mínimo dejaría la sugerencia en cero y
             // el artículo nunca se repondría, sin que nada lo avisara.
-            if ($maximum !== null && bccomp((string) $maximum, $minimum, 6) < 0) {
+            if ($maximum !== null && bccomp((string) $maximum, $effectiveMinimum, 6) < 0) {
                 return back()->withErrors([
                     'levels' => 'El máximo no puede ser menor que el mínimo: la sugerencia quedaría en cero y el artículo no se repondría nunca.',
                 ]);

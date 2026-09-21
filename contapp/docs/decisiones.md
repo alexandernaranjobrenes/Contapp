@@ -3,6 +3,45 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-20 — El mínimo en la ficha del artículo: precedencia, no un segundo campo
+
+**Pedido del usuario:** el mínimo de existencia no estaba en la ficha del artículo, y hacía falta para poder analizar compras por almacén o por categoría.
+
+**Lo que ya existía y lo que faltaba de verdad.** El mínimo sí existía —por almacén, en `item_warehouses`, con su pantalla *Niveles* y con la sugerencia de compra filtrable por almacén y por grupo—. Lo que faltaba era ponerlo donde uno lo busca primero: la ficha. Es un problema de diseño real, no de descubribilidad: dar de alta un artículo y tener que entrar a otra pantalla para decir cuánto hay que tener es un paso de más, y en una empresa con un solo almacén es puro trámite.
+
+**La decisión: precedencia, no duplicación.** Tener el dato en los dos lados sin más serían dos fuentes de verdad y la pregunta inevitable de cuál manda. Se resolvió con el mismo patrón que este módulo ya usa en la matriz de determinación de cuentas:
+
+```
+mínimo efectivo = item_warehouses.minimum_stock  (si el almacén define algo)
+                  ?? items.minimum_stock          (el de la ficha)
+```
+
+**El cambio que lo hace posible es que `item_warehouses.minimum_stock` pasó a nullable**, porque había tres estados confundidos en uno:
+
+| Valor | Significado |
+|---|---|
+| `null` | Este almacén no define nada: hereda el de la ficha |
+| `0` | Este almacén **NO** lleva control de reorden, aunque el artículo sí |
+| `> 0` | Sobrescribe el de la ficha solo acá |
+
+Sin esa distinción, poner 0 en una bodega de tránsito para excluirla sería indistinguible de no haberla configurado, y heredaría el mínimo del artículo — pidiendo reponer una bodega que existe justamente para estar vacía. Hay un test por cada uno de los tres estados.
+
+Los ceros que ya existían se migraron a `null`: con el esquema viejo 0 era el default de la columna y significaba "sin configurar", no una decisión.
+
+**El hueco que el cambio destapó, y que era el más importante.** La consulta se manejaba desde `item_warehouses`, que solo tiene fila donde el artículo ya se movió. Un artículo NUEVO con mínimo en su ficha y sin movimientos habría sido invisible — es decir, exactamente el caso que motivó el pedido: dar de alta un producto y esperar que el sistema mande comprar el primer lote.
+
+La consulta pasó a manejarse desde `items × warehouses` con `LEFT JOIN item_warehouses`, incluyendo el par si el artículo ya se stockeó ahí **o** si es el almacén predeterminado. Sin la segunda condición un artículo sin movimientos no aparece; sin la primera, un mínimo de ficha se multiplicaría por cada almacén de la compañía y llenaría la lista de ruido. El costo es un producto cartesiano que se poda temprano por compañía, estado del artículo y mínimo efectivo; con catálogos grandes y muchos almacenes conviene vigilarlo.
+
+**Un servicio no tiene nivel de reposición.** Igual que no puede llevar lotes: no hay existencia que reponer. El controlador lo fuerza a 0 al guardar, no solo lo esconde en la pantalla.
+
+**Misma guarda de máximo ≥ mínimo en los dos niveles**, y en el de almacén se compara contra el mínimo que de verdad va a regir —si ese almacén hereda, el tope lo pone la ficha—. Un máximo por debajo dejaría la sugerencia en cero y el artículo no se repondría nunca, en silencio.
+
+**Cómo aplicar:** cuando un dato tenga sentido en dos niveles, resolver con precedencia y hacer que el nivel más específico pueda decir "nada" (null) además de "cero". Sin ese tercer estado, heredar y apagar son indistinguibles.
+
+**Verificado con 6 tests nuevos** de precedencia, con los 25 de reorden anteriores intactos. Suite completa: **1167 tests, 4792 assertions, sin fallos**. `vite build` compila la ficha y la pantalla de niveles.
+
+---
+
 ## 2026-09-20 — Punto de reorden: "disponible" no es la existencia
 
 **Última pieza de la lista salida del análisis del módulo.** Cierra el ciclo: los reportes dicen qué hay y qué no rota, la orden de compra declara qué viene, y esto dice qué falta comprar.

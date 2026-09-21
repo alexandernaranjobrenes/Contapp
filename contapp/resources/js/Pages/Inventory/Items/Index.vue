@@ -57,6 +57,8 @@ const blank = {
     is_sales_item: true,
     is_purchase_item: true,
     tracks_lots: false,
+    minimum_stock: 0,
+    maximum_stock: '',
     tax_rate_id: '',
     status: 'active',
 };
@@ -95,6 +97,8 @@ function openEdit(item) {
     editForm.is_sales_item = item.is_sales_item;
     editForm.is_purchase_item = item.is_purchase_item;
     editForm.tracks_lots = item.tracks_lots;
+    editForm.minimum_stock = item.minimum_stock ?? 0;
+    editForm.maximum_stock = item.maximum_stock ?? '';
     editForm.tax_rate_id = item.tax_rate_id ?? '';
     editForm.status = item.status;
     editing.value = item;
@@ -113,6 +117,7 @@ function normalize(data) {
     return {
         ...data,
         item_group_id: data.item_group_id === '' ? null : data.item_group_id,
+        maximum_stock: data.maximum_stock === '' ? null : data.maximum_stock,
         tax_rate_id: data.tax_rate_id === '' ? null : data.tax_rate_id,
         barcode: data.barcode === '' ? null : data.barcode,
     };
@@ -329,6 +334,31 @@ function destroy(item) {
                     Los lotes son trazabilidad y vencimiento, no valoración: el costo sigue siendo promedio global
                     del artículo. Activalo para medicamentos, alimentos, químicos o cualquier cosa que haya que poder
                     rastrear o que caduque.
+                </span>
+
+                <div v-if="activeForm.is_inventory_item" class="grid-2">
+                    <div class="field">
+                        <label>Mínimo de existencia</label>
+                        <input v-model="activeForm.minimum_stock" type="number" step="0.000001" min="0">
+                        <span v-if="activeForm.errors.minimum_stock" class="error">
+                            {{ activeForm.errors.minimum_stock }}
+                        </span>
+                    </div>
+
+                    <div class="field">
+                        <label>Máximo (opcional)</label>
+                        <input v-model="activeForm.maximum_stock" type="number" step="0.000001" min="0" placeholder="—">
+                        <span v-if="activeForm.errors.maximum_stock" class="error">
+                            {{ activeForm.errors.maximum_stock }}
+                        </span>
+                    </div>
+                </div>
+
+                <span v-if="activeForm.is_inventory_item" class="hint small">
+                    Es el nivel <strong>por defecto</strong> del artículo: alimenta la sugerencia de compra y
+                    aplica en todos los almacenes, salvo en los que definan el suyo propio desde
+                    <em>Niveles</em>. El mínimo dispara la reposición; el máximo dice hasta dónde reponer.
+                    En cero significa <strong>sin control de reorden</strong>.
                 </span>
 
                 <div class="field">

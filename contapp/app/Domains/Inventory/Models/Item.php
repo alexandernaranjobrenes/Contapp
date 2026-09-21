@@ -15,7 +15,7 @@ class Item extends Model
 
     protected $fillable = [
         'company_id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
-        'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'tax_rate_id',
+        'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'minimum_stock', 'maximum_stock', 'tax_rate_id',
         'avg_cost_local', 'avg_cost_foreign', 'status',
     ];
 

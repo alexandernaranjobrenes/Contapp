@@ -27,8 +27,12 @@ function available(row) {
 
 function submit() {
     form.transform((data) => ({
+        // Vacío viaja como null, que es "heredar de la ficha". Mandarlo como
+        // '' lo convertiría en 0 y eso significa otra cosa: apagar el reorden
+        // en este almacén.
         levels: data.levels.map((l) => ({
             ...l,
+            minimum_stock: l.minimum_stock === '' || l.minimum_stock === null ? null : l.minimum_stock,
             maximum_stock: l.maximum_stock === '' || l.maximum_stock === null ? null : l.maximum_stock,
         })),
     })).put(route('reorder.levels.update', props.item.id), { preserveScroll: true });
@@ -52,11 +56,18 @@ function submit() {
         </p>
 
         <p class="hint">
-            El <strong>mínimo</strong> dispara la reposición; el <strong>máximo</strong> dice hasta dónde reponer.
-            Sin máximo, la sugerencia solo devuelve al mínimo. Un mínimo en cero significa
-            <strong>sin control de reorden</strong>, no "el piso es cero": el artículo no va a aparecer en la
-            sugerencia de compra.
+            La ficha del artículo define el nivel <strong>por defecto</strong>
+            (mínimo <strong>{{ quantity(item.default_minimum) }}</strong>,
+            máximo {{ item.default_maximum === null ? '—' : quantity(item.default_maximum) }}).
+            Acá solo hace falta llenar los almacenes que necesiten algo distinto:
         </p>
+
+        <ul class="hint rules">
+            <li><strong>Campo vacío</strong> → hereda el de la ficha.</li>
+            <li><strong>Cero</strong> → este almacén NO lleva control de reorden, aunque el artículo sí. Es lo que
+                corresponde en una bodega de tránsito, que existe para estar vacía.</li>
+            <li><strong>Un número</strong> → sobrescribe el de la ficha solo en este almacén.</li>
+        </ul>
 
         <form class="card" @submit.prevent="submit">
             <table>
@@ -69,6 +80,7 @@ function submit() {
                         <th class="num">Disponible</th>
                         <th class="num">Mínimo</th>
                         <th class="num">Máximo</th>
+                        <th class="num">Mínimo efectivo</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -82,17 +94,23 @@ function submit() {
                             <input
                                 v-model="form.levels[index].minimum_stock"
                                 type="number" step="0.000001" min="0" class="level-input"
+                                :placeholder="'ficha: ' + quantity(item.default_minimum)"
                             >
                         </td>
                         <td class="num">
                             <input
                                 v-model="form.levels[index].maximum_stock"
-                                type="number" step="0.000001" min="0" class="level-input" placeholder="—"
+                                type="number" step="0.000001" min="0" class="level-input"
+                                :placeholder="item.default_maximum === null ? '—' : 'ficha: ' + quantity(item.default_maximum)"
                             >
+                        </td>
+                        <td class="num">
+                            <strong>{{ quantity(row.effective_minimum) }}</strong>
+                            <span v-if="row.minimum_stock === null" class="inherited">heredado</span>
                         </td>
                     </tr>
                     <tr v-if="!rows.length">
-                        <td colspan="7" class="muted empty-row">No hay almacenes activos.</td>
+                        <td colspan="8" class="muted empty-row">No hay almacenes activos.</td>
                     </tr>
                 </tbody>
             </table>
@@ -109,5 +127,8 @@ function submit() {
 <style scoped>
 .num { text-align: right; }
 .level-input { width: 7rem; text-align: right; }
+.rules { margin: 0 0 0.75rem 1.1rem; padding: 0; }
+.rules li { margin: 0.15rem 0; }
+.inherited { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; }
 .form-actions { padding: 0.75rem 1.1rem; }
 </style>

@@ -44,31 +44,62 @@ class ReorderSuggestionService
      */
     public function build(Company $company, ?int $warehouseId = null, ?int $itemGroupId = null): Collection
     {
-        $rows = DB::table('item_warehouses')
-            ->join('items', 'items.id', '=', 'item_warehouses.item_id')
-            ->join('warehouses', 'warehouses.id', '=', 'item_warehouses.warehouse_id')
+        // Se maneja desde items × almacenes y NO desde item_warehouses: esa
+        // tabla solo tiene fila donde el artículo ya se movió alguna vez, así
+        // que un artículo nuevo con mínimo en su ficha —el caso más obvio,
+        // dar de alta un producto y esperar que el sistema mande comprar el
+        // primer lote— habría sido invisible.
+        //
+        // El par se incluye si el artículo ya se stockeó ahí (existe la fila)
+        // o si es el almacén predeterminado. Sin esa segunda condición un
+        // artículo sin movimientos no aparecería; sin la primera, un mínimo
+        // de ficha se multiplicaría por cada almacén de la compañía y
+        // llenaría la lista de ruido.
+        //
+        // Rendimiento: el producto cartesiano se poda temprano por
+        // company_id, por el estado del artículo y por el mínimo efectivo.
+        // Con catálogos grandes y muchos almacenes conviene vigilarlo.
+        $rows = DB::table('items')
+            ->crossJoin('warehouses')
+            ->leftJoin('item_warehouses', function ($join) {
+                $join->on('item_warehouses.item_id', '=', 'items.id')
+                    ->on('item_warehouses.warehouse_id', '=', 'warehouses.id');
+            })
             ->leftJoin('item_groups', 'item_groups.id', '=', 'items.item_group_id')
             ->leftJoin('units_of_measure', 'units_of_measure.id', '=', 'items.uom_id')
             ->where('items.company_id', $company->id)
-            // Un mínimo en cero significa "sin control de reorden": no es que
-            // el piso sea cero, es que nadie configuró uno. Sin este filtro,
-            // todo artículo agotado aparecería como urgente.
-            ->where('item_warehouses.minimum_stock', '>', 0)
+            ->where('warehouses.company_id', $company->id)
+            ->where(fn ($q) => $q
+                ->whereNotNull('item_warehouses.id')
+                ->orWhere('warehouses.is_default', true))
+            // El mínimo efectivo sale de la precedencia almacén → ficha, así
+            // que el filtro tiene que mirar la misma expresión: un artículo
+            // con mínimo en su ficha entra aunque el almacén no defina nada.
+            //
+            // Sigue valiendo que un mínimo efectivo de 0 significa "sin
+            // control de reorden" y no "el piso es cero": sin eso, todo
+            // artículo agotado del catálogo aparecería como urgente.
+            ->whereRaw('COALESCE(item_warehouses.minimum_stock, items.minimum_stock) > 0')
             ->where('items.status', 'active')
             ->where('items.is_inventory_item', true)
             ->where('warehouses.status', 'active')
-            ->when($warehouseId !== null, fn ($q) => $q->where('item_warehouses.warehouse_id', $warehouseId))
+            // Sobre warehouses.id y no sobre item_warehouses.warehouse_id:
+            // esa columna viene nula en las filas que entran por la rama del
+            // almacén predeterminado, y filtrar por ahí las descartaría.
+            ->when($warehouseId !== null, fn ($q) => $q->where('warehouses.id', $warehouseId))
             ->when($itemGroupId !== null, fn ($q) => $q->where('items.item_group_id', $itemGroupId))
             ->orderBy('items.code')
             ->orderBy('warehouses.code')
             ->get([
-                'item_warehouses.item_id',
-                'item_warehouses.warehouse_id',
-                'item_warehouses.on_hand',
-                'item_warehouses.reserved',
-                'item_warehouses.ordered',
+                'items.id as item_id',
+                'warehouses.id as warehouse_id',
+                DB::raw('COALESCE(item_warehouses.on_hand, 0) as on_hand'),
+                DB::raw('COALESCE(item_warehouses.reserved, 0) as reserved'),
+                DB::raw('COALESCE(item_warehouses.ordered, 0) as ordered'),
                 'item_warehouses.minimum_stock',
                 'item_warehouses.maximum_stock',
+                'items.minimum_stock as item_minimum_stock',
+                'items.maximum_stock as item_maximum_stock',
                 'items.code as item_code',
                 'items.name as item_name',
                 'items.avg_cost_local',
@@ -93,7 +124,16 @@ class ReorderSuggestionService
         $onHand = $this->qty((string) $row->on_hand);
         $reserved = $this->qty((string) $row->reserved);
         $ordered = $this->qty((string) $row->ordered);
-        $minimum = $this->qty((string) $row->minimum_stock);
+
+        // Precedencia almacén → ficha. El almacén gana cuando define algo,
+        // INCLUIDO el cero: poner 0 en una bodega de tránsito es la forma de
+        // excluirla del reorden aunque el artículo tenga mínimo en su ficha.
+        $overridden = $row->minimum_stock !== null;
+        $minimum = $this->qty((string) ($row->minimum_stock ?? $row->item_minimum_stock));
+
+        if (bccomp($minimum, '0.000000', 6) <= 0) {
+            return null;
+        }
 
         $available = bcadd(bcsub($onHand, $reserved, 6), $ordered, 6);
 
@@ -103,9 +143,10 @@ class ReorderSuggestionService
             return null;
         }
 
-        $target = $row->maximum_stock !== null
-            ? $this->qty((string) $row->maximum_stock)
-            : $minimum;
+        // Misma escalera para el máximo: el del almacén, si no el de la
+        // ficha, y si ninguno define nada el objetivo es el propio mínimo.
+        $maximum = $row->maximum_stock ?? $row->item_maximum_stock;
+        $target = $maximum !== null ? $this->qty((string) $maximum) : $minimum;
 
         $suggested = bcsub($target, $available, 6);
 
@@ -129,7 +170,10 @@ class ReorderSuggestionService
             'ordered' => $ordered,
             'available' => $available,
             'minimum_stock' => $minimum,
-            'maximum_stock' => $row->maximum_stock !== null ? $this->qty((string) $row->maximum_stock) : null,
+            'maximum_stock' => $maximum !== null ? $this->qty((string) $maximum) : null,
+            // Para que la pantalla pueda distinguir el nivel heredado de la
+            // ficha del que este almacén fijó aparte.
+            'minimum_is_override' => $overridden,
             'suggested_quantity' => $suggested,
             'avg_cost_local' => number_format((float) $row->avg_cost_local, 6, '.', ''),
             'estimated_cost' => number_format((float) $suggested * (float) $row->avg_cost_local, 2, '.', ''),
