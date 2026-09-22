@@ -11,13 +11,18 @@ use App\Domains\Inventory\Models\ItemGroup;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Services\PurchaseOrderService;
+use App\Domains\Inventory\Services\ReorderSuggestionExporter;
 use App\Domains\Inventory\Services\ReorderSuggestionService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Reporting\Support\ReportHeaderFactory;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Sugerencia de compra y configuración de niveles de reorden.
@@ -27,27 +32,16 @@ use Inertia\Response;
  */
 class ReorderController extends Controller
 {
+    private const TITLE = 'Sugerencia de compra';
+
     public function index(Request $request, CurrentCompany $currentCompany, ReorderSuggestionService $service): Response
     {
-        $companyId = $currentCompany->id();
-
-        $filters = $request->validate([
-            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
-            'item_group_id' => ['nullable', 'integer', Rule::exists('item_groups', 'id')->where('company_id', $companyId)],
-        ]);
-
-        $suggestions = $service->build(
-            Company::findOrFail($companyId),
-            isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null,
-            isset($filters['item_group_id']) ? (int) $filters['item_group_id'] : null,
-        );
+        $filters = $this->validateFilters($request);
+        $suggestions = $this->build($service, $filters);
 
         return Inertia::render('Inventory/Reorder/Index', [
             'suggestions' => $suggestions,
-            'filters' => [
-                'warehouse_id' => isset($filters['warehouse_id']) ? (int) $filters['warehouse_id'] : null,
-                'item_group_id' => isset($filters['item_group_id']) ? (int) $filters['item_group_id'] : null,
-            ],
+            'filters' => $filters,
             'warehouses' => Warehouse::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'itemGroups' => ItemGroup::orderBy('code')->get(['id', 'code', 'name']),
             'suppliers' => BusinessPartner::whereIn('type', ['supplier', 'both'])
@@ -59,6 +53,62 @@ class ReorderController extends Controller
                 2, '.', ''
             ),
         ]);
+    }
+
+    /**
+     * La sugerencia se exporta porque casi nunca se compra desde la pantalla:
+     * el archivo se manda a cotizar, se discute con el proveedor o se lleva a
+     * autorizar, y recién después vuelve como orden. Sin exportar, ese
+     * recorrido se hacía copiando la tabla a mano.
+     */
+    public function export(
+        Request $request,
+        CurrentCompany $currentCompany,
+        ReorderSuggestionService $service,
+        ReorderSuggestionExporter $exporter,
+        ReportHeaderFactory $headerFactory,
+    ): StreamedResponse {
+        $filters = $this->validateFilters($request);
+        $suggestions = $this->build($service, $filters);
+
+        $header = $headerFactory->make(
+            Company::findOrFail($currentCompany->id()),
+            $request->user(),
+            self::TITLE,
+            $this->paramsSummary($filters),
+        );
+
+        return response()->streamDownload(
+            fn () => $exporter->writeTo('php://output', $header, $suggestions),
+            'sugerencia-de-compra.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+        );
+    }
+
+    public function exportPdf(
+        Request $request,
+        CurrentCompany $currentCompany,
+        ReorderSuggestionService $service,
+        ReportHeaderFactory $headerFactory,
+    ): HttpResponse {
+        $filters = $this->validateFilters($request);
+        $suggestions = $this->build($service, $filters);
+
+        $header = $headerFactory->make(
+            Company::findOrFail($currentCompany->id()),
+            $request->user(),
+            self::TITLE,
+            $this->paramsSummary($filters),
+        );
+
+        $estimatedTotal = number_format(
+            $suggestions->sum(fn (array $s) => (float) $s['estimated_cost']),
+            2, '.', ''
+        );
+
+        return Pdf::loadView('reports.reorder-suggestion', compact('header', 'suggestions', 'estimatedTotal'))
+            ->setPaper('letter', 'landscape')
+            ->download('sugerencia-de-compra.pdf');
     }
 
     /**
@@ -102,6 +152,57 @@ class ReorderController extends Controller
         return redirect()
             ->route('purchase-orders.show', $order->id)
             ->with('success', "Orden de compra {$order->number} creada desde la sugerencia.");
+    }
+
+    /**
+     * Los tres endpoints —pantalla, XLSX y PDF— comparten filtros y consulta:
+     * la exportación tiene que decir exactamente lo mismo que se está viendo.
+     *
+     * @return array{warehouse_id: ?int, item_group_id: ?int}
+     */
+    private function validateFilters(Request $request): array
+    {
+        $companyId = app(CurrentCompany::class)->id();
+
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+            'item_group_id' => ['nullable', 'integer', Rule::exists('item_groups', 'id')->where('company_id', $companyId)],
+        ]);
+
+        return [
+            'warehouse_id' => isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null,
+            'item_group_id' => isset($validated['item_group_id']) ? (int) $validated['item_group_id'] : null,
+        ];
+    }
+
+    /**
+     * @param  array{warehouse_id: ?int, item_group_id: ?int}  $filters
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function build(ReorderSuggestionService $service, array $filters)
+    {
+        return $service->build(
+            Company::findOrFail(app(CurrentCompany::class)->id()),
+            $filters['warehouse_id'],
+            $filters['item_group_id'],
+        );
+    }
+
+    private function paramsSummary(array $filters): string
+    {
+        $parts = [];
+
+        if ($filters['warehouse_id'] !== null) {
+            $parts[] = 'Almacén: '.(Warehouse::find($filters['warehouse_id'])?->code ?? $filters['warehouse_id']);
+        }
+
+        if ($filters['item_group_id'] !== null) {
+            $parts[] = 'Grupo: '.(ItemGroup::find($filters['item_group_id'])?->code ?? $filters['item_group_id']);
+        }
+
+        // Sin filtros la lista es todo el catálogo bajo mínimo, y decirlo
+        // explícito evita leer el archivo creyendo que está acotado.
+        return $parts === [] ? 'Todos los almacenes y grupos' : implode(' · ', $parts);
     }
 
     /**

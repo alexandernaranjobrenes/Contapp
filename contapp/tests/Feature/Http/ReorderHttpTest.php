@@ -163,3 +163,107 @@ it('rechaza un almacén de otra compañía', function () {
         'levels' => [['warehouse_id' => $ajeno->id, 'minimum_stock' => 5]],
     ])->assertSessionHasErrors('levels.0.warehouse_id');
 });
+
+// --- Exportación ---
+
+function readReorderXlsx(string $path): string
+{
+    $reader = new OpenSpout\Reader\XLSX\Reader;
+    $reader->open($path);
+
+    $rows = [];
+    foreach ($reader->getSheetIterator() as $sheet) {
+        foreach ($sheet->getRowIterator() as $row) {
+            $rows[] = $row->toArray();
+        }
+
+        break;
+    }
+
+    $reader->close();
+    unlink($path);
+
+    return collect($rows)->flatten()->implode('|');
+}
+
+it('exporta la sugerencia a XLSX', function () {
+    reorderHttpFixture(3, 10);
+
+    $response = $this->get(route('reorder.export'));
+
+    $response->assertOk();
+    expect($response->headers->get('Content-Type'))
+        ->toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        ->and($response->headers->get('Content-Disposition'))->toContain('sugerencia-de-compra.xlsx');
+});
+
+it('exporta la sugerencia a PDF', function () {
+    reorderHttpFixture(3, 10);
+
+    $response = $this->get(route('reorder.export-pdf'));
+
+    $response->assertOk();
+    expect($response->headers->get('Content-Type'))->toBe('application/pdf')
+        ->and($response->headers->get('Content-Disposition'))->toContain('sugerencia-de-compra.pdf');
+});
+
+it('LA PRUEBA DEL ARCHIVO: lleva las tres columnas que forman el disponible, no solo el resultado', function () {
+    $f = reorderHttpFixture(20, 10);
+
+    // 20 en existencia, 15 apartadas: disponible 5, bajo el mínimo de 10.
+    // Quien autorice la compra tiene que poder ver POR QUÉ se pide algo de
+    // lo que aparentemente hay existencia de sobra.
+    ItemWarehouse::where('item_id', $f['item']->id)->update(['reserved' => 15]);
+
+    $header = app(App\Domains\Reporting\Support\ReportHeaderFactory::class)->make(
+        $f['company'], App\Models\User::factory()->create(['default_company_id' => $f['company']->id]),
+        'Sugerencia de compra', 'Todos los almacenes y grupos',
+    );
+
+    $path = sys_get_temp_dir().'/reorder-'.uniqid().'.xlsx';
+    app(App\Domains\Inventory\Services\ReorderSuggestionExporter::class)->writeTo(
+        $path, $header, app(App\Domains\Inventory\Services\ReorderSuggestionService::class)->build($f['company'])
+    );
+
+    $flat = readReorderXlsx($path);
+
+    expect($flat)->toContain('Disponible = existencia − apartado + en camino')
+        ->and($flat)->toContain('Apartado')->toContain('En camino')->toContain('Disponible')
+        ->and($flat)->toContain($f['item']->code)
+        // La existencia (20), lo apartado (15) y el disponible (5).
+        ->and($flat)->toContain('|20|15|0|5|')
+        // Y de dónde salió el nivel, para saber dónde corregirlo.
+        ->and($flat)->toContain('Del almacén');
+});
+
+it('el archivo respeta el filtro de la pantalla', function () {
+    $f = reorderHttpFixture(3, 10);
+
+    $otro = App\Domains\Inventory\Models\Warehouse::factory()->create([
+        'company_id' => $f['company']->id, 'code' => 'ALM-OTRO',
+    ]);
+
+    // Filtrando por un almacén sin nada bajo mínimo, el archivo tiene que
+    // salir vacío: un export que ignora los filtros y trae todo el catálogo
+    // es peor que no tenerlo, porque nadie lo revisa.
+    $header = app(App\Domains\Reporting\Support\ReportHeaderFactory::class)->make(
+        $f['company'], App\Models\User::factory()->create(['default_company_id' => $f['company']->id]),
+        'Sugerencia de compra', 'Almacén: ALM-OTRO',
+    );
+
+    $path = sys_get_temp_dir().'/reorder-'.uniqid().'.xlsx';
+    app(App\Domains\Inventory\Services\ReorderSuggestionExporter::class)->writeTo(
+        $path, $header,
+        app(App\Domains\Inventory\Services\ReorderSuggestionService::class)->build($f['company'], $otro->id)
+    );
+
+    expect(readReorderXlsx($path))->not->toContain($f['item']->code);
+});
+
+it('el PDF no revienta cuando no hay nada que comprar', function () {
+    $f = reorderHttpFixture(50, 10);
+
+    $response = $this->get(route('reorder.export-pdf'));
+
+    $response->assertOk();
+});

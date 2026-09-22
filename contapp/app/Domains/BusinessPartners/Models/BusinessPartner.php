@@ -17,7 +17,7 @@ class BusinessPartner extends Model
 
     protected $fillable = [
         'company_id', 'code', 'name', 'type', 'tax_id', 'category_id', 'family_id', 'cost_center_id',
-        'gl_account_id', 'currency_id', 'credit_limit', 'payment_terms_days', 'status',
+        'gl_account_id', 'currency_id', 'price_list_id', 'credit_limit', 'payment_terms_days', 'status',
         'email', 'economic_activity_code', 'phone', 'contact_name', 'partner_since',
     ];
 
@@ -67,6 +67,15 @@ class BusinessPartner extends Model
     public function currency(): BelongsTo
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    /**
+     * Nullable = usa la lista predeterminada de la compañía. Asignar una es
+     * la excepción: mayorista, distribuidor, convenio.
+     */
+    public function priceList(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Inventory\Models\PriceList::class);
     }
 
     public function openItems(): HasMany

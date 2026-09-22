@@ -3,17 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemGroup;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\UnitOfMeasure;
+use App\Domains\Inventory\Services\ItemBulkImporter;
+use App\Domains\Inventory\Services\ItemTemplateExporter;
+use App\Domains\Inventory\Support\ItemFiscalConsistency;
 use App\Domains\Tax\Models\TaxRate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ItemController extends Controller
 {
@@ -154,6 +159,46 @@ class ItemController extends Controller
     }
 
     /**
+     * Plantilla de carga masiva. Si la compañía ya tiene catálogo lo exporta
+     * tal cual: editarlo y resubirlo es como se corrigen 800 artículos, y es
+     * el uso más frecuente de esta plantilla después del alta inicial.
+     */
+    public function template(CurrentCompany $currentCompany, ItemTemplateExporter $exporter): StreamedResponse
+    {
+        $company = Company::findOrFail($currentCompany->id());
+
+        return response()->streamDownload(
+            fn () => $exporter->writeTo('php://output', $company),
+            'articulos.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+        );
+    }
+
+    public function import(Request $request, CurrentCompany $currentCompany, ItemBulkImporter $importer): RedirectResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx'],
+        ]);
+
+        $result = $importer->import(
+            $request->file('file')->getRealPath(),
+            Company::findOrFail($currentCompany->id()),
+        );
+
+        if ($result->hasErrors()) {
+            return back()->with('importErrors', $result->errors);
+        }
+
+        // Creados y actualizados se informan por separado: subir un archivo
+        // esperando dar de alta 200 artículos y leer "200 actualizados" es la
+        // señal de que se reutilizaron códigos existentes sin querer.
+        return back()->with('success', sprintf(
+            'Se importaron %d artículo(s): %d nuevo(s) y %d actualizado(s).',
+            $result->totalCount(), $result->createdCount, $result->updatedCount,
+        ));
+    }
+
+    /**
      * @return array{search: ?string, item_group_id: ?int, status: ?string}
      */
     private function validateListFilters(Request $request): array
@@ -224,43 +269,16 @@ class ItemController extends Controller
      * repondría nunca, sin que nada lo avisara.
      */
     /**
-     * El artículo lleva DOS datos de impuesto que tienen que decir lo mismo:
-     * `tax_rate_id`, que es el indicador interno con el que se contabiliza, y
-     * `iva_rate_code`, que es el código con el que la factura se declara ante
-     * Hacienda. Si no coinciden, el XML declara un porcentaje y el asiento
-     * registra otro — una diferencia que no salta a la vista en ninguna
-     * pantalla y que aparece recién en una fiscalización.
-     *
-     * Se comparan por PORCENTAJE y no por código porque no hay
-     * correspondencia uno a uno: el catálogo de Hacienda tiene cuatro códigos
-     * distintos que valen 0% (exento, transitorio, con y sin derecho a
-     * crédito) y dos que valen 4%. Cuál de ellos corresponde es una decisión
-     * fiscal del usuario; lo que el sistema puede exigir es que el número
-     * cuadre.
+     * La regla vive en ItemFiscalConsistency porque la carga masiva tiene que
+     * aplicar exactamente la misma: una guarda que solo corre en la ficha
+     * daría la impresión de estar protegido mientras el otro camino la evade.
      */
     private function taxConsistencyError(array $validated): ?string
     {
-        $rateId = $validated['tax_rate_id'] ?? null;
-        $code = $validated['iva_rate_code'] ?? null;
-
-        if ($rateId === null || $code === null) {
-            return null;
-        }
-
-        $rate = TaxRate::find($rateId);
-
-        if ($rate === null) {
-            return null;
-        }
-
-        $fiscal = FiscalCatalogs::IVA_RATES[$code]['percentage'] ?? null;
-
-        if ($fiscal === null || bccomp((string) $rate->percentage, $fiscal, 2) === 0) {
-            return null;
-        }
-
-        return "El indicador de impuesto {$rate->code} es del {$rate->percentage}%, pero la tarifa de Hacienda ".
-            "elegida ({$code}) es del {$fiscal}%. La factura declararía un porcentaje distinto al que se contabiliza.";
+        return ItemFiscalConsistency::error(
+            isset($validated['tax_rate_id']) ? (int) $validated['tax_rate_id'] : null,
+            $validated['iva_rate_code'] ?? null,
+        );
     }
 
     private function reorderLevelsError(array $validated): ?string

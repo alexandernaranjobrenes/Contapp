@@ -52,6 +52,7 @@ use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\OpenItemController;
 use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
+use App\Http\Controllers\PriceListController;
 use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReorderController;
@@ -179,6 +180,13 @@ Route::middleware('auth')->group(function () {
         Route::get('item-groups', [ItemGroupController::class, 'index'])->name('item-groups.index');
         Route::get('warehouses', [WarehouseController::class, 'index'])->name('warehouses.index');
         Route::get('items', [ItemController::class, 'index'])->name('items.index');
+        Route::get('items-template', [ItemController::class, 'template'])->name('items.template');
+
+        // Listas de precios. Viven en inventario porque cuelgan del artículo,
+        // aunque las use facturación: es el mismo criterio que los lotes.
+        Route::get('price-lists', [PriceListController::class, 'index'])->name('price-lists.index');
+        Route::get('price-lists/{priceList}/prices', [PriceListController::class, 'prices'])->name('price-lists.prices');
+        Route::get('price-lists-for-customer', [PriceListController::class, 'forCustomer'])->name('price-lists.for-customer');
         Route::get('items/{item}/kardex', [InventoryDocumentController::class, 'kardex'])->name('items.kardex');
         Route::get('gl-determinations', [GlDeterminationController::class, 'index'])->name('gl-determinations.index');
         Route::get('inventory-movements', [InventoryDocumentController::class, 'index'])->name('inventory-movements.index');
@@ -199,15 +207,21 @@ Route::middleware('auth')->group(function () {
         Route::get('items/{item}/lots/{lot}/trace', [ItemLotController::class, 'trace'])->name('item-lots.trace');
         Route::get('lot-expiry', [LotExpiryController::class, 'index'])->name('lot-expiry.index');
 
-        // Deterioro NIC 2. Vive en el módulo de inventario y no en reportería
-        // porque contabiliza: es un proceso, no una consulta.
+        // Reorden. Vive en el módulo de inventario y no en reportería: no es
+        // una consulta sino el arranque de una acción — de acá sale la orden
+        // de compra. Se exporta porque casi nunca se compra desde la
+        // pantalla: el archivo se manda a cotizar o a autorizar primero.
         Route::get('reorder', [ReorderController::class, 'index'])->name('reorder.index');
+        Route::get('reorder/export', [ReorderController::class, 'export'])->name('reorder.export');
+        Route::get('reorder/export-pdf', [ReorderController::class, 'exportPdf'])->name('reorder.export-pdf');
         Route::get('items/{item}/reorder-levels', [ReorderController::class, 'levels'])->name('reorder.levels');
 
         Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
         Route::get('purchase-orders/create', [PurchaseOrderController::class, 'create'])->name('purchase-orders.create');
         Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->name('purchase-orders.show');
 
+        // Deterioro NIC 2. Vive en el módulo de inventario y no en reportería
+        // porque contabiliza: es un proceso, no una consulta.
         Route::get('inventory-write-downs', [InventoryWriteDownController::class, 'index'])->name('inventory-write-downs.index');
         Route::get('inventory-write-downs/create', [InventoryWriteDownController::class, 'create'])->name('inventory-write-downs.create');
         Route::get('inventory-write-downs/{inventoryWriteDown}', [InventoryWriteDownController::class, 'show'])->name('inventory-write-downs.show');
@@ -233,6 +247,12 @@ Route::middleware('auth')->group(function () {
         Route::delete('warehouses/{warehouse}', [WarehouseController::class, 'destroy'])->name('warehouses.destroy');
 
         Route::post('items', [ItemController::class, 'store'])->name('items.store');
+        Route::post('items-import', [ItemController::class, 'import'])->name('items.import');
+
+        Route::post('price-lists', [PriceListController::class, 'store'])->name('price-lists.store');
+        Route::put('price-lists/{priceList}', [PriceListController::class, 'update'])->name('price-lists.update');
+        Route::delete('price-lists/{priceList}', [PriceListController::class, 'destroy'])->name('price-lists.destroy');
+        Route::put('price-lists/{priceList}/prices', [PriceListController::class, 'updatePrices'])->name('price-lists.prices.update');
         Route::put('items/{item}', [ItemController::class, 'update'])->name('items.update');
         Route::delete('items/{item}', [ItemController::class, 'destroy'])->name('items.destroy');
 
@@ -270,8 +290,6 @@ Route::middleware('auth')->group(function () {
         Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->name('purchase-orders.store');
         Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->name('purchase-orders.cancel');
         Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'close'])->name('purchase-orders.close');
-
-        Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
 
         Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
 

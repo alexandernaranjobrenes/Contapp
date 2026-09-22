@@ -139,6 +139,52 @@ watch(isCredit, (credit) => {
     if (! credit) form.credit_term_days = '';
 });
 
+// --- Precios: la lista del cliente ---
+
+// Se piden todos de una vez al elegir el cliente y no artículo por artículo:
+// una factura de 40 líneas haría 40 consultas justo mientras se digita.
+const priceMap = ref({});
+const priceListInfo = ref(null);
+const priceReason = ref('no_list');
+
+async function loadPrices() {
+    const params = new URLSearchParams();
+    if (form.business_partner_id) params.set('business_partner_id', form.business_partner_id);
+    if (form.document_date) params.set('date', form.document_date);
+    if (form.currency_id) params.set('currency_id', form.currency_id);
+
+    try {
+        const response = await fetch(`${route('price-lists.for-customer')}?${params}`, {
+            headers: { Accept: 'application/json' },
+        });
+
+        if (! response.ok) return;
+
+        const data = await response.json();
+        priceMap.value = data.prices ?? {};
+        priceListInfo.value = data.list;
+        priceReason.value = data.reason;
+    } catch {
+        // Sin precios la factura se digita igual que antes de que existieran
+        // las listas: es una ayuda, no un requisito para poder vender.
+        priceMap.value = {};
+    }
+}
+
+// El precio depende de las tres cosas: quién compra, cuándo y en qué moneda.
+watch(() => [form.business_partner_id, form.document_date, form.currency_id], loadPrices, { immediate: true });
+
+const priceNotice = computed(() => {
+    if (priceReason.value === 'found') return null;
+
+    return {
+        no_list: 'Este cliente no tiene lista de precios y no hay lista predeterminada: los precios se digitan.',
+        list_not_valid: `La lista ${priceListInfo.value?.code ?? ''} no está vigente en esta fecha.`,
+        currency_mismatch: `La lista ${priceListInfo.value?.code ?? ''} está en otra moneda que la factura; `
+            + 'el precio no se convierte solo para no cambiar con el tipo de cambio del día.',
+    }[priceReason.value] ?? null;
+});
+
 // --- Panel 3: líneas ---
 
 function onItemSelected(line) {
@@ -154,6 +200,13 @@ function onItemSelected(line) {
     line.unit_code = item.fiscal_unit_code ?? 'Unid';
     line.is_service = ! item.is_inventory_item;
     line.taxes = [{ tax_code: '01', iva_rate_code: item.iva_rate_code ?? '08' }];
+
+    // El precio de la lista es una sugerencia: llega a la línea y se puede
+    // cambiar. Solo se pisa un campo vacío, para no borrar un precio que
+    // alguien ya negoció en esta misma factura.
+    if (priceMap.value[item.id] !== undefined && (line.unit_price === '' || line.unit_price === null)) {
+        line.unit_price = priceMap.value[item.id];
+    }
 
     if (line.is_service) {
         line.warehouse_id = '';
@@ -404,6 +457,13 @@ function submit() {
             <!-- PANEL 3 -->
             <section class="card panel">
                 <h2>3 · Detalle de productos y servicios</h2>
+
+                <p v-if="priceListInfo && priceReason === 'found'" class="price-source">
+                    Precios de la lista <strong>{{ priceListInfo.code }} — {{ priceListInfo.name }}</strong>
+                    ({{ priceListInfo.prices_include_tax ? 'con IVA incluido' : 'sin IVA' }}).
+                    Se sugieren al elegir el artículo y se pueden cambiar.
+                </p>
+                <p v-else-if="priceNotice" class="price-source warn">{{ priceNotice }}</p>
 
                 <div class="table-scroll">
                     <table>
@@ -758,4 +818,6 @@ td .qty { max-width: 90px; }
 .modal-card h2 { font-size: 1rem; margin: 0 0 0.75rem; }
 .tax-block { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 0.6rem; }
 .modal-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+.price-source { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.5rem; }
+.price-source.warn { color: #a04000; }
 </style>

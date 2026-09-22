@@ -134,6 +134,26 @@ function normalize(data) {
     };
 }
 
+// --- carga masiva (plantilla XLSX) ---
+
+const fileInput = ref(null);
+const importForm = useForm({ file: null });
+const importErrors = computed(() => page.props.flash?.importErrors ?? []);
+
+function onFileSelected(e) {
+    const file = e.target.files[0];
+    if (! file) return;
+
+    importForm.file = file;
+    importForm.post(route('items.import'), {
+        preserveScroll: true,
+        onFinish: () => {
+            importForm.reset();
+            if (fileInput.value) fileInput.value.value = '';
+        },
+    });
+}
+
 function destroy(item) {
     if (! confirm(`¿Eliminar el artículo ${item.code} — ${item.name}?`)) return;
 
@@ -165,6 +185,38 @@ function destroy(item) {
         </template>
 
         <DocumentToolbar can-create @new="openCreate()" />
+
+        <div class="bulk-bar card">
+            <div class="bulk-bar-row">
+                <div class="bulk-bar-text">
+                    <strong>Carga masiva</strong>
+                    <span class="muted small">
+                        Descargá la plantilla —trae el catálogo actual y las hojas con los códigos válidos—,
+                        completala en Excel y subila. Los códigos que ya existen se actualizan.
+                    </span>
+                </div>
+                <div class="bulk-actions">
+                    <a :href="route('items.template')" class="btn btn-ghost">Descargar plantilla</a>
+                    <label class="btn btn-primary file-btn" :class="{ disabled: importForm.processing }">
+                        {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
+                        <input ref="fileInput" type="file" accept=".xlsx" class="file-input" :disabled="importForm.processing" @change="onFileSelected">
+                    </label>
+                </div>
+            </div>
+            <p class="muted small no-stock">
+                Existencias y costo promedio no se cargan por acá: los mantiene el motor de movimientos, porque
+                cada cambio de costo tiene que generar su asiento. Las existencias iniciales entran por una
+                entrada de mercancía.
+            </p>
+            <span v-if="importForm.errors.file" class="error">{{ importForm.errors.file }}</span>
+
+            <div v-if="importErrors.length" class="import-errors">
+                <p class="import-errors-title">No se importó nada porque el archivo tiene {{ importErrors.length }} error(es). Corregilos y subilo de nuevo:</p>
+                <ul>
+                    <li v-for="(msg, i) in importErrors" :key="i">{{ msg }}</li>
+                </ul>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.item" class="flash flash-error">{{ page.props.errors.item }}</div>
 
@@ -451,6 +503,18 @@ function destroy(item) {
 </template>
 
 <style scoped>
+.bulk-bar { padding: 0.85rem 1.1rem; margin-bottom: 0.75rem; }
+.bulk-bar-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.bulk-bar-text { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.85rem; }
+.bulk-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.file-btn { position: relative; cursor: pointer; overflow: hidden; }
+.file-btn.disabled { opacity: 0.6; cursor: default; }
+.file-input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.no-stock { display: block; margin: 0.5rem 0 0; }
+.error { display: block; margin-top: 0.4rem; color: var(--color-danger); font-size: 0.76rem; }
+.import-errors { margin-top: 0.75rem; padding: 0.75rem 0.9rem; border-radius: var(--radius-sm); background: var(--color-danger-soft); color: var(--color-danger); font-size: 0.82rem; }
+.import-errors-title { font-weight: 700; margin: 0 0 0.4rem; }
+.import-errors ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.2rem; }
 .section-heading { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin: 1rem 0 0.25rem; }
 .cabys-input { font-variant-numeric: tabular-nums; }
 .needs-cabys { display: inline-block; margin-left: 0.4rem; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; background: #fdf0ea; color: #a04000; font-weight: 600; }

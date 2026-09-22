@@ -17,11 +17,21 @@ const page = usePage();
 const warehouseId = ref(props.filters?.warehouse_id ?? '');
 const itemGroupId = ref(props.filters?.item_group_id ?? '');
 
-function applyFilters() {
-    router.get(route('reorder.index'), {
+function queryParams() {
+    return {
         warehouse_id: warehouseId.value === '' ? undefined : warehouseId.value,
         item_group_id: itemGroupId.value === '' ? undefined : itemGroupId.value,
-    }, { preserveState: true, replace: true, preserveScroll: true });
+    };
+}
+
+function applyFilters() {
+    router.get(route('reorder.index'), queryParams(), { preserveState: true, replace: true, preserveScroll: true });
+}
+
+// La exportación arrastra los mismos filtros que la pantalla: un archivo que
+// no coincide con lo que se está viendo es peor que no tenerlo.
+function exportUrl(routeName) {
+    return route(routeName, queryParams());
 }
 
 function money(value) {
@@ -101,6 +111,8 @@ function severity(s) {
                 <option value="">Todos los grupos</option>
                 <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
             </select>
+            <a :href="exportUrl('reorder.export')" class="btn btn-ghost">Exportar XLSX</a>
+            <a :href="exportUrl('reorder.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
             <Link :href="route('purchase-orders.index')" class="btn btn-ghost">Órdenes de compra</Link>
         </template>
 
