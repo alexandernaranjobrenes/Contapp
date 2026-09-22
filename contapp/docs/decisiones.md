@@ -3,6 +3,68 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-21 — Series y lista de materiales: las dos capas que faltaban, sin tocar el costeo
+
+**Pedido del usuario:** hacer lo que quedaba pendiente sin volver a preguntar. Esta entrada cubre las dos piezas grandes; la exportación de reorden, la carga masiva de artículos y las listas de precios van en la entrada anterior.
+
+### Números de serie
+
+**La diferencia con un lote define todo el diseño.** Un lote es un **balde**: tiene cantidad, se reparte entre almacenes y ubicaciones, y por eso necesita su tabla de existencias (`item_lot_stock`). Una serie es una **unidad**: no tiene cantidad, tiene ubicación y estado. Por eso no hay tabla de existencia por serie — la fila *es* la unidad, y dónde está lo dicen sus columnas.
+
+De ahí sale la regla central, que no es cosmética:
+
+```
+cantidad de series indicadas == cantidad de la línea
+```
+
+Es lo que sostiene el invariante que esta capa agrega: **el conteo de series en existencia tiene que ser igual a `item_warehouses.on_hand`**. Si se pudieran recibir 10 unidades nombrando 8 series, el maestro y la existencia se separarían desde el primer documento y nadie lo notaría hasta buscar una serie que no está. Tiene su propio test, y la pantalla lo muestra permanentemente con un semáforo.
+
+Corolario: un artículo serializado **no admite cantidades fraccionarias**. Media unidad no tiene número de serie.
+
+**Decisiones menores que importan:**
+
+| Situación | Qué hace | Por qué |
+|---|---|---|
+| Serie que ya está en existencia vuelve a entrar | Rechaza | O es un número mal tecleado o es la misma unidad contada dos veces |
+| Serie que **salió** vuelve a entrar | Acepta y limpia los datos de salida | Es una devolución: la misma unidad física, no una nueva |
+| Salida de una serie que ya salió | Rechaza | No puede salir dos veces |
+| Anular la entrada que la trajo | **Borra** la serie | "Entregada" significa que alguien la tiene; acá la unidad nunca ingresó |
+| Dar de baja una serie en existencia | Rechaza desde la pantalla | Tiene que salir con su asiento, por una salida de mercancía |
+
+**NIC 2 §23 y por qué el costeo igual no cambia.** §23 exige identificación específica para bienes no ordinariamente intercambiables, y un artículo serializado suele serlo. Cambiar el motor de costeo para ellos es una decisión grande y separada —otro motor, no una columna— y este diseño no la toma. Es el mismo criterio que ya dejó escrito la Fase 8 para los lotes. Hay un test que lo fija: dos unidades que entran a 100 y a 300 dejan el promedio en 200, y la que entró a 100 sale a 200.
+
+### Lista de materiales
+
+**El hueco era real:** la orden de fabricación existía desde hace tiempo, pero cada emisión se digitaba de memoria. Olvidar un componente hace que la orden cierre con desviación y nadie sepa por qué.
+
+**La receta se guarda por LOTE, no por unidad.** `output_quantity` dice cuántas unidades rinde la fórmula completa. Una fórmula que rinde 100 litros con 3,2 kg de un insumo **no es lo mismo** que 0,032 kg por litro: dividir y volver a multiplicar arrastra redondeo, y en química o alimentos eso se acumula lote tras lote. Se guarda como está escrita y se escala al explotar:
+
+```
+factor    = cantidad a fabricar / output_quantity
+necesario = cantidad de la línea × factor × (1 + merma)
+```
+
+**La merma es un dato de planta, no un adorno.** Si de cada 100 se pierden 5, hay que emitir 105 para que queden 100. Sin declararla, la orden cierra con una desviación *sistemática* que parece un error y no lo es.
+
+**La guarda central es la detección de ciclos.** Directa (el producto entre sus propios componentes) y a cualquier profundidad (PT → A → C → PT). Un ciclo no describe nada fabricable, y sin la comprobación cualquier recorrido en profundidad —incluido el de un futuro reporte multinivel— entraría en recursión infinita. Se comprueba **al guardar y no al explotar**: un dato imposible no debe poder entrar, y descubrirlo al fabricar sería tarde. Hay tests para el ciclo directo, el de tres niveles, el árbol profundo legítimo que **sí** se acepta, y el componente compartido por dos ramas que no debe confundirse con un ciclo.
+
+**La explosión es de un nivel.** Un subensamble se consume como el artículo que es, porque ya se fabricó y está en bodega — así funciona en la planta. Lo que sí atraviesa todos los niveles es la detección de ciclos.
+
+**Con una sola receta activa no hace falta marcarla como predeterminada**, pero con varias y ninguna marcada el sistema **no elige**: cuál fórmula usar es una decisión de planta.
+
+### Lo que las dos comparten, y que es la columna vertebral del módulo
+
+Ninguna de las dos toca el costeo. La serie identifica la unidad pero el costo sigue siendo promedio global; la receta dice qué y cuánto pero nunca a qué costo —eso lo pone el motor de movimientos al contabilizar la emisión, al promedio vigente—. Un costo en la receta sería **costeo estándar**, que es otro sistema con sus variaciones de precio y de uso. Cada una tiene su test de frontera.
+
+Y ninguna bloquea: la receta precarga la emisión y avisa de faltantes, pero las líneas quedan editables. Mismo criterio que la sugerencia de compra y el precio de lista — quien fabrica sabe si hoy lleva otra cosa.
+
+**Un tropiezo que vale anotar:** `bills_of_materials` pluraliza la primera palabra, así que Laravel infiere mal la tabla desde `bill_of_material_id` (busca `bill_of_materials`). Como MySQL no revierte DDL, la migración dejó dos tablas creadas y sin registrar antes de fallar; hubo que limpiarlas a mano. Las dos claves foráneas nombran la tabla explícitamente.
+
+**Cómo aplicar:** cuando una capa nueva describa una dimensión de la mercancía (dónde está, de qué tanda es, cuál unidad exacta, de qué está hecha), mantenerla fuera del motor de costeo. Cuatro fases seguidas lo respetaron y por eso el cálculo de promedios no se tocó ni una vez.
+
+**Verificado con 63 tests nuevos** (45 de series, 33 de recetas, contando servicio y HTTP). Suite completa: **1298 tests, 5226 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-20 — CAByS en la ficha: la columna existía, el camino para llenarla no
 
 **Pedido del usuario:** que el CAByS esté en la ficha del artículo y ligado a la factura electrónica, para que al facturar el dato se localice en cada artículo.

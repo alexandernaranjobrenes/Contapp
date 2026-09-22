@@ -16,7 +16,7 @@ class ProductionOrder extends Model
     use BelongsToCompany, HasFactory;
 
     protected $fillable = [
-        'company_id', 'item_id', 'warehouse_id', 'planned_quantity', 'produced_quantity',
+        'company_id', 'item_id', 'bill_of_material_id', 'warehouse_id', 'planned_quantity', 'produced_quantity',
         'order_date', 'description', 'status', 'variance_journal_entry_id', 'closed_at', 'created_by',
     ];
 

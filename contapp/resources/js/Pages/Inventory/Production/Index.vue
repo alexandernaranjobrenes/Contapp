@@ -1,6 +1,6 @@
 <script setup>
 import { Head, useForm, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 
@@ -10,6 +10,7 @@ const props = defineProps({
     items: { type: Array, default: () => [] },
     warehouses: { type: Array, default: () => [] },
     bins: { type: Array, default: () => [] },
+    billsOfMaterials: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -30,7 +31,22 @@ const ready = computed(() => props.documentTypes.length && props.items.length &&
 const creating = ref(false);
 
 const createForm = useForm({
-    item_id: '', warehouse_id: '', planned_quantity: '', order_date: today, description: '',
+    item_id: '', bill_of_material_id: '', warehouse_id: '', planned_quantity: '', order_date: today, description: '',
+});
+
+// Solo las recetas del producto elegido: una receta de otro artículo
+// sugeriría emitir insumos que no tienen nada que ver.
+const bomsForItem = computed(
+    () => props.billsOfMaterials.filter((b) => b.item_id === createForm.item_id)
+);
+
+// Al cambiar de producto, la receta elegida deja de corresponder. Se
+// preselecciona la predeterminada, o la única si hay una sola.
+watch(() => createForm.item_id, () => {
+    const options = bomsForItem.value;
+
+    createForm.bill_of_material_id = options.find((b) => b.is_default)?.id
+        ?? (options.length === 1 ? options[0].id : '');
 });
 
 function openCreate() {
@@ -59,11 +75,46 @@ function blankLine() {
     return { item_id: '', warehouse_id: '', warehouse_bin_id: '', quantity: '' };
 }
 
-function openIssue(order) {
+const bomShortages = ref([]);
+
+async function openIssue(order) {
     issueForm.clearErrors();
     issueForm.posting_date = today;
     issueForm.lines = [blankLine()];
+    bomShortages.value = [];
     issuing.value = order;
+
+    if (! order.bill_of_material_id) return;
+
+    // La receta precarga las líneas: es lo que antes había que recordar de
+    // memoria, y olvidar un componente hace que la orden cierre con una
+    // desviación que nadie sabe explicar. Siguen siendo editables — quien
+    // fabrica sabe si hoy lleva otra cosa.
+    try {
+        const url = route('bills-of-materials.explode', [
+            order.bill_of_material_id,
+            { quantity: order.planned_quantity, warehouse_id: order.warehouse_id },
+        ]);
+
+        const response = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (! response.ok) return;
+
+        const data = await response.json();
+
+        if (! data.lines?.length) return;
+
+        issueForm.lines = data.lines.map((l) => ({
+            item_id: l.component_item_id,
+            warehouse_id: l.warehouse_id ?? order.warehouse_id ?? '',
+            warehouse_bin_id: '',
+            quantity: l.required_quantity,
+        }));
+
+        bomShortages.value = data.lines.filter((l) => Number(l.shortage) > 0);
+    } catch {
+        // Sin receta cargada la emisión se digita igual que antes: es una
+        // ayuda, no un requisito para poder fabricar.
+    }
 }
 
 function usesBins(warehouseId) {
@@ -215,6 +266,27 @@ function closeOrder(order) {
                     <span v-if="createForm.errors.item_id" class="error">{{ createForm.errors.item_id }}</span>
                 </div>
 
+                <div class="field">
+                    <label>Receta</label>
+                    <select v-model="createForm.bill_of_material_id">
+                        <option value="">Sin receta (la emisión se digita)</option>
+                        <option v-for="b in bomsForItem" :key="b.id" :value="b.id">
+                            {{ b.code }} — {{ b.name }} (rinde {{ quantity(b.output_quantity) }})
+                        </option>
+                    </select>
+                    <span v-if="createForm.errors.bill_of_material_id" class="error">
+                        {{ createForm.errors.bill_of_material_id }}
+                    </span>
+                    <span v-if="createForm.item_id && !bomsForItem.length" class="hint small">
+                        Este producto no tiene recetas activas. Se puede fabricar igual, pero la emisión habrá
+                        que digitarla componente por componente.
+                    </span>
+                    <span v-else-if="createForm.bill_of_material_id" class="hint small">
+                        Al emitir materia prima, las líneas van a llegar precargadas y escaladas a la cantidad
+                        de esta orden. Siguen siendo editables.
+                    </span>
+                </div>
+
                 <div class="grid-2">
                     <div class="field">
                         <label>Almacén de ingreso</label>
@@ -254,6 +326,22 @@ function closeOrder(order) {
             <form class="modal-card wide card" @submit.prevent="submitIssue">
                 <h2>Emitir materia prima — orden #{{ issuing.id }}</h2>
                 <p class="muted small">Sale al costo promedio vigente de cada artículo y se acumula en Producto en Proceso.</p>
+
+                <p v-if="issuing.bill_of_material_id" class="muted small">
+                    Líneas precargadas desde la receta y escaladas a {{ quantity(issuing.planned_quantity) }}
+                    unidad(es), con la merma ya aplicada. Se pueden cambiar.
+                </p>
+
+                <div v-if="bomShortages.length" class="flash flash-warning">
+                    <strong>No alcanza la existencia de {{ bomShortages.length }} componente(s).</strong>
+                    La emisión va a ser rechazada tal como está; ajustá las cantidades o reponé primero.
+                    <ul class="shortage-list">
+                        <li v-for="s in bomShortages" :key="s.component_item_id">
+                            {{ s.item_code }} — hacen falta {{ quantity(s.required_quantity) }},
+                            hay {{ quantity(s.on_hand) }} (faltan {{ quantity(s.shortage) }})
+                        </li>
+                    </ul>
+                </div>
 
                 <div class="grid-2">
                     <div class="field">
@@ -424,4 +512,5 @@ table.lines th, table.lines td { padding: 0.4rem 0.5rem; }
 .preview { color: var(--color-text-muted); font-size: 0.76rem; }
 .modal-actions { display: flex; gap: 0.6rem; margin-top: 0.75rem; }
 .modal-actions.spread { justify-content: space-between; align-items: center; }
+.shortage-list { margin: 0.4rem 0 0 1.1rem; padding: 0; font-size: 0.78rem; }
 </style>

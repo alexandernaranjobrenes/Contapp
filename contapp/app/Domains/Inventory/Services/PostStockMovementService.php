@@ -20,11 +20,13 @@ use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemBin;
 use App\Domains\Inventory\Models\ItemLot;
 use App\Domains\Inventory\Models\ItemLotStock;
+use App\Domains\Inventory\Models\ItemSerial;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\PurchaseOrder;
 use App\Domains\Inventory\Models\StockJournal;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Models\WarehouseBin;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -47,6 +49,7 @@ class PostStockMovementService
         private readonly GlDeterminationResolver $glResolver,
         private readonly WarehouseBinResolver $binResolver,
         private readonly ItemLotResolver $lotResolver,
+        private readonly ItemSerialResolver $serialResolver,
         private readonly PurchaseOrderService $purchaseOrders,
     ) {}
 
@@ -244,6 +247,17 @@ class PostStockMovementService
                     continue;
                 }
 
+                // Series (Fase 9). Se resuelven DESPUÉS del movimiento porque
+                // la validación depende de la dirección, que un conteo solo
+                // conoce una vez calculado el delta: contar de más es una
+                // entrada y contar de menos una salida, y cada una valida
+                // distinto.
+                $serials = $movement['direction'] === 'in'
+                    ? $this->serialResolver->resolveForReceipt($item, $line->serialNumbers, $movement['quantity'])
+                    : $this->serialResolver->resolveForIssue(
+                        $item, $line->serialNumbers, $movement['quantity'], $warehouse->id, $bin?->id
+                    );
+
                 $avgLocal[$item->id] = $movement['avg_local_after'];
                 $avgForeign[$item->id] = $movement['avg_foreign_after'];
 
@@ -274,6 +288,7 @@ class PostStockMovementService
                 $movement['warehouse'] = $warehouse;
                 $movement['bin'] = $bin;
                 $movement['lot'] = $lot;
+                $movement['serials'] = $serials;
                 $movement['balance_quantity'] = $newWarehouseQty;
                 $movements[] = $movement;
 
@@ -396,6 +411,8 @@ class PostStockMovementService
                     'avg_cost_foreign_after' => $movement['avg_foreign_after'],
                     'created_by' => $createdBy,
                 ]);
+
+                $this->persistSerials($movement, $document, $postingDate);
             }
 
             foreach ($items as $item) {
@@ -453,6 +470,57 @@ class PostStockMovementService
 
             return $document->load('lines');
         });
+    }
+
+    /**
+     * Mueve las series del movimiento. A diferencia de lotes y ubicaciones,
+     * que suman y restan cantidades, acá se cambia el ESTADO y la UBICACIÓN
+     * de filas concretas: una serie no tiene cantidad, tiene lugar.
+     *
+     * Una entrada crea la serie si es nueva y la reactiva si es una que
+     * había salido y volvió (una devolución de cliente, típicamente). Por eso
+     * es updateOrCreate y no create: el maestro conserva la unidad con su
+     * historial en vez de duplicarla.
+     */
+    private function persistSerials(array $movement, InventoryDocument $document, \DateTimeInterface $postingDate): void
+    {
+        if ($movement['serials'] === [] || $movement['serials'] instanceof Collection && $movement['serials']->isEmpty()) {
+            return;
+        }
+
+        if ($movement['direction'] === 'in') {
+            foreach ($movement['serials'] as $serialNumber) {
+                ItemSerial::updateOrCreate(
+                    ['item_id' => $movement['item']->id, 'serial_number' => $serialNumber],
+                    [
+                        'status' => 'in_stock',
+                        'warehouse_id' => $movement['warehouse']->id,
+                        'warehouse_bin_id' => $movement['bin']?->id,
+                        'item_lot_id' => $movement['lot']?->id,
+                        'received_document_id' => $document->id,
+                        'received_at' => $postingDate->format('Y-m-d'),
+                        // Al volver a entrar deja de estar entregada: los
+                        // datos de salida anteriores dejarían creyendo que
+                        // sigue en poder del cliente.
+                        'issued_document_id' => null,
+                        'issued_at' => null,
+                    ],
+                );
+            }
+
+            return;
+        }
+
+        foreach ($movement['serials'] as $serial) {
+            $serial->update([
+                'status' => 'issued',
+                // Se conserva el último almacén donde estuvo: saber de dónde
+                // salió es parte de la trazabilidad, y ponerlo en null
+                // perdería ese dato sin ganar nada.
+                'issued_document_id' => $document->id,
+                'issued_at' => $postingDate->format('Y-m-d'),
+            ]);
+        }
     }
 
     /**
@@ -961,6 +1029,16 @@ class PostStockMovementService
             }
 
             $this->persistLotStock($lotOnHand);
+
+            // Las series que entraron con esta recepción salen del maestro:
+            // la unidad nunca ingresó de verdad. Se BORRAN y no se marcan
+            // como entregadas, porque "entregada" significa que alguien la
+            // tiene, y acá el documento se anuló. Solo las que siguen en
+            // existencia: si una ya se vendió, la anulación habría fallado
+            // antes por existencia insuficiente.
+            ItemSerial::where('received_document_id', $receipt->id)
+                ->inStock()
+                ->delete();
 
             $receipt->update(['status' => 'voided']);
 

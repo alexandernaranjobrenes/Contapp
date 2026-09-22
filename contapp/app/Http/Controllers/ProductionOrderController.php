@@ -6,6 +6,7 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
+use App\Domains\Inventory\Models\BillOfMaterial;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ProductionOrder;
 use App\Domains\Inventory\Models\Warehouse;
@@ -41,6 +42,7 @@ class ProductionOrderController extends Controller
                 'description' => $o->description,
                 'wip_balance' => $o->wipBalance(),
                 'variance_journal_entry_id' => $o->variance_journal_entry_id,
+                'bill_of_material_id' => $o->bill_of_material_id,
             ])->values(),
             'documentTypes' => DocumentType::where('origin_module', 'inventario')
                 ->where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
@@ -52,6 +54,16 @@ class ProductionOrderController extends Controller
                 ->where('status', 'active')
                 ->orderBy('code')
                 ->get(['id', 'warehouse_id', 'code', 'name']),
+            // Las recetas activas, para que la orden diga con cuál se
+            // fabrica y la emisión pueda precargarse en vez de digitarse de
+            // memoria.
+            'billsOfMaterials' => BillOfMaterial::where('status', 'active')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'item_id', 'output_quantity', 'is_default'])
+                ->map(fn (BillOfMaterial $b) => [
+                    ...$b->only(['id', 'code', 'name', 'item_id', 'is_default']),
+                    'output_quantity' => (float) $b->output_quantity,
+                ]),
         ]);
     }
 
@@ -61,15 +73,36 @@ class ProductionOrderController extends Controller
 
         $validated = $request->validate([
             'item_id' => ['required', Rule::exists('items', 'id')->where('company_id', $companyId)],
+            // Con qué receta se fabrica. Nullable: una orden puntual sin
+            // receta sigue siendo válida, y quedarse con el dato es lo que
+            // permite reconstruir después con qué se fabricó una tanda.
+            'bill_of_material_id' => [
+                'nullable',
+                Rule::exists('bills_of_materials', 'id')->where('company_id', $companyId),
+            ],
             'warehouse_id' => ['required', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'planned_quantity' => ['required', 'numeric', 'gt:0'],
             'order_date' => ['required', 'date'],
             'description' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // La receta tiene que ser DEL producto que la orden fabrica: con la
+        // de otro artículo la explosión sugeriría emitir insumos que no
+        // tienen nada que ver.
+        if (isset($validated['bill_of_material_id'])) {
+            $bom = BillOfMaterial::find($validated['bill_of_material_id']);
+
+            if ($bom !== null && $bom->item_id !== (int) $validated['item_id']) {
+                return back()->withErrors([
+                    'bill_of_material_id' => "La receta {$bom->code} fabrica otro artículo; no corresponde a esta orden.",
+                ])->withInput();
+            }
+        }
+
         ProductionOrder::create([
             ...$validated,
             'company_id' => $companyId,
+            'bill_of_material_id' => $validated['bill_of_material_id'] ?? null,
             'description' => $validated['description'] ?? null,
             'created_by' => $request->user()->id,
         ]);

@@ -34,6 +34,16 @@ class StockLineInput
         // ItemLotResolver contra items.tracks_lots). Último parámetro y con
         // default: los call-sites que no manejan lotes no cambian.
         public readonly ?int $itemLotId = null,
+        /**
+         * Una serie por unidad si el artículo las maneja, vacío si no (lo
+         * valida ItemSerialResolver contra items.tracks_serials). Es un
+         * array y no un id porque una línea de 10 unidades serializadas
+         * mueve 10 series distintas, a diferencia del lote, que es uno solo
+         * para toda la línea.
+         *
+         * @var string[]
+         */
+        public readonly array $serialNumbers = [],
     ) {
         $this->quantity = number_format((float) $quantity, 6, '.', '');
         $this->unitCostLocal = $unitCostLocal === null ? null : number_format((float) $unitCostLocal, 6, '.', '');

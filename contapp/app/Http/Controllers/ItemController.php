@@ -41,7 +41,7 @@ class ItemController extends Controller
             // columna on_hand y la fila llegaba sin existencia.
             ->select([
                 'id', 'code', 'name', 'item_group_id', 'uom_id', 'barcode',
-                'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'minimum_stock', 'maximum_stock',
+                'is_inventory_item', 'is_sales_item', 'is_purchase_item', 'tracks_lots', 'tracks_serials', 'minimum_stock', 'maximum_stock',
                 'tax_rate_id', 'cabys_code', 'fiscal_unit_code', 'iva_rate_code',
                 'avg_cost_local', 'avg_cost_foreign', 'status',
             ])
@@ -236,6 +236,7 @@ class ItemController extends Controller
             'is_sales_item' => ['boolean'],
             'is_purchase_item' => ['boolean'],
             'tracks_lots' => ['boolean'],
+            'tracks_serials' => ['boolean'],
             // Niveles por defecto del artículo. Cada almacén puede
             // sobrescribirlos desde su propia pantalla; acá se fija lo que
             // aplica cuando no lo hace.
@@ -306,6 +307,8 @@ class ItemController extends Controller
             // Un servicio no lleva kardex, así que tampoco puede llevar lotes:
             // no hay existencia que rastrear.
             'tracks_lots' => ($validated['is_inventory_item'] ?? false) && ($validated['tracks_lots'] ?? false),
+            // Mismo criterio: sin kardex no hay unidad que identificar.
+            'tracks_serials' => ($validated['is_inventory_item'] ?? false) && ($validated['tracks_serials'] ?? false),
             // Por la misma razón, un servicio no tiene nivel de reposición:
             // no hay existencia que reponer.
             'minimum_stock' => ($validated['is_inventory_item'] ?? false)

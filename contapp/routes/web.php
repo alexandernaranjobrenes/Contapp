@@ -9,6 +9,7 @@ use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankReconciliationController;
 use App\Http\Controllers\BankReconciliationReportController;
+use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\BillingSettingsController;
 use App\Http\Controllers\BpCategoryController;
 use App\Http\Controllers\BusinessPartnerController;
@@ -40,6 +41,7 @@ use App\Http\Controllers\InventoryWriteDownController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemGroupController;
 use App\Http\Controllers\ItemLotController;
+use App\Http\Controllers\ItemSerialController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
 use App\Http\Controllers\LandedCostController;
@@ -198,6 +200,13 @@ Route::middleware('auth')->group(function () {
         Route::get('import-costs', [ImportCostController::class, 'index'])->name('import-costs.index');
         Route::get('import-costs/allocate', [ImportCostController::class, 'allocation'])->name('import-costs.allocation');
         Route::get('production-orders', [ProductionOrderController::class, 'index'])->name('production-orders.index');
+
+        // Listas de materiales. La receta dice QUÉ y CUÁNTO lleva un
+        // producto, nunca a qué costo: eso lo pone el motor de movimientos
+        // al contabilizar la emisión.
+        Route::get('bills-of-materials', [BillOfMaterialController::class, 'index'])->name('bills-of-materials.index');
+        Route::get('bills-of-materials/{billOfMaterial}/lines', [BillOfMaterialController::class, 'lines'])->name('bills-of-materials.lines');
+        Route::get('bills-of-materials/{billOfMaterial}/explode', [BillOfMaterialController::class, 'explode'])->name('bills-of-materials.explode');
         Route::get('warehouses/{warehouse}/bins', [WarehouseBinController::class, 'index'])->name('warehouse-bins.index');
 
         // Lotes (Fase 8). Cuelgan del artículo igual que las ubicaciones del
@@ -206,6 +215,12 @@ Route::middleware('auth')->group(function () {
         Route::get('items/{item}/lots/options', [ItemLotController::class, 'options'])->name('item-lots.options');
         Route::get('items/{item}/lots/{lot}/trace', [ItemLotController::class, 'trace'])->name('item-lots.trace');
         Route::get('lot-expiry', [LotExpiryController::class, 'index'])->name('lot-expiry.index');
+
+        // Series (Fase 9). Cuelgan del artículo igual que los lotes. A
+        // diferencia de un lote, que es un balde con cantidad, una serie es
+        // una unidad: no se dan de alta acá, nacen con la entrada que las
+        // trajo.
+        Route::get('items/{item}/serials', [ItemSerialController::class, 'index'])->name('item-serials.index');
 
         // Reorden. Vive en el módulo de inventario y no en reportería: no es
         // una consulta sino el arranque de una acción — de acá sale la orden
@@ -248,6 +263,11 @@ Route::middleware('auth')->group(function () {
 
         Route::post('items', [ItemController::class, 'store'])->name('items.store');
         Route::post('items-import', [ItemController::class, 'import'])->name('items.import');
+
+        Route::post('bills-of-materials', [BillOfMaterialController::class, 'store'])->name('bills-of-materials.store');
+        Route::put('bills-of-materials/{billOfMaterial}', [BillOfMaterialController::class, 'update'])->name('bills-of-materials.update');
+        Route::delete('bills-of-materials/{billOfMaterial}', [BillOfMaterialController::class, 'destroy'])->name('bills-of-materials.destroy');
+        Route::put('bills-of-materials/{billOfMaterial}/lines', [BillOfMaterialController::class, 'updateLines'])->name('bills-of-materials.lines.update');
 
         Route::post('price-lists', [PriceListController::class, 'store'])->name('price-lists.store');
         Route::put('price-lists/{priceList}', [PriceListController::class, 'update'])->name('price-lists.update');
@@ -292,6 +312,15 @@ Route::middleware('auth')->group(function () {
         Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'close'])->name('purchase-orders.close');
 
         Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
+
+        Route::put('items/{item}/serials/{serial}', [ItemSerialController::class, 'update'])->name('item-serials.update');
+        Route::post('items/{item}/serials/{serial}/scrap', [ItemSerialController::class, 'scrap'])->name('item-serials.scrap');
+
+        // Las series no se crean acá: nacen con la entrada que las trajo.
+        // Solo se edita lo que el movimiento no sabe (garantía, notas) y la
+        // baja de una unidad que ya salió.
+        Route::put('items/{item}/serials/{serial}', [ItemSerialController::class, 'update'])->name('item-serials.update');
+        Route::post('items/{item}/serials/{serial}/scrap', [ItemSerialController::class, 'scrap'])->name('item-serials.scrap');
 
         Route::post('items/{item}/lots', [ItemLotController::class, 'store'])->name('item-lots.store');
         Route::put('items/{item}/lots/{lot}', [ItemLotController::class, 'update'])->name('item-lots.update');

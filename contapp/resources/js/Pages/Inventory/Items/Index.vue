@@ -59,6 +59,7 @@ const blank = {
     is_sales_item: true,
     is_purchase_item: true,
     tracks_lots: false,
+    tracks_serials: false,
     minimum_stock: 0,
     maximum_stock: '',
     cabys_code: '',
@@ -102,6 +103,7 @@ function openEdit(item) {
     editForm.is_sales_item = item.is_sales_item;
     editForm.is_purchase_item = item.is_purchase_item;
     editForm.tracks_lots = item.tracks_lots;
+    editForm.tracks_serials = item.tracks_serials;
     editForm.minimum_stock = item.minimum_stock ?? 0;
     editForm.maximum_stock = item.maximum_stock ?? '';
     editForm.cabys_code = item.cabys_code ?? '';
@@ -281,6 +283,9 @@ function destroy(item) {
                                 <Link v-if="i.tracks_lots" :href="route('item-lots.index', i.id)" class="btn btn-ghost">
                                     Lotes
                                 </Link>
+                                <Link v-if="i.tracks_serials" :href="route('item-serials.index', i.id)" class="btn btn-ghost">
+                                    Series
+                                </Link>
                                 <Link v-if="i.is_inventory_item" :href="route('reorder.levels', i.id)" class="btn btn-ghost">
                                     Niveles
                                 </Link>
@@ -404,6 +409,17 @@ function destroy(item) {
                     Los lotes son trazabilidad y vencimiento, no valoración: el costo sigue siendo promedio global
                     del artículo. Activalo para medicamentos, alimentos, químicos o cualquier cosa que haya que poder
                     rastrear o que caduque.
+                </span>
+
+                <label class="check-row">
+                    <input v-model="activeForm.tracks_serials" type="checkbox" :disabled="!activeForm.is_inventory_item">
+                    Maneja números de serie (una serie por unidad en cada movimiento)
+                </label>
+                <span class="hint small">
+                    A diferencia del lote, que es un balde con cantidad, una serie es una unidad: cada movimiento
+                    va a exigir <strong>exactamente una serie por unidad</strong> y el artículo no va a admitir
+                    cantidades fraccionarias. Activalo para equipos, electrodomésticos o cualquier cosa con
+                    garantía individual. Tampoco toca el costeo.
                 </span>
 
                 <div v-if="activeForm.is_inventory_item" class="grid-2">
