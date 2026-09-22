@@ -118,6 +118,7 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
                             <th>Vigencia</th>
                             <th class="right">Artículos</th>
                             <th class="right">Clientes</th>
+                            <th class="right">Categorías</th>
                             <th>Estado</th>
                             <th></th>
                         </tr>
@@ -139,6 +140,7 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
                             </td>
                             <td class="right">{{ l.lines_count }}</td>
                             <td class="right">{{ l.customers_count }}</td>
+                            <td class="right">{{ l.categories_count }}</td>
                             <td>{{ l.status === 'active' ? 'Activa' : 'Inactiva' }}</td>
                             <td class="row-actions">
                                 <Link :href="route('price-lists.prices', l.id)" class="btn btn-ghost btn-sm">Precios</Link>
@@ -147,7 +149,7 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
                             </td>
                         </tr>
                         <tr v-if="!priceLists.length">
-                            <td colspan="9" class="muted empty-row">
+                            <td colspan="10" class="muted empty-row">
                                 Todavía no hay listas de precios. Sin una lista, cada precio se digita en la factura.
                             </td>
                         </tr>

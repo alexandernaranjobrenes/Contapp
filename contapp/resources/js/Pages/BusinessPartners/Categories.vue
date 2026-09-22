@@ -6,6 +6,7 @@ import DocumentToolbar from '../../Components/DocumentToolbar.vue';
 
 const props = defineProps({
     categories: { type: Array, default: () => [] },
+    priceLists: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -25,6 +26,7 @@ const editing = ref(null);
 const form = useForm({
     code: '',
     name: '',
+    price_list_id: null,
 });
 
 // Un solo form reutilizado para crear y editar (mismos campos en los dos
@@ -37,6 +39,7 @@ function blankForm() {
     form.clearErrors();
     form.code = '';
     form.name = '';
+    form.price_list_id = null;
 }
 
 function openCreate() {
@@ -48,6 +51,7 @@ function openEdit(category) {
     form.clearErrors();
     form.code = category.code;
     form.name = category.name;
+    form.price_list_id = category.price_list_id;
     editing.value = category;
 }
 
@@ -99,6 +103,7 @@ function destroy(category) {
                     <tr>
                         <th>Código</th>
                         <th>Nombre</th>
+                        <th>Lista de precios</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -106,13 +111,14 @@ function destroy(category) {
                     <tr v-for="c in filtered" :key="c.id">
                         <td class="num code-cell">{{ c.code }}</td>
                         <td>{{ c.name }}</td>
+                        <td class="muted">{{ c.price_list ?? '—' }}</td>
                         <td class="actions-cell">
                             <button type="button" class="btn btn-ghost" @click="openEdit(c)">Editar</button>
                             <button type="button" class="btn btn-ghost" @click="destroy(c)">Eliminar</button>
                         </td>
                     </tr>
                     <tr v-if="!filtered.length">
-                        <td colspan="3" class="muted empty-row">Todavía no hay categorías registradas.</td>
+                        <td colspan="4" class="muted empty-row">Todavía no hay categorías registradas.</td>
                     </tr>
                 </tbody>
             </table>
@@ -132,6 +138,19 @@ function destroy(category) {
                     <label>Nombre</label>
                     <input v-model="form.name" type="text" autocomplete="off" placeholder="Cliente mayorista" required>
                     <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
+                </div>
+
+                <div class="field">
+                    <label>Lista de precios que heredan sus socios</label>
+                    <select v-model="form.price_list_id">
+                        <option :value="null">Ninguna (usan la predeterminada)</option>
+                        <option v-for="p in priceLists" :key="p.id" :value="p.id">{{ p.code }} — {{ p.name }}</option>
+                    </select>
+                    <span v-if="form.errors.price_list_id" class="error">{{ form.errors.price_list_id }}</span>
+                    <span class="hint">
+                        Se configura una vez acá en vez de cliente por cliente. Un socio con lista propia en su
+                        ficha le gana a esta.
+                    </span>
                 </div>
 
                 <div class="modal-actions">
@@ -214,6 +233,20 @@ th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--col
 
 .field label {
     font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+
+.field select {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+}
+
+.hint {
+    font-size: 0.74rem;
     color: var(--color-text-muted);
 }
 

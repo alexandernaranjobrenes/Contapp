@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\Currency;
+use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
@@ -35,9 +36,11 @@ class PriceListController extends Controller
                     'valid_from' => $list->valid_from?->format('Y-m-d'),
                     'valid_to' => $list->valid_to?->format('Y-m-d'),
                     'lines_count' => $list->lines_count,
-                    // Cuántos clientes dependen de esta lista: borrarla o
-                    // vencerla sin saberlo los deja sin precio.
+                    // Cuántos dependen de esta lista: borrarla o vencerla sin
+                    // saberlo los deja sin precio. Los dos escalones van por
+                    // separado porque se corrigen en pantallas distintas.
                     'customers_count' => BusinessPartner::where('price_list_id', $list->id)->count(),
+                    'categories_count' => BpCategory::where('price_list_id', $list->id)->count(),
                 ]),
             'currencies' => Currency::orderBy('code')->get(['id', 'code', 'name']),
         ]);
@@ -90,12 +93,23 @@ class PriceListController extends Controller
         $list = PriceList::findOrFail($priceList);
 
         // Los clientes asignados quedarían apuntando a nada y sus facturas
-        // sin precio, sin que nada lo avisara hasta la próxima venta.
-        $assigned = BusinessPartner::where('price_list_id', $list->id)->count();
+        // sin precio, sin que nada lo avisara hasta la próxima venta. Se
+        // miran los dos escalones: borrar una lista que hereda una categoría
+        // entera desconfigura de golpe a todos sus socios.
+        $customers = BusinessPartner::where('price_list_id', $list->id)->count();
+        $categories = BpCategory::where('price_list_id', $list->id)->count();
 
-        if ($assigned > 0) {
+        if ($customers > 0 || $categories > 0) {
+            $partes = [];
+            if ($customers > 0) {
+                $partes[] = "{$customers} cliente(s)";
+            }
+            if ($categories > 0) {
+                $partes[] = "{$categories} categoría(s) de socios";
+            }
+
             return back()->withErrors([
-                'price_list' => "La lista {$list->code} está asignada a {$assigned} cliente(s). ".
+                'price_list' => "La lista {$list->code} está asignada a ".implode(' y ', $partes).'. '.
                     'Reasignalos antes de eliminarla, o inactivala para dejar de usarla conservando el histórico.',
             ]);
         }

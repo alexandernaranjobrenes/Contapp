@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -26,7 +27,20 @@ class BpCategoryController extends Controller
     public function index(): Response
     {
         return Inertia::render('BusinessPartners/Categories', [
-            'categories' => BpCategory::orderBy('code')->get(['id', 'code', 'name']),
+            'categories' => BpCategory::with('priceList:id,code,name')
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'price_list_id'])
+                ->map(fn (BpCategory $c) => [
+                    ...$c->only(['id', 'code', 'name', 'price_list_id']),
+                    'price_list' => $c->priceList === null
+                        ? null
+                        : $c->priceList->code.' — '.$c->priceList->name,
+                ]),
+            // Solo las activas, igual que en la ficha del socio: heredar una
+            // lista inactiva sería darle a toda la categoría un precio que
+            // nunca va a aplicar.
+            'priceLists' => PriceList::where('status', 'active')->orderBy('code')
+                ->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -37,6 +51,10 @@ class BpCategoryController extends Controller
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:50', Rule::unique('bp_categories', 'code')->where('company_id', $companyId)],
             'name' => ['required', 'string', 'max:255'],
+            // La lista que heredan los socios de esta categoría cuando no
+            // tienen una propia. Nullable: una categoría sin lista conserva
+            // su uso original de solo agrupar reportes.
+            'price_list_id' => ['nullable', 'integer', Rule::exists('price_lists', 'id')->where('company_id', $companyId)],
         ]);
 
         BpCategory::create([...$validated, 'company_id' => $companyId]);
@@ -52,6 +70,10 @@ class BpCategoryController extends Controller
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:50', Rule::unique('bp_categories', 'code')->where('company_id', $companyId)->ignore($category->id)],
             'name' => ['required', 'string', 'max:255'],
+            // La lista que heredan los socios de esta categoría cuando no
+            // tienen una propia. Nullable: una categoría sin lista conserva
+            // su uso original de solo agrupar reportes.
+            'price_list_id' => ['nullable', 'integer', Rule::exists('price_lists', 'id')->where('company_id', $companyId)],
         ]);
 
         $category->update($validated);

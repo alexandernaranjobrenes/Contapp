@@ -1,6 +1,7 @@
 <?php
 
 use App\Domains\Accounting\Models\Currency;
+use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
@@ -87,7 +88,11 @@ it('sin lista predeterminada no hay precio, y lo dice', function () {
 
     expect($result->hasPrice())->toBeFalse()
         ->and($result->reason)->toBe('no_list')
-        ->and($result->message())->toContain('no tiene lista de precios asignada');
+        // El mensaje nombra los tres escalones, para que se sepa dónde
+        // configurar en vez de tener que adivinarlo.
+        ->and($result->message())->toContain('no tiene una propia')
+        ->and($result->message())->toContain('su categoría tampoco')
+        ->and($result->message())->toContain('lista predeterminada');
 });
 
 it('una lista inactiva no puede ser la predeterminada efectiva', function () {
@@ -285,4 +290,116 @@ it('LA PRUEBA DE LA FRONTERA: poner precio no toca el costo promedio ni genera a
     // que se factura, y ahí el asiento lo hace la factura.
     expect((float) $f['item']->fresh()->avg_cost_local)->toBe(800.0)
         ->and(App\Domains\Accounting\Models\JournalEntry::count())->toBe($asientosAntes);
+});
+
+// --- El escalón del medio: heredar de la categoría ---
+
+function priceCategory(array $f, ?int $priceListId = null): BpCategory
+{
+    return BpCategory::factory()->create([
+        'company_id' => $f['company']->id,
+        'price_list_id' => $priceListId,
+    ]);
+}
+
+it('LA PRUEBA DE LA HERENCIA: un cliente sin lista propia toma la de su categoría', function () {
+    $f = priceFixture();
+
+    // Se configura una vez en la categoría en vez de en 400 clientes.
+    $categoria = priceCategory($f, $f['wholesale']->id);
+
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => $categoria->id]);
+
+    $result = resolvePrice($f, $customer->fresh());
+
+    expect((float) $result->unitPrice)->toBe(700.0)
+        ->and($result->priceList->code)->toBe('MAY');
+});
+
+it('la lista propia del cliente le gana a la de su categoría', function () {
+    $f = priceFixture();
+
+    // La categoría dice mayoreo, pero a este cliente se le pactó mostrador.
+    $categoria = priceCategory($f, $f['wholesale']->id);
+
+    $customer = priceCustomer($f, $f['retail']->id);
+    $customer->update(['category_id' => $categoria->id]);
+
+    expect(resolvePrice($f, $customer->fresh())->priceList->code)->toBe('PUB');
+});
+
+it('una categoría sin lista no cambia nada: se cae a la predeterminada', function () {
+    $f = priceFixture();
+
+    // Es el caso de todas las categorías que ya existían antes de esta
+    // función: siguen agrupando reportes y nada más.
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => priceCategory($f)->id]);
+
+    expect(resolvePrice($f, $customer->fresh())->priceList->code)->toBe('PUB');
+});
+
+it('un cliente sin categoría sigue cayendo a la predeterminada', function () {
+    $f = priceFixture();
+
+    expect(resolvePrice($f, priceCustomer($f))->priceList->code)->toBe('PUB');
+});
+
+it('la lista heredada tampoco cae a la general cuando falta el artículo', function () {
+    $f = priceFixture();
+
+    $categoria = priceCategory($f, $f['wholesale']->id);
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => $categoria->id]);
+
+    // Mismo razonamiento que con la lista propia: caer a mostrador le
+    // cobraría de más a toda la categoría, en silencio.
+    PriceListItem::where('price_list_id', $f['wholesale']->id)->delete();
+
+    $result = resolvePrice($f, $customer->fresh());
+
+    expect($result->hasPrice())->toBeFalse()
+        ->and($result->reason)->toBe('item_not_in_list')
+        ->and($result->priceList->code)->toBe('MAY');
+});
+
+it('una lista heredada vencida tampoco cae a la predeterminada', function () {
+    $f = priceFixture();
+
+    $f['wholesale']->update(['valid_to' => '2020-12-31']);
+
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => priceCategory($f, $f['wholesale']->id)->id]);
+
+    expect(resolvePrice($f, $customer->fresh())->reason)->toBe('list_not_valid');
+});
+
+it('una lista heredada de otra compañía se ignora y se sigue bajando', function () {
+    $f = priceFixture();
+
+    $otra = Company::factory()->create();
+    $ajena = PriceList::factory()->create([
+        'company_id' => $otra->id, 'currency_id' => $otra->local_currency_id,
+    ]);
+
+    $categoria = priceCategory($f);
+    $categoria->forceFill(['price_list_id' => $ajena->id])->save();
+
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => $categoria->id]);
+
+    expect(resolvePrice($f, $customer->fresh())->priceList->code)->toBe('PUB');
+});
+
+it('el mapa de la factura respeta la herencia igual que el precio individual', function () {
+    $f = priceFixture();
+
+    $customer = priceCustomer($f);
+    $customer->update(['category_id' => priceCategory($f, $f['wholesale']->id)->id]);
+
+    $map = app(PriceResolver::class)->priceMap($f['company'], $customer->fresh(), now()->format('Y-m-d'));
+
+    expect($map['list']->code)->toBe('MAY')
+        ->and((float) $map['prices'][$f['item']->id])->toBe(700.0);
 });

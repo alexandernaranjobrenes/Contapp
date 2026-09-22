@@ -47,7 +47,8 @@ class PriceResolution
     {
         return match ($this->reason) {
             'found' => '',
-            'no_list' => 'Este cliente no tiene lista de precios asignada y la compañía no tiene lista predeterminada.',
+            'no_list' => 'No hay lista de precios que aplique: el cliente no tiene una propia, su categoría '.
+                'tampoco, y la compañía no tiene lista predeterminada.',
             'list_not_valid' => 'La lista '.($this->priceList?->code ?? '').' no está vigente en esta fecha.',
             'currency_mismatch' => 'La lista '.($this->priceList?->code ?? '').' está en otra moneda que el documento; '.
                 'el precio no se convierte solo para no cambiar de valor con el tipo de cambio del día.',

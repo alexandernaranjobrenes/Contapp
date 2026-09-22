@@ -14,10 +14,12 @@ use Illuminate\Support\Collection;
  *
  * ── Precedencia ──────────────────────────────────────────────────────────
  *
- *     lista del cliente  →  lista predeterminada de la compañía
+ *     lista del cliente  →  lista de su categoría  →  predeterminada
  *
  * Mismo patrón que la determinación de cuentas y que los niveles de reorden:
- * lo específico gana y lo general cubre el resto.
+ * lo específico gana y lo general cubre el resto. El escalón de la categoría
+ * es por volumen: asignarle la lista de mayoreo a 400 clientes uno por uno
+ * no es configuración, es transcripción.
  *
  * ── Lo que deliberadamente NO hace ───────────────────────────────────────
  *
@@ -114,27 +116,56 @@ class PriceResolver
     }
 
     /**
-     * La lista que le toca al cliente: la suya si tiene, y si no la
-     * predeterminada de la compañía.
+     * La lista que le toca al cliente, en tres escalones:
+     *
+     *     lista del cliente  →  lista de su categoría  →  predeterminada
+     *
+     * El escalón del medio existe por volumen: asignarle la lista de mayoreo
+     * a 400 clientes uno por uno no es configuración, es transcripción, y
+     * cada cliente nuevo obliga a acordarse otra vez. Con la categoría se
+     * configura una vez y todos la heredan.
+     *
+     * En cada escalón, si la lista asignada EXISTE se usa —vigente o no—:
+     * decidir la vigencia es de isValidOn(), y sustituirla en silencio por
+     * la del escalón siguiente sería cobrar de más sin avisar, que es el
+     * mismo error que este servicio evita al no caer a la general cuando
+     * falta el artículo.
      */
     public function listFor(Company $company, ?BusinessPartner $customer): ?PriceList
     {
-        if ($customer?->price_list_id !== null) {
-            $own = PriceList::where('company_id', $company->id)
-                ->find($customer->price_list_id);
+        $own = $this->companyList($company, $customer?->price_list_id);
 
-            // Si la lista propia existe se usa, vigente o no: decidir eso es
-            // de isValidOn(), y sustituirla en silencio por la
-            // predeterminada sería el mismo error de cobrar de más.
-            if ($own !== null) {
-                return $own;
-            }
+        if ($own !== null) {
+            return $own;
+        }
+
+        // La categoría se lee del socio y no se precarga con with(): este
+        // método lo llaman tanto resolve() como priceMap(), y desde el
+        // controlador el socio llega recién buscado.
+        $inherited = $this->companyList($company, $customer?->category?->price_list_id);
+
+        if ($inherited !== null) {
+            return $inherited;
         }
 
         return PriceList::where('company_id', $company->id)
             ->where('is_default', true)
             ->where('status', 'active')
             ->first();
+    }
+
+    /**
+     * Una lista por id, pero solo si pertenece a esta compañía: un id de otra
+     * se ignora y se sigue bajando por la precedencia, en vez de devolver
+     * precios ajenos.
+     */
+    private function companyList(Company $company, ?int $priceListId): ?PriceList
+    {
+        if ($priceListId === null) {
+            return null;
+        }
+
+        return PriceList::where('company_id', $company->id)->find($priceListId);
     }
 
     /**

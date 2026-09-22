@@ -348,3 +348,90 @@ it('la ficha del cliente recibe las listas activas para poder ofrecerlas', funct
             ->where('priceLists.0.code', 'MAY')
         );
 });
+
+// --- Herencia desde la categoría del socio ---
+
+it('LA PRUEBA DE LA HERENCIA POR HTTP: la categoría guarda la lista que heredan sus socios', function () {
+    $f = priceListHttpFixture();
+    $mayoreo = makePriceList($f, ['code' => 'MAY']);
+
+    $this->post(route('bp-categories.store'), [
+        'code' => 'MAYORISTA', 'name' => 'Cliente mayorista', 'price_list_id' => $mayoreo->id,
+    ])->assertSessionHasNoErrors();
+
+    expect(App\Domains\BusinessPartners\Models\BpCategory::where('company_id', $f['company']->id)->sole()->price_list_id)
+        ->toBe($mayoreo->id);
+});
+
+it('una categoría sin lista conserva su uso original de solo agrupar reportes', function () {
+    $f = priceListHttpFixture();
+
+    $this->post(route('bp-categories.store'), ['code' => 'GOB', 'name' => 'Gobierno'])
+        ->assertSessionHasNoErrors();
+
+    expect(App\Domains\BusinessPartners\Models\BpCategory::where('company_id', $f['company']->id)->sole()->price_list_id)
+        ->toBeNull();
+});
+
+it('rechaza asignarle a la categoría una lista de otra compañía', function () {
+    priceListHttpFixture();
+
+    $otra = App\Domains\Core\Models\Company::factory()->create();
+    $ajena = PriceList::factory()->create([
+        'company_id' => $otra->id, 'currency_id' => $otra->local_currency_id,
+    ]);
+
+    $this->post(route('bp-categories.store'), [
+        'code' => 'X', 'name' => 'Intento', 'price_list_id' => $ajena->id,
+    ])->assertSessionHasErrors('price_list_id');
+});
+
+it('la pantalla de categorías muestra qué lista hereda cada una', function () {
+    $f = priceListHttpFixture();
+    $mayoreo = makePriceList($f, ['code' => 'MAY', 'name' => 'Mayoreo']);
+
+    App\Domains\BusinessPartners\Models\BpCategory::factory()->create([
+        'company_id' => $f['company']->id, 'code' => 'MAYORISTA', 'price_list_id' => $mayoreo->id,
+    ]);
+
+    $this->get(route('bp-categories.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('BusinessPartners/Categories')
+            ->where('categories.0.price_list', 'MAY — Mayoreo')
+            ->has('priceLists', 1)
+        );
+});
+
+it('LA GUARDA QUE FALTABA: no deja borrar una lista que hereda una categoría entera', function () {
+    $f = priceListHttpFixture();
+    $list = makePriceList($f, ['code' => 'MAY']);
+
+    App\Domains\BusinessPartners\Models\BpCategory::factory()->create([
+        'company_id' => $f['company']->id, 'price_list_id' => $list->id,
+    ]);
+
+    // Sin clientes asignados directamente, pero borrarla desconfiguraría de
+    // golpe a todos los socios de esa categoría.
+    $this->delete(route('price-lists.destroy', $list->id))->assertSessionHasErrors('price_list');
+
+    expect(PriceList::find($list->id))->not->toBeNull();
+});
+
+it('el listado de listas separa los clientes directos de las categorías', function () {
+    $f = priceListHttpFixture();
+    $list = makePriceList($f, ['code' => 'MAY']);
+
+    BusinessPartner::factory()->create(['company_id' => $f['company']->id, 'price_list_id' => $list->id]);
+    App\Domains\BusinessPartners\Models\BpCategory::factory()->create([
+        'company_id' => $f['company']->id, 'price_list_id' => $list->id,
+    ]);
+
+    // Van por separado porque se corrigen en pantallas distintas.
+    $this->get(route('price-lists.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('priceLists.0.customers_count', 1)
+            ->where('priceLists.0.categories_count', 1)
+        );
+});

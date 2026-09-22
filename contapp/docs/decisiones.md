@@ -3,6 +3,31 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-21 — Heredar la lista de precios de la categoría: el escalón del medio
+
+**Pedido del usuario:** la herencia que quedó anotada como posible al explicar cómo se asignan las listas.
+
+**El problema era de volumen, no de modelo.** La precedencia cliente → predeterminada funcionaba, pero asignarle la lista de mayoreo a 400 clientes uno por uno no es configurar, es transcribir — y cada cliente nuevo obliga a acordarse otra vez. La precedencia quedó en tres escalones:
+
+```
+lista del cliente  →  lista de su categoría  →  predeterminada de la compañía
+```
+
+**Por qué la categoría y no una clasificación nueva.** `bp_categories` ya existía para agrupar reportes de ventas (mayorista, gobierno, detalle), y en la práctica esa misma clasificación es la que decide qué precio se cobra. Inventar una segunda clasificación paralela solo para precios obligaría a mantener las dos en sincronía a mano, que es la forma más segura de que se separen.
+
+Sigue siendo **opcional**: una categoría sin lista no cambia nada y conserva su uso original. Asignarle una es sumarle una función, no redefinirla — por eso las categorías que ya existían no necesitaron migración de datos.
+
+**La regla de no caer al escalón siguiente se mantiene en los dos niveles.** Si la lista heredada no tiene precio para el artículo, o está vencida, la línea llega vacía; no se sustituye por la predeterminada. El razonamiento es el mismo que el día que se construyó la precedencia: caer a mostrador le cobraría de más —ahora a una categoría entera— y en silencio. Hay un test por cada caso.
+
+**Una lista de otra compañía se ignora y se sigue bajando** en lugar de devolver precios ajenos. La comprobación estaba en el escalón del cliente y se extrajo a un método privado para que los dos la compartan: era exactamente el tipo de regla que se aplica en una rama y se olvida en la otra.
+
+**Una guarda que el cambio obligó a ampliar.** Al borrar una lista se miraban solo los clientes con asignación directa. Con la herencia, una lista puede no tener ningún cliente directo y aun así sostener a una categoría entera: borrarla los desconfigura a todos de golpe. Ahora se cuentan los dos y el mensaje dice cuántos de cada uno, porque se corrigen en pantallas distintas — el listado de listas también los muestra en columnas separadas por la misma razón.
+
+**Cómo aplicar:** al agregar un escalón intermedio a una precedencia existente, revisar las guardas que contaban dependencias del escalón viejo. Siguen compilando, siguen pasando sus tests, y dejan de proteger lo que protegían.
+
+**Verificado con 16 tests nuevos** (8 de resolución, 6 por HTTP, más los dos de la guarda de borrado). Suite completa: **1317 tests, 5291 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-21 — Asignar la lista de precios al cliente: la misma omisión, dos veces
 
 **Cómo apareció.** El usuario preguntó si las listas de precios tienen categorías y cómo se le asignan a cada cliente. Al revisar para contestar, el hueco: `business_partners.price_list_id` era columna real, `PriceResolver::listFor()` la leía y la precedencia estaba probada, pero **ninguna pantalla podía escribirla**. En la práctica solo funcionaba la lista predeterminada y no había forma de darle precios propios a nadie.
