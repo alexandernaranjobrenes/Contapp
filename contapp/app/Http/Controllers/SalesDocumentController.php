@@ -8,10 +8,14 @@ use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\DataTransferObjects\SalesDocumentInput;
 use App\Domains\Billing\DataTransferObjects\SalesLineInput;
 use App\Domains\Billing\DataTransferObjects\SalesTaxInput;
+use App\Domains\Billing\Exceptions\PriceOverrideNotAuthorizedException;
 use App\Domains\Billing\Models\CompanyEconomicActivity;
+use App\Domains\Billing\Models\PriceOverrideAuthorization;
 use App\Domains\Billing\Models\SalesDocument;
 use App\Domains\Billing\Models\SalesOrder;
 use App\Domains\Billing\Services\PostSalesDocumentService;
+use App\Domains\Billing\Services\PriceOverrideAuthorizer;
+use App\Domains\Billing\Services\PriceOverrideGuard;
 use App\Domains\Billing\Services\SalesDocumentXmlBuilder;
 use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
@@ -33,6 +37,8 @@ class SalesDocumentController extends Controller
     public function __construct(
         private readonly PostSalesDocumentService $postSalesDocumentService,
         private readonly SalesDocumentXmlBuilder $xmlBuilder,
+        private readonly PriceOverrideGuard $priceOverrideGuard,
+        private readonly PriceOverrideAuthorizer $priceOverrideAuthorizer,
     ) {}
 
     public function index(): Response
@@ -100,6 +106,12 @@ class SalesDocumentController extends Controller
                 'signer_configured' => $signer->isConfigured(),
                 'transport_configured' => $transport->isConfigured(),
             ],
+            // Si quien está emitiendo ya puede liberar cambios de precio, la
+            // pantalla no le pide autorización a nadie. El servidor lo
+            // vuelve a comprobar: esto solo evita el trámite visual.
+            'canAuthorizePriceChange' => $this->priceOverrideGuard->canAuthorize(
+                request()->user(), app(CurrentCompany::class)->id()
+            ),
         ]);
     }
 
@@ -235,6 +247,20 @@ class SalesDocumentController extends Controller
     {
         $companyId = $currentCompany->id();
         $validated = $this->validated($request, $companyId);
+        $company = Company::findOrFail($companyId);
+
+        // El precio de la lista se respeta: apartarse de él necesita que lo
+        // libere un administrador. Se comprueba ANTES de emitir porque
+        // después ya hay comprobante, asiento y movimiento de stock, y
+        // deshacerlos por una autorización que faltaba sería corregir con
+        // una nota de crédito algo que nunca debió emitirse.
+        try {
+            $deviations = $this->resolvePriceOverrides($request, $company, $validated);
+        } catch (PriceOverrideNotAuthorizedException $e) {
+            return back()
+                ->withErrors(['price_override' => $e->getMessage()])
+                ->withInput();
+        }
 
         $lines = array_map(fn (array $line) => new SalesLineInput(
             cabysCode: $line['cabys_code'],
@@ -290,7 +316,7 @@ class SalesDocumentController extends Controller
 
         try {
             $document = $this->postSalesDocumentService->post(
-                Company::findOrFail($companyId), $input, $request->user()->id
+                $company, $input, $request->user()->id
             );
         } catch (\RuntimeException $e) {
             // Toda excepción de dominio ya revirtió comprobante, movimiento de
@@ -298,9 +324,109 @@ class SalesDocumentController extends Controller
             return back()->withErrors(['billing' => $e->getMessage()])->withInput();
         }
 
+        $this->recordPriceOverrides($document, $deviations);
+
         return redirect()
             ->route('sales-documents.show', $document->id)
             ->with('success', "Comprobante {$document->consecutive} emitido y registrado en el ERP.");
+    }
+
+    /**
+     * Detecta las líneas que se apartan del precio de lista y exige que un
+     * administrador las libere.
+     *
+     * Devuelve los desvíos ya autorizados —vacío si la factura respeta los
+     * precios— para que se registren DESPUÉS de emitir, cuando ya existen
+     * los ids del comprobante y de sus líneas.
+     *
+     * @return array<int, array<string, mixed>>
+     *
+     * @throws PriceOverrideNotAuthorizedException
+     */
+    private function resolvePriceOverrides(Request $request, Company $company, array $validated): array
+    {
+        $user = $request->user();
+
+        $deviations = $this->priceOverrideGuard->deviations(
+            $company,
+            isset($validated['business_partner_id'])
+                ? BusinessPartner::find($validated['business_partner_id'])
+                : null,
+            $validated['document_date'],
+            (int) $validated['currency_id'],
+            $validated['lines'],
+        );
+
+        if ($deviations === []) {
+            return [];
+        }
+
+        // Quien ya puede autorizar no se autoriza a sí mismo: pedirle la
+        // contraseña que acaba de usar para entrar sería un trámite vacío.
+        // Tampoco se registra: no hubo autorización de nadie más, y el
+        // comprobante ya dice quién lo emitió.
+        if ($this->priceOverrideGuard->canAuthorize($user, $company->id)) {
+            return [];
+        }
+
+        $email = trim((string) $request->input('price_override_email'));
+        $password = (string) $request->input('price_override_password');
+
+        // Sin credenciales el error va bajo 'price_override' y no bajo cada
+        // campo: quien emite necesita saber QUÉ pasa —la factura se aparta
+        // de la lista— antes que qué casilla le falta. La pantalla abre el
+        // modal con el detalle de las líneas.
+        if ($email === '' || $password === '') {
+            throw new PriceOverrideNotAuthorizedException(sprintf(
+                'Esta factura se aparta de la lista de precios en %d línea(s). '.
+                'Para emitirla hace falta que la autorice un administrador o el superusuario.',
+                count($deviations),
+            ));
+        }
+
+        $authorizer = $this->priceOverrideAuthorizer->verify(
+            $email, $password, $company->id, $user->id,
+        );
+
+        $reason = $request->input('price_override_reason');
+
+        return array_map(fn (array $d) => [
+            ...$d,
+            'requested_by' => $user->id,
+            'authorized_by' => $authorizer->id,
+            'reason' => is_string($reason) && trim($reason) !== '' ? trim($reason) : null,
+        ], $deviations);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $deviations
+     */
+    private function recordPriceOverrides(SalesDocument $document, array $deviations): void
+    {
+        if ($deviations === []) {
+            return;
+        }
+
+        // Las líneas del comprobante se numeran desde 1 en el orden en que
+        // llegaron, así que el índice base 0 del formulario las ubica.
+        $lineIds = $document->lines()->orderBy('line_number')->pluck('id')->all();
+
+        foreach ($deviations as $index => $deviation) {
+            PriceOverrideAuthorization::create([
+                'company_id' => $document->company_id,
+                'sales_document_id' => $document->id,
+                'sales_document_line_id' => $lineIds[$index] ?? null,
+                'item_id' => $deviation['item_id'],
+                'price_list_id' => $deviation['price_list_id'],
+                'price_list_code' => $deviation['price_list_code'],
+                'list_unit_price' => $deviation['list_unit_price'],
+                'invoiced_unit_price' => $deviation['invoiced_unit_price'],
+                'difference' => $deviation['difference'],
+                'requested_by' => $deviation['requested_by'],
+                'authorized_by' => $deviation['authorized_by'],
+                'reason' => $deviation['reason'],
+            ]);
+        }
     }
 
     private function validated(Request $request, int $companyId): array

@@ -17,6 +17,9 @@ const props = defineProps({
     // de crédito corrige. Solo uno de los dos viene lleno.
     sourceOrder: { type: Object, default: null },
     sourceDocument: { type: Object, default: null },
+    // Si quien emite ya puede liberar cambios de precio, la pantalla no le
+    // pide autorización a nadie. El servidor lo vuelve a comprobar.
+    canAuthorizePriceChange: { type: Boolean, default: false },
 });
 
 const page = usePage();
@@ -43,6 +46,12 @@ const form = useForm({
     lines: [blankLine()],
     payments: [],
     references: [],
+    // Credenciales de quien libera un cambio de precio. Viajan solo cuando
+    // hace falta y no se guardan en ningún lado: el servidor las compara
+    // contra el hash y las descarta.
+    price_override_email: '',
+    price_override_password: '',
+    price_override_reason: '',
     // Enlaces internos del ciclo; los llena el "Copiar a" de su origen.
     sales_order_id: null,
     original_sales_document_id: null,
@@ -311,6 +320,57 @@ const canSubmit = computed(() => {
     return form.lines.every((l) => l.cabys_code && l.description.length >= 3 && Number(l.quantity) > 0);
 });
 
+// --- Cambio de precio: el que respeta la lista y el que hay que autorizar ---
+
+// Lo que el cliente paga por unidad: el descuento de la línea es un monto
+// total, así que hay que prorratearlo para poder compararlo con la lista.
+// Misma cuenta que hace el servidor en PriceOverrideGuard.
+function netUnitPrice(line) {
+    const quantity = Number(line.quantity || 0);
+    if (quantity <= 0) return null;
+
+    return Number(line.unit_price || 0) - (Number(line.discount_amount || 0) / quantity);
+}
+
+function listPriceOf(line) {
+    const price = priceMap.value[line.item_id];
+
+    return price === undefined ? null : Number(price);
+}
+
+// Un artículo sin precio en la lista no se controla: no hay de qué
+// apartarse. Se compara con tolerancia de medio céntimo para que un
+// 1000.00000 tecleado como 1000 no dispare una autorización fantasma.
+function deviatesFromList(line) {
+    const listed = listPriceOf(line);
+    const net = netUnitPrice(line);
+
+    return listed !== null && net !== null && Math.abs(net - listed) > 0.00001;
+}
+
+const deviations = computed(() => form.lines.filter(deviatesFromList));
+
+const needsAuthorization = computed(
+    () => ! props.canAuthorizePriceChange && deviations.value.length > 0
+);
+
+const authorizing = ref(false);
+
+function attemptSubmit() {
+    if (needsAuthorization.value) {
+        authorizing.value = true;
+
+        return;
+    }
+
+    submit();
+}
+
+function submitWithAuthorization() {
+    authorizing.value = false;
+    submit();
+}
+
 function submit() {
     form
         .transform((data) => ({
@@ -345,7 +405,7 @@ function submit() {
             la llave criptográfica.
         </p>
 
-        <form @submit.prevent="submit">
+        <form @submit.prevent="attemptSubmit">
             <!-- PANEL 1 -->
             <section class="card panel">
                 <h2>1 · Encabezado y partes</h2>
@@ -631,13 +691,92 @@ function submit() {
                     </div>
                 </template>
 
+                <div v-if="deviations.length" class="price-warning">
+                    <strong>{{ deviations.length }} línea(s) con precio distinto al de la lista.</strong>
+                    <ul class="deviation-list">
+                        <li v-for="(line, i) in deviations" :key="i">
+                            {{ line.item_code || line.description }}:
+                            lista {{ money(listPriceOf(line)) }} →
+                            facturado {{ money(netUnitPrice(line)) }}
+                            <span :class="netUnitPrice(line) < listPriceOf(line) ? 'down' : 'up'">
+                                ({{ netUnitPrice(line) < listPriceOf(line) ? '−' : '+' }}{{
+                                    money(Math.abs(netUnitPrice(line) - listPriceOf(line)))
+                                }})
+                            </span>
+                        </li>
+                    </ul>
+                    <span v-if="needsAuthorization" class="needs-auth">
+                        Al emitir se va a pedir la autorización de un administrador.
+                    </span>
+                    <span v-else class="muted small">
+                        Como administrador podés emitirla directamente.
+                    </span>
+                </div>
+
+                <div v-if="page.props.errors?.price_override" class="flash flash-error">
+                    {{ page.props.errors.price_override }}
+                </div>
+
                 <div class="emit">
                     <button type="submit" class="btn btn-primary btn-emit" :disabled="form.processing || !canSubmit">
-                        Emitir y registrar en el ERP
+                        {{ needsAuthorization ? 'Emitir (requiere autorización)' : 'Emitir y registrar en el ERP' }}
                     </button>
                 </div>
             </section>
         </form>
+
+        <!-- Autorización de un cambio de precio, en el momento -->
+        <div v-if="authorizing" class="modal-backdrop" @click.self="authorizing = false">
+            <form class="modal-card card auth-modal" @submit.prevent="submitWithAuthorization">
+                <h2>Autorización de cambio de precio</h2>
+
+                <p class="muted small">
+                    Esta factura se aparta de la lista de precios en
+                    <strong>{{ deviations.length }}</strong> línea(s). Para emitirla hace falta que la libere
+                    un administrador o el superusuario de la licencia.
+                </p>
+
+                <ul class="deviation-list">
+                    <li v-for="(line, i) in deviations" :key="i">
+                        {{ line.item_code || line.description }}:
+                        lista {{ money(listPriceOf(line)) }} → facturado {{ money(netUnitPrice(line)) }}
+                    </li>
+                </ul>
+
+                <div class="field">
+                    <label>Usuario que autoriza</label>
+                    <input
+                        v-model="form.price_override_email"
+                        type="email" autocomplete="off" required
+                        placeholder="correo del administrador"
+                    >
+                </div>
+
+                <div class="field">
+                    <label>Contraseña</label>
+                    <input
+                        v-model="form.price_override_password"
+                        type="password" autocomplete="new-password" required
+                    >
+                    <span class="hint small">
+                        No se guarda en ningún lado: se compara y se descarta. Lo que queda registrado es
+                        quién autorizó.
+                    </span>
+                </div>
+
+                <div class="field">
+                    <label>Motivo (opcional)</label>
+                    <input v-model="form.price_override_reason" type="text" maxlength="255" placeholder="Cierre de mes, liquidación...">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary" :disabled="form.processing">
+                        Autorizar y emitir
+                    </button>
+                    <button type="button" class="btn btn-ghost" @click="authorizing = false">Cancelar</button>
+                </div>
+            </form>
+        </div>
 
         <!-- PANEL 4: sub-panel flotante por línea -->
         <div v-if="advancedLine !== null" class="modal-backdrop" @click.self="advancedLine = null">
@@ -820,4 +959,15 @@ td .qty { max-width: 90px; }
 .modal-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
 .price-source { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.5rem; }
 .price-source.warn { color: #a04000; }
+
+.price-warning {
+    margin-top: 1rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm);
+    background: #fdf0ea; color: #a04000; font-size: 0.82rem;
+}
+.deviation-list { margin: 0.4rem 0 0 1.1rem; padding: 0; font-size: 0.78rem; }
+.deviation-list .down { font-weight: 700; }
+.deviation-list .up { font-weight: 700; }
+.needs-auth { display: block; margin-top: 0.4rem; font-weight: 600; }
+.auth-modal { width: min(460px, 100%); }
+.auth-modal h2 { margin: 0 0 0.5rem; font-size: 1rem; }
 </style>

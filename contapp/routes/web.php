@@ -55,6 +55,7 @@ use App\Http\Controllers\OpenItemController;
 use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
 use App\Http\Controllers\PriceListController;
+use App\Http\Controllers\PriceOverrideController;
 use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReorderController;
@@ -333,6 +334,10 @@ Route::middleware('auth')->group(function () {
         Route::get('sales-documents/create', [SalesDocumentController::class, 'create'])->name('sales-documents.create');
         Route::get('sales-documents/{salesDocument}', [SalesDocumentController::class, 'show'])->name('sales-documents.show');
         Route::get('sales-documents/{salesDocument}/xml', [SalesDocumentController::class, 'xml'])->name('sales-documents.xml');
+        // Los cambios de precio que se liberaron. Bloquear solo sirve si
+        // después alguien puede revisar qué se autorizó y quién lo firmó.
+        Route::get('price-overrides', [PriceOverrideController::class, 'index'])->name('price-overrides.index');
+
         Route::get('sales-orders', [SalesOrderController::class, 'index'])->name('sales-orders.index');
         Route::get('sales-orders/create', [SalesOrderController::class, 'create'])->name('sales-orders.create');
         Route::get('sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->name('sales-orders.show');

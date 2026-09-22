@@ -3,6 +3,62 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-21 — El precio de lista se respeta: autorización de un administrador en el momento
+
+**Pedido del usuario:** que la figura de usuario respete la lista de precios del cliente, y que cambiar el precio en una factura lo apruebe un administrador o superusuario.
+
+**Se le preguntó cuál de tres modelos quería** —bloqueo por rol, autorización en el momento, o aprobación diferida en una bandeja— porque el día a día cambia por completo entre ellos. Eligió **autorización en el momento**: el vendedor arma la factura con el precio que necesita y, al emitir, un administrador libera esa factura con sus credenciales ahí mismo. La venta no se detiene esperando a nadie, y la aprobación es explícita y queda firmada.
+
+### Lo que se compara es el precio NETO, no el unitario
+
+La decisión que sostiene todo el control. La línea tiene precio unitario **y** descuento; mirar solo el unitario dejaba la puerta abierta de par en par:
+
+```
+neto = precio unitario − (descuento / cantidad)
+```
+
+Dejar el precio de lista intacto y meter ₡5.000 de descuento sobre 10 unidades baja el precio real a ₡2.000 sin tocar una sola validación. Hay un test dedicado a ese intento.
+
+### Se controlan las dos direcciones
+
+Facturar por debajo de la lista es el riesgo obvio. Facturar por encima también es un error contra un precio pactado, y lo descubre el cliente. El registro guarda el signo de la diferencia.
+
+### Lo que deliberadamente NO se controla
+
+| Caso | Por qué |
+|---|---|
+| Artículo sin precio en la lista | No hay de qué apartarse. Exigir autorización obligaría a tener el catálogo entero con precio antes de poder facturar: el control se volvería un bloqueo |
+| Sin lista aplicable al cliente | Funciona igual que antes de que existieran las listas |
+| Línea sin artículo (servicio puntual, descripción libre) | No tiene lista contra la cual compararse |
+
+**Un administrador no se pide la clave a sí mismo.** Si quien emite ya puede autorizar, no hay modal y no se registra nada: no hubo autorización de un tercero, y el comprobante ya dice quién lo emitió.
+
+### El endpoint de contraseña se trató como lo que es
+
+- **Límite de intentos** por compañía y por usuario que intenta. Sin esto, el formulario de emisión sería un oráculo para probar contraseñas de administrador desde una sesión de vendedor ya autenticada. Por usuario y no global, para que un vendedor torpe no deje sin facturar a toda la empresa.
+- **Un solo mensaje para los tres fallos** —usuario inexistente, contraseña mala, usuario sin permiso—. Respuestas distintas le dirían a un vendedor curioso quiénes son administradores y si acertó el usuario. Hay un test que emite los tres y exige que el mensaje sea idéntico.
+- **La contraseña no se guarda en ningún lado**, ni en el log ni en la tabla: se compara contra el hash y se descarta. Lo único que queda es quién autorizó.
+- Se descartó un PIN: sería un segundo secreto que administrar, rotar y revocar aparte, y que en la práctica se comparte.
+
+### El control corre ANTES de emitir
+
+Si faltara la autorización después de emitir habría que deshacer comprobante, asiento y movimiento de stock — o peor, corregir con una nota de crédito algo que nunca debió emitirse. La comprobación es lo primero que hace `store()`.
+
+### El registro es el punto, no el bloqueo
+
+`price_override_authorizations` guarda quién lo pidió, quién lo firmó, de qué lista se apartó, cuánto decía esa lista y cuánto se facturó, con su motivo. Es tabla propia y no un par de columnas escondidas en la línea porque el valor está en la pregunta agregada: un descuento aislado es una decisión comercial, y el mismo descuento cien veces al mes es una lista de precios mal puesta. La pantalla lo lista con la diferencia acumulada del período.
+
+**El precio de lista se guarda congelado**, no como referencia: si la lista sube mañana, la autorización de ayer tiene que seguir diciendo de qué se apartó — mismo criterio con el que el comprobante congela su tipo de cambio.
+
+### Un tropiezo que valió la pena
+
+Las tres pruebas centrales fallaban con "la sesión no tiene errores", y lo leí como que la factura se había emitido. No: la respuesta era **403**. Los usuarios del fixture tenían rol pero no permiso del módulo de facturación, así que el middleware cortaba la request antes de que el guard corriera. Las pruebas habrían "pasado" por el motivo equivocado si hubiera afirmado sobre el conteo en vez de sobre el error. **Cuando una prueba de permisos falla, hay que mirar el código de estado antes que el efecto.**
+
+**Pendiente anotado:** el control cubre la factura, no la orden de pedido. Un pedido con precio cambiado que después se factura llega con ese precio ya puesto y el control salta ahí, así que no hay hueco — pero la autorización se pide más tarde de lo ideal.
+
+**Verificado con 17 tests nuevos.** Suite completa: **1334 tests, 5373 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-21 — Heredar la lista de precios de la categoría: el escalón del medio
 
 **Pedido del usuario:** la herencia que quedó anotada como posible al explicar cómo se asignan las listas.
