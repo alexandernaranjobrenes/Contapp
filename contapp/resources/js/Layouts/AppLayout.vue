@@ -49,9 +49,11 @@ const nav = computed(() => {
         },
         {
             label: 'Inventario', icon: '▦', module: 'inventory',
-            match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*'],
+            match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*'],
             children: [
-                { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex'] },
+                { label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
+                { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
+                { label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
                 { label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
                 { label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
                 { label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
@@ -63,6 +65,7 @@ const nav = computed(() => {
                 { label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
                 { label: 'Rubros de nacionalización', href: route('import-costs.index'), match: ['import-costs.*'] },
                 { label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
+                { label: 'Listas de materiales', href: route('bills-of-materials.index'), match: ['bills-of-materials.*'] },
                 { label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
                 { label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
                 { label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
@@ -71,11 +74,12 @@ const nav = computed(() => {
         },
         {
             label: 'Facturación', icon: '🧾', module: 'billing',
-            match: ['sales-documents.*', 'sales-orders.*', 'billing-settings.*'],
+            match: ['sales-documents.*', 'sales-orders.*', 'billing-settings.*', 'price-overrides.*'],
             children: [
                 { label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
                 { label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
                 { label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
+                { label: 'Cambios de precio autorizados', href: route('price-overrides.index'), match: ['price-overrides.*'] },
                 { label: 'Configuración', href: route('billing-settings.index'), match: ['billing-settings.*'] },
             ],
         },

@@ -36,6 +36,7 @@ use App\Http\Controllers\ImportCostController;
 use App\Http\Controllers\IncomeStatementController;
 use App\Http\Controllers\InventoryAgingController;
 use App\Http\Controllers\InventoryDocumentController;
+use App\Http\Controllers\InventoryReportController;
 use App\Http\Controllers\InventoryValuationController;
 use App\Http\Controllers\InventoryWriteDownController;
 use App\Http\Controllers\ItemController;
@@ -184,6 +185,13 @@ Route::middleware('auth')->group(function () {
         Route::get('warehouses', [WarehouseController::class, 'index'])->name('warehouses.index');
         Route::get('items', [ItemController::class, 'index'])->name('items.index');
         Route::get('items-template', [ItemController::class, 'template'])->name('items.template');
+
+        // Reportes de inventario. Las cuatro rutas sirven a CUALQUIER reporte
+        // del registro: agregar uno no agrega una ruta.
+        Route::get('inventory-reports', [InventoryReportController::class, 'index'])->name('inventory-reports.index');
+        Route::get('inventory-reports/{report}', [InventoryReportController::class, 'show'])->name('inventory-reports.show');
+        Route::get('inventory-reports/{report}/export', [InventoryReportController::class, 'export'])->name('inventory-reports.export');
+        Route::get('inventory-reports/{report}/export-pdf', [InventoryReportController::class, 'exportPdf'])->name('inventory-reports.export-pdf');
 
         // Listas de precios. Viven en inventario porque cuelgan del artículo,
         // aunque las use facturación: es el mismo criterio que los lotes.

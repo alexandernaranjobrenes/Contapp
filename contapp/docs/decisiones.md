@@ -3,6 +3,70 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-22 — Reportes de inventario: una base compartida y ocho reportes sobre ella
+
+**Pedido del usuario:** una pestaña de reportes de inventario, configurables y filtrables, exportables a XLSX y PDF e imprimibles; con una lista de seis y libertad para agregar los que se consideraran importantes.
+
+### La decisión de arquitectura, que es lo que hace viable el resto
+
+Ocho reportes con su servicio, su exportador, su blade, su pantalla y sus pruebas habrían sido ocho copias casi iguales — y en cuanto una mejora de formato se aplicara a siete de ocho, dos exportaciones del mismo sistema se verían distintas sin ninguna razón. En vez de eso hay **un contrato y cuatro rutas que sirven a cualquier reporte**:
+
+```
+InventoryReport (contrato)  →  ReportResult { columnas, filas, totales, notas }
+                                     ↓
+                        pantalla · XLSX · PDF · impresión
+```
+
+Un reporte nuevo es **una clase y una línea en el registro**. No toca el controlador, ni la pantalla, ni el exportador. Y hay una prueba que corre TODOS los del registro y verifica el contrato, así que el reporte número nueve hereda la cobertura sin escribir una línea de prueba.
+
+**El formato vive en la columna, no en cada salida.** Es lo que garantiza que un número se vea igual en pantalla, en Excel y en papel. Cuando cada salida decide por su cuenta, el usuario compara dos hojas y cree que el sistema se contradice.
+
+**Los filtros se declaran, no se programan.** La pantalla arma el control, el controlador valida y el encabezado impreso arma su resumen de parámetros — los tres desde la misma declaración. Sin eso, cada reporte necesitaría su propio Vue y terminarían siendo veinte pantallas casi iguales y ninguna igual del todo.
+
+### Los ocho, y por qué cada uno
+
+Cada reporte declara **qué decisión ayuda a tomar**, no solo su nombre. Con ocho en un índice, "Rotación y cobertura" no le dice a nadie cuál abrir.
+
+| Reporte | La decisión |
+|---|---|
+| Lista de artículos | Qué está a medio configurar: sin CAByS hay que teclearlo en cada factura, sin mínimo nunca aparece en la sugerencia de compra |
+| Existencias y compromisos | Si se puede prometer mercancía hoy — el número protagonista es el disponible, no la existencia |
+| Partidas abiertas | A qué cliente le debemos y qué proveedor no despachó, ordenado por antigüedad |
+| Movimientos por artículo | Por qué un artículo terminó con la existencia que tiene |
+| Listas de precios y margen | Qué se vende con margen delgado o negativo, y qué falta ponerle precio |
+| Rentabilidad por artículo | Qué deja plata de verdad: lo que más factura no siempre es lo que más rinde |
+| Rotación y cobertura | Dónde está la plata dormida y qué se va a agotar primero |
+| Análisis ABC | Qué pocos artículos concentran el dinero y cuáles no merecen el esfuerzo |
+
+Los tres últimos son agregados propios. **Rentabilidad** vale por la diferencia con el margen de lista: aquel mide lo que *debería* dejar cada artículo, este lo que *dejó* — y la diferencia entre ambos es exactamente lo que se perdió en descuentos y en costos que subieron después de fijar la lista. **ABC** vale porque tratar a todos los artículos igual es el error caro, y porque comparado consigo mismo revela lo mejor: un artículo clase C por consumo y clase A por existencia es plata parada que no se vende.
+
+### Decisiones de cálculo que cambian el resultado
+
+**El margen se calcula sobre el precio, no sobre el costo.** `(precio − costo) / precio`. Sobre el costo sería el *markup*, un número distinto y más grande; confundirlos es una forma clásica de fijar precios que no dan.
+
+**El inventario promedio es un promedio de verdad**: `(inicial + final) / 2`. Usar solo la existencia final —el atajo habitual— infla la rotación de cualquier artículo que se haya agotado justo antes del corte, que es precisamente el que uno quiere detectar.
+
+**La rotación ignora los traslados.** Mover mercancía entre almacenes no es consumo: contarlo permitiría "mejorar" el indicador mandándola de ida y vuelta. Tiene su prueba.
+
+**El costo de la rentabilidad sale del kardex, no de recalcularlo.** Al promedio vigente cuando se vendió, no al de hoy. Es lo que hace que el reporte cuadre con el estado de resultados.
+
+**Los totales del pie no siempre son la suma de la columna.** La rotación del conjunto es consumo total sobre inventario promedio total; el margen del conjunto es utilidad total sobre ingreso total. Promediar porcentajes de volúmenes distintos da un número que no existe, así que un reporte puede declarar su propio total y ese gana.
+
+### Dos errores que las pruebas atraparon
+
+**El del Pareto era mío y el comentario lo delataba.** Escribí "la fila que cruza el 80% todavía es A" y programé lo contrario: clasificaba con el acumulado *después* de la fila. Con un catálogo de un solo artículo —que se lleva el 100%— salía clase C. La regla correcta mira el acumulado *antes*. El comentario decía la intención y el código hacía otra cosa; sin la prueba habría pasado.
+
+**El del rango de fechas afectaba a cuatro reportes a la vez.** `BETWEEN 'desde' AND 'hasta'` pierde el último día cuando la columna trae hora: comparado como texto, `'2026-09-22 00:00:00'` es mayor que `'2026-09-22'`. El reporte no falla, simplemente devuelve de menos, y nadie lo nota. Se resolvió con un intervalo semiabierto —`>= desde AND < hasta+1día`— en un trait compartido, que además **conserva el índice**: `whereDate()` habría sido correcto pero envuelve la columna en una función y convierte una consulta acotada en un barrido de `stock_journals`.
+
+### Una omisión vieja que apareció al agregar la pestaña
+
+Al tocar el menú vi que **las listas de precios, las listas de materiales, las series y el registro de cambios de precio nunca llegaron a él**: quedaron accesibles solo escribiendo la URL. Es la misma familia de error que ya está anotada dos veces —dato o función sin camino desde la interfaz— y ahora en su tercera variante: la ruta existe, la pantalla existe, y no hay forma de llegar. **Cuando se agrega una pantalla, la entrada de menú es parte de la entrega, no un detalle posterior.**
+
+**Cómo aplicar:** ante N cosas casi iguales, construir el contrato primero y probarlo sobre todas a la vez. La prueba que recorre el registro es la que hace que el costo de agregar la novena sea de verdad bajo, y no solo en apariencia.
+
+**Verificado con 16 tests nuevos**, tres de los cuales corren los ocho reportes completos (contrato, HTTP y exportación). Suite completa: **1357 tests, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-21 — El control de precio se adelanta al pedido, y la firma viaja con él
 
 **Pedido del usuario:** llevar al pedido de venta el mismo control que ya tenía la factura.
