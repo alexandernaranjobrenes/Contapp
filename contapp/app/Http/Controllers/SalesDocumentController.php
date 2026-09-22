@@ -355,6 +355,10 @@ class SalesDocumentController extends Controller
             $validated['document_date'],
             (int) $validated['currency_id'],
             $validated['lines'],
+            // El pedido que esta factura cumple: lo que ya se autorizó ahí
+            // no se vuelve a pedir. Firmar dos veces el mismo precio
+            // convertiría el control en un estorbo.
+            isset($validated['sales_order_id']) ? (int) $validated['sales_order_id'] : null,
         );
 
         if ($deviations === []) {

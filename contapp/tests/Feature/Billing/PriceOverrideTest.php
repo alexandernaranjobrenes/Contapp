@@ -413,3 +413,175 @@ it('el registro no cruza compañías', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page->has('overrides.data', 0)->where('summary.count', 0));
 });
+
+// ── El mismo control en el pedido de venta ───────────────────────────────
+
+/**
+ * Un pedido aparta mercancía, así que sin existencia el service lo rechaza
+ * antes de que el control de precio pueda decir nada.
+ */
+function receiveStockFor(array $f, $quantity): void
+{
+    postMovement($f, 'goods_receipt', [
+        new App\Domains\Inventory\DataTransferObjects\StockLineInput(
+            $f['item']->id, $f['warehouse']->id, quantity: $quantity, unitCostLocal: 1000,
+        ),
+    ]);
+}
+
+/**
+ * Registra un pedido con el precio indicado, más lo que se le pase para la
+ * autorización.
+ */
+function orderAt(array $f, $unitPrice, array $extra = [])
+{
+    return test()->post(route('sales-orders.store'), array_merge([
+        'business_partner_id' => $f['customer']->id,
+        'order_date' => now()->format('Y-m-d'),
+        'lines' => [[
+            'item_id' => $f['item']->id,
+            'warehouse_id' => $f['warehouse']->id,
+            'quantity' => 10,
+            'unit_price' => $unitPrice,
+        ]],
+    ], $extra));
+}
+
+it('EL PEDIDO TAMBIÉN: un vendedor no puede pactar un precio fuera de la lista', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $this->actingAs(overrideUser($f, 'user'));
+
+    // El precio se pacta acá: si el control esperara a la factura, el
+    // vendedor ya habría comprometido por escrito lo que la empresa no
+    // autorizó.
+    orderAt($f, 2000)->assertSessionHasErrors('price_override');
+
+    expect(App\Domains\Billing\Models\SalesOrder::count())->toBe(0);
+});
+
+it('pactar al precio de la lista no pide nada', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $this->actingAs(overrideUser($f, 'user'));
+
+    orderAt($f, 2500)->assertSessionHasNoErrors();
+
+    expect(App\Domains\Billing\Models\SalesOrder::count())->toBe(1)
+        ->and(PriceOverrideAuthorization::count())->toBe(0);
+});
+
+it('un pedido SIN precio no pide autorización: todavía no se pactó nada', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $this->actingAs(overrideUser($f, 'user'));
+
+    // En el pedido el precio es opcional. Tratar el vacío como cero haría
+    // que cada pedido sin precio pidiera firma, que es al revés de lo que
+    // corresponde.
+    orderAt($f, null)->assertSessionHasNoErrors();
+
+    expect(App\Domains\Billing\Models\SalesOrder::count())->toBe(1);
+});
+
+it('el vendedor pacta el precio con la credencial del administrador', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $vendedor = overrideUser($f, 'user');
+    $admin = overrideUser($f, 'admin', 'clave-admin');
+    $this->actingAs($vendedor);
+
+    orderAt($f, 2000, [
+        'price_override_email' => $admin->email,
+        'price_override_password' => 'clave-admin',
+        'price_override_reason' => 'Volumen',
+    ])->assertSessionHasNoErrors();
+
+    $order = App\Domains\Billing\Models\SalesOrder::sole();
+    $registro = PriceOverrideAuthorization::sole();
+
+    expect($registro->sales_order_id)->toBe($order->id)
+        ->and($registro->sales_document_id)->toBeNull()
+        ->and($registro->sales_order_line_id)->toBe($order->lines()->first()->id)
+        ->and($registro->authorized_by)->toBe($admin->id)
+        ->and((float) $registro->invoiced_unit_price)->toBe(2000.0);
+});
+
+// ── El arrastre: firmar una vez, no dos ──────────────────────────────────
+
+it('LA PRUEBA DEL ARRASTRE: lo autorizado en el pedido NO se vuelve a pedir al facturar', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $vendedor = overrideUser($f, 'user');
+    $admin = overrideUser($f, 'admin', 'clave-admin');
+    $this->actingAs($vendedor);
+
+    orderAt($f, 2000, [
+        'price_override_email' => $admin->email,
+        'price_override_password' => 'clave-admin',
+    ])->assertSessionHasNoErrors();
+
+    $order = App\Domains\Billing\Models\SalesOrder::sole();
+
+    // El mismo vendedor factura ese pedido al precio ya pactado, sin
+    // credenciales: pedir la firma dos veces convertiría el control en un
+    // estorbo y la gente buscaría cómo saltárselo.
+    $payload = overridePayload($f);
+    $payload['sales_order_id'] = $order->id;
+    $payload['lines'][0]['unit_price'] = 2000;
+
+    $this->post(route('sales-documents.store'), $payload)->assertSessionHasNoErrors();
+
+    expect(SalesDocument::count())->toBe(1)
+        // Sigue habiendo una sola autorización: la del pedido.
+        ->and(PriceOverrideAuthorization::count())->toBe(1);
+});
+
+it('cambiar el precio OTRA VEZ al facturar sí es un desvío nuevo', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $admin = overrideUser($f, 'admin', 'clave-admin');
+    $this->actingAs(overrideUser($f, 'user'));
+
+    orderAt($f, 2000, [
+        'price_override_email' => $admin->email,
+        'price_override_password' => 'clave-admin',
+    ]);
+
+    $order = App\Domains\Billing\Models\SalesOrder::sole();
+
+    // Se pactó 2.000 y ahora se quiere facturar a 1.500: eso no lo firmó
+    // nadie.
+    $payload = overridePayload($f);
+    $payload['sales_order_id'] = $order->id;
+    $payload['lines'][0]['unit_price'] = 1500;
+
+    $this->post(route('sales-documents.store'), $payload)->assertSessionHasErrors('price_override');
+
+    expect(SalesDocument::count())->toBe(0);
+});
+
+it('el arrastre no cruza pedidos: lo firmado en uno no libera otro', function () {
+    $f = overrideFixture();
+    receiveStockFor($f, 100);
+
+    $admin = overrideUser($f, 'admin', 'clave-admin');
+    $this->actingAs(overrideUser($f, 'user'));
+
+    orderAt($f, 2000, [
+        'price_override_email' => $admin->email,
+        'price_override_password' => 'clave-admin',
+    ]);
+
+    // Una factura suelta al mismo precio, sin pedido detrás, sigue pidiendo
+    // su propia autorización.
+    emitAt($f, 2000)->assertSessionHasErrors('price_override');
+
+    expect(SalesDocument::count())->toBe(0);
+});

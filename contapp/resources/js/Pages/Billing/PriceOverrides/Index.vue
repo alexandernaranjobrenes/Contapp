@@ -66,7 +66,7 @@ function money(value) {
                     <thead>
                         <tr>
                             <th>Fecha</th>
-                            <th>Comprobante</th>
+                            <th>Documento</th>
                             <th>Cliente</th>
                             <th>Artículo</th>
                             <th>Lista</th>
@@ -87,9 +87,18 @@ function money(value) {
                                     :href="route('sales-documents.show', o.sales_document.id)"
                                     class="num"
                                 >{{ o.sales_document.consecutive }}</Link>
+                                <template v-else-if="o.sales_order">
+                                    <Link :href="route('sales-orders.show', o.sales_order.id)" class="num">
+                                        {{ o.sales_order.number }}
+                                    </Link>
+                                    <span class="block muted small">pedido</span>
+                                </template>
                                 <span v-else class="muted">—</span>
                             </td>
-                            <td>{{ o.sales_document?.business_partner?.name ?? '—' }}</td>
+                            <td>
+                                {{ o.sales_document?.business_partner?.name
+                                    ?? o.sales_order?.business_partner?.name ?? '—' }}
+                            </td>
                             <td>
                                 <strong class="num">{{ o.item?.code ?? '—' }}</strong>
                                 <span class="block muted small">{{ o.item?.name }}</span>

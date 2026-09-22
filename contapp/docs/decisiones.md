@@ -3,6 +3,37 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-21 — El control de precio se adelanta al pedido, y la firma viaja con él
+
+**Pedido del usuario:** llevar al pedido de venta el mismo control que ya tenía la factura.
+
+**Por qué importaba corregirlo.** El precio se pacta al tomar el pedido, no al facturarlo. Con el control solo en la factura, un vendedor podía comprometer por escrito un precio con el cliente y la empresa se enteraba semanas después, cuando ya había que cumplirlo. No había hueco —la factura igual lo detenía— pero la autorización llegaba tarde y en el peor momento: con el cliente esperando su mercancía.
+
+### La pieza que hace que valga la pena: la firma viaja
+
+Si el precio ya se autorizó en el pedido, **la factura que lo cumple no vuelve a pedir la firma** para el mismo artículo al mismo precio. Pedirla dos veces convertiría el control en un estorbo, y un control que estorba es un control que la gente aprende a esquivar.
+
+Cambiar el precio **otra vez** al facturar sí es un desvío nuevo y se autoriza aparte. Hay un test para cada mitad de esa regla, más uno que confirma que el arrastre no cruza pedidos: una factura suelta al mismo precio sigue pidiendo su propia firma.
+
+### Un caso que el pedido tiene y la factura no
+
+En el pedido el precio es **opcional**: `null` significa "todavía no se pactó", no "vale cero". La primera versión del guard lo habría leído como cero y pedido autorización en cada pedido sin precio — exactamente al revés de lo que corresponde. Se resolvió antes de que llegara a ninguna pantalla, pero vale anotarlo: **al reusar un guard en un segundo formulario, revisar qué campos cambian de obligatorios a opcionales.**
+
+### Lo que el cambio destapó
+
+El pedido **no precargaba precios de ninguna lista**: se digitaban. Pedirle a alguien que respete un precio que no puede ver es absurdo, así que la precarga entró junto con el control. Es el mismo patrón de las dos entradas anteriores —columna sin ruta de escritura, control sin el dato a la vista— y esta vez se vio antes de construir, no después.
+
+### Dos columnas nullable, no una relación polimórfica
+
+Una autorización pertenece a un pedido **o** a una factura. Con `morphTo` la base de datos no podría garantizar que el id apunte a algo que existe; con dos claves foráneas reales sí. Son dos casos, se conocen de antemano, y acá la integridad vale más que la generalidad.
+
+`sales_document_id` pasó a nullable: una autorización de pedido todavía no tiene factura, y puede que nunca la tenga si el pedido se cancela.
+
+**Cómo aplicar:** cuando un control se aplica en dos puntos de un mismo ciclo, decidir explícitamente si el segundo hereda lo resuelto en el primero. Si no lo hereda, el usuario hace el trámite dos veces y empieza a buscar el atajo.
+
+**Verificado con 7 tests nuevos** (24 en total sobre el control). Suite completa: **1341 tests, 5397 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-21 — El precio de lista se respeta: autorización de un administrador en el momento
 
 **Pedido del usuario:** que la figura de usuario respete la lista de precios del cliente, y que cambiar el precio en una factura lo apruebe un administrador o superusuario.

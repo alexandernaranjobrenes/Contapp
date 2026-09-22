@@ -20,7 +20,8 @@ class PriceOverrideAuthorization extends Model
     use BelongsToCompany, HasFactory;
 
     protected $fillable = [
-        'company_id', 'sales_document_id', 'sales_document_line_id', 'item_id',
+        'company_id', 'sales_document_id', 'sales_document_line_id',
+        'sales_order_id', 'sales_order_line_id', 'item_id',
         'price_list_id', 'price_list_code', 'list_unit_price', 'invoiced_unit_price',
         'difference', 'requested_by', 'authorized_by', 'reason',
     ];
@@ -28,6 +29,16 @@ class PriceOverrideAuthorization extends Model
     public function salesDocument(): BelongsTo
     {
         return $this->belongsTo(SalesDocument::class);
+    }
+
+    /**
+     * Una autorización cuelga de un pedido O de una factura, nunca de las
+     * dos: el precio se firma una vez, y si se firmó en el pedido la
+     * factura que lo cumple no vuelve a pedirlo.
+     */
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
     }
 
     public function item(): BelongsTo

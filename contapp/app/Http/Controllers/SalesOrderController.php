@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Billing\DataTransferObjects\SalesOrderLineInput;
+use App\Domains\Billing\Exceptions\PriceOverrideNotAuthorizedException;
+use App\Domains\Billing\Models\PriceOverrideAuthorization;
 use App\Domains\Billing\Models\SalesOrder;
+use App\Domains\Billing\Services\PriceOverrideAuthorizer;
+use App\Domains\Billing\Services\PriceOverrideGuard;
 use App\Domains\Billing\Services\SalesOrderService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
@@ -23,7 +27,11 @@ use Inertia\Response;
  */
 class SalesOrderController extends Controller
 {
-    public function __construct(private readonly SalesOrderService $service) {}
+    public function __construct(
+        private readonly SalesOrderService $service,
+        private readonly PriceOverrideGuard $priceOverrideGuard,
+        private readonly PriceOverrideAuthorizer $priceOverrideAuthorizer,
+    ) {}
 
     public function index(): Response
     {
@@ -69,6 +77,12 @@ class SalesOrderController extends Controller
                     'reserved' => (float) $row->reserved,
                     'free' => (float) bcsub((string) $row->on_hand, (string) $row->reserved, 6),
                 ])->values(),
+            // Si quien toma el pedido ya puede liberar cambios de precio, la
+            // pantalla no le pide autorización a nadie. El servidor lo
+            // vuelve a comprobar.
+            'canAuthorizePriceChange' => $this->priceOverrideGuard->canAuthorize(
+                request()->user(), app(CurrentCompany::class)->id()
+            ),
         ]);
     }
 
@@ -132,6 +146,19 @@ class SalesOrderController extends Controller
             'lines.*.description' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $company = Company::findOrFail($companyId);
+
+        // El precio se pacta al tomar el pedido, no al facturarlo: si el
+        // control esperara a la factura, el vendedor ya habría comprometido
+        // por escrito un precio que la empresa no autorizó. Lo que se firme
+        // acá viaja a la factura que cumpla este pedido y no se vuelve a
+        // pedir.
+        try {
+            $deviations = $this->resolvePriceOverrides($request, $company, $validated);
+        } catch (PriceOverrideNotAuthorizedException $e) {
+            return back()->withErrors(['price_override' => $e->getMessage()])->withInput();
+        }
+
         $lines = array_map(fn (array $line) => new SalesOrderLineInput(
             itemId: (int) $line['item_id'],
             warehouseId: (int) $line['warehouse_id'],
@@ -155,9 +182,89 @@ class SalesOrderController extends Controller
             return back()->withErrors(['order' => $e->getMessage()])->withInput();
         }
 
+        $this->recordPriceOverrides($order, $deviations);
+
         return redirect()
             ->route('sales-orders.show', $order->id)
             ->with('success', "Pedido {$order->number} registrado; la mercancía quedó apartada.");
+    }
+
+    /**
+     * Misma regla que en la factura: el precio de la lista se respeta y
+     * apartarse de él lo libera un administrador en el momento.
+     *
+     * @return array<int, array<string, mixed>>
+     *
+     * @throws PriceOverrideNotAuthorizedException
+     */
+    private function resolvePriceOverrides(Request $request, Company $company, array $validated): array
+    {
+        $user = $request->user();
+
+        $deviations = $this->priceOverrideGuard->deviations(
+            $company,
+            BusinessPartner::find($validated['business_partner_id']),
+            $validated['order_date'],
+            // El pedido no elige moneda: se toma en la de la compañía, así
+            // que la lista que aplica es la de moneda local.
+            $company->local_currency_id,
+            $validated['lines'],
+        );
+
+        if ($deviations === [] || $this->priceOverrideGuard->canAuthorize($user, $company->id)) {
+            return [];
+        }
+
+        $email = trim((string) $request->input('price_override_email'));
+        $password = (string) $request->input('price_override_password');
+
+        if ($email === '' || $password === '') {
+            throw new PriceOverrideNotAuthorizedException(sprintf(
+                'Este pedido se aparta de la lista de precios en %d línea(s). '.
+                'Para registrarlo hace falta que lo autorice un administrador o el superusuario.',
+                count($deviations),
+            ));
+        }
+
+        $authorizer = $this->priceOverrideAuthorizer->verify($email, $password, $company->id, $user->id);
+
+        $reason = $request->input('price_override_reason');
+
+        return array_map(fn (array $d) => [
+            ...$d,
+            'requested_by' => $user->id,
+            'authorized_by' => $authorizer->id,
+            'reason' => is_string($reason) && trim($reason) !== '' ? trim($reason) : null,
+        ], $deviations);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $deviations
+     */
+    private function recordPriceOverrides(SalesOrder $order, array $deviations): void
+    {
+        if ($deviations === []) {
+            return;
+        }
+
+        $lineIds = $order->lines()->orderBy('id')->pluck('id')->all();
+
+        foreach ($deviations as $index => $deviation) {
+            PriceOverrideAuthorization::create([
+                'company_id' => $order->company_id,
+                'sales_order_id' => $order->id,
+                'sales_order_line_id' => $lineIds[$index] ?? null,
+                'item_id' => $deviation['item_id'],
+                'price_list_id' => $deviation['price_list_id'],
+                'price_list_code' => $deviation['price_list_code'],
+                'list_unit_price' => $deviation['list_unit_price'],
+                'invoiced_unit_price' => $deviation['invoiced_unit_price'],
+                'difference' => $deviation['difference'],
+                'requested_by' => $deviation['requested_by'],
+                'authorized_by' => $deviation['authorized_by'],
+                'reason' => $deviation['reason'],
+            ]);
+        }
     }
 
     public function cancel(Request $request, int $salesOrder, CurrentCompany $currentCompany): RedirectResponse

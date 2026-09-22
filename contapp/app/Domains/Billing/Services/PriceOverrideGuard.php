@@ -2,6 +2,7 @@
 
 namespace App\Domains\Billing\Services;
 
+use App\Domains\Billing\Models\PriceOverrideAuthorization;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Inventory\Services\PriceResolver;
@@ -68,6 +69,7 @@ class PriceOverrideGuard
         string $date,
         ?int $currencyId,
         array $lines,
+        ?int $salesOrderId = null,
     ): array {
         $map = $this->resolver->priceMap($company, $customer, $date, $currencyId);
 
@@ -77,6 +79,11 @@ class PriceOverrideGuard
         if ($map['prices'] === []) {
             return [];
         }
+
+        // Lo que el pedido ya trae autorizado. Es la pieza que evita el
+        // doble trámite: el precio se pactó y se firmó al tomar el pedido, y
+        // la factura que lo cumple no vuelve a pedir la misma firma.
+        $alreadyAuthorized = $this->authorizedPricesOf($salesOrderId);
 
         $deviations = [];
 
@@ -89,6 +96,15 @@ class PriceOverrideGuard
 
             $listPrice = $this->scale((string) $map['prices'][$itemId]);
             $net = $this->netUnitPrice($line);
+
+            // Facturar exactamente el precio que el pedido autorizó no es un
+            // desvío nuevo. Cambiarlo otra vez SÍ lo es, y cae por el
+            // camino normal de abajo.
+            if ($net !== null
+                && isset($alreadyAuthorized[$itemId])
+                && bccomp($net, $alreadyAuthorized[$itemId], self::SCALE) === 0) {
+                continue;
+            }
 
             if ($net === null || bccomp($net, $listPrice, self::SCALE) === 0) {
                 continue;
@@ -111,12 +127,44 @@ class PriceOverrideGuard
     }
 
     /**
+     * Los precios que un pedido ya trae firmados, como item_id => precio.
+     *
+     * Si el mismo artículo se autorizó más de una vez en el pedido, vale el
+     * último: es el precio que quedó pactado.
+     *
+     * @return array<int, string>
+     */
+    private function authorizedPricesOf(?int $salesOrderId): array
+    {
+        if ($salesOrderId === null) {
+            return [];
+        }
+
+        return PriceOverrideAuthorization::where('sales_order_id', $salesOrderId)
+            ->orderBy('id')
+            ->get(['item_id', 'invoiced_unit_price'])
+            ->filter(fn ($row) => $row->item_id !== null)
+            ->mapWithKeys(fn ($row) => [
+                (int) $row->item_id => $this->scale((string) $row->invoiced_unit_price),
+            ])
+            ->all();
+    }
+
+    /**
      * Lo que el cliente paga por unidad en esta línea. null si la cantidad
      * es cero o falta: ahí no hay precio unitario que comparar, y la
      * validación de la factura ya rechaza esa línea por otro lado.
      */
     private function netUnitPrice(array $line): ?string
     {
+        // En un pedido el precio es opcional: null significa "todavía no se
+        // pactó", no "vale cero". Tratarlo como cero haría que cada pedido
+        // sin precio pidiera autorización, que es exactamente al revés de
+        // lo que corresponde.
+        if (! isset($line['unit_price']) || $line['unit_price'] === '') {
+            return null;
+        }
+
         $quantity = $this->scale((string) ($line['quantity'] ?? 0));
 
         if (bccomp($quantity, '0', self::SCALE) <= 0) {

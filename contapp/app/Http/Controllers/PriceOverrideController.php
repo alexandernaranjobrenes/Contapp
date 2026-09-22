@@ -36,6 +36,8 @@ class PriceOverrideController extends Controller
 
         $query = PriceOverrideAuthorization::with([
             'salesDocument:id,consecutive,document_date,business_partner_id',
+            'salesOrder:id,number,business_partner_id',
+            'salesOrder.businessPartner:id,code,name',
             'salesDocument.businessPartner:id,code,name',
             'item:id,code,name',
             'requestedBy:id,name',
