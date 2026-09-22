@@ -8,6 +8,7 @@ use App\Domains\Accounting\Models\Currency;
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -44,6 +45,10 @@ class BusinessPartnerController extends Controller
             // vigencia acá, es solo configuración de a qué pertenece el socio).
             'categories' => BpCategory::orderBy('code')->get(['id', 'code', 'name']),
             'costCenters' => CostCenter::orderBy('code')->get(['id', 'code', 'name']),
+            // Solo las activas: ofrecer una lista vencida o inactiva sería
+            // asignarle al cliente un precio que nunca va a aplicar.
+            'priceLists' => PriceList::where('status', 'active')->orderBy('code')
+                ->get(['id', 'code', 'name', 'currency_id']),
             'today' => now()->format('Y-m-d'),
         ]);
     }
@@ -77,6 +82,10 @@ class BusinessPartnerController extends Controller
             'currencies' => Currency::all(['id', 'code', 'symbol']),
             'categories' => BpCategory::orderBy('code')->get(['id', 'code', 'name']),
             'costCenters' => CostCenter::orderBy('code')->get(['id', 'code', 'name']),
+            // Solo las activas: ofrecer una lista vencida o inactiva sería
+            // asignarle al cliente un precio que nunca va a aplicar.
+            'priceLists' => PriceList::where('status', 'active')->orderBy('code')
+                ->get(['id', 'code', 'name', 'currency_id']),
         ]);
     }
 
@@ -106,6 +115,10 @@ class BusinessPartnerController extends Controller
             'cost_center_id' => ['nullable', 'integer', Rule::exists('cost_centers', 'id')->where('company_id', $companyId)],
             'gl_account_id' => ['required', 'integer', Rule::exists('chart_of_accounts', 'id')->where('company_id', $companyId)->where('accepts_posting', true)],
             'currency_id' => ['required', 'integer', Rule::exists('currencies', 'id')],
+            // Nullable = usa la lista predeterminada de la compañía, que es
+            // lo correcto para la mayoría. Asignar una es la excepción:
+            // mayorista, distribuidor, convenio.
+            'price_list_id' => ['nullable', 'integer', Rule::exists('price_lists', 'id')->where('company_id', $companyId)],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0'],
             'status' => ['sometimes', 'in:active,inactive'],

@@ -259,3 +259,92 @@ it('rechaza un cliente de otra compañía', function () {
 
     expect($response->status())->not->toBe(200);
 });
+// --- Asignar la lista al cliente ---
+
+it('LA PRUEBA QUE FALTABA: la ficha del cliente guarda su lista de precios', function () {
+    $f = priceListHttpFixture();
+    $mayoreo = makePriceList($f, ['code' => 'MAY']);
+
+    $cuenta = App\Domains\Accounting\Models\ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'accepts_posting' => true, 'is_active' => true,
+    ]);
+
+    $this->post(route('business-partners.store'), [
+        'code' => 'C-001', 'name' => 'Distribuidora del Sur', 'type' => 'client',
+        'gl_account_id' => $cuenta->id, 'currency_id' => $f['company']->local_currency_id,
+        'price_list_id' => $mayoreo->id,
+    ])->assertSessionHasNoErrors();
+
+    expect(BusinessPartner::where('company_id', $f['company']->id)->sole()->price_list_id)
+        ->toBe($mayoreo->id);
+});
+
+it('un cliente sin lista asignada queda en null, que es "usa la predeterminada"', function () {
+    $f = priceListHttpFixture();
+
+    $cuenta = App\Domains\Accounting\Models\ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'accepts_posting' => true, 'is_active' => true,
+    ]);
+
+    $this->post(route('business-partners.store'), [
+        'code' => 'C-002', 'name' => 'Cliente de mostrador', 'type' => 'client',
+        'gl_account_id' => $cuenta->id, 'currency_id' => $f['company']->local_currency_id,
+    ])->assertSessionHasNoErrors();
+
+    expect(BusinessPartner::where('company_id', $f['company']->id)->sole()->price_list_id)->toBeNull();
+});
+
+it('se le puede cambiar la lista a un cliente existente', function () {
+    $f = priceListHttpFixture();
+    $mayoreo = makePriceList($f, ['code' => 'MAY']);
+
+    $cuenta = App\Domains\Accounting\Models\ChartOfAccount::factory()->create([
+        'company_id' => $f['company']->id, 'accepts_posting' => true, 'is_active' => true,
+    ]);
+
+    $cliente = BusinessPartner::factory()->create([
+        'company_id' => $f['company']->id, 'type' => 'client', 'gl_account_id' => $cuenta->id,
+    ]);
+
+    $this->put(route('business-partners.update', $cliente->id), [
+        'code' => $cliente->code, 'name' => $cliente->name, 'type' => 'client',
+        'gl_account_id' => $cuenta->id, 'currency_id' => $cliente->currency_id,
+        'price_list_id' => $mayoreo->id,
+    ])->assertSessionHasNoErrors();
+
+    expect($cliente->fresh()->price_list_id)->toBe($mayoreo->id);
+});
+
+it('rechaza asignar una lista de otra compañía', function () {
+    $f = priceListHttpFixture();
+
+    $otra = App\Domains\Core\Models\Company::factory()->create();
+    $ajena = PriceList::factory()->create([
+        'company_id' => $otra->id, 'currency_id' => $otra->local_currency_id,
+    ]);
+
+    $cliente = BusinessPartner::factory()->create([
+        'company_id' => $f['company']->id, 'type' => 'client',
+    ]);
+
+    $this->put(route('business-partners.update', $cliente->id), [
+        'code' => $cliente->code, 'name' => $cliente->name, 'type' => 'client',
+        'gl_account_id' => $cliente->gl_account_id, 'currency_id' => $cliente->currency_id,
+        'price_list_id' => $ajena->id,
+    ])->assertSessionHasErrors('price_list_id');
+});
+
+it('la ficha del cliente recibe las listas activas para poder ofrecerlas', function () {
+    $f = priceListHttpFixture();
+    makePriceList($f, ['code' => 'MAY']);
+    makePriceList($f, ['code' => 'VIEJA', 'status' => 'inactive']);
+
+    // Una lista inactiva no se ofrece: asignarla sería darle al cliente un
+    // precio que nunca va a aplicar.
+    $this->get(route('business-partners.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('priceLists', 1)
+            ->where('priceLists.0.code', 'MAY')
+        );
+});

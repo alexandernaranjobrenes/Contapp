@@ -9,6 +9,7 @@ const props = defineProps({
     currencies: { type: Array, default: () => [] },
     categories: { type: Array, default: () => [] },
     costCenters: { type: Array, default: () => [] },
+    priceLists: { type: Array, default: () => [] },
     today: { type: String, required: true },
 });
 
@@ -26,6 +27,7 @@ const form = useForm({
     cost_center_id: null,
     gl_account_id: props.accounts[0]?.id ?? null,
     currency_id: props.currencies[0]?.id ?? null,
+    price_list_id: null,
     credit_limit: '',
     payment_terms_days: '',
 });
@@ -129,6 +131,20 @@ function submit() {
                     <select id="currency_id" v-model="form.currency_id" required>
                         <option v-for="c in currencies" :key="c.id" :value="c.id">{{ c.code }}</option>
                     </select>
+                </div>
+
+                <div class="field">
+                    <label for="price_list_id">Lista de precios</label>
+                    <select id="price_list_id" v-model="form.price_list_id">
+                        <option :value="null">Predeterminada de la compañía</option>
+                        <option v-for="p in priceLists" :key="p.id" :value="p.id">{{ p.code }} — {{ p.name }}</option>
+                    </select>
+                    <span class="hint">
+                        Dejala en predeterminada salvo que este cliente tenga precios propios (mayorista,
+                        distribuidor, convenio). Si se le asigna una lista y un artículo no tiene precio ahí,
+                        la línea de la factura llega vacía: <strong>no</strong> se cae a la lista general,
+                        porque eso le cobraría el precio de mostrador sin avisar.
+                    </span>
                 </div>
 
                 <div class="field">

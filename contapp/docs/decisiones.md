@@ -3,6 +3,23 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-21 — Asignar la lista de precios al cliente: la misma omisión, dos veces
+
+**Cómo apareció.** El usuario preguntó si las listas de precios tienen categorías y cómo se le asignan a cada cliente. Al revisar para contestar, el hueco: `business_partners.price_list_id` era columna real, `PriceResolver::listFor()` la leía y la precedencia estaba probada, pero **ninguna pantalla podía escribirla**. En la práctica solo funcionaba la lista predeterminada y no había forma de darle precios propios a nadie.
+
+**Es exactamente el mismo error que la entrada del CAByS documenta**, cometido un día después de escribirla. Vale la pena anotarlo como patrón y no como anécdota: una columna sin ruta de escritura es peor que una columna ausente, porque el código que la consume parece funcionar —y sus tests pasan, porque prueban el resolvedor, no el camino del usuario— y el hueco solo aparece en el uso diario.
+
+**Qué lo habría atrapado antes:** el test de ida y vuelta. Para el CAByS lo escribí (se guarda por la ficha, se comprueba que llega a la factura) y por eso quedó cerrado. Para las listas probé el resolvedor con `price_list_id` seteado a mano en el fixture, que es justamente el atajo que salta el camino real. **Cuando una funcionalidad cruza dos pantallas, el test tiene que cruzarlas también**: escribir por donde escribe el usuario, leer por donde lee.
+
+**Lo agregado:** selector en crear y editar cliente, validado contra la compañía y ofreciendo solo listas activas —asignar una inactiva o vencida sería darle al cliente un precio que nunca va a aplicar—, con el texto que explica la regla que más sorprende: si el cliente tiene lista propia y al artículo le falta precio ahí, la línea llega vacía y NO cae a la general.
+
+**Sobre categorías, que fue la pregunta.** No hay un concepto de "categoría de precio" y es deliberado: cada lista *es* un tipo de precio, y una categoría intermedia sería indirección sin contenido. El cliente sí tiene un campo `category_id` (mayorista, gobierno), pero agrupa reportes de ventas y **no** determina el precio; mantenerlos independientes evita que cambiar una clasificación comercial mueva precios sin querer.
+
+Queda anotado como posible: un escalón más de precedencia —lista del cliente → lista de su categoría → predeterminada— que evitaría asignar una por una a 400 clientes. No se hizo porque nadie lo pidió y solo se justifica con volumen.
+
+**Verificado con 5 tests nuevos**, entre ellos el que faltaba: guardar la lista por la ficha del cliente y comprobar que quedó. 21 tests en el archivo de listas de precios; 60 entre ese, clientes y el resolvedor.
+
+---
 ## 2026-09-21 — Series y lista de materiales: las dos capas que faltaban, sin tocar el costeo
 
 **Pedido del usuario:** hacer lo que quedaba pendiente sin volver a preguntar. Esta entrada cubre las dos piezas grandes; la exportación de reorden, la carga masiva de artículos y las listas de precios van en la entrada anterior.
