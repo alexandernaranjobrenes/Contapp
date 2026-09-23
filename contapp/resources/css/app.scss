@@ -125,6 +125,55 @@ table {
     width: 100%;
 }
 
+// Contenedor de tablas anchas (lo usan ~30 pantallas con overflow-x propio).
+//
+// El problema que resuelve: con overflow-x sobre un contenedor que crece con
+// el contenido, la barra de desplazamiento horizontal queda al FINAL de la
+// tabla. En un listado de 900 artículos, para moverse de lado mirando los
+// primeros hay que bajar hasta el fondo, desplazarse, y volver a subir.
+//
+// Acotar la altura resuelve las dos cosas de una vez: la tabla pasa a tener
+// su propio scroll vertical, así que la barra horizontal queda SIEMPRE en el
+// borde inferior de la caja, a la vista desde la primera fila.
+//
+// Solo actúa cuando la tabla es más alta que el tope — un listado de cinco
+// filas se sigue viendo igual que antes.
+.table-scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+
+    // Con scroll propio, el encabezado tiene que quedarse: si no, a la
+    // tercera pantalla de filas ya no se sabe qué columna es cuál.
+    thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        // Obligatorio: sin fondo propio, las filas se verían pasar por
+        // debajo del encabezado.
+        background: var(--color-surface);
+        // El borde va como sombra y no como border porque border-collapse
+        // lo pinta en la celda vecina, y al despegarse el encabezado el
+        // borde se queda atrás.
+        box-shadow: inset 0 -1px 0 var(--color-border);
+    }
+}
+
+// Dentro de un modal NO se acota: el modal ya tiene su propio scroll
+// (max-height + overflow-y), y anidar un segundo hace que la rueda del
+// mouse mueva una tabla cuando el usuario quería mover el modal. Un modal
+// ya está acotado a la pantalla, así que la barra horizontal de su tabla
+// nunca queda fuera de vista — que era el problema a resolver.
+.modal-card .table-scroll,
+.modal .table-scroll {
+    max-height: none;
+    overflow-y: visible;
+
+    thead th {
+        position: static;
+        box-shadow: none;
+    }
+}
+
 .num {
     font-variant-numeric: tabular-nums;
     text-align: right;
@@ -167,6 +216,20 @@ input[type="date"] {
     .content {
         padding: 0 !important;
         overflow: visible !important;
+    }
+
+    // El tope de altura de .table-scroll es para la PANTALLA: en papel
+    // recortaría el listado a una hoja y el resto simplemente no saldría.
+    // Acá se suelta, y el encabezado deja de ser sticky para que el
+    // navegador lo repita por página con thead normal.
+    .table-scroll {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    .table-scroll thead th {
+        position: static !important;
+        box-shadow: none !important;
     }
 }
 
