@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
@@ -216,6 +216,7 @@ function closeOrder(order) {
                             <th class="right">Planificado</th>
                             <th class="right">Producido</th>
                             <th class="right">En proceso</th>
+                            <th class="right">Desviación</th>
                             <th>Estado</th>
                             <th></th>
                         </tr>
@@ -228,8 +229,17 @@ function closeOrder(order) {
                             <td class="code-cell">{{ o.warehouse_code }}</td>
                             <td class="num right">{{ quantity(o.planned_quantity) }}</td>
                             <td class="num right">{{ quantity(o.produced_quantity) }}</td>
-                            <td class="num right" :class="Number(o.wip_balance) > 0 ? 'warn' : ''">
-                                {{ money(o.wip_balance) }}
+                            <td class="num right">
+                                <template v-if="o.status === 'open'">{{ money(o.wip_balance) }}</template>
+                                <span v-else class="muted">—</span>
+                            </td>
+                            <td class="num right">
+                                <Link
+                                    v-if="o.variance_journal_entry_id"
+                                    :href="route('journal-entries.show', o.variance_journal_entry_id)"
+                                    class="warn"
+                                >{{ money(o.wip_balance) }}</Link>
+                                <span v-else class="muted">—</span>
                             </td>
                             <td>
                                 <span class="badge" :class="o.status === 'open' ? 'badge-success' : 'badge-neutral'">
@@ -245,7 +255,7 @@ function closeOrder(order) {
                             </td>
                         </tr>
                         <tr v-if="!orders.length">
-                            <td colspan="9" class="muted empty-row">Todavía no hay órdenes de fabricación.</td>
+                            <td colspan="10" class="muted empty-row">Todavía no hay órdenes de fabricación.</td>
                         </tr>
                     </tbody>
                 </table>
