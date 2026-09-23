@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\Item;
+use App\Domains\Inventory\Models\GlDetermination;
 use App\Domains\Inventory\Models\ItemGroup;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\UnitOfMeasure;
+use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use App\Domains\Inventory\Services\ItemBulkImporter;
 use App\Domains\Inventory\Services\ItemTemplateExporter;
 use App\Domains\Inventory\Support\ItemFiscalConsistency;
@@ -28,7 +31,7 @@ class ItemController extends Controller
      * inventario de verdad. Los filtros van de la mano — una lista paginada
      * sin buscador obliga a pasar páginas para encontrar un código.
      */
-    public function index(Request $request): Response
+    public function index(Request $request, GlDeterminationScopeService $scopes): Response
     {
         $filters = $this->validateListFilters($request);
 
@@ -63,6 +66,18 @@ class ItemController extends Controller
             'itemGroups' => ItemGroup::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'unitsOfMeasure' => UnitOfMeasure::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'taxRates' => TaxRate::orderBy('code')->get(['id', 'code', 'name', 'percentage']),
+            // Cuentas contables por artículo: la determinación se puede
+            // administrar acá además de en la matriz central. Las dos
+            // escriben la misma tabla.
+            'accounts' => ChartOfAccount::where('accepts_posting', true)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->get(['id', 'code', 'description_es'])
+                ->map(fn ($a) => ['id' => $a->id, 'label' => $a->code.' — '.$a->description_es]),
+            'accountCategories' => collect(GlDeterminationScopeService::CARD_CATEGORIES['item'])
+                ->mapWithKeys(fn (string $c) => [$c => GlDetermination::CATEGORIES[$c]])
+                ->all(),
+            'itemAccounts' => $scopes->forScopeLevel(app(CurrentCompany::class)->id(), 'item'),
             'fiscalUnits' => FiscalCatalogs::UNITS,
             // Los dos catálogos de Hacienda que la ficha necesita ofrecer,
             // como código => etiqueta legible.
@@ -90,11 +105,14 @@ class ItemController extends Controller
             return back()->withErrors(['iva_rate_code' => $error])->withInput();
         }
 
-        Item::create([
+        $item = Item::create([
             ...$this->normalize($validated),
             'code' => $validated['code'],
             'company_id' => $companyId,
         ]);
+
+        app(GlDeterminationScopeService::class)
+            ->sync($companyId, 'item', $item->id, $validated['accounts'] ?? []);
 
         return back()->with('success', "Artículo {$validated['code']} creado.");
     }
@@ -135,6 +153,9 @@ class ItemController extends Controller
 
         $item->update($this->normalize($validated));
 
+        app(GlDeterminationScopeService::class)
+            ->sync($currentCompany->id(), 'item', $item->id, $validated['accounts'] ?? []);
+
         return back()->with('success', "Artículo {$item->code} actualizado.");
     }
 
@@ -152,6 +173,12 @@ class ItemController extends Controller
         // pasada, no movimientos. El kardex inviolable llega en Fase 2 y va a
         // tener que consultarse acá también.
         ItemWarehouse::where('item_id', $item->id)->delete();
+
+        // Sin esto las reglas quedarían apuntando a un artículo que ya no
+        // existe: la matriz las muestra como "(eliminado)" y no hay forma
+        // de limpiarlas desde ninguna pantalla.
+        app(GlDeterminationScopeService::class)
+            ->forget($item->company_id, 'item', $item->id);
 
         $item->delete();
 
@@ -261,6 +288,15 @@ class ItemController extends Controller
                 ),
             ],
             'status' => ['required', 'in:active,inactive'],
+            // Las cuentas de la ficha. Vacío borra la regla, que es la
+            // forma de decir "heredá la del grupo".
+            'accounts' => ['nullable', 'array'],
+            'accounts.*' => [
+                'nullable', 'integer',
+                Rule::exists('chart_of_accounts', 'id')
+                    ->where('company_id', $companyId)
+                    ->where('accepts_posting', true),
+            ],
         ];
     }
 

@@ -3,6 +3,57 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-22 — Ingreso por venta en la determinación de cuentas, y las cuentas en cada ficha
+
+**Pedido del usuario:** que exista la categoría de ingreso por venta o servicio, y que artículos, grupos y almacenes puedan llevar sus cuentas en su propia ficha, heredando hacia arriba lo que no se llene.
+
+### La precedencia ya existía; lo que faltaba era el ingreso y la puerta
+
+`GlDeterminationResolver` ya implementaba exactamente la escalera pedida —artículo → grupo → almacén → compañía— desde la Fase 2. Faltaban dos cosas: que el ingreso fuera una de las categorías que la recorren, y que se pudiera configurar desde la ficha y no solo desde la matriz central.
+
+### El conflicto que había que resolver: la actividad económica
+
+Hasta ahora la cuenta de ingresos **no salía de la matriz** sino de la actividad económica del emisor (`company_economic_activities.revenue_account_id`), que es un dato fiscal de Hacienda. Y se contabilizaba **una sola línea de ingreso por documento**.
+
+Meter el ingreso en la matriz sin más habría creado dos fuentes para la misma cuenta. La escalera se extendió con un escalón final:
+
+```
+artículo → grupo → almacén → compañía → ACTIVIDAD ECONÓMICA
+```
+
+Así una compañía que no configure nada contabiliza **exactamente igual que antes**, con una sola línea a la cuenta de siempre. Tiene su prueba de no regresión, que es la primera del archivo.
+
+**El asiento pasa a tener una línea de ingreso por cuenta resuelta.** Sin eso la determinación no significaría nada: configurarla no cambiaría ningún asiento.
+
+### Dos categorías y no una
+
+`sales_revenue` y `service_revenue`, elegidas por línea según `is_service`. La norma ya separa la factura en mercancías y servicios, y casi ninguna empresa los quiere en la misma cuenta. Con una sola categoría habría que configurar artículo por artículo para lograr lo que ahora se resuelve con dos reglas de compañía.
+
+### El residuo de redondeo
+
+El ingreso total del asiento es el total del documento menos el IVA contabilizado, ya redondeado a dos decimales. La suma de los subtotales por cuenta puede diferir en céntimos, y esa diferencia se carga **a la cuenta de mayor monto**: repartirla sería inventar céntimos en varias cuentas, y dejarla fuera descuadraría el asiento. Hay una prueba con precios de tres decimales que verifica que débitos y créditos siguen siendo iguales.
+
+### Las fichas son una segunda puerta, no una segunda verdad
+
+Artículo, grupo y almacén tienen ahora su sección de cuentas, que **escribe la misma tabla** que la matriz central. La matriz sigue siendo el panorama —qué reglas existen y en qué nivel— pero es el lugar equivocado para el trabajo diario: dar de alta un artículo y tener que ir a otra pantalla, buscarlo en una lista y repetirlo por categoría es un recorrido que nadie hace, y el resultado es que las determinaciones específicas no se configuran nunca.
+
+**Vaciar un campo BORRA la regla**, que es la forma natural de decir "heredá del nivel de arriba". Tiene su prueba: se configura una cuenta propia, se vacía, y la venta vuelve a la cuenta de compañía.
+
+**No se ofrecen las once categorías en cada ficha.** En un artículo, "transitoria de compras" o "desviación de fabricación" son ruido: se configuran una vez a nivel de compañía y no cambian por artículo. Cada nivel ofrece las que de verdad se diferencian ahí, y el almacén no ofrece ingreso por servicios porque una línea de servicio no lleva almacén — esa regla no se aplicaría nunca.
+
+**Borrar un artículo, grupo o almacén se lleva sus reglas.** Sin eso quedaban apuntando a un scope_id inexistente: la matriz las muestra como "(eliminado)" y no había forma de limpiarlas desde ninguna pantalla.
+
+### Dos defectos que aparecieron en el camino
+
+**Un fallo latente en el mensaje de error del resolvedor**: concatenaba `$warehouse->code` sin comprobar que el almacén existiera, pese a que el parámetro es nulable desde que se agregó el deterioro. Con una categoría que se resuelve sin almacén —el ingreso por servicios, justamente— habría reventado con un error de PHP en vez de dar su mensaje.
+
+**Y un error mío al aplicar los cambios**: los `use` de dos controladores se agregaron con una expresión regular que no coincidió, y quedaron llamando a clases sin importar. La prueba no dijo "clase no encontrada" sino "no se creó el almacén", porque un error 500 no deja errores en sesión y `assertSessionHasNoErrors()` pasaba igual. **Cuando una prueba dice que algo no se creó pero no reporta errores de validación, hay que mirar el código de estado antes que la lógica** — es la segunda vez en esta sesión que ese mismo despiste cuesta tiempo.
+
+**Cómo aplicar:** al agregar una categoría a una matriz de determinación que ya existe, revisar si esa cuenta ya la decidía otro lugar. Si la decidía, el lugar viejo no se elimina: se convierte en el último escalón, y así lo que ya funcionaba sigue funcionando sin configurar nada.
+
+**Verificado con 12 tests nuevos**, incluidos el de no regresión, los cuatro escalones de la escalera y el invariante de que el asiento cuadra. Suite completa: **1369 tests, 5832 assertions, sin fallos**. `vite build` compila.
+
+---
 ## 2026-09-22 — Reportes de inventario: una base compartida y ocho reportes sobre ella
 
 **Pedido del usuario:** una pestaña de reportes de inventario, configurables y filtrables, exportables a XLSX y PDF e imprimibles; con una lista de seis y libertad para agregar los que se consideraran importantes.

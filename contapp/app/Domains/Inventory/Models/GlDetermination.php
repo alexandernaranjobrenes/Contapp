@@ -46,6 +46,13 @@ class GlDetermination extends Model
         'wip' => 'Producto en proceso (WIP)',
         'production_variance' => 'Desviación de fabricación',
         'cogs' => 'Costo de mercancías vendidas',
+        // El ingreso se separa en dos porque la norma ya separa la
+        // factura en mercancías y servicios (is_service por línea), y
+        // casi ninguna empresa los quiere en la misma cuenta. Con una
+        // sola categoría habría que configurar artículo por artículo
+        // para lograr lo que acá se resuelve con dos reglas de compañía.
+        'sales_revenue' => 'Ingresos por venta de mercancías',
+        'service_revenue' => 'Ingresos por servicios',
         // NIC 2 §28. La estimación es CONTRA-ACTIVO: no rebaja el costo del
         // inventario (eso corrompería el promedio móvil y separaría el kardex
         // de la contabilidad), lo presenta neto.

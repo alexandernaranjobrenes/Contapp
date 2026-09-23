@@ -12,6 +12,9 @@ const props = defineProps({
     taxRates: { type: Array, default: () => [] },
     fiscalUnits: { type: Object, default: () => ({}) },
     fiscalIvaRates: { type: Object, default: () => ({}) },
+    accounts: { type: Array, default: () => [] },
+    accountCategories: { type: Object, default: () => ({}) },
+    itemAccounts: { type: Object, default: () => ({}) },
 });
 
 const page = usePage();
@@ -67,6 +70,9 @@ const blank = {
     iva_rate_code: '',
     tax_rate_id: '',
     status: 'active',
+    // Cuentas por categoría. Vacío = heredar del grupo, del almacén o
+    // de la compañía, en ese orden.
+    accounts: {},
 };
 
 const creating = ref(false);
@@ -75,6 +81,7 @@ const createForm = useForm({ ...blank });
 
 function openCreate() {
     createForm.reset();
+    createForm.accounts = {};
     creating.value = true;
 }
 
@@ -111,6 +118,7 @@ function openEdit(item) {
     editForm.iva_rate_code = item.iva_rate_code ?? '';
     editForm.tax_rate_id = item.tax_rate_id ?? '';
     editForm.status = item.status;
+    editForm.accounts = { ...(props.itemAccounts[item.id] ?? {}) };
     editing.value = item;
 }
 
@@ -133,6 +141,11 @@ function normalize(data) {
         iva_rate_code: data.iva_rate_code === '' ? null : data.iva_rate_code,
         tax_rate_id: data.tax_rate_id === '' ? null : data.tax_rate_id,
         barcode: data.barcode === '' ? null : data.barcode,
+        // '' significa "sin cuenta propia": viaja como null para que el
+        // servidor borre la regla y el artículo vuelva a heredar.
+        accounts: Object.fromEntries(
+            Object.entries(data.accounts ?? {}).map(([k, v]) => [k, v === '' ? null : v])
+        ),
     };
 }
 
@@ -446,6 +459,21 @@ function destroy(item) {
                     <em>Niveles</em>. El mínimo dispara la reposición; el máximo dice hasta dónde reponer.
                     En cero significa <strong>sin control de reorden</strong>.
                 </span>
+
+                <h3 class="section-heading">Cuentas contables</h3>
+                <span class="hint small">
+                    Lo que se deje vacío se hereda, en este orden:
+                    <strong>grupo del artículo → almacén → compañía</strong>.
+                    Solo hace falta llenar acá lo que este artículo tenga distinto.
+                </span>
+
+                <div v-for="(label, key) in accountCategories" :key="key" class="field">
+                    <label>{{ label }}</label>
+                    <select v-model="activeForm.accounts[key]">
+                        <option value="">Heredar del grupo, almacén o compañía</option>
+                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.label }}</option>
+                    </select>
+                </div>
 
                 <h3 class="section-heading">Datos para factura electrónica</h3>
 

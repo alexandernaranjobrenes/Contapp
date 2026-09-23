@@ -5,6 +5,9 @@ import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 
 const props = defineProps({
+    accounts: { type: Array, default: () => [] },
+    accountCategories: { type: Object, default: () => ({}) },
+    groupAccounts: { type: Object, default: () => ({}) },
     itemGroups: { type: Array, default: () => [] },
 });
 
@@ -21,30 +24,43 @@ const filtered = computed(() => {
 
 const creating = ref(false);
 
-const createForm = useForm({ code: '', name: '', status: 'active' });
+const createForm = useForm({ code: '', name: '', status: 'active', accounts: {} });
 
 function openCreate() {
     createForm.reset();
+    createForm.accounts = {};
     creating.value = true;
 }
 
 function submitCreate() {
-    createForm.post(route('item-groups.store'), { onSuccess: () => (creating.value = false), preserveScroll: true });
+    createForm.transform(withAccounts).post(route('item-groups.store'), { onSuccess: () => (creating.value = false), preserveScroll: true });
+}
+
+// '' significa "sin cuenta propia": viaja como null para que el servidor
+// borre la regla y vuelva a heredar del nivel de arriba.
+function withAccounts(data) {
+    return {
+        ...data,
+        accounts: Object.fromEntries(
+            Object.entries(data.accounts ?? {}).map(([k, v]) => [k, v === '' ? null : v])
+        ),
+    };
 }
 
 const editing = ref(null);
 
-const editForm = useForm({ name: '', status: 'active' });
+const editForm = useForm({ name: '', status: 'active', accounts: {} });
 
 function openEdit(group) {
     editForm.clearErrors();
     editForm.name = group.name;
     editForm.status = group.status;
+    editForm.accounts = { ...(props.groupAccounts[group.id] ?? {}) };
     editing.value = group;
 }
 
 function submitEdit() {
-    editForm.put(route('item-groups.update', editing.value.id), { onSuccess: () => (editing.value = null), preserveScroll: true });
+    editForm.transform(withAccounts).put(route('item-groups.update', editing.value.id), { onSuccess: () => (editing.value = null), preserveScroll: true });
 }
 
 function destroy(group) {
@@ -134,6 +150,17 @@ function destroy(group) {
                     </select>
                 </div>
 
+                <h3 class="section-heading">Cuentas contables</h3>
+                <span class="hint small">Lo que se deje vacío se hereda del <strong>almacén</strong> y después de la <strong>compañía</strong>. Un artículo que tenga su propia cuenta le gana a la del grupo.</span>
+
+                <div v-for="(label, key) in accountCategories" :key="key" class="field">
+                    <label>{{ label }}</label>
+                    <select v-model="createForm.accounts[key]">
+                        <option value="">Heredar del almacén o la compañía</option>
+                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.label }}</option>
+                    </select>
+                </div>
+
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary" :disabled="createForm.processing">Guardar</button>
                     <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
@@ -157,6 +184,17 @@ function destroy(group) {
                     <select v-model="editForm.status">
                         <option value="active">Activo</option>
                         <option value="inactive">Inactivo</option>
+                    </select>
+                </div>
+
+                <h3 class="section-heading">Cuentas contables</h3>
+                <span class="hint small">Lo que se deje vacío se hereda del <strong>almacén</strong> y después de la <strong>compañía</strong>. Un artículo que tenga su propia cuenta le gana a la del grupo.</span>
+
+                <div v-for="(label, key) in accountCategories" :key="key" class="field">
+                    <label>{{ label }}</label>
+                    <select v-model="editForm.accounts[key]">
+                        <option value="">Heredar del almacén o la compañía</option>
+                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.label }}</option>
                     </select>
                 </div>
 
@@ -230,4 +268,7 @@ th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--col
 
 .error { color: var(--color-danger); font-size: 0.76rem; }
 .modal-actions { display: flex; gap: 0.6rem; }
+.section-heading { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin: 1rem 0 0.25rem; }
+.hint { font-size: 0.76rem; color: var(--color-text-muted); }
+.small { font-size: 0.74rem; }
 </style>

@@ -19,6 +19,9 @@ use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Inventory\Models\Item;
+use App\Domains\Inventory\Models\Warehouse;
+use App\Domains\Inventory\Services\GlDeterminationResolver;
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\InventoryDocumentLine;
@@ -56,6 +59,7 @@ class PostSalesDocumentService
         private readonly PostStockMovementService $postStockMovementService,
         private readonly PostJournalService $postJournalService,
         private readonly SalesOrderService $salesOrderService,
+        private readonly GlDeterminationResolver $glResolver,
     ) {}
 
     public function post(Company $company, SalesDocumentInput $input, ?int $createdBy = null): SalesDocument
@@ -650,14 +654,16 @@ class PostSalesDocumentService
 
         $revenue = bcsub($totalDocument, $totalTaxPosted, 2);
 
-        $lines[] = new JournalLineInput(
-            accountId: $activity->revenue_account_id,
-            currencyId: $input->currencyId,
-            debit: $isReturn ? $revenue : 0,
-            credit: $isReturn ? 0 : $revenue,
-            description: ($isReturn ? 'Reversión de ingresos — ' : 'Ingresos — ').$activity->name,
-            frozenExchangeRate: $frozenRate,
-        );
+        foreach ($this->revenueByAccount($company, $input, $computed, $activity, $revenue) as $entry) {
+            $lines[] = new JournalLineInput(
+                accountId: $entry['account_id'],
+                currencyId: $input->currencyId,
+                debit: $isReturn ? $entry['amount'] : 0,
+                credit: $isReturn ? 0 : $entry['amount'],
+                description: ($isReturn ? 'Reversión de ingresos — ' : 'Ingresos — ').$entry['label'],
+                frozenExchangeRate: $frozenRate,
+            );
+        }
 
         foreach ($this->counterpartLines($company, $input, $document, $partner, $totalDocument, $frozenRate) as $line) {
             $lines[] = $line;
@@ -824,5 +830,106 @@ class PostSalesDocumentService
     private function money(string $value): string
     {
         return number_format((float) $value, 2, '.', '');
+    }
+
+    /**
+     * Reparte el ingreso del documento entre las cuentas que resuelve la
+     * determinación, artículo por artículo.
+     *
+     * ── La precedencia, y de dónde sale la cuenta por defecto ────────────
+     *
+     *   artículo → grupo → almacén → compañía → ACTIVIDAD ECONÓMICA
+     *
+     * El último escalón es el que preserva el comportamiento anterior: la
+     * cuenta de ingresos siempre vivió en la actividad económica del
+     * emisor, que es un dato fiscal de Hacienda. Una compañía que no
+     * configure nada en la matriz sigue contabilizando exactamente igual
+     * que antes, con una sola línea de ingreso.
+     *
+     * Mercancías y servicios se resuelven con categorías distintas porque
+     * la norma ya separa la factura en esos dos grupos.
+     *
+     * ── El residuo de redondeo ───────────────────────────────────────────
+     *
+     * El ingreso total del asiento es total del documento menos IVA
+     * contabilizado, ya redondeado a dos decimales. La suma de los
+     * subtotales por cuenta puede diferir en céntimos, y esa diferencia
+     * se carga a la cuenta de mayor monto: repartirla sería inventar
+     * céntimos en varias cuentas, y dejarla fuera descuadraría el asiento.
+     *
+     * @return array<int, array{account_id: int, amount: string, label: string}>
+     */
+    private function revenueByAccount(
+        Company $company,
+        SalesDocumentInput $input,
+        array $computed,
+        CompanyEconomicActivity $activity,
+        string $totalRevenue,
+    ): array {
+        $rules = $this->glResolver->load($company);
+        $items = Item::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->get()->keyBy('id');
+        $warehouses = Warehouse::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->get()->keyBy('id');
+
+        $groups = [];
+
+        foreach ($computed['lines'] as $line) {
+            $source = $line['input'];
+
+            $resolved = $this->glResolver->resolveOrNull(
+                $rules,
+                $source->isService ? 'service_revenue' : 'sales_revenue',
+                $source->itemId === null ? null : $items->get($source->itemId),
+                $source->warehouseId === null ? null : $warehouses->get($source->warehouseId),
+            );
+
+            $accountId = $resolved['account_id'] ?? $activity->revenue_account_id;
+            $label = $resolved === null
+                ? $activity->name
+                : ($source->isService ? 'servicios' : 'mercancías');
+
+            $groups[$accountId]['account_id'] = $accountId;
+            $groups[$accountId]['label'] = $groups[$accountId]['label'] ?? $label;
+            $groups[$accountId]['amount'] = bcadd(
+                $groups[$accountId]['amount'] ?? '0.00',
+                $this->money($line['subtotal']),
+                2
+            );
+        }
+
+        $groups = array_values($groups);
+
+        if ($groups === []) {
+            return [[
+                'account_id' => $activity->revenue_account_id,
+                'amount' => $totalRevenue,
+                'label' => $activity->name,
+            ]];
+        }
+
+        // El residuo va a la cuenta de mayor monto: es la que menos se
+        // distorsiona en términos relativos.
+        $sum = array_reduce($groups, fn ($carry, $g) => bcadd($carry, $g['amount'], 2), '0.00');
+        $residue = bcsub($totalRevenue, $sum, 2);
+
+        if (bccomp($residue, '0.00', 2) !== 0) {
+            $largest = 0;
+            foreach ($groups as $i => $g) {
+                if (bccomp($g['amount'], $groups[$largest]['amount'], 2) > 0) {
+                    $largest = $i;
+                }
+            }
+            $groups[$largest]['amount'] = bcadd($groups[$largest]['amount'], $residue, 2);
+        }
+
+        // Una cuenta que queda en cero no aporta nada al asiento y
+        // PostJournalService rechaza líneas sin importe.
+        return array_values(array_filter(
+            $groups,
+            fn (array $g) => bccomp($g['amount'], '0.00', 2) !== 0
+        ));
     }
 }

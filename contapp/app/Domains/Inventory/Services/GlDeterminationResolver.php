@@ -105,6 +105,81 @@ class GlDeterminationResolver
         DocumentType $documentType,
         string $side,
     ): array {
+        $match = $this->matchInLadder($rules, $category, $item, $warehouse);
+
+        if ($match !== null) {
+            return $match;
+        }
+
+        $fallback = $side === 'debit'
+            ? $documentType->default_debit_account_id
+            : $documentType->default_credit_account_id;
+
+        if ($fallback) {
+            return ['account_id' => $fallback, 'cost_allocation_rule_id' => null];
+        }
+
+        $label = GlDetermination::CATEGORIES[$category] ?? $category;
+
+        throw new MissingGlDeterminationException(
+            "No hay cuenta configurada para \"{$label}\" en el artículo {$item->code}".
+            // El almacén es opcional: una categoría como el deterioro o
+            // el ingreso por servicios se resuelve sin él, y concatenar
+            // $warehouse->code sin comprobarlo reventaba con un error de
+            // PHP en vez de dar este mensaje.
+            ($warehouse !== null ? " (almacén {$warehouse->code})" : '').'. '.
+            "Configurala en la determinación de cuentas —a nivel de artículo, grupo, almacén o compañía— o dejá una cuenta por defecto en el tipo de documento {$documentType->code}."
+        );
+    }
+
+    /**
+     * La misma escalera, pero devolviendo null en vez de caer al tipo de
+     * documento o reventar.
+     *
+     * Lo necesita el ingreso por venta: ahí la cuenta por defecto no es la
+     * del tipo de documento sino la de la ACTIVIDAD ECONÓMICA del emisor,
+     * que es un dato fiscal que ya existía antes de esta matriz. Quien
+     * llama decide qué hacer con el null; la precedencia sigue viviendo
+     * en un solo lugar.
+     *
+     * @param  Collection<int, GlDetermination>  $rules
+     * @return array{account_id: int, cost_allocation_rule_id: int|null}|null
+     */
+    public function resolveOrNull(
+        Collection $rules,
+        string $category,
+        ?Item $item,
+        ?Warehouse $warehouse = null,
+    ): ?array {
+        // Sin artículo solo puede aplicar la regla de compañía: una línea
+        // de descripción libre no pertenece a ningún grupo.
+        if ($item === null) {
+            $match = $rules->first(fn (GlDetermination $rule) => $rule->category === $category
+                && $rule->scope_level === 'company');
+
+            return $match === null ? null : [
+                'account_id' => $match->account_id,
+                'cost_allocation_rule_id' => $match->cost_allocation_rule_id,
+            ];
+        }
+
+        return $this->matchInLadder($rules, $category, $item, $warehouse);
+    }
+
+    /**
+     * La precedencia, en un único lugar: artículo > grupo > almacén >
+     * compañía. SCOPE_LEVELS ya está ordenado del más específico al más
+     * general, y ese orden ES la precedencia.
+     *
+     * @param  Collection<int, GlDetermination>  $rules
+     * @return array{account_id: int, cost_allocation_rule_id: int|null}|null
+     */
+    private function matchInLadder(
+        Collection $rules,
+        string $category,
+        Item $item,
+        ?Warehouse $warehouse,
+    ): ?array {
         $scopeIds = [
             'item' => $item->id,
             'item_group' => $item->item_group_id,
@@ -112,14 +187,12 @@ class GlDeterminationResolver
             'company' => null,
         ];
 
-        // GlDetermination::SCOPE_LEVELS ya está ordenado del más específico
-        // al más general; ese orden ES la precedencia.
         foreach (array_keys(GlDetermination::SCOPE_LEVELS) as $level) {
             $scopeId = $scopeIds[$level];
 
             // Un artículo sin grupo no puede casar con una regla de grupo:
-            // sin este corte, scope_id null casaría con la regla de compañía
-            // (que también lo tiene null) en el nivel equivocado.
+            // sin este corte, scope_id null casaría con la regla de
+            // compañía (que también lo tiene null) en el nivel equivocado.
             if ($level !== 'company' && $scopeId === null) {
                 continue;
             }
@@ -136,19 +209,6 @@ class GlDeterminationResolver
             }
         }
 
-        $fallback = $side === 'debit'
-            ? $documentType->default_debit_account_id
-            : $documentType->default_credit_account_id;
-
-        if ($fallback) {
-            return ['account_id' => $fallback, 'cost_allocation_rule_id' => null];
-        }
-
-        $label = GlDetermination::CATEGORIES[$category] ?? $category;
-
-        throw new MissingGlDeterminationException(
-            "No hay cuenta configurada para \"{$label}\" en el artículo {$item->code} (almacén {$warehouse->code}). ".
-            "Configurala en la determinación de cuentas —a nivel de artículo, grupo, almacén o compañía— o dejá una cuenta por defecto en el tipo de documento {$documentType->code}."
-        );
+        return null;
     }
 }

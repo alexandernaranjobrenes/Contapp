@@ -2,23 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Inventory\Models\GlDetermination;
+use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class WarehouseController extends Controller
 {
-    public function index(): Response
+    public function index(GlDeterminationScopeService $scopes): Response
     {
         return Inertia::render('Inventory/Warehouses/Index', [
             'warehouses' => Warehouse::orderBy('code')->get([
                 'id', 'code', 'name', 'address', 'is_default', 'uses_bins', 'status',
             ]),
+            // Cuentas por almacén: el escalón que permite separar la
+            // contabilidad de una bodega o una sucursal del resto.
+            'accounts' => ChartOfAccount::where('accepts_posting', true)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->get(['id', 'code', 'description_es'])
+                ->map(fn ($a) => ['id' => $a->id, 'label' => $a->code.' — '.$a->description_es]),
+            'accountCategories' => collect(GlDeterminationScopeService::CARD_CATEGORIES['warehouse'])
+                ->mapWithKeys(fn (string $c) => [$c => GlDetermination::CATEGORIES[$c]])
+                ->all(),
+            'warehouseAccounts' => $scopes->forScopeLevel(app(CurrentCompany::class)->id(), 'warehouse'),
         ]);
     }
 
@@ -33,6 +48,10 @@ class WarehouseController extends Controller
             'is_default' => ['boolean'],
             'uses_bins' => ['boolean'],
             'status' => ['required', 'in:active,inactive'],
+            'accounts' => ['nullable', 'array'],
+            'accounts.*' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')
+                ->where('company_id', app(CurrentCompany::class)->id())
+                ->where('accepts_posting', true)],
         ]);
 
         if (Warehouse::where('company_id', $companyId)->where('code', $validated['code'])->exists()) {
@@ -46,12 +65,15 @@ class WarehouseController extends Controller
                 $this->clearDefault($companyId);
             }
 
-            Warehouse::create([
-                ...$validated,
+            $warehouse = Warehouse::create([
+                ...collect($validated)->except('accounts')->all(),
                 'company_id' => $companyId,
                 'address' => $validated['address'] ?? null,
                 'is_default' => $isDefault,
             ]);
+
+            app(GlDeterminationScopeService::class)
+                ->sync($companyId, 'warehouse', $warehouse->id, $validated['accounts'] ?? []);
         });
 
         return back()->with('success', "Almacén {$validated['code']} creado.");
@@ -67,6 +89,10 @@ class WarehouseController extends Controller
             'is_default' => ['boolean'],
             'uses_bins' => ['boolean'],
             'status' => ['required', 'in:active,inactive'],
+            'accounts' => ['nullable', 'array'],
+            'accounts.*' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')
+                ->where('company_id', app(CurrentCompany::class)->id())
+                ->where('accepts_posting', true)],
         ]);
 
         DB::transaction(function () use ($validated, $warehouse) {
@@ -77,10 +103,13 @@ class WarehouseController extends Controller
             }
 
             $warehouse->update([
-                ...$validated,
+                ...collect($validated)->except('accounts')->all(),
                 'address' => $validated['address'] ?? null,
                 'is_default' => $isDefault,
             ]);
+
+            app(GlDeterminationScopeService::class)
+                ->sync($warehouse->company_id, 'warehouse', $warehouse->id, $validated['accounts'] ?? []);
         });
 
         return back()->with('success', "Almacén {$warehouse->code} actualizado.");
