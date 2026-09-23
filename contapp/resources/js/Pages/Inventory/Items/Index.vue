@@ -234,7 +234,7 @@ function destroy(item) {
                 </button>
             </div>
 
-            <div class="table-scroll">
+            <div class="table-scroll freeze-2">
                 <table>
                     <thead>
                         <tr>
@@ -563,6 +563,9 @@ function destroy(item) {
 .hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0.75rem 0 0; }
 
 .table-scroll { overflow-x: auto; }
+/* Ancho de la columna de código: es lo que usa .freeze-2 para saber
+   dónde empieza la segunda columna congelada. */
+.table-scroll.freeze-2 { --freeze-1-width: 10rem; }
 table { font-size: 0.85rem; width: 100%; }
 th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
 .right { text-align: right; }

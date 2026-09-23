@@ -115,7 +115,7 @@ function print() {
         </ul>
 
         <div class="card">
-            <div class="table-scroll">
+            <div class="table-scroll" :class="{ 'freeze-2': report.frozen_columns === 2 }">
                 <table>
                     <thead>
                         <tr>
@@ -171,6 +171,10 @@ function print() {
 
 .notes { margin: 0 0 0.75rem 1.1rem; padding: 0; font-size: 0.78rem; color: var(--color-text-muted); }
 .notes li { margin-bottom: 0.15rem; }
+
+/* Ancho de la primera columna congelada: lo usa .freeze-2 para saber
+   dónde empieza la segunda. */
+.table-scroll.freeze-2 { --freeze-1-width: 9rem; }
 
 .right { text-align: right; }
 .signal { color: #a04000; font-weight: 600; }

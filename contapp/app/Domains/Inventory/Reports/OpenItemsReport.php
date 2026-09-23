@@ -56,6 +56,15 @@ class OpenItemsReport implements InventoryReport
         return 'Compromisos';
     }
 
+    /**
+     * Columnas de identidad que se congelan al desplazar la tabla de
+     * lado: el origen alcanza; el documento ya viene al lado.
+     */
+    public function frozenColumns(): int
+    {
+        return 1;
+    }
+
     public function filters(): array
     {
         return [

@@ -78,6 +78,9 @@ class InventoryReportController extends Controller
                 'label' => $definition->label(),
                 'description' => $definition->description(),
                 'decision' => $definition->decision(),
+                // Cuántas columnas de la izquierda quedan fijas al
+                // desplazar la tabla: lo decide el reporte, no la pantalla.
+                'frozen_columns' => $definition->frozenColumns(),
             ],
             'filters' => array_map(fn (ReportFilter $f) => [
                 'key' => $f->key,

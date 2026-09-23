@@ -62,6 +62,15 @@ class AbcAnalysisReport implements InventoryReport
         return 'Indicadores';
     }
 
+    /**
+     * Columnas de identidad que se congelan al desplazar la tabla de
+     * lado: la posición en el ranking es lo que orienta.
+     */
+    public function frozenColumns(): int
+    {
+        return 1;
+    }
+
     public function filters(): array
     {
         return [

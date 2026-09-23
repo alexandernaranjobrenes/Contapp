@@ -136,10 +136,18 @@ table {
 // su propio scroll vertical, así que la barra horizontal queda SIEMPRE en el
 // borde inferior de la caja, a la vista desde la primera fila.
 //
+// El tope NO es una fracción arbitraria: .content mide 100vh menos la barra
+// superior, y encima de la tabla viven los filtros y el encabezado del
+// card. Restar esos ~12rem es lo que garantiza que el borde inferior de
+// la caja —y con él la barra horizontal— quede dentro de la pantalla sin
+// tener que desplazar la página. Con 70vh alcanzaba en pantallas chicas
+// pero no en las altas, que es donde sobraba espacio para el resto del
+// contenido y la tabla seguía creciendo sin tope efectivo.
+//
 // Solo actúa cuando la tabla es más alta que el tope — un listado de cinco
 // filas se sigue viendo igual que antes.
 .table-scroll {
-    max-height: 70vh;
+    max-height: calc(100vh - var(--topbar-height) - 12rem);
     overflow-y: auto;
 
     // Con scroll propio, el encabezado tiene que quedarse: si no, a la
@@ -190,6 +198,51 @@ table {
         position: static;
         background: none;
         box-shadow: none;
+    }
+}
+
+// Congelar DOS columnas exige conocer el ancho de la primera, porque el
+// desplazamiento de la segunda ES ese ancho — y CSS no puede leerlo de una
+// celda para usarlo en otra. Por eso la primera pasa a tener ancho fijo, y
+// por eso esto es OPCIONAL y por tabla en vez de global: en una tabla cuya
+// primera columna es una descripción larga, fijarle el ancho la truncaría.
+//
+// Cada pantalla ajusta el ancho con --freeze-1-width si su código es más
+// largo o más corto que el valor por defecto.
+.table-scroll.freeze-2 {
+    th:first-child,
+    td:first-child {
+        width: var(--freeze-1-width, 9rem);
+        min-width: var(--freeze-1-width, 9rem);
+        max-width: var(--freeze-1-width, 9rem);
+        // El borde de separación lo pone ahora la segunda columna, que es
+        // la que queda pegada al contenido que se desplaza.
+        box-shadow: none;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+        position: sticky;
+        left: var(--freeze-1-width, 9rem);
+        z-index: 1;
+        background: var(--color-surface);
+        box-shadow: inset -1px 0 0 var(--color-border);
+    }
+
+    // Mismo motivo que en la esquina de una sola columna: la celda del
+    // encabezado pertenece a las dos capas fijas.
+    thead th:nth-child(2) {
+        z-index: 2;
+        box-shadow:
+            inset -1px 0 0 var(--color-border),
+            inset 0 -1px 0 var(--color-border);
+    }
+
+    td[colspan] {
+        position: static;
+        width: auto;
+        min-width: 0;
+        max-width: none;
     }
 }
 
@@ -266,10 +319,22 @@ input[type="date"] {
     // paginar. El encabezado se repite por página con thead normal.
     .table-scroll thead th,
     .table-scroll th:first-child,
-    .table-scroll td:first-child {
+    .table-scroll td:first-child,
+    .table-scroll.freeze-2 th:nth-child(2),
+    .table-scroll.freeze-2 td:nth-child(2) {
         position: static !important;
         box-shadow: none !important;
         background: none !important;
+    }
+
+    // El ancho fijo de la primera columna es para poder calcular el
+    // desplazamiento de la segunda; en papel no hay desplazamiento y
+    // solo serviría para truncar el código.
+    .table-scroll.freeze-2 th:first-child,
+    .table-scroll.freeze-2 td:first-child {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
     }
 }
 

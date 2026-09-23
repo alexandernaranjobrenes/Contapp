@@ -30,6 +30,14 @@ interface InventoryReport
     /** Agrupa el índice: catálogo, existencias, movimiento, rentabilidad. */
     public function group(): string;
 
+    /**
+     * Cuántas columnas de la izquierda son de IDENTIDAD y se congelan al
+     * desplazar la tabla de lado. Lo declara cada reporte porque no es
+     * siempre lo mismo: en el catálogo son código y nombre, pero en
+     * movimientos la referencia es la fecha y en el ABC, la posición.
+     */
+    public function frozenColumns(): int;
+
     /** @return ReportFilter[] */
     public function filters(): array;
 

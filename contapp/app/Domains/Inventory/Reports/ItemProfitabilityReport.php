@@ -64,6 +64,15 @@ class ItemProfitabilityReport implements InventoryReport
         return 'Rentabilidad';
     }
 
+    /**
+     * Columnas de identidad que se congelan al desplazar la tabla de
+     * lado: código y nombre.
+     */
+    public function frozenColumns(): int
+    {
+        return 2;
+    }
+
     public function filters(): array
     {
         return [

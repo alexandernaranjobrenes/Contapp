@@ -59,6 +59,10 @@ it('EL CONTRATO: todos los reportes del registro corren y devuelven una estructu
             // distingue un reporte de otro en un índice de ocho.
             ->and($report->decision())->not->toBeEmpty()
             ->and($report->group())->toBeIn(InventoryReportRegistry::GROUP_ORDER)
+            // Congelar más columnas de las que tiene la tabla dejaría
+            // la pantalla sin nada que desplazar.
+            ->and($report->frozenColumns())->toBeGreaterThanOrEqual(1)
+            ->and($report->frozenColumns())->toBeLessThanOrEqual(count($result->columns))
             ->and($result->columns)->not->toBeEmpty();
 
         foreach ($result->columns as $column) {

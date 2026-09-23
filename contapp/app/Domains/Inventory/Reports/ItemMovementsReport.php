@@ -51,6 +51,15 @@ class ItemMovementsReport implements InventoryReport
         return 'Movimiento';
     }
 
+    /**
+     * Columnas de identidad que se congelan al desplazar la tabla de
+     * lado: la fecha ordena la lista y es la referencia.
+     */
+    public function frozenColumns(): int
+    {
+        return 1;
+    }
+
     public function filters(): array
     {
         return [
