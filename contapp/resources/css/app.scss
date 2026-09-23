@@ -156,22 +156,56 @@ table {
         // borde se queda atrás.
         box-shadow: inset 0 -1px 0 var(--color-border);
     }
+
+    // La primera columna también se queda, al desplazarse de lado: sin
+    // ella, al llegar a la columna doce ya no se sabe de qué artículo es
+    // la fila que se está leyendo. Es la columna de identidad (código,
+    // fecha o documento, según la tabla) y es la que uno necesita ver
+    // mientras compara números de la derecha.
+    th:first-child,
+    td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--color-surface);
+        // Mismo motivo que en el encabezado: con border-collapse el borde
+        // se pinta en la celda vecina y al despegarse la columna se
+        // quedaría atrás.
+        box-shadow: inset -1px 0 0 var(--color-border);
+    }
+
+    // La celda de la esquina pertenece a las dos capas fijas —la de
+    // arriba y la de la izquierda— así que tiene que quedar por encima de
+    // ambas, y llevar los dos bordes.
+    thead th:first-child {
+        z-index: 2;
+        box-shadow:
+            inset -1px 0 0 var(--color-border),
+            inset 0 -1px 0 var(--color-border);
+    }
+
+    // Una fila vacía ("no hay datos") ocupa el ancho completo con colspan:
+    // pegarla a la izquierda la haría flotar sobre el resto de la tabla.
+    td[colspan] {
+        position: static;
+        background: none;
+        box-shadow: none;
+    }
 }
 
-// Dentro de un modal NO se acota: el modal ya tiene su propio scroll
-// (max-height + overflow-y), y anidar un segundo hace que la rueda del
-// mouse mueva una tabla cuando el usuario quería mover el modal. Un modal
-// ya está acotado a la pantalla, así que la barra horizontal de su tabla
-// nunca queda fuera de vista — que era el problema a resolver.
+// Dentro de un modal NO se acota la ALTURA: el modal ya tiene su propio
+// scroll (max-height + overflow-y), y anidar un segundo hace que la rueda
+// del mouse mueva una tabla cuando el usuario quería mover el modal. Un
+// modal ya está acotado a la pantalla, así que la barra horizontal de su
+// tabla nunca queda fuera de vista — que era el problema a resolver.
+//
+// La primera columna SÍ se sigue fijando: adentro de un modal la tabla
+// igual se desplaza de lado, y ahí perder la columna de identidad molesta
+// lo mismo. Como no hay scroll vertical propio, el encabezado pegado no
+// tiene nada de qué despegarse y se ve exactamente igual que antes.
 .modal-card .table-scroll,
 .modal .table-scroll {
     max-height: none;
-    overflow-y: visible;
-
-    thead th {
-        position: static;
-        box-shadow: none;
-    }
 }
 
 .num {
@@ -227,9 +261,15 @@ input[type="date"] {
         overflow: visible !important;
     }
 
-    .table-scroll thead th {
+    // En papel nada queda pegado: no hay desplazamiento del que
+    // despegarse, y una celda sticky puede terminar mal colocada al
+    // paginar. El encabezado se repite por página con thead normal.
+    .table-scroll thead th,
+    .table-scroll th:first-child,
+    .table-scroll td:first-child {
         position: static !important;
         box-shadow: none !important;
+        background: none !important;
     }
 }
 
