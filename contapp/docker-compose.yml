@@ -1,3 +1,13 @@
+# El nombre del proyecto queda FIJO acá y no se deriva del nombre de la
+# carpeta, que es el comportamiento por defecto de Compose.
+#
+# De este nombre salen los prefijos de los volúmenes: la base de datos vive
+# en `contapp_contapp_db_data`. Si el proyecto se clona en una carpeta con
+# otro nombre —al sacarlo de OneDrive, por ejemplo— Compose crearía volúmenes
+# nuevos y vacíos, y parecería que la base se borró. El volumen viejo seguiría
+# existiendo, pero nadie lo sabría mirando la aplicación.
+name: contapp
+
 services:
   app:
     build:

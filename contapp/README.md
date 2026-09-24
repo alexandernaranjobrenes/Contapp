@@ -7,6 +7,40 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## CONTAPP — respaldos y recuperación
+
+La base de datos **no está en el repositorio ni en OneDrive**: vive en un
+volumen de Docker, así que ni GitHub ni la sincronización de archivos la
+respaldan, y un `docker compose down -v` la borra.
+
+```powershell
+.\docker\backup-db.ps1      # base de datos, a diario
+.\docker\backup-repo.ps1    # historial completo en un bundle, semanal
+```
+
+Restaurar la base (**borra** la actual; respalda antes lo que hay y pide
+confirmación escrita):
+
+```powershell
+.\docker\restore-db.ps1 -File "$env:USERPROFILE\OneDrive\Respaldos\CONTAPP\bdcontapp-AAAA-MM-DD-hhmm.sql.gz"
+docker compose exec app php artisan migrate
+```
+
+Restaurar el repositorio desde un bundle:
+
+```powershell
+git config --global core.longpaths true   # o el checkout falla en Windows
+git clone "$env:USERPROFILE\OneDrive\Respaldos\CONTAPP\contapp-AAAA-MM-DD.bundle" CONTAPP
+copy <tu copia de .env> CONTAPP\contapp\.env
+```
+
+El `.env` no se versiona y **no lo cubre ningún respaldo**: guardá una copia
+en un gestor de contraseñas. Las fotografías de empleados
+(`storage/app/public/employees/`) tampoco entran en el dump.
+
+El procedimiento completo, las razones de cada decisión y por qué conviene
+sacar el proyecto de OneDrive están en **[docs/respaldos.md](docs/respaldos.md)**.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
