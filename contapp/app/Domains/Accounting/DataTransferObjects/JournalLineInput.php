@@ -33,6 +33,13 @@ class JournalLineInput
         public readonly ?int $applyToOpenItemId = null,
         public readonly ?string $referenceDocumentDate = null,
         public readonly ?string $frozenExchangeRate = null,
+        /**
+         * Centro de costo DIRECTO de la línea: la línea entera carga a un
+         * solo centro. Es el caso corriente —el salario de un empleado, el
+         * gasto de un departamento—; la norma de reparto es para cuando un
+         * mismo monto hay que distribuirlo entre varios.
+         */
+        public readonly ?int $costCenterId = null,
     ) {
         $this->debit = number_format((float) $debit, 2, '.', '');
         $this->credit = number_format((float) $credit, 2, '.', '');
@@ -82,6 +89,13 @@ class JournalLineInput
         // impuesto, así que esta combinación no tiene un caso real.
         if ($this->costAllocationRuleId !== null && ($this->opensItem || $this->applyToOpenItemId !== null || $this->taxRateId !== null)) {
             throw new \InvalidArgumentException('Una línea con norma de reparto no puede abrir/aplicar partida ni llevar impuesto a la vez.');
+        }
+
+        // Centro directo y norma de reparto son dos respuestas distintas a la
+        // misma pregunta. Aceptar ambas obligaría a decidir en silencio cuál
+        // gana, y esa decisión quedaría escondida dentro del motor.
+        if ($this->costCenterId !== null && $this->costAllocationRuleId !== null) {
+            throw new \InvalidArgumentException('Una línea no puede llevar centro de costo directo y norma de reparto a la vez.');
         }
 
         // El inventario es una partida NO monetaria (NIC 21): su costo queda

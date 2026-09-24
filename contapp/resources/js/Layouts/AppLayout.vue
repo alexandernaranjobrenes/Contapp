@@ -84,6 +84,18 @@ const nav = computed(() => {
             ],
         },
         {
+            label: 'Planillas', icon: '👥', module: 'payroll',
+            match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'personnel-actions.*', 'vacations.*', 'payroll-settings.*'],
+            children: [
+                { label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
+                { label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
+                { label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
+                { label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
+                { label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
+                { label: 'Configuración', href: route('payroll-settings.index'), match: ['payroll-settings.*'] },
+            ],
+        },
+        {
             label: 'Socios de negocio', icon: '⚭', module: 'business_partners',
             match: ['business-partners.*', 'bp-categories.*'],
             children: [

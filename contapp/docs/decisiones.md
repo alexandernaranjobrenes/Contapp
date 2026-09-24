@@ -3,6 +3,144 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-23 — Módulo de planillas de Costa Rica
+
+**Pedido del usuario:** el módulo de nóminas completo —cuotas CCSS, aprovisionamiento de aguinaldo, vacaciones y extremos laborales, acciones de personal, comprobantes de pago, reportes quincenales, archivos de pago bancario, adelantos, centros de costo por empleado, asociación solidarista, impuesto al salario, fotografías, cargas automáticas de vacaciones— «más lo que recomiendes».
+
+### Lo primero: NO se afirman las tasas vigentes
+
+Los porcentajes de CCSS, la escala del impuesto y los créditos familiares **entran como configuración editable con vigencia, no como hechos**. `CostaRicaPayrollDefaults` los carga marcados `VERIFICAR` en su `legal_basis`, la pantalla los muestra con una etiqueta «sin verificar», y el módulo avisa antes de cargarlos que hay que confrontarlos con el decreto vigente.
+
+Esto es CLAUDE.md secc. 7 aplicado a la letra: *la tasa siempre debe leerse de configuración, nunca hardcodearse*. Pero hay una razón adicional y más fuerte: las cuotas de la Caja cambian por acuerdo de Junta Directiva, la escala del impuesto por decreto anual, y **la póliza de riesgos del INS depende de la actividad de cada empresa** —por eso `INS-RT` entra en 0,00%, para que nadie la dé por buena sin ponerla.
+
+Lo que sí es estructural y sí está afirmado: qué componente paga el obrero y cuál el patrono, que la escala es progresiva y mensual, que el impuesto se calcula sobre el bruto **menos** las cargas obreras, que los créditos se restan del impuesto y no de la base, que el aguinaldo es un doceavo, y qué ingresos son salario y cuáles no.
+
+### La vigencia no es un adorno: es lo que hace reproducible una planilla vieja
+
+Cada tasa, tramo, crédito y provisión lleva `valid_from` / `valid_to`, y el motor elige por la **fecha de fin del período**, no por hoy. Una planilla de marzo recalculada en noviembre vuelve a dar lo mismo aunque la Caja haya movido un porcentaje en julio. Hay prueba de esto.
+
+Y cada línea de boleta **congela su base y su tasa**. Sin eso, un comprobante reimpreso en 2029 mostraría los porcentajes de 2029 sobre los montos de 2026 — números que nunca existieron.
+
+### El orden del cálculo, y el error que evita
+
+```
+1. Ingresos          salario del período + conceptos digitados
+2. Base de cargas    solo los ingresos que forman salario
+3. Cargas obreras    componente por componente, sobre esa base
+4. Base del impuesto bruto gravable MENOS cargas obreras
+5. Impuesto          escala mensual progresiva, menos créditos
+6. Deducciones       préstamos y rebajos, en orden de prioridad
+7. Neto
+8. Costo patronal    cargas patronales y provisiones, aparte
+```
+
+El paso 4 es el que más se equivoca: calcular el impuesto sobre el bruto **cobra de más a todos los trabajadores, todos los meses**. Tiene prueba propia.
+
+El paso 5 tiene su propia trampa con planilla quincenal: la escala está escrita en montos mensuales, así que hay que llevar la base al mes, aplicar la escala y devolver la fracción. Aplicarla a media base caería en un tramo más bajo y **rebajaría de menos**. También tiene prueba.
+
+### Las tres banderas del concepto son lo más consecuente del módulo
+
+`affects_ccss`, `affects_income_tax` y `affects_provisions` deciden qué ingresos son salario. Marcarlas mal **no produce un error visible**: produce una planilla que cuadra consigo misma y no cuadra con la Caja. Por eso los conceptos de arranque las traen puestas con criterio:
+
+- viáticos y reembolsos: ninguna de las tres (es reintegro de un gasto, no remuneración);
+- subsidio por incapacidad: ninguna (lo paga la CCSS o el INS, no el patrono) — pero el **complemento** que la empresa pague encima sí es salario, y por eso son dos conceptos distintos;
+- aguinaldo: no afecto a cargas ni a impuesto;
+- horas extra y comisiones: las tres.
+
+### Una sola tabla para adelantos, préstamos, solidarista, pensión y embargos
+
+`employee_deductions`. Un adelanto de salario, un préstamo de la asociación solidarista y un embargo judicial se ven como tres cosas y **se comportan igual**: un monto que se rebaja cada período contra una cuenta. Modelarlas por separado habría triplicado el cálculo, el tope legal y la contabilización, y las tres copias se habrían separado a la primera corrección.
+
+Lo que de verdad las diferencia son dos columnas: si llevan saldo (un préstamo se extingue; un ahorro no, y `balance` va nulo) y si la cuota es monto o porcentaje.
+
+**`priority` hace explícita la jerarquía.** Cuando el salario no alcanza para todos los rebajos hay que decidir cuáles se aplican, y esa decisión no puede depender del orden en que se digitaron: una pensión alimentaria tiene preferencia sobre un préstamo de consumo.
+
+**El motor se detiene antes de dejar el neto en negativo.** Lo que no cabe queda como saldo vivo para el período siguiente, que es exactamente lo que habría pasado con cuotas más pequeñas. La alternativa —rebajar igual— no es una planilla «cuadrada»: es cobrar por encima de lo que el salario soporta.
+
+### El error que costó encontrar: recalcular cobraba el préstamo dos veces
+
+Recalcular borra las boletas y las rehace, deliberadamente: una planilla recalculada tiene que ser idéntica a un cálculo desde cero, y «actualizar» las líneas existentes deja rastros de conceptos que ya no aplican.
+
+Pero los rebajos de préstamo **ya bajaron el saldo de la obligación**. `restoreBalances()` lo devuelve antes de borrar. Y hubo un segundo error encima del primero: las obligaciones se leían **antes** de restaurar, así que la colección en memoria conservaba el saldo ya rebajado y el segundo cálculo volvía a restarle encima. Funcionaba la primera vez y fallaba al recalcular. Las dos cosas tienen prueba.
+
+### El asiento tiene tres bloques, no uno
+
+La tentación es un asiento de dos líneas —gasto de salarios contra banco— y es incorrecto de tres maneras a la vez:
+
+1. **El gasto es el BRUTO, no el neto.** Las retenciones no son gasto de la empresa: son dinero del trabajador que la empresa custodia hasta enterarlo. Registrar solo el neto subestima el gasto y esconde el pasivo.
+2. **Las cargas patronales son un bloque aparte.** No tocan al trabajador y por eso se olvidan; son costo real y grande, y omitirlas hace que un puesto parezca costar mucho menos de lo que cuesta.
+3. **Las provisiones también.** El aguinaldo se paga en diciembre pero se gana todo el año; cargarlo entero a diciembre arruina la comparación entre meses y esconde un pasivo que ya existe.
+
+**El banco no se toca acá.** El asiento deja el neto en «planilla por pagar» y el pago lo cancela después. Mezclarlos impide conciliar y rompe el corte cuando la planilla se contabiliza un día y se paga otro — que es lo normal.
+
+### Cambio al núcleo contable: centro de costo DIRECTO en la línea de asiento
+
+Hasta ahora una línea llegaba a un centro de costo **solo a través de una norma de reparto**. Para la planilla eso habría obligado a crear una norma «100% a un centro» por cada centro de costo de la empresa, ensuciando el catálogo de normas para resolver el caso más común.
+
+`JournalLineInput` recibe `costCenterId`, excluyente con `costAllocationRuleId` —son dos respuestas a la misma pregunta, y aceptar ambas obligaría a decidir en silencio cuál gana—. Una cuenta con `requires_cost_center` se satisface con cualquiera de las dos. El centro directo se valida con el mismo criterio de vigencia que los de una norma.
+
+Las pruebas existentes siguen pasando sin tocarse: el cambio es aditivo y ninguna línea que no pase `costCenterId` se comporta distinto.
+
+### La cuenta de gasto se hereda, igual que la determinación de inventario
+
+El centro de costo dice **dónde** se consumió el trabajo; la cuenta dice **qué** es ese gasto. En una empresa que fabrica tienen respuestas distintas: la mano de obra directa de planta es costo de producción y el salario del contador es gasto administrativo, aunque salgan de la misma planilla.
+
+Escalera: `empleado → configuración de la compañía`. Mismo criterio que artículo → grupo → almacén → compañía.
+
+### Los movimientos digitados se GUARDAN
+
+Primero los hice viajar en la petición del cálculo. Es un error: las cuarenta horas extra de una quincena las reportó un jefe de área y alguien las digitó; cerrar el navegador antes de calcular las perdería, y recalcular por corregir un dato obligaría a digitarlas todas otra vez. Peor: cuando alguien pregunte en noviembre por qué en marzo se pagaron esas horas, no habría nada que enseñar más que el monto ya calculado.
+
+`payroll_inputs` separa el dato de origen del resultado —que es lo que permite auditar la diferencia— y convierte el recálculo en un botón.
+
+### Acciones de personal: un aumento no es una edición
+
+Es un hecho con fecha de vigencia, un antes y un después, un motivo y un responsable. Editar `base_salary` a mano deja la planilla del mes pasado sin explicación y a nadie en condición de decir desde cuándo rige ni quién lo aprobó.
+
+Flujo `borrador → aprobada → aplicada`, y **solo el último paso toca la ficha**. Separarlo de aprobar permite que un aumento acordado hoy con vigencia del mes entrante quede aprobado ahora y entre cuando corresponde. El valor anterior se congela al **crear** la acción, no al aplicarla: es el que había cuando se tomó la decisión.
+
+**Quien la solicita no la aprueba** (salvo superusuario): una aprobación que uno se da a sí mismo no es una aprobación, y los dos campos separados de la migración no servirían de nada si no se respetara.
+
+### Vacaciones: movimientos, no un saldo
+
+El saldo es `SUM(days)`. Un solo campo «días disponibles» es la forma más rápida de perder la trazabilidad, y cuando el trabajador reclama —y reclama, porque son días de su vida— no hay forma de explicarle el número. En una liquidación los días no disfrutados se pagan, y ese pago tiene que sustentarse movimiento por movimiento.
+
+Los disfrutes y pagos **se guardan en negativo** aunque se digiten en positivo: si se guardaran tal cual, el saldo crecería cada vez que alguien saliera de vacaciones. La acreditación es automática al calcular cada planilla, proporcional a los días cubiertos, con índice único por empleado y período para que correrla dos veces no duplique días.
+
+`decimal(10,4)` y no `(8,2)`: una quincena acredita una fracción de día, y dos décimas de error por quincena son casi cinco días en diez años — días que el trabajador se ganó.
+
+### Archivo de pago: CSV, no un formato «del banco»
+
+Cada banco de la plaza pide su propio formato y ninguno lo publica de forma estable. Inventar un formato fijo produciría un archivo que un banco rechaza y otro acepta a medias. Lo que sí es igual en todos es el contenido: cédula, nombre, cuenta, monto, referencia.
+
+**Se rechaza antes de generar** si alguien está marcado para transferencia y no tiene cuenta, con su nombre. Omitirlo en silencio produce el error que nadie detecta hasta que esa persona llama a decir que no le llegó el salario. Y solo se genera con la planilla aprobada: pagar un cálculo que aún puede cambiar es el error caro.
+
+### Detalles de precisión que sí mueven plata
+
+- `hourlyRate()` acepta una escala: el motor la pide con cuatro decimales porque **es un factor, no un monto que se pague**. Truncarla a céntimos antes de multiplicar por las horas pierde una fracción en cada hora y siempre hacia abajo.
+- Un tope salarial acota la **base**, no el resultado.
+- Los `casts` decimales están puestos en todos los modelos: toda la aritmética es bcmath, y un float en medio reintroduce el error de redondeo que bcmath existe para evitar.
+- El crédito familiar no genera devolución: si supera el impuesto, este queda en cero.
+
+### Lo que este módulo NO hace todavía
+
+- **No calcula la liquidación de extremos laborales.** Provisiona cesantía con un porcentaje fijo, que es una aproximación prudente; la liquidación real usa la tabla del art. 29 y la antigüedad efectiva, y es otro proceso.
+- **No hace ajuste anual del impuesto.** El impuesto al salario costarricense es de retención mensual, no un anticipo de liquidación anual; si una empresa quisiera el ajuste, es otra decisión.
+- **No genera el archivo en el formato específico de la CCSS.** La hoja «CCSS» del XLSX lleva el contenido, componente por componente, listo para conciliar.
+- **No reparte una planilla entre varios centros de costo por trabajador.** Cada empleado carga a uno, congelado en su boleta.
+- **No liquida el pago del neto contra el banco.** Eso es un asiento aparte que hoy se hace a mano.
+
+### Verificación
+
+40 pruebas nuevas —16 del motor de cálculo y 24 de la puerta de entrada— y la suite completa en 1409 sin tocar ninguna existente.
+
+`grantAllModuleAccess()` incorpora `payroll`: sin eso los tests HTTP habrían dado 403 y el fallo se habría leído como un error de lógica. Es el mismo tropiezo del control de precios, y esta vez estaba previsto.
+
+### Utilidades de CSS compartidas
+
+Las clases de tabla, modal y formulario venían repetidas, idénticas, en el `<style scoped>` de casi todas las pantallas. Diez pantallas nuevas de planilla habrían sido diez copias más. Quedan una sola vez en `app.scss` como globales; es aditivo, así que las pantallas que traen su propia copia siguen ganando por especificidad y ninguna cambia de aspecto.
+
+---
 ## 2026-09-22 — Ingreso por venta en la determinación de cuentas, y las cuentas en cada ficha
 
 **Pedido del usuario:** que exista la categoría de ingreso por venta o servicio, y que artículos, grupos y almacenes puedan llevar sus cuentas en su propia ficha, heredando hacia arriba lo que no se llene.

@@ -9,8 +9,8 @@ use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankReconciliationController;
 use App\Http\Controllers\BankReconciliationReportController;
-use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\BillingSettingsController;
+use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\BpCategoryController;
 use App\Http\Controllers\BusinessPartnerController;
 use App\Http\Controllers\CashFlowProjectionController;
@@ -29,6 +29,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentTypeController;
 use App\Http\Controllers\DocumentTypeNumberSeriesController;
 use App\Http\Controllers\DocumentTypeRegisterController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeDeductionController;
 use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\FxRevaluationController;
 use App\Http\Controllers\GlDeterminationController;
@@ -47,14 +49,19 @@ use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
 use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
-use App\Http\Controllers\LotExpiryController;
 use App\Http\Controllers\LicenseCategoryController;
 use App\Http\Controllers\LicenseController;
+use App\Http\Controllers\LotExpiryController;
 use App\Http\Controllers\MultiCompanyComparisonController;
 use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\OpenItemController;
+use App\Http\Controllers\PayrollPeriodController;
+use App\Http\Controllers\PayrollReportController;
+use App\Http\Controllers\PayrollSettingsController;
+use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PeriodCloseController;
 use App\Http\Controllers\PeriodComparisonController;
+use App\Http\Controllers\PersonnelActionController;
 use App\Http\Controllers\PriceListController;
 use App\Http\Controllers\PriceOverrideController;
 use App\Http\Controllers\ProductionOrderController;
@@ -72,6 +79,7 @@ use App\Http\Controllers\TaxReportController;
 use App\Http\Controllers\TrialBalanceController;
 use App\Http\Controllers\UnitOfMeasureController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\VacationController;
 use App\Http\Controllers\WarehouseBinController;
 use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -363,6 +371,83 @@ Route::middleware('auth')->group(function () {
         Route::delete('billing-settings/tax-accounts/{taxAccount}', [BillingSettingsController::class, 'destroyTaxAccount'])->name('billing-settings.tax-accounts.destroy');
         Route::post('billing-settings/payment-accounts', [BillingSettingsController::class, 'storePaymentAccount'])->name('billing-settings.payment-accounts.store');
         Route::delete('billing-settings/payment-accounts/{paymentAccount}', [BillingSettingsController::class, 'destroyPaymentAccount'])->name('billing-settings.payment-accounts.destroy');
+    });
+
+    // Octavo módulo del rollout de enforcement: planillas. Mismo criterio de
+    // siempre — 'read' para consultar, 'read_write' para mover algo.
+    //
+    // Ojo con lo que queda del lado de escritura: calcular, aprobar y
+    // contabilizar no "editan un registro", pero cada uno decide cuánto
+    // cobra una persona y cuánto se le rebaja. Dejarlos en lectura porque
+    // "solo muestran un resultado" sería el error.
+    Route::middleware('module-access:payroll,read')->group(function () {
+        Route::get('employees', [EmployeeController::class, 'index'])->name('employees.index');
+        Route::get('employees/{employee}', [EmployeeController::class, 'show'])->name('employees.show');
+
+        Route::get('payroll-periods', [PayrollPeriodController::class, 'index'])->name('payroll-periods.index');
+        Route::get('payroll-periods/{payrollPeriod}', [PayrollPeriodController::class, 'show'])->name('payroll-periods.show');
+        Route::get('payroll-periods/{payrollPeriod}/export', [PayrollReportController::class, 'export'])->name('payroll-periods.export');
+
+        Route::get('payslips/{entry}', [PayslipController::class, 'show'])->name('payslips.show');
+        Route::get('payslips/{entry}/print', [PayslipController::class, 'print'])->name('payslips.print');
+
+        Route::get('employee-deductions', [EmployeeDeductionController::class, 'index'])->name('employee-deductions.index');
+        Route::get('personnel-actions', [PersonnelActionController::class, 'index'])->name('personnel-actions.index');
+        Route::get('vacations', [VacationController::class, 'index'])->name('vacations.index');
+        Route::get('payroll-settings', [PayrollSettingsController::class, 'index'])->name('payroll-settings.index');
+    });
+
+    Route::middleware('module-access:payroll,read_write')->group(function () {
+        Route::post('employees', [EmployeeController::class, 'store'])->name('employees.store');
+        Route::put('employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+        Route::post('employees/{employee}/photo', [EmployeeController::class, 'photo'])->name('employees.photo');
+        Route::delete('employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
+
+        Route::post('payroll-periods', [PayrollPeriodController::class, 'store'])->name('payroll-periods.store');
+        Route::delete('payroll-periods/{payrollPeriod}', [PayrollPeriodController::class, 'destroy'])->name('payroll-periods.destroy');
+        Route::post('payroll-periods/{payrollPeriod}/inputs', [PayrollPeriodController::class, 'storeInput'])->name('payroll-periods.inputs.store');
+        Route::delete('payroll-periods/{payrollPeriod}/inputs/{input}', [PayrollPeriodController::class, 'destroyInput'])->name('payroll-periods.inputs.destroy');
+        Route::post('payroll-periods/{payrollPeriod}/calculate', [PayrollPeriodController::class, 'calculate'])->name('payroll-periods.calculate');
+        Route::post('payroll-periods/{payrollPeriod}/approve', [PayrollPeriodController::class, 'approve'])->name('payroll-periods.approve');
+        Route::post('payroll-periods/{payrollPeriod}/post', [PayrollPeriodController::class, 'post'])->name('payroll-periods.post');
+        // El archivo de pago mueve dinero de verdad: va del lado de
+        // escritura aunque técnicamente solo genere un CSV.
+        Route::get('payroll-periods/{payrollPeriod}/bank-file', [PayrollReportController::class, 'bankFile'])->name('payroll-periods.bank-file');
+
+        Route::post('employee-deductions', [EmployeeDeductionController::class, 'store'])->name('employee-deductions.store');
+        Route::put('employee-deductions/{deduction}', [EmployeeDeductionController::class, 'update'])->name('employee-deductions.update');
+        Route::delete('employee-deductions/{deduction}', [EmployeeDeductionController::class, 'destroy'])->name('employee-deductions.destroy');
+
+        Route::post('personnel-actions', [PersonnelActionController::class, 'store'])->name('personnel-actions.store');
+        Route::post('personnel-actions/{personnelAction}/approve', [PersonnelActionController::class, 'approve'])->name('personnel-actions.approve');
+        Route::post('personnel-actions/{personnelAction}/apply', [PersonnelActionController::class, 'apply'])->name('personnel-actions.apply');
+        Route::post('personnel-actions/{personnelAction}/cancel', [PersonnelActionController::class, 'cancel'])->name('personnel-actions.cancel');
+
+        Route::post('vacations', [VacationController::class, 'store'])->name('vacations.store');
+        Route::delete('vacations/{movement}', [VacationController::class, 'destroy'])->name('vacations.destroy');
+
+        Route::put('payroll-settings', [PayrollSettingsController::class, 'update'])->name('payroll-settings.update');
+        Route::post('payroll-settings/load-defaults', [PayrollSettingsController::class, 'loadDefaults'])->name('payroll-settings.load-defaults');
+
+        Route::post('payroll-settings/contributions', [PayrollSettingsController::class, 'storeContribution'])->name('payroll-settings.contributions.store');
+        Route::put('payroll-settings/contributions/{contribution}', [PayrollSettingsController::class, 'updateContribution'])->name('payroll-settings.contributions.update');
+        Route::delete('payroll-settings/contributions/{contribution}', [PayrollSettingsController::class, 'destroyContribution'])->name('payroll-settings.contributions.destroy');
+
+        Route::post('payroll-settings/brackets', [PayrollSettingsController::class, 'storeBracket'])->name('payroll-settings.brackets.store');
+        Route::put('payroll-settings/brackets/{bracket}', [PayrollSettingsController::class, 'updateBracket'])->name('payroll-settings.brackets.update');
+        Route::delete('payroll-settings/brackets/{bracket}', [PayrollSettingsController::class, 'destroyBracket'])->name('payroll-settings.brackets.destroy');
+
+        Route::post('payroll-settings/credits', [PayrollSettingsController::class, 'storeCredit'])->name('payroll-settings.credits.store');
+        Route::put('payroll-settings/credits/{credit}', [PayrollSettingsController::class, 'updateCredit'])->name('payroll-settings.credits.update');
+        Route::delete('payroll-settings/credits/{credit}', [PayrollSettingsController::class, 'destroyCredit'])->name('payroll-settings.credits.destroy');
+
+        Route::post('payroll-settings/provisions', [PayrollSettingsController::class, 'storeProvision'])->name('payroll-settings.provisions.store');
+        Route::put('payroll-settings/provisions/{provision}', [PayrollSettingsController::class, 'updateProvision'])->name('payroll-settings.provisions.update');
+        Route::delete('payroll-settings/provisions/{provision}', [PayrollSettingsController::class, 'destroyProvision'])->name('payroll-settings.provisions.destroy');
+
+        Route::post('payroll-settings/concepts', [PayrollSettingsController::class, 'storeConcept'])->name('payroll-settings.concepts.store');
+        Route::put('payroll-settings/concepts/{concept}', [PayrollSettingsController::class, 'updateConcept'])->name('payroll-settings.concepts.update');
+        Route::delete('payroll-settings/concepts/{concept}', [PayrollSettingsController::class, 'destroyConcept'])->name('payroll-settings.concepts.destroy');
     });
 
     // Cuarto módulo del rollout de enforcement (ver "reports"/"tax"/"banking"

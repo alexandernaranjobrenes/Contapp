@@ -121,7 +121,13 @@ class PostJournalService
                 ->get()
                 ->groupBy('cost_allocation_rule_id');
 
-            $ruleCostCenterIds = $ruleLinesByRule->flatten()->pluck('cost_center_id')->unique()->values();
+            // Los centros de una norma y los centros DIRECTOS de línea se
+            // cargan juntos: la validación de vigencia es la misma para
+            // ambos, y separarlas invitaría a que una se actualizara sin la
+            // otra.
+            $ruleCostCenterIds = $ruleLinesByRule->flatten()->pluck('cost_center_id')
+                ->merge(array_filter(array_map(fn (JournalLineInput $l) => $l->costCenterId, $lines)))
+                ->unique()->values();
 
             $ruleCostCenters = CostCenter::withoutGlobalScope(CompanyScope::class)
                 ->where('company_id', $company->id)
@@ -157,10 +163,26 @@ class PostJournalService
                     );
                 }
 
-                if ($account->requires_cost_center && $line->costAllocationRuleId === null) {
+                // Una cuenta que exige centro de costo se satisface de las dos
+                // maneras: con un centro directo o con una norma que reparta.
+                // Lo que no se acepta es que el gasto quede sin centro.
+                if ($account->requires_cost_center
+                    && $line->costAllocationRuleId === null
+                    && $line->costCenterId === null) {
                     throw new MissingCostAllocationRuleException(
-                        "La cuenta {$account->code} ({$account->description_es}) exige norma de reparto en cada línea."
+                        "La cuenta {$account->code} ({$account->description_es}) exige centro de costo o norma de reparto en cada línea."
                     );
+                }
+
+                if ($line->costCenterId !== null) {
+                    $directCostCenter = $ruleCostCenters->get($line->costCenterId)
+                        ?? throw new CostCenterNotPostableException("El centro de costo id {$line->costCenterId} no existe en la compañía.");
+
+                    if (! $directCostCenter->isPostableOn($postingDate)) {
+                        throw new CostCenterNotPostableException(
+                            "El centro de costo {$directCostCenter->code} ({$directCostCenter->name}) está inactivo o fuera de su vigencia para la fecha {$postingDate->format('Y-m-d')}."
+                        );
+                    }
                 }
 
                 $rule = null;
@@ -284,7 +306,7 @@ class PostJournalService
                     }
                 } else {
                     $row = $base;
-                    $row['cost_center_id'] = null;
+                    $row['cost_center_id'] = $line->costCenterId;
                     $row['cost_allocation_rule_id'] = null;
 
                     foreach (['local', 'foreign', 'system'] as $bucket) {
@@ -614,6 +636,7 @@ class PostJournalService
                     'electronic_key' => $line->electronicKey,
                     'business_partner_id' => $line->businessPartnerId,
                     'cost_allocation_rule_id' => $line->costAllocationRuleId,
+                    'cost_center_id' => $line->costCenterId,
                     'currency_id' => $line->currencyId,
                     'debit_local' => $isDebit ? $local : '0.00',
                     'credit_local' => $isDebit ? '0.00' : $local,

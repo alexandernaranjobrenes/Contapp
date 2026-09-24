@@ -433,3 +433,132 @@ input[type="date"] {
 .badge-danger { background: var(--color-danger-soft); color: var(--color-danger); }
 .badge-warning { background: var(--color-warning-soft); color: var(--color-warning); }
 .badge-neutral { background: var(--color-surface-alt); color: var(--color-text-muted); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Utilidades compartidas de tabla, modal y formulario.
+ *
+ * Estas clases venían repetidas en el bloque <style scoped> de casi todas
+ * las pantallas, idénticas. Acá quedan una sola vez, como globales, para
+ * que una pantalla nueva no tenga que traerse veinte líneas de copia.
+ *
+ * Es ADITIVO a propósito: las pantallas que ya traen su propia copia
+ * scoped siguen ganando por especificidad, así que nada cambia de aspecto
+ * y no hay que tocarlas todas de golpe.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.right { text-align: right; }
+.small { font-size: 0.76rem; }
+.muted { color: var(--color-text-muted); }
+
+.hint {
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    margin: 0 0 0.75rem;
+}
+
+.hint.small { font-size: 0.74rem; }
+
+.empty-row {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.row-actions {
+    display: flex;
+    gap: 0.3rem;
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.field-row {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.field-row .field {
+    flex: 1;
+    min-width: 10rem;
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    margin-bottom: 0.5rem;
+}
+
+.check input { width: auto; }
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 1rem;
+}
+
+.modal {
+    width: min(560px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.2rem;
+}
+
+/* Para formularios de varias columnas, como la ficha del empleado. */
+.modal.modal-wide { width: min(920px, 100%); }
+
+.modal h2 {
+    margin: 0 0 0.8rem;
+    font-size: 1rem;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+}
+
+.flash {
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
+.flash-success { background: var(--color-success-soft); color: var(--color-success); }
+.flash-warning { background: #fdf0ea; color: #a04000; }
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.85rem 1.1rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.search-input {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.6rem;
+    font-size: 0.82rem;
+}
+
+.section-title {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.25rem;
+}

@@ -23,6 +23,7 @@ class ModuleSeeder extends Seeder
             ['code' => 'reports', 'name' => 'Reportería'],
             ['code' => 'inventory', 'name' => 'Inventario (artículos, almacenes)'],
             ['code' => 'billing', 'name' => 'Facturación electrónica'],
+            ['code' => 'payroll', 'name' => 'Planillas (empleados, nómina, acciones de personal)'],
         ];
 
         foreach ($modules as $module) {
