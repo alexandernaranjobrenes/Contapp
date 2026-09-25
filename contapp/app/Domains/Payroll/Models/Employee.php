@@ -151,9 +151,26 @@ class Employee extends Model
     /**
      * Valor de la hora ordinaria: base de las horas extra.
      *
-     * Se deriva del salario mensual y de la jornada semanal declarada, no de
-     * una constante: un trabajador de jornada nocturna cumple su jornada
-     * ordinaria en menos horas y su hora vale más.
+     * ── El divisor es el DÍA, no la semana ───────────────────────────────
+     *
+     * Se deriva del valor del día —salario mensual entre 30— dividido entre
+     * las horas ordinarias de la jornada. Para una jornada diurna sobre un
+     * salario de ₡400.000: 400.000 ÷ 30 = ₡13.333,33 el día, ÷ 8 = ₡1.666,67
+     * la hora.
+     *
+     * Antes se dividía entre las horas SEMANALES por 4,3333 semanas, o sea
+     * 208 horas para una semana de 48, y daba ₡1.923,09 — un 15% de más en
+     * cada hora extra. El error está en que un salario mensual costarricense
+     * cubre los 30 días del mes, incluido el día de descanso semanal, que es
+     * pagado; dividir entre las horas trabajadas supone que ese día no se
+     * paga.
+     *
+     * Además dejaba a `dailyRate()` contradiciendo a este método: uno dividía
+     * entre 30 y el otro entre 4,3333 semanas, y no daban lo mismo.
+     *
+     * La jornada declarada es la que fija las horas del día —diurna 8, mixta
+     * 7, nocturna 6 (CT art. 136)— y por eso la hora de un trabajador
+     * nocturno vale más: cumple su jornada en menos horas por el mismo día.
      *
      * ── Por qué el cálculo pide más decimales que la pantalla ────────────
      *
@@ -167,13 +184,15 @@ class Employee extends Model
      */
     public function hourlyRate(int $scale = 2): string
     {
-        $monthlyHours = bcmul((string) $this->weekly_hours, '4.3333', 4);
+        $hoursPerDay = (string) (self::ORDINARY_HOURS[$this->journey_type] ?? 8);
 
-        if (bccomp($monthlyHours, '0', 4) <= 0) {
+        if (bccomp($hoursPerDay, '0', 4) <= 0) {
             return '0.00';
         }
 
-        return bcdiv($this->monthlySalary(), $monthlyHours, $scale);
+        // El día se calcula con más precisión de la que se muestra: es un
+        // paso intermedio y truncarlo acá arrastraría el error a cada hora.
+        return bcdiv(bcdiv($this->monthlySalary(), '30', 6), $hoursPerDay, $scale);
     }
 
     /**

@@ -162,7 +162,7 @@ it('rebaja cada componente de carga social por separado y contra la base correct
         ->and($lines->firstWhere('code', 'IVM-OBR')->base_amount)->toBe('1000000.00');
 });
 
-it('calcula el impuesto sobre el bruto MENOS las cargas obreras, no sobre el bruto', function () {
+it('aplica la escala sobre el salario devengado, que es el criterio por defecto', function () {
     $f = payrollFixture();
     payrollEmployee($f, ['base_salary' => '1500000.00']);
     $period = payrollPeriod($f);
@@ -171,15 +171,27 @@ it('calcula el impuesto sobre el bruto MENOS las cargas obreras, no sobre el bru
 
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
 
-    // 1.500.000 − 10,67% = 1.339.950. Esa es la base, y cae en el segundo
-    // tramo: si se hubiera usado el bruto (1.500.000) habría entrado al
-    // tercero y el rebajo sería mayor.
+    // Si la escala se aplica sobre el devengado o sobre el devengado menos
+    // las cargas obreras es una cuestión de la Ley del Impuesto sobre la
+    // Renta, no del motor. Por eso es un parámetro, y este es su valor por
+    // defecto: el devengado completo.
+    expect($entry->income_tax_base)->toBe('1500000.00');
+});
+
+it('puede aplicar la escala sobre el devengado menos las cargas obreras', function () {
+    $f = payrollFixture();
+    payrollEmployee($f, ['base_salary' => '1500000.00']);
+
+    PayrollSetting::where('company_id', $f['company']->id)
+        ->update(['income_tax_base' => 'net_of_contributions']);
+
+    $period = payrollPeriod($f);
+    calculatePayroll($f, $period);
+
+    $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
+
+    // 1.500.000 − 10,67% de cargas obreras = 1.339.950.
     expect($entry->income_tax_base)->toBe('1339950.00');
-
-    // Tramo 1 exento hasta 929.000; tramo 2 al 10% sobre el resto.
-    $expected = bcdiv(bcmul(bcsub('1339950.00', '929000', 2), '10', 4), '100', 2);
-
-    expect($entry->income_tax)->toBe($expected);
 });
 
 it('grava cada tramo por separado y no todo el salario a la tasa del tramo superior', function () {
@@ -217,9 +229,18 @@ it('resta los créditos familiares del impuesto y no de la base', function () {
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
 
     // La base no cambia por tener familia: los créditos actúan después.
-    expect($entry->income_tax_base)->toBe('1339950.00');
+    expect($entry->income_tax_base)->toBe('1500000.00');
 
-    $taxBeforeCredits = bcdiv(bcmul(bcsub('1339950.00', '929000', 2), '10', 4), '100', 2);
+    //   929.000 – 1.363.000  10%  →  43.400
+    //   1.363.000 – 1.500.000 15% →  20.550
+    //                              ─────────
+    //                                63.950
+    $taxBeforeCredits = bcadd(
+        bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
+        2
+    );
+
     $credits = bcadd('4000', bcmul('2600', '2', 2), 2); // cónyuge + 2 hijos
 
     expect($entry->income_tax)->toBe(bcsub($taxBeforeCredits, $credits, 2));
@@ -277,13 +298,21 @@ it('paga las horas extra al factor del concepto sobre el valor de la hora ordina
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
     $line = $entry->lines->firstWhere('code', 'HE-SIMPLE');
 
-    $hourly = bcdiv('1000000.00', bcmul('48', '4.3333', 4), 4);
-    $expected = bcmul(bcmul('10.0000', $hourly, 4), '1.5', 2);
-
-    expect($line->amount)->toBe($expected);
+    // El valor de la hora sale del DÍA, no de la semana: el salario mensual
+    // cubre los 30 días del mes —incluido el día de descanso, que es pagado—
+    // y la jornada diurna tiene 8 horas ordinarias. Son 240 horas al mes,
+    // que es también lo que suman dos quincenas de 120.
+    //
+    //   1.000.000 ÷ 30 = 33.333,33 el día
+    //   33.333,33 ÷ 8  =  4.166,67 la hora
+    //   4.166,67 × 10 × 1,5 = 62.500,00
+    //
+    // Dividir entre las horas semanales por 4,3333 daba 72.115,93: un 15% de
+    // más en cada hora extra, por suponer que el día de descanso no se paga.
+    expect($line->amount)->toBe('62500.00');
 
     // Y sí son salario: entran completas a la base de cargas.
-    expect($entry->ccss_base)->toBe(bcadd('1000000.00', $expected, 2));
+    expect($entry->ccss_base)->toBe('1062500.00');
 });
 
 it('paga proporcional a quien ingresa a mitad de período en vez de excluirlo o pagarle completo', function () {
@@ -300,39 +329,104 @@ it('paga proporcional a quien ingresa a mitad de período en vez de excluirlo o 
         ->and($entry->total_earnings)->toBe(bcdiv(bcmul('1000000.00', '15', 4), '31', 2));
 });
 
-it('lleva la base al mes en planilla quincenal antes de aplicar la escala', function () {
+it('acumula las dos quincenas: la primera no retiene y la segunda retiene el mes', function () {
     $f = payrollFixture();
     payrollEmployee($f, ['base_salary' => '1500000.00', 'is_ccss_exempt' => true]);
 
-    $quincena = payrollPeriod($f, [
-        'frequency' => 'quincenal',
-        'number' => 5,
-        'name' => 'Marzo 2026 · 1.ª quincena',
-        'start_date' => '2026-03-01',
-        'end_date' => '2026-03-15',
-        'payment_date' => '2026-03-15',
+    // Pago mensual con adelantos quincenales: cada quincena devenga 750.000.
+    $primera = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 5, 'name' => 'Marzo 2026 · 1.ª quincena',
+        'start_date' => '2026-03-01', 'end_date' => '2026-03-15', 'payment_date' => '2026-03-15',
     ]);
 
-    calculatePayroll($f, $quincena);
+    calculatePayroll($f, $primera);
 
-    $entry = PayrollEntry::where('payroll_period_id', $quincena->id)->firstOrFail();
+    // 750.000 está por debajo del tramo exento de 929.000: no retiene nada.
+    // No hace falta marcar nada; sale de la aritmética.
+    $entradaPrimera = PayrollEntry::where('payroll_period_id', $primera->id)->firstOrFail();
 
-    // Gana 750.000 en la quincena. Aplicar la escala a esa cifra la dejaría
-    // bajo el mínimo exento y no rebajaría NADA. Llevada al mes son
-    // 1.500.000 y sí tributa: la mitad del impuesto mensual.
+    expect($entradaPrimera->income_tax_base)->toBe('750000.00')
+        ->and($entradaPrimera->income_tax)->toBe('0.00');
+
+    $segunda = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 6, 'name' => 'Marzo 2026 · 2.ª quincena',
+        'start_date' => '2026-03-16', 'end_date' => '2026-03-31', 'payment_date' => '2026-03-31',
+    ]);
+
+    calculatePayroll($f, $segunda);
+
+    // En la segunda se suma lo devengado de las dos: 1.500.000. La escala se
+    // aplica al mes completo y se retiene la diferencia contra lo ya
+    // retenido —que fue cero—, o sea el impuesto entero del mes.
     //
     //   929.000 – 1.363.000  10%  →  43.400
     //   1.363.000 – 1.500.000 15% →  20.550
     //                              ─────────
-    //                                63.950  al mes, 31.975 la quincena
-    $monthlyTax = bcadd(
+    //                                63.950
+    $impuestoDelMes = bcadd(
         bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
         bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
         2
     );
 
-    expect($entry->income_tax)->toBe(bcdiv($monthlyTax, '2', 2))
-        ->and(bccomp($entry->income_tax, '0.00', 2))->toBe(1);
+    $entradaSegunda = PayrollEntry::where('payroll_period_id', $segunda->id)->firstOrFail();
+
+    expect($entradaSegunda->income_tax)->toBe($impuestoDelMes);
+});
+
+it('en modo proyectado reparte el impuesto del mes entre las dos quincenas', function () {
+    $f = payrollFixture();
+    payrollEmployee($f, ['base_salary' => '1500000.00', 'is_ccss_exempt' => true]);
+
+    PayrollSetting::where('company_id', $f['company']->id)
+        ->update(['income_tax_mode' => 'projected']);
+
+    $quincena = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 5, 'name' => 'Marzo 2026 · 1.ª quincena',
+        'start_date' => '2026-03-01', 'end_date' => '2026-03-15', 'payment_date' => '2026-03-15',
+    ]);
+
+    calculatePayroll($f, $quincena);
+
+    // El proyectado multiplica la quincena por dos, aplica la escala y
+    // retiene la mitad. Supone que la segunda quincena será igual a la
+    // primera: con comisiones concentradas en una sola, retiene de más en
+    // una y de menos en la otra.
+    $impuestoDelMes = bcadd(
+        bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
+        2
+    );
+
+    $entry = PayrollEntry::where('payroll_period_id', $quincena->id)->firstOrFail();
+
+    expect($entry->income_tax)->toBe(bcdiv($impuestoDelMes, '2', 2));
+});
+
+it('en acumulado no retiene dos veces si la segunda quincena se recalcula', function () {
+    $f = payrollFixture();
+    payrollEmployee($f, ['base_salary' => '1500000.00', 'is_ccss_exempt' => true]);
+
+    $primera = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 5, 'name' => '1.ª quincena',
+        'start_date' => '2026-03-01', 'end_date' => '2026-03-15', 'payment_date' => '2026-03-15',
+    ]);
+    calculatePayroll($f, $primera);
+
+    $segunda = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 6, 'name' => '2.ª quincena',
+        'start_date' => '2026-03-16', 'end_date' => '2026-03-31', 'payment_date' => '2026-03-31',
+    ]);
+
+    calculatePayroll($f, $segunda);
+    $primerCalculo = PayrollEntry::where('payroll_period_id', $segunda->id)->firstOrFail()->income_tax;
+
+    // Recalcular no puede acumular sobre sí misma: al reunir lo retenido
+    // antes solo cuentan los períodos que EMPIEZAN antes que este.
+    calculatePayroll($f, $segunda->fresh());
+
+    expect(PayrollEntry::where('payroll_period_id', $segunda->id)->firstOrFail()->income_tax)
+        ->toBe($primerCalculo);
 });
 
 it('rebaja las obligaciones en orden de prioridad y no deja el neto negativo', function () {

@@ -20,6 +20,22 @@ class PayrollSetting extends Model
         'company_id',
         'salary_expense_account_id', 'net_payable_account_id', 'income_tax_payable_account_id',
         'document_type_id', 'vacation_days_per_month', 'max_deduction_percentage',
+        'income_tax_mode', 'income_tax_base',
+    ];
+
+    /**
+     * Cómo se llega al mes cuando el período no es mensual. Ver el encabezado
+     * de incomeTaxFor() en CalculatePayrollService.
+     */
+    public const INCOME_TAX_MODES = [
+        'accumulated' => 'Acumulado del mes (suma los períodos anteriores)',
+        'projected' => 'Proyectado (multiplica la quincena por dos)',
+    ];
+
+    /** Sobre qué se aplica la escala. Es una cuestión de la ley, no del motor. */
+    public const INCOME_TAX_BASES = [
+        'gross' => 'Salario devengado gravable',
+        'net_of_contributions' => 'Devengado gravable menos cargas obreras',
     ];
 
     public function salaryExpenseAccount(): BelongsTo

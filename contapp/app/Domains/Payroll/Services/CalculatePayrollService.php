@@ -155,6 +155,108 @@ class CalculatePayrollService
     }
 
     /**
+     * El impuesto que le toca a ESTE período.
+     *
+     * ── El problema: la escala es mensual y el período puede no serlo ────
+     *
+     * Hay dos formas de llegar al mes, y la diferencia entre ellas es dinero
+     * en la boleta de la gente.
+     *
+     *   ACUMULADO (por defecto)
+     *     Se suma lo devengado de los períodos anteriores del MISMO MES y se
+     *     le agrega el de este. Se aplica la escala a ese total y se retiene
+     *     la diferencia contra lo que ya se retuvo antes.
+     *
+     *     Con pago mensual y adelantos quincenales, la primera quincena casi
+     *     nunca llega al tramo exento y no retiene nada; en la segunda, la
+     *     suma de las dos sí llega y se retiene todo el impuesto del mes de
+     *     una vez. No hace falta que nadie marque nada: sale solo de la
+     *     aritmética.
+     *
+     *   PROYECTADO
+     *     Se multiplica la base de la quincena por dos, se aplica la escala
+     *     y se retiene la mitad. Supone que la segunda quincena será igual a
+     *     la primera, y con comisiones concentradas en una sola —que es lo
+     *     normal— retiene de más en una y de menos en la otra.
+     *
+     * ── Por qué «anteriores» y no «todos los del mes» ────────────────────
+     *
+     * Solo cuentan los períodos que EMPIEZAN antes que este. Si se recalcula
+     * la primera quincena cuando la segunda ya está hecha, tomar a la segunda
+     * como «anterior» le restaría a la primera un impuesto que todavía no se
+     * había retenido cuando ella se pagó.
+     */
+    private function incomeTaxFor(
+        Company $company,
+        Employee $employee,
+        PayrollPeriod $period,
+        ?PayrollSetting $settings,
+        string $date,
+        string $periodBase,
+    ): string {
+        if (($settings?->income_tax_mode ?? 'accumulated') === 'projected') {
+            $perMonth = $this->periodsPerMonth($period);
+
+            $tax = $this->incomeTax->calculate(
+                $company, $employee, bcmul($periodBase, $perMonth, 2), $date
+            );
+
+            return bcdiv($tax['tax'], $perMonth, 2);
+        }
+
+        [$priorBase, $priorTax] = $this->priorWithholdingThisMonth($company, $employee, $period);
+
+        $monthBase = bcadd($priorBase, $periodBase, 2);
+
+        $tax = $this->incomeTax->calculate($company, $employee, $monthBase, $date);
+
+        $due = bcsub($tax['tax'], $priorTax, 2);
+
+        // Nunca negativo: si en un período posterior se devengó menos y el
+        // impuesto del mes bajó, no se le devuelve plata al trabajador por
+        // planilla — queda en cero y se arregla donde corresponda.
+        return bccomp($due, '0.00', 2) > 0 ? $due : '0.00';
+    }
+
+    /**
+     * Base gravable y impuesto ya retenidos a este trabajador en los períodos
+     * anteriores del mismo mes.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function priorWithholdingThisMonth(Company $company, Employee $employee, PayrollPeriod $period): array
+    {
+        // El mes lo fija la fecha de FIN, igual que las vigencias de tasas.
+        $monthStart = $period->end_date->copy()->startOfMonth()->format('Y-m-d');
+        $monthEnd = $period->end_date->copy()->endOfMonth()->format('Y-m-d');
+
+        $priorPeriodIds = PayrollPeriod::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $company->id)
+            ->where('frequency', $period->frequency)
+            ->whereKeyNot($period->id)
+            ->whereDate('end_date', '>=', $monthStart)
+            ->whereDate('end_date', '<=', $monthEnd)
+            ->whereDate('start_date', '<', $period->start_date->format('Y-m-d'))
+            // Solo los que ya se calcularon: uno abierto todavía no retuvo
+            // nada.
+            ->whereIn('status', ['calculated', 'approved', 'posted', 'closed'])
+            ->pluck('id');
+
+        if ($priorPeriodIds->isEmpty()) {
+            return ['0.00', '0.00'];
+        }
+
+        $entries = PayrollEntry::whereIn('payroll_period_id', $priorPeriodIds)
+            ->where('employee_id', $employee->id)
+            ->get(['income_tax_base', 'income_tax']);
+
+        return [
+            $entries->reduce(fn ($c, PayrollEntry $e) => bcadd($c, (string) $e->income_tax_base, 2), '0.00'),
+            $entries->reduce(fn ($c, PayrollEntry $e) => bcadd($c, (string) $e->income_tax, 2), '0.00'),
+        ];
+    }
+
+    /**
      * Junta los movimientos digitados del período con los rubros fijos.
      *
      * ── Lo digitado REEMPLAZA al rubro fijo, no se le suma ───────────────
@@ -344,16 +446,15 @@ class CalculatePayrollService
 
         // ── 4 y 5. Impuesto al salario ──────────────────────────────────
         //
-        // La base es el bruto gravable MENOS las cargas obreras, llevado a
-        // mes. Con planilla quincenal se aplica la escala al mes y se
-        // devuelve la fracción: aplicarla a media base caería en un tramo
-        // más bajo y rebajaría de menos.
-        $taxableNet = bcsub($taxableEarnings, $employeeContributions, 2);
-        $perMonth = $this->periodsPerMonth($period);
-        $monthlyBase = bcmul($taxableNet, $perMonth, 2);
+        // La base sale de la configuración: el devengado gravable, o ese
+        // mismo menos las cargas obreras. Cuál de los dos rige es una
+        // cuestión de la Ley del Impuesto sobre la Renta, no de este motor,
+        // y por eso es un parámetro y no una decisión escrita acá.
+        $taxableNet = ($settings?->income_tax_base ?? 'gross') === 'net_of_contributions'
+            ? bcsub($taxableEarnings, $employeeContributions, 2)
+            : $taxableEarnings;
 
-        $tax = $this->incomeTax->calculate($company, $employee, $monthlyBase, $date);
-        $incomeTax = bcdiv($tax['tax'], $perMonth, 2);
+        $incomeTax = $this->incomeTaxFor($company, $employee, $period, $settings, $date, $taxableNet);
 
         if (bccomp($incomeTax, '0.00', 2) > 0) {
             $computed[] = [
@@ -673,15 +774,15 @@ class CalculatePayrollService
             // El valor de la hora se pide con cuatro decimales: es un factor
             // intermedio, y truncarlo a céntimos antes de multiplicar pierde
             // una fracción en cada hora, siempre en contra del trabajador.
-            'hours' => bcmul(
+            'hours' => $this->round(bcmul(
                 bcmul(
                     number_format((float) ($input->quantity ?? 0), 4, '.', ''),
-                    $employee->hourlyRate(4),
-                    4
+                    $employee->hourlyRate(6),
+                    6
                 ),
                 (string) ($concept->factor ?? 1),
-                2
-            ),
+                6
+            )),
             'percentage' => $this->percentageOf($employee->monthlySalary(), (string) ($concept->factor ?? 0)),
             default => number_format((float) ($input->amount ?? 0), 2, '.', ''),
         };
@@ -689,7 +790,29 @@ class CalculatePayrollService
 
     private function percentageOf(string $base, string $percentage): string
     {
-        return bcdiv(bcmul($base, $percentage, 6), '100', 2);
+        return $this->round(bcdiv(bcmul($base, $percentage, 8), '100', 6));
+    }
+
+    /**
+     * Redondeo al céntimo, medio hacia arriba.
+     *
+     * bcmath TRUNCA, y truncar el monto de cada línea siempre hacia abajo es
+     * un sesgo sistemático en contra del trabajador: no es un céntimo, es un
+     * céntimo por línea, por persona, por período. El redondeo va acá, al
+     * final, sobre el monto que de verdad se paga — los pasos intermedios
+     * siguen calculándose con más decimales.
+     *
+     * Se contempla el negativo porque un rubro de devengado puede restar
+     * (horas de incapacidad, por ejemplo) y ahí «medio hacia arriba» tiene
+     * que alejarse del cero igual que del lado positivo.
+     */
+    private function round(string $value, int $scale = 2): string
+    {
+        $half = '0.'.str_repeat('0', $scale).'5';
+
+        return bccomp($value, '0', $scale + 4) < 0
+            ? bcsub($value, $half, $scale)
+            : bcadd($value, $half, $scale);
     }
 
     private function sumWhere(array $lines, callable $filter): string
