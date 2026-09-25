@@ -31,6 +31,7 @@ use App\Http\Controllers\DocumentTypeNumberSeriesController;
 use App\Http\Controllers\DocumentTypeRegisterController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeDeductionController;
+use App\Http\Controllers\EmployeeRecurringInputController;
 use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\FxRevaluationController;
 use App\Http\Controllers\GlDeterminationController;
@@ -392,6 +393,7 @@ Route::middleware('auth')->group(function () {
         Route::get('payslips/{entry}/print', [PayslipController::class, 'print'])->name('payslips.print');
 
         Route::get('employee-deductions', [EmployeeDeductionController::class, 'index'])->name('employee-deductions.index');
+        Route::get('recurring-inputs', [EmployeeRecurringInputController::class, 'index'])->name('recurring-inputs.index');
         Route::get('personnel-actions', [PersonnelActionController::class, 'index'])->name('personnel-actions.index');
         Route::get('vacations', [VacationController::class, 'index'])->name('vacations.index');
         Route::get('payroll-settings', [PayrollSettingsController::class, 'index'])->name('payroll-settings.index');
@@ -413,6 +415,10 @@ Route::middleware('auth')->group(function () {
         // El archivo de pago mueve dinero de verdad: va del lado de
         // escritura aunque técnicamente solo genere un CSV.
         Route::get('payroll-periods/{payrollPeriod}/bank-file', [PayrollReportController::class, 'bankFile'])->name('payroll-periods.bank-file');
+
+        Route::post('recurring-inputs', [EmployeeRecurringInputController::class, 'store'])->name('recurring-inputs.store');
+        Route::put('recurring-inputs/{recurringInput}', [EmployeeRecurringInputController::class, 'update'])->name('recurring-inputs.update');
+        Route::delete('recurring-inputs/{recurringInput}', [EmployeeRecurringInputController::class, 'destroy'])->name('recurring-inputs.destroy');
 
         Route::post('employee-deductions', [EmployeeDeductionController::class, 'store'])->name('employee-deductions.store');
         Route::put('employee-deductions/{deduction}', [EmployeeDeductionController::class, 'update'])->name('employee-deductions.update');

@@ -11,6 +11,7 @@ use App\Domains\Payroll\Models\PayrollEntry;
 use App\Domains\Payroll\Models\PayrollInput;
 use App\Domains\Payroll\Models\PayrollPeriod;
 use App\Domains\Payroll\Services\CalculatePayrollService;
+use App\Domains\Payroll\Services\PayrollReadinessChecker;
 use App\Domains\Payroll\Services\PostPayrollService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class PayrollPeriodController extends Controller
     public function __construct(
         private readonly CalculatePayrollService $calculator,
         private readonly PostPayrollService $poster,
+        private readonly PayrollReadinessChecker $readiness,
     ) {}
 
     public function index(): Response
@@ -110,6 +112,12 @@ class PayrollPeriodController extends Controller
                 'bank_account' => $e->bank_account,
             ])->values(),
             'totals' => $this->totals($entries),
+            // La lista de verificación se calcula en cada visita y no se
+            // guarda: su respuesta depende de la configuración de HOY, y una
+            // guardada mentiría en cuanto alguien corrigiera una ficha.
+            'readiness' => $period->isRecalculable()
+                ? $this->readiness->check(Company::findOrFail($period->company_id), $period)
+                : null,
             // Lo que se le puede digitar a un trabajador: horas extra, un
             // bono, un rebajo puntual. El salario y las cargas no están acá
             // a propósito — el primero viene de la ficha, las segundas las
@@ -276,6 +284,28 @@ class PayrollPeriodController extends Controller
     public function calculate(int $payrollPeriod, CurrentCompany $currentCompany): RedirectResponse
     {
         $period = PayrollPeriod::findOrFail($payrollPeriod);
+        $company = $this->company($currentCompany->id());
+
+        // Se revisa la configuración ANTES de calcular. Un empleado sin
+        // salario no hace fallar el cálculo: produce una boleta en cero que se
+        // pierde entre cincuenta. Por eso los hallazgos de severidad 'error'
+        // bloquean, y las advertencias no.
+        $readiness = $this->readiness->check($company, $period);
+
+        if (! $readiness['ok']) {
+            $titles = collect($readiness['findings'])
+                ->where('severity', PayrollReadinessChecker::ERROR)
+                ->pluck('title')
+                ->take(4)
+                ->implode('; ');
+
+            $extra = $readiness['errors'] > 4 ? " (y {$readiness['errors']} en total)" : '';
+
+            return back()->withErrors([
+                'payroll' => "No se puede calcular todavía: {$titles}{$extra}. ".
+                    'Revisá la lista de verificación del período.',
+            ]);
+        }
 
         $inputs = PayrollInput::where('payroll_period_id', $period->id)
             ->get()
@@ -283,12 +313,16 @@ class PayrollPeriodController extends Controller
             ->all();
 
         try {
-            $this->calculator->calculate($this->company($currentCompany->id()), $period, $inputs);
+            $this->calculator->calculate($company, $period, $inputs);
         } catch (InvalidPayrollException $e) {
             return back()->withErrors(['payroll' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Planilla calculada.');
+        $note = $readiness['warnings'] > 0
+            ? " Quedan {$readiness['warnings']} advertencia(s) sin resolver."
+            : '';
+
+        return back()->with('success', "Planilla calculada.{$note}");
     }
 
     public function approve(int $payrollPeriod, Request $request): RedirectResponse

@@ -11,6 +11,7 @@ const props = defineProps({
     concepts: { type: Array, default: () => [] },
     employees: { type: Array, default: () => [] },
     inputs: { type: Array, default: () => [] },
+    readiness: { type: Object, default: null },
 });
 
 const page = usePage();
@@ -73,7 +74,34 @@ function post() {
     });
 }
 
-const canCalculate = computed(() => props.period.is_recalculable);
+// Con errores de configuración el botón no se ofrece: un empleado sin salario
+// no hace fallar el cálculo, produce una boleta en cero que se pierde entre
+// cincuenta. Las advertencias no bloquean — la decisión de seguir es del
+// usuario, no del sistema.
+const canCalculate = computed(
+    () => props.period.is_recalculable && (props.readiness === null || props.readiness.ok)
+);
+
+const showAllFindings = ref(false);
+
+const findings = computed(() => {
+    if (! props.readiness) return [];
+
+    // Los errores primero: son los que hay que resolver para poder calcular.
+    const order = { error: 0, warning: 1 };
+
+    return [...props.readiness.findings].sort((a, b) => order[a.severity] - order[b.severity]);
+});
+
+const visibleFindings = computed(
+    () => (showAllFindings.value ? findings.value : findings.value.slice(0, 6))
+);
+
+function findingHref(finding) {
+    return finding.route_parameter
+        ? route(finding.route, finding.route_parameter)
+        : route(finding.route);
+}
 const canApprove = computed(() => props.period.status === 'calculated');
 const canPost = computed(() => ['calculated', 'approved'].includes(props.period.status));
 const canPay = computed(() => ['approved', 'posted', 'closed'].includes(props.period.status));
@@ -86,12 +114,9 @@ const statusClass = {
     closed: 'badge-neutral',
 };
 
-// Quién cobra por transferencia y no tiene cuenta: el archivo del banco los
-// rechaza, y es mejor verlo acá que cuando la persona llame a decir que no
-// le llegó el salario.
-const withoutAccount = computed(
-    () => props.entries.filter((e) => e.payment_method === 'transferencia' && ! e.bank_account)
-);
+// Quién cobra por transferencia y no tiene cuenta lo reporta la verificación
+// previa, con el enlace para corregirlo: tenerlo también acá diría lo mismo
+// dos veces y sin decir dónde se arregla.
 </script>
 
 <template>
@@ -128,10 +153,41 @@ const withoutAccount = computed(
             </div>
         </div>
 
-        <p v-if="withoutAccount.length" class="flash flash-warning">
-            {{ withoutAccount.length }} trabajador(es) cobran por transferencia y no tienen cuenta bancaria
-            registrada: {{ withoutAccount.map((e) => e.employee_name).join(', ') }}. El archivo de pago no se va
-            a generar hasta completarlas.
+        <section v-if="readiness && findings.length" class="card readiness">
+            <div class="card-header">
+                <h3>
+                    Verificación previa
+                    <span v-if="readiness.errors" class="badge badge-danger">{{ readiness.errors }} error(es)</span>
+                    <span v-if="readiness.warnings" class="badge badge-warning">{{ readiness.warnings }} advertencia(s)</span>
+                </h3>
+                <button
+                    v-if="findings.length > 6"
+                    type="button" class="btn btn-ghost btn-sm"
+                    @click="showAllFindings = !showAllFindings"
+                >{{ showAllFindings ? 'Ver menos' : `Ver los ${findings.length}` }}</button>
+            </div>
+
+            <p class="hint small">
+                Una planilla mal configurada no falla: produce números. Un empleado sin salario sale con neto cero
+                y se pierde entre cincuenta boletas. Los <strong>errores</strong> impiden calcular; las
+                <strong>advertencias</strong> dejan una planilla correcta con una consecuencia después —un archivo
+                de pago incompleto, un renglón que la Caja rechaza— y seguir con ellas es tu decisión.
+            </p>
+
+            <ul class="finding-list">
+                <li v-for="(f, i) in visibleFindings" :key="i" :class="f.severity">
+                    <span class="finding-mark">{{ f.severity === 'error' ? '✕' : '!' }}</span>
+                    <span class="finding-body">
+                        <strong>{{ f.title }}</strong>
+                        <span class="muted small">{{ f.detail }}</span>
+                    </span>
+                    <a :href="findingHref(f)" class="btn btn-ghost btn-sm">Corregir</a>
+                </li>
+            </ul>
+        </section>
+
+        <p v-else-if="readiness && !findings.length" class="flash flash-success">
+            Verificación previa sin hallazgos: la configuración y las fichas están completas.
         </p>
 
         <section v-if="period.is_recalculable" class="card input-card">
@@ -394,8 +450,60 @@ const withoutAccount = computed(
 .stat-value { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat-note { font-size: 0.68rem; color: var(--color-text-muted); }
 
-.card-header h3 { margin: 0; font-size: 0.9rem; }
+.card-header h3 { margin: 0; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
 .table-scroll.compact { max-height: 18rem; }
+
+/* ── Verificación previa ─────────────────────────────────────────────── */
+
+.readiness { margin-bottom: 1rem; }
+.readiness .hint { padding: 0 1.1rem; }
+
+.finding-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 1.1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.finding-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-alt);
+    border-left: 3px solid transparent;
+}
+
+/* El error se distingue del aviso por color Y por símbolo: solo por color no
+   lo distingue quien no ve bien los rojos. */
+.finding-list li.error {
+    border-left-color: var(--color-danger);
+    background: var(--color-danger-soft);
+}
+
+.finding-list li.warning { border-left-color: #d08a55; }
+
+.finding-mark {
+    flex-shrink: 0;
+    width: 1.1rem;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+.finding-list li.error .finding-mark { color: var(--color-danger); }
+.finding-list li.warning .finding-mark { color: #a04000; }
+
+.finding-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.82rem;
+}
 
 td.strong { font-weight: 600; }
 tfoot td { font-weight: 600; border-top: 2px solid var(--color-border); }

@@ -3,6 +3,53 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-24 — Preparar la planilla: verificación previa y rubros fijos
+
+**Pedido del usuario:** una pantalla para preparar el cálculo de cada período, pasando empleado por empleado o cargando un XLSX; que la planilla revise si todos los empleados activos están con datos; y rubros con ficha propia donde se declare, entre otras cosas, si quedan fijos.
+
+### Verificación previa: el problema es que una planilla mal configurada no falla
+
+Produce números. Un empleado sin salario sale con neto cero y nadie lo nota entre cincuenta boletas. Una carga sin cuenta de pasivo no se ve hasta que alguien intenta contabilizar, tres días después, con el cierre encima. Una escala de impuesto con un hueco entre tramos deja parte del salario sin gravar y el resultado se ve perfectamente razonable.
+
+Todos esos se pueden encontrar leyendo la configuración, sin calcular nada.
+
+**La distinción entre error y advertencia no es de tono, y se respeta en las dos direcciones.** Un ERROR produciría una planilla incorrecta y bloquea el cálculo: empleado sin salario, jornada en cero, ningún empleado en el período, escala con hueco, traslape o último tramo con techo. Una ADVERTENCIA produce una planilla correcta con una consecuencia aguas abajo —archivo de pago incompleto, renglón que la Caja rechaza, gasto sin centro de costo— y seguir es decisión del usuario.
+
+Confundirlas es dañino en los dos sentidos: bloquear por una advertencia enseña a la gente a ignorar los avisos, y avisar de un error hace que se calcule igual.
+
+Cada hallazgo lleva **a dónde ir a corregirlo**. Un aviso que no dice dónde se arregla obliga a buscarlo, y el aviso de «13 cuentas sin asignar» era exactamente eso.
+
+No se guarda: se recalcula en cada visita. Una verificación guardada mentiría en cuanto alguien corrigiera una ficha.
+
+### Rubros fijos: `is_recurring` estaba muerto Y en el lugar equivocado
+
+La columna existía en `payroll_concepts`, se validaba, se guardaba, y **el motor nunca la leía**. Es el mismo patrón que ya había aparecido con el CAByS y con `price_list_id`: una columna sin camino de lectura.
+
+Pero además estaba mal ubicada. La recurrencia no es una propiedad del rubro sino de la **asignación del rubro a una persona**: «bonificación» no es recurrente ni ocasional, es fija para Ana y ocasional para Luis.
+
+`employee_recurring_inputs` lleva la asignación, con vigencia. En el concepto, `is_recurring` queda con un significado honesto —«este rubro se puede asignar como fijo»— que es lo que filtra la pantalla, y así por fin lo lee alguien.
+
+No se reusó `employee_deductions` porque esa tabla es de obligaciones: lleva saldo, prioridad y se extingue. Un ingreso fijo no tiene saldo ni compite por el neto disponible.
+
+### Lo digitado REEMPLAZA al rubro fijo, no se le suma
+
+Es la decisión que había que tomar explícita, porque las dos son defendibles y una de las dos paga doble.
+
+Si alguien tiene una bonificación fija de ₡25.000 y este mes se le digita «bonificación ₡40.000», lo que quiso decir es que este mes fue de ₡40.000 — no que se le paguen ₡65.000. Sumarlas convierte una corrección en un pago doble, y ese número no aparece en ninguna parte como algo que alguien haya decidido.
+
+El reemplazo es por empleado **y concepto**: digitarle horas extra a alguien no le quita su bonificación fija. Y opera solo dentro del período: el rubro fijo vuelve solo el período siguiente.
+
+### Los rubros fijos se leen dentro del motor, no los pasa el llamador
+
+Así un rubro fijo y uno digitado producen exactamente la misma línea, y no hay dos caminos de cálculo que puedan divergir. El motor no tiene por qué saber de dónde vino el dato.
+
+### Traslape de vigencias
+
+Dos vigencias del mismo rubro para la misma persona a la vez serían un pago doble silencioso. El índice único cubre la misma fecha de inicio; la validación cubre el traslape. Para cargar un aumento se cierra la vigencia anterior y se abre la nueva, que entra sola el día que corresponde.
+
+**29 pruebas nuevas** (15 de verificación previa, 14 de rubros fijos).
+
+---
 ## 2026-09-24 — Determinación de cuentas de planilla en una sola pantalla
 
 **Reporte del usuario:** «en planillas no observo la vinculación de cuentas contables para escoger para parametrizar los registros contables».

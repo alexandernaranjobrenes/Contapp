@@ -9,6 +9,7 @@ use App\Domains\Payroll\Exceptions\InvalidPayrollException;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
 use App\Domains\Payroll\Models\EmployeeDeductionApplication;
+use App\Domains\Payroll\Models\EmployeeRecurringInput;
 use App\Domains\Payroll\Models\PayrollConcept;
 use App\Domains\Payroll\Models\PayrollContribution;
 use App\Domains\Payroll\Models\PayrollEntry;
@@ -18,6 +19,7 @@ use App\Domains\Payroll\Models\PayrollProvision;
 use App\Domains\Payroll\Models\PayrollSetting;
 use App\Domains\Payroll\Models\VacationMovement;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -104,7 +106,17 @@ class CalculatePayrollService
                 );
             }
 
-            $byEmployee = collect($inputs)->groupBy('employeeId');
+            // Los rubros fijos se leen acá y no los pasa el llamador: así un
+            // rubro fijo y uno digitado producen exactamente la misma línea y
+            // no hay dos caminos de cálculo que puedan divergir.
+            $recurring = EmployeeRecurringInput::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', $company->id)
+                ->effectiveOn($date)
+                ->orderBy('employee_id')
+                ->orderBy('id')
+                ->get();
+
+            $byEmployee = collect($this->mergeInputs($inputs, $recurring))->groupBy('employeeId');
 
             // Se devuelve el saldo ANTES de borrar: ver el encabezado.
             $this->restoreBalances($period);
@@ -140,6 +152,50 @@ class CalculatePayrollService
 
             return $period->fresh();
         });
+    }
+
+    /**
+     * Junta los movimientos digitados del período con los rubros fijos.
+     *
+     * ── Lo digitado REEMPLAZA al rubro fijo, no se le suma ───────────────
+     *
+     * Es la decisión que hay que tomar explícita, porque las dos son
+     * defendibles y una de las dos paga doble.
+     *
+     * Si alguien tiene una bonificación fija de ₡25.000 y este mes se le
+     * digita «bonificación ₡40.000», lo que quiso decir es que este mes fue
+     * de ₡40.000 — no que se le paguen ₡65.000. Sumarlas convierte una
+     * corrección en un pago doble, y el número resultante no aparece en
+     * ninguna parte como algo que alguien haya decidido.
+     *
+     * El reemplazo es por empleado y concepto, no por empleado: digitarle
+     * horas extra a alguien no le quita su bonificación fija.
+     *
+     * Y opera solo dentro del período: el rubro fijo sigue vigente y vuelve a
+     * aplicarse el período siguiente, sin que nadie lo reactive.
+     *
+     * @param  PayrollInputLine[]  $digitados
+     * @param  Collection<int, EmployeeRecurringInput>  $recurring
+     * @return PayrollInputLine[]
+     */
+    private function mergeInputs(array $digitados, $recurring): array
+    {
+        $overridden = collect($digitados)
+            ->map(fn (PayrollInputLine $line) => "{$line->employeeId}:{$line->conceptId}")
+            ->unique()
+            ->flip();
+
+        $merged = $digitados;
+
+        foreach ($recurring as $fixed) {
+            if ($overridden->has("{$fixed->employee_id}:{$fixed->payroll_concept_id}")) {
+                continue;
+            }
+
+            $merged[] = $fixed->toInputLine();
+        }
+
+        return $merged;
     }
 
     /**
