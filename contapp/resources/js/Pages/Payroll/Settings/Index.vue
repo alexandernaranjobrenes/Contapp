@@ -20,35 +20,149 @@ const props = defineProps({
 
 const page = usePage();
 
-const tab = ref('cuentas');
+const tab = ref('determinacion');
 
 const tabs = [
-    ['cuentas', 'Cuentas y parámetros'],
+    ['determinacion', 'Determinación de cuentas'],
+    ['cuentas', 'Parámetros'],
     ['cargas', 'Cargas sociales'],
     ['impuesto', 'Impuesto al salario'],
     ['provisiones', 'Provisiones'],
     ['conceptos', 'Conceptos'],
 ];
 
+// ── Determinación de cuentas ────────────────────────────────────────────
+//
+// Todas las cuentas de la planilla en una tabla y un solo guardado. El modelo
+// las guarda repartidas —cada cuenta pertenece a lo que la usa— y eso está
+// bien; lo que no sirve es obligar a abrir sesenta modales para contestar
+// «¿a qué cuentas va a caer mi planilla?».
+
+const accountsForm = useForm({
+    settings: {
+        salary_expense_account_id: props.settings?.salary_expense_account_id ?? '',
+        net_payable_account_id: props.settings?.net_payable_account_id ?? '',
+        income_tax_payable_account_id: props.settings?.income_tax_payable_account_id ?? '',
+    },
+    contributions: props.contributions.map((c) => ({
+        id: c.id,
+        expense_account_id: c.expense_account_id ?? '',
+        liability_account_id: c.liability_account_id ?? '',
+    })),
+    provisions: props.provisions.map((p) => ({
+        id: p.id,
+        expense_account_id: p.expense_account_id ?? '',
+        liability_account_id: p.liability_account_id ?? '',
+    })),
+    concepts: props.concepts.map((c) => ({
+        id: c.id,
+        account_id: c.account_id ?? '',
+    })),
+});
+
+// Para leer y escribir la fila del formulario que corresponde a cada
+// registro sin buscarla en cada render.
+const contributionRow = (id) => accountsForm.contributions.find((r) => r.id === id);
+const provisionRow = (id) => accountsForm.provisions.find((r) => r.id === id);
+const conceptRow = (id) => accountsForm.concepts.find((r) => r.id === id);
+
+const activeContributions = computed(() => props.contributions.filter((c) => c.status === 'active'));
+const activeProvisions = computed(() => props.provisions.filter((p) => p.status === 'active'));
+const activeConcepts = computed(() => props.concepts.filter((c) => c.status === 'active'));
+
+/*
+ * Qué cuenta es obligatoria y cuál no depende de cómo se contabiliza cada
+ * cosa, no de una regla uniforme:
+ *
+ *  · carga OBRERA: se le retiene al trabajador, así que solo genera un
+ *    pasivo. No tiene cuenta de gasto porque no es gasto de la empresa.
+ *  · carga PATRONAL: es gasto de la empresa y a la vez un pasivo con la
+ *    institución. Necesita las dos.
+ *  · provisión: igual que la patronal, pero solo si su porcentaje es mayor
+ *    que cero — una provisión en cero no genera línea de asiento.
+ *  · concepto: la cuenta es opcional. Sin ella, el rebajo cae en «planilla
+ *    por pagar», que cuadra pero mezcla el rebajo con el neto.
+ */
+const missing = computed(() => {
+    const gaps = [];
+
+    if (! accountsForm.settings.salary_expense_account_id) {
+        gaps.push('Gasto de salarios (bloquea la contabilización)');
+    }
+
+    if (! accountsForm.settings.net_payable_account_id) {
+        gaps.push('Planilla por pagar (bloquea la contabilización)');
+    }
+
+    activeContributions.value.forEach((c) => {
+        const row = contributionRow(c.id);
+        if (! row) return;
+
+        if (! row.liability_account_id) gaps.push(`${c.code} · cuenta de pasivo`);
+        if (c.payer === 'employer' && ! row.expense_account_id) gaps.push(`${c.code} · cuenta de gasto`);
+    });
+
+    activeProvisions.value.forEach((p) => {
+        if (p.percentage <= 0) return;
+
+        const row = provisionRow(p.id);
+        if (! row) return;
+
+        if (! row.expense_account_id) gaps.push(`${p.code} · cuenta de gasto`);
+        if (! row.liability_account_id) gaps.push(`${p.code} · cuenta de pasivo`);
+    });
+
+    return gaps;
+});
+
+function normalizeAccounts(data) {
+    const blank = (v) => (v === '' ? null : v);
+
+    return {
+        settings: {
+            salary_expense_account_id: blank(data.settings.salary_expense_account_id),
+            net_payable_account_id: blank(data.settings.net_payable_account_id),
+            income_tax_payable_account_id: blank(data.settings.income_tax_payable_account_id),
+        },
+        contributions: data.contributions.map((r) => ({
+            id: r.id,
+            expense_account_id: blank(r.expense_account_id),
+            liability_account_id: blank(r.liability_account_id),
+        })),
+        provisions: data.provisions.map((r) => ({
+            id: r.id,
+            expense_account_id: blank(r.expense_account_id),
+            liability_account_id: blank(r.liability_account_id),
+        })),
+        concepts: data.concepts.map((r) => ({
+            id: r.id,
+            account_id: blank(r.account_id),
+        })),
+    };
+}
+
+function saveAccounts() {
+    accountsForm.transform(normalizeAccounts).put(route('payroll-settings.accounts.update'), {
+        preserveScroll: true,
+    });
+}
+
 // ── Cuentas y parámetros ────────────────────────────────────────────────
 
+// Solo parámetros del cálculo. Las cuentas van por la pantalla de
+// determinación: tenerlas en dos formularios haría que guardar uno pisara
+// silenciosamente lo del otro.
 const settingsForm = useForm({
-    salary_expense_account_id: props.settings?.salary_expense_account_id ?? '',
-    net_payable_account_id: props.settings?.net_payable_account_id ?? '',
-    income_tax_payable_account_id: props.settings?.income_tax_payable_account_id ?? '',
     document_type_id: props.settings?.document_type_id ?? '',
     vacation_days_per_month: props.settings?.vacation_days_per_month ?? 1,
     max_deduction_percentage: props.settings?.max_deduction_percentage ?? 0,
 });
 
 function saveSettings() {
-    settingsForm.transform((data) => {
-        const out = { ...data };
-        ['salary_expense_account_id', 'net_payable_account_id', 'income_tax_payable_account_id', 'document_type_id']
-            .forEach((key) => { if (out[key] === '') out[key] = null; });
-
-        return out;
-    }).put(route('payroll-settings.update'), { preserveScroll: true });
+    settingsForm.transform((data) => ({
+        ...data,
+        document_type_id: data.document_type_id === '' ? null : data.document_type_id,
+    })).put(route('payroll-settings.update'), { preserveScroll: true });
 }
 
 // ── Carga de la plantilla de Costa Rica ─────────────────────────────────
@@ -258,6 +372,269 @@ const accountLabel = (id) => {
             >{{ label }}</button>
         </nav>
 
+        <!-- ── Determinación de cuentas ──────────────────────────────── -->
+        <template v-if="tab === 'determinacion'">
+            <div v-if="!hasConfiguration" class="card load-card">
+                <h3>Primero hay que cargar la configuración</h3>
+                <p class="hint">
+                    Las cuentas de cada carga social, provisión y concepto son campos <em>de</em> esos registros.
+                    Mientras no exista ninguno, no hay nada a qué vincular una cuenta — y por eso esta pantalla
+                    aparece vacía.
+                </p>
+                <p class="hint danger-hint">
+                    <strong>Los porcentajes de la plantilla no son una fuente autorizada.</strong> Verificá cada
+                    uno contra el decreto vigente antes de correr la primera planilla en serio.
+                </p>
+
+                <div class="load-row">
+                    <div class="field">
+                        <label>Vigentes desde</label>
+                        <input v-model="defaultsForm.valid_from" type="date" required>
+                    </div>
+                    <button type="button" class="btn btn-primary" :disabled="defaultsForm.processing" @click="loadDefaults">
+                        Cargar plantilla de Costa Rica
+                    </button>
+                </div>
+            </div>
+
+            <template v-else>
+                <p class="hint">
+                    Todas las cuentas de la planilla en un solo lugar. El asiento tiene tres bloques y esta tabla
+                    sigue ese orden: el bruto y sus retenciones, lo que el patrono paga encima, y lo que se
+                    provisiona.
+                </p>
+
+                <div v-if="missing.length" class="flash flash-warning">
+                    <strong>{{ missing.length }} cuenta(s) sin asignar.</strong>
+                    Una carga o provisión sin sus cuentas no se puede contabilizar, y eso no aparece hasta que
+                    alguien intenta contabilizar la planilla:
+                    <ul class="problem-list">
+                        <li v-for="(gap, i) in missing.slice(0, 8)" :key="i">{{ gap }}</li>
+                        <li v-if="missing.length > 8" class="muted">…y {{ missing.length - 8 }} más.</li>
+                    </ul>
+                </div>
+
+                <p v-else class="flash flash-success">
+                    Todas las cuentas necesarias están asignadas.
+                </p>
+
+                <form @submit.prevent="saveAccounts">
+                    <!-- Bloque 1 -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h3>1 · El salario bruto y sus retenciones</h3>
+                        </div>
+
+                        <p class="hint small">
+                            El gasto es el <strong>bruto</strong>, no el neto: las retenciones son dinero del
+                            trabajador que la empresa custodia hasta enterarlo, no gasto propio.
+                        </p>
+
+                        <div class="determination-grid">
+                            <div class="field">
+                                <label>Gasto de salarios <span class="req">obligatoria</span></label>
+                                <select v-model="accountsForm.settings.salary_expense_account_id">
+                                    <option value="">Sin asignar</option>
+                                    <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                </select>
+                                <span class="hint small">
+                                    Valor por defecto. La ficha de cada empleado puede sobreescribirla, para
+                                    separar mano de obra directa de gasto administrativo.
+                                </span>
+                            </div>
+
+                            <div class="field">
+                                <label>Planilla por pagar <span class="req">obligatoria</span></label>
+                                <select v-model="accountsForm.settings.net_payable_account_id">
+                                    <option value="">Sin asignar</option>
+                                    <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                </select>
+                                <span class="hint small">
+                                    El pasivo con el trabajador. El banco se toca en el asiento de pago, que es
+                                    otro hecho.
+                                </span>
+                            </div>
+
+                            <div class="field">
+                                <label>Impuesto al salario por pagar</label>
+                                <select v-model="accountsForm.settings.income_tax_payable_account_id">
+                                    <option value="">Sin asignar</option>
+                                    <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                </select>
+                                <span class="hint small">
+                                    Sin esta cuenta la retención cae en «planilla por pagar»: cuadra, pero mezcla
+                                    lo que se le debe a Tributación con lo que se le debe al trabajador.
+                                </span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Bloque 2 -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h3>2 · Cargas sociales</h3>
+                            <span class="muted small">{{ activeContributions.length }} componente(s) vigente(s)</span>
+                        </div>
+
+                        <p class="hint small">
+                            La carga <strong>obrera</strong> se le retiene al trabajador: solo genera pasivo, no
+                            es gasto de la empresa. La <strong>patronal</strong> es gasto y pasivo a la vez, y
+                            necesita las dos cuentas.
+                        </p>
+
+                        <div class="table-scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Componente</th>
+                                        <th>Paga</th>
+                                        <th class="right">%</th>
+                                        <th>Cuenta de gasto</th>
+                                        <th>Cuenta de pasivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="c in activeContributions" :key="c.id">
+                                        <td class="num">{{ c.code }}</td>
+                                        <td class="small">{{ c.name }}</td>
+                                        <td class="small">{{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}</td>
+                                        <td class="right num">{{ c.percentage.toFixed(2) }}</td>
+                                        <td>
+                                            <select
+                                                v-if="c.payer === 'employer'"
+                                                v-model="contributionRow(c.id).expense_account_id"
+                                                class="inline-select"
+                                                :class="{ unset: !contributionRow(c.id).expense_account_id }"
+                                            >
+                                                <option value="">Sin asignar</option>
+                                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                            </select>
+                                            <span v-else class="muted small">no aplica</span>
+                                        </td>
+                                        <td>
+                                            <select
+                                                v-model="contributionRow(c.id).liability_account_id"
+                                                class="inline-select"
+                                                :class="{ unset: !contributionRow(c.id).liability_account_id }"
+                                            >
+                                                <option value="">Sin asignar</option>
+                                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Bloque 3 -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h3>3 · Provisiones</h3>
+                        </div>
+
+                        <p class="hint small">
+                            El aguinaldo se paga en diciembre pero se gana todo el año. Una provisión en cero no
+                            genera línea de asiento y por eso no exige cuentas.
+                        </p>
+
+                        <div class="table-scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Provisión</th>
+                                        <th class="right">%</th>
+                                        <th>Cuenta de gasto</th>
+                                        <th>Cuenta de pasivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="p in activeProvisions" :key="p.id" :class="{ dim: p.percentage <= 0 }">
+                                        <td class="num">{{ p.code }}</td>
+                                        <td class="small">{{ p.name }}</td>
+                                        <td class="right num">{{ p.percentage.toFixed(4) }}</td>
+                                        <td>
+                                            <select
+                                                v-model="provisionRow(p.id).expense_account_id"
+                                                class="inline-select"
+                                                :class="{ unset: p.percentage > 0 && !provisionRow(p.id).expense_account_id }"
+                                            >
+                                                <option value="">Sin asignar</option>
+                                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select
+                                                v-model="provisionRow(p.id).liability_account_id"
+                                                class="inline-select"
+                                                :class="{ unset: p.percentage > 0 && !provisionRow(p.id).liability_account_id }"
+                                            >
+                                                <option value="">Sin asignar</option>
+                                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Conceptos -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h3>Conceptos de ingreso y deducción</h3>
+                            <span class="muted small">opcionales</span>
+                        </div>
+
+                        <p class="hint small">
+                            Un ingreso sin cuenta propia va al gasto de salarios; una deducción sin cuenta cae en
+                            «planilla por pagar». Las dos cuadran, pero pierden el detalle: conviene asignarle
+                            cuenta a los rebajos de préstamo y a la cuota solidarista, que son pasivos con
+                            terceros y no con el trabajador.
+                        </p>
+
+                        <div class="table-scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Concepto</th>
+                                        <th>Tipo</th>
+                                        <th>Cuenta</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="c in activeConcepts" :key="c.id">
+                                        <td class="num">{{ c.code }}</td>
+                                        <td class="small">{{ c.name }}</td>
+                                        <td class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
+                                        <td>
+                                            <select v-model="conceptRow(c.id).account_id" class="inline-select">
+                                                <option value="">Heredar</option>
+                                                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <div class="save-bar card">
+                        <span class="muted small">
+                            Se guarda todo junto: dejar la mitad asignada produce una planilla que falla a mitad
+                            de contabilizar.
+                        </span>
+                        <button type="submit" class="btn btn-primary" :disabled="accountsForm.processing">
+                            {{ accountsForm.processing ? 'Guardando…' : 'Guardar determinación de cuentas' }}
+                        </button>
+                    </div>
+                </form>
+            </template>
+        </template>
+
         <!-- ── Cuentas y parámetros ────────────────────────────────── -->
         <template v-if="tab === 'cuentas'">
             <div v-if="!hasConfiguration" class="card load-card">
@@ -286,52 +663,23 @@ const accountLabel = (id) => {
             </div>
 
             <form class="card settings-card" @submit.prevent="saveSettings">
-                <h3>Cuentas del asiento de planilla</h3>
+                <h3>Parámetros del cálculo</h3>
 
                 <p class="hint">
-                    El asiento carga al gasto el <strong>salario bruto</strong> —no el neto—, abona las
-                    retenciones a su pasivo y deja el neto en «planilla por pagar». El banco se toca en el
-                    asiento de pago, que es otro hecho: mezclarlos impide conciliar.
+                    Las cuentas contables no se configuran acá sino en
+                    <button type="button" class="link-btn" @click="tab = 'determinacion'">Determinación de cuentas</button>,
+                    que las muestra todas juntas. Están separadas a propósito: una tasa la fija un decreto y una
+                    cuenta la fija el contador.
                 </p>
 
-                <div class="field-row">
-                    <div class="field">
-                        <label>Gasto de salarios</label>
-                        <select v-model="settingsForm.salary_expense_account_id">
-                            <option value="">Sin definir</option>
-                            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
-                        </select>
-                        <span class="hint small">Por defecto; la ficha del empleado puede sobreescribirla.</span>
-                    </div>
-                    <div class="field">
-                        <label>Planilla por pagar</label>
-                        <select v-model="settingsForm.net_payable_account_id">
-                            <option value="">Sin definir</option>
-                            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
-                        </select>
-                        <span class="hint small">El pasivo con el trabajador hasta que se le paga.</span>
-                    </div>
+                <div class="field">
+                    <label>Tipo de documento del asiento</label>
+                    <select v-model="settingsForm.document_type_id">
+                        <option value="">Sin definir</option>
+                        <option v-for="d in documentTypes" :key="d.id" :value="d.id">{{ d.code }} — {{ d.name }}</option>
+                    </select>
+                    <span class="hint small">Con el que se contabiliza la planilla.</span>
                 </div>
-
-                <div class="field-row">
-                    <div class="field">
-                        <label>Impuesto al salario por pagar</label>
-                        <select v-model="settingsForm.income_tax_payable_account_id">
-                            <option value="">Sin definir</option>
-                            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
-                        </select>
-                        <span class="hint small">Es dinero del trabajador que la empresa custodia hasta enterarlo.</span>
-                    </div>
-                    <div class="field">
-                        <label>Tipo de documento del asiento</label>
-                        <select v-model="settingsForm.document_type_id">
-                            <option value="">Sin definir</option>
-                            <option v-for="d in documentTypes" :key="d.id" :value="d.id">{{ d.code }} — {{ d.name }}</option>
-                        </select>
-                    </div>
-                </div>
-
-                <h3>Parámetros del cálculo</h3>
 
                 <div class="field-row">
                     <div class="field">
@@ -1015,7 +1363,77 @@ td.strong { font-weight: 600; }
     cursor: help;
 }
 
-.problem-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.problem-list { margin: 0.4rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.2rem; }
 
 .error { color: var(--color-danger); font-size: 0.76rem; }
+
+/* ── Determinación de cuentas ────────────────────────────────────────── */
+
+.determination-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: 0.9rem;
+    padding: 0 1.1rem 1.1rem;
+}
+
+.req {
+    margin-left: 0.35rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: #fdf0ea;
+    color: #a04000;
+}
+
+/* Los select dentro de la tabla: angostos por defecto para que la tabla no
+   se desborde, y anchos al enfocarlos para poder leer el nombre completo
+   de la cuenta. */
+.inline-select {
+    width: 100%;
+    max-width: 22rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.4rem;
+    font-size: 0.78rem;
+    color: var(--color-text);
+}
+
+.inline-select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+/* Una cuenta que falta y que hace falta: se ve sin tener que leer la lista
+   de arriba. */
+.inline-select.unset {
+    border-color: #d08a55;
+    background: #fdf6f1;
+}
+
+.save-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.9rem 1.1rem;
+    position: sticky;
+    bottom: 0.75rem;
+}
+
+/* Un enlace que cambia de pestaña, no de página: tiene que ser un <button>
+   para ser accesible con teclado, y parecer un enlace. */
+.link-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-primary);
+    text-decoration: underline;
+    cursor: pointer;
+}
 </style>

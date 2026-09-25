@@ -427,6 +427,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('vacations/{movement}', [VacationController::class, 'destroy'])->name('vacations.destroy');
 
         Route::put('payroll-settings', [PayrollSettingsController::class, 'update'])->name('payroll-settings.update');
+        // Todas las cuentas de la planilla en una sola pantalla y un solo
+        // guardado: ver el encabezado de updateAccounts().
+        Route::put('payroll-settings/accounts', [PayrollSettingsController::class, 'updateAccounts'])->name('payroll-settings.accounts.update');
         Route::post('payroll-settings/load-defaults', [PayrollSettingsController::class, 'loadDefaults'])->name('payroll-settings.load-defaults');
 
         Route::post('payroll-settings/contributions', [PayrollSettingsController::class, 'storeContribution'])->name('payroll-settings.contributions.store');

@@ -15,6 +15,7 @@ use App\Domains\Payroll\Models\PayrollTaxCredit;
 use App\Domains\Payroll\Services\CostaRicaPayrollDefaults;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -137,15 +138,101 @@ class PayrollSettingsController extends Controller
         );
     }
 
+    /**
+     * Guarda TODAS las cuentas de la planilla de una sola vez.
+     *
+     * ── Por qué existe este método aparte ────────────────────────────────
+     *
+     * Las cuentas de la planilla viven repartidas: unas en la configuración
+     * de la compañía, dos en cada componente de carga social, dos en cada
+     * provisión y una en cada concepto. Eso está bien como modelo —cada
+     * cuenta pertenece a lo que la usa— y es inservible como pantalla:
+     * obliga a abrir sesenta modales para contestar una sola pregunta, que
+     * es «¿a qué cuentas va a caer mi planilla?».
+     *
+     * Esta pantalla responde esa pregunta en una tabla y guarda todo junto,
+     * en una transacción. Las pantallas por fila siguen existiendo para lo
+     * demás (tasas, vigencias, banderas); acá solo se tocan cuentas.
+     */
+    public function updateAccounts(Request $request, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $companyId = $currentCompany->id();
+
+        $accountRule = ['nullable', Rule::exists('chart_of_accounts', 'id')
+            ->where('company_id', $companyId)
+            ->where('accepts_posting', true)];
+
+        $validated = $request->validate([
+            'settings' => ['array'],
+            'settings.salary_expense_account_id' => $accountRule,
+            'settings.net_payable_account_id' => $accountRule,
+            'settings.income_tax_payable_account_id' => $accountRule,
+
+            'contributions' => ['array'],
+            'contributions.*.id' => ['required', Rule::exists('payroll_contributions', 'id')->where('company_id', $companyId)],
+            'contributions.*.expense_account_id' => $accountRule,
+            'contributions.*.liability_account_id' => $accountRule,
+
+            'provisions' => ['array'],
+            'provisions.*.id' => ['required', Rule::exists('payroll_provisions', 'id')->where('company_id', $companyId)],
+            'provisions.*.expense_account_id' => $accountRule,
+            'provisions.*.liability_account_id' => $accountRule,
+
+            'concepts' => ['array'],
+            'concepts.*.id' => ['required', Rule::exists('payroll_concepts', 'id')->where('company_id', $companyId)],
+            'concepts.*.account_id' => $accountRule,
+        ]);
+
+        DB::transaction(function () use ($validated, $companyId) {
+            // Se guarda todo o nada: dejar la mitad de las cuentas asignadas
+            // produce una planilla que falla a mitad de contabilizar, con
+            // parte del asiento ya armado.
+            if (isset($validated['settings'])) {
+                PayrollSetting::updateOrCreate(
+                    ['company_id' => $companyId],
+                    $validated['settings']
+                );
+            }
+
+            foreach ($validated['contributions'] ?? [] as $row) {
+                PayrollContribution::where('id', $row['id'])->update([
+                    'expense_account_id' => $row['expense_account_id'] ?? null,
+                    'liability_account_id' => $row['liability_account_id'] ?? null,
+                ]);
+            }
+
+            foreach ($validated['provisions'] ?? [] as $row) {
+                PayrollProvision::where('id', $row['id'])->update([
+                    'expense_account_id' => $row['expense_account_id'] ?? null,
+                    'liability_account_id' => $row['liability_account_id'] ?? null,
+                ]);
+            }
+
+            foreach ($validated['concepts'] ?? [] as $row) {
+                PayrollConcept::where('id', $row['id'])->update([
+                    'account_id' => $row['account_id'] ?? null,
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Determinación de cuentas de planilla guardada.');
+    }
+
+    /**
+     * Los parámetros del cálculo. Las CUENTAS no pasan por acá: viven en
+     * updateAccounts(), que es la pantalla de determinación.
+     *
+     * Están separados a propósito. Una tasa la fija un decreto y una cuenta la
+     * fija el contador: son dos decisiones que se toman en momentos distintos
+     * y por personas distintas. Con los dos en el mismo formulario, guardar un
+     * cambio de parámetro con el formulario a medio cargar borraría cuentas
+     * que nadie quiso tocar.
+     */
     public function update(Request $request, CurrentCompany $currentCompany): RedirectResponse
     {
         $companyId = $currentCompany->id();
-        $accountRule = fn () => ['nullable', Rule::exists('chart_of_accounts', 'id')->where('company_id', $companyId)];
 
         $validated = $request->validate([
-            'salary_expense_account_id' => $accountRule(),
-            'net_payable_account_id' => $accountRule(),
-            'income_tax_payable_account_id' => $accountRule(),
             'document_type_id' => ['nullable', Rule::exists('document_types', 'id')->where('company_id', $companyId)],
             'vacation_days_per_month' => ['required', 'numeric', 'gte:0', 'max:10'],
             // Cero significa sin tope. El máximo es 100 porque un tope mayor

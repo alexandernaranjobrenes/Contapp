@@ -3,6 +3,63 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-24 — Determinación de cuentas de planilla en una sola pantalla
+
+**Reporte del usuario:** «en planillas no observo la vinculación de cuentas contables para escoger para parametrizar los registros contables».
+
+### Eran dos cosas distintas y las dos ciertas
+
+**La inmediata:** la configuración de planilla nunca se había cargado en la base de desarrollo. Las cuentas de cada carga social, provisión y concepto son *columnas de esas filas*; sin filas no hay nada a qué vincular una cuenta, y la pantalla se veía vacía. La pestaña ahora explica exactamente eso en el estado vacío, en vez de mostrar una tabla sin filas y dejar al usuario adivinando.
+
+**La de fondo, que es un error de diseño mío:** aun con todo cargado, las cuentas quedaban repartidas en unos sesenta lugares —cuatro en la configuración, dos en cada uno de los trece componentes de carga, dos en cada provisión, una en cada concepto—, cada una dentro del modal de edición de su fila.
+
+Como *modelo* está bien: cada cuenta pertenece a lo que la usa, y por eso una carga nueva trae sus cuentas consigo. Como *pantalla* es inservible: obliga a abrir sesenta modales para contestar una sola pregunta, que es «¿a qué cuentas va a caer mi planilla?». El usuario ya había pedido lo mismo para inventario —la matriz de determinación de cuentas— y acá se lo devolví desarmado.
+
+### La pantalla sigue la forma del asiento, no la de las tablas
+
+Una tabla plana con sesenta filas habría sido igual de inútil. La determinación se agrupa en los tres bloques del asiento de planilla, que es el orden en que un contador la piensa:
+
+1. **el bruto y sus retenciones** — gasto de salarios, planilla por pagar, impuesto por pagar;
+2. **cargas sociales** — una fila por componente;
+3. **provisiones** — aguinaldo, vacaciones, cesantía, preaviso;
+
+y aparte los conceptos, marcados como opcionales.
+
+### Qué cuenta es obligatoria no es una regla uniforme
+
+Y la pantalla lo distingue en vez de pedir todo:
+
+- **carga obrera:** solo pasivo. No lleva cuenta de gasto porque no es gasto de la empresa: es dinero del trabajador que se retiene. La celda dice «no aplica» en vez de ofrecer un selector que nunca hay que llenar.
+- **carga patronal:** gasto y pasivo, las dos.
+- **provisión:** las dos, pero solo si su porcentaje es mayor que cero — una provisión en cero no genera línea de asiento.
+- **concepto:** opcional. Sin cuenta, un ingreso va al gasto de salarios y una deducción cae en «planilla por pagar»: cuadra, pero mezcla el rebajo con el neto.
+
+Lo que falta y hace falta se marca en el propio selector, no solo en un aviso arriba: un borde distinto en la celda vacía. Un aviso que enumera «13 cuentas sin asignar» obliga a buscarlas; la celda marcada se ve donde está.
+
+### Un solo guardado, en una transacción
+
+Se guarda todo junto y all-or-nothing. Dejar la mitad de las cuentas asignadas produce exactamente el peor caso: una planilla que no falla al configurarse ni al calcularse, sino **a mitad de contabilizar**, con parte del asiento ya armado. Tiene prueba: se corrompe una fila de trece y no se guarda ninguna.
+
+### Las dos validaciones que importan
+
+`accepts_posting` y la compañía, las dos en la regla de cada cuenta:
+
+- una cuenta de **otra compañía** cruzaría el gasto de una empresa al catálogo de otra, y el asiento saldría contra una cuenta que no existe en su compañía;
+- una cuenta **de mayor** (no hoja) la rechazaría `PostJournalService` al contabilizar. Es mejor decirlo al configurar, cuando hay tiempo, que el día de cierre.
+
+Las dos tienen prueba.
+
+### Las cuentas salieron del formulario de parámetros
+
+Dejarlas en los dos lados habría sido peor que tenerlas en uno solo malo. El formulario de parámetros guardaba las tres cuentas de la compañía junto con los días de vacaciones y el tope de deducciones; con la pantalla nueva encima, quedaban dos formularios escribiendo los mismos campos.
+
+Eso produce un fallo silencioso concreto: guardar un cambio de parámetro con el formulario a medio cargar deja las cuentas en `null` sin que nadie lo haya pedido, y **la planilla se vuelve incontabilizable por haber cambiado los días de vacaciones**. Ahora el endpoint de parámetros no acepta cuentas ni pasándoselas a mano. Tiene sus dos pruebas.
+
+Las pantallas por fila siguen existiendo para tasas, vigencias y banderas. Mezclar en la misma tabla la tasa de una carga con su cuenta habría vuelto a juntar dos decisiones que se toman en momentos distintos y por personas distintas: la tasa la fija un decreto y la cuenta la fija el contador.
+
+**9 pruebas nuevas.**
+
+---
 ## 2026-09-23 — Módulo de planillas de Costa Rica
 
 **Pedido del usuario:** el módulo de nóminas completo —cuotas CCSS, aprovisionamiento de aguinaldo, vacaciones y extremos laborales, acciones de personal, comprobantes de pago, reportes quincenales, archivos de pago bancario, adelantos, centros de costo por empleado, asociación solidarista, impuesto al salario, fotografías, cargas automáticas de vacaciones— «más lo que recomiendes».
