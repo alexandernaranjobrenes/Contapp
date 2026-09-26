@@ -44,7 +44,7 @@ class PayrollPeriod extends Model
     protected $fillable = [
         'company_id', 'year', 'frequency', 'number', 'name',
         'start_date', 'end_date', 'payment_date', 'status',
-        'journal_entry_id', 'document_type_id',
+        'journal_entry_id', 'reversal_journal_entry_id', 'document_type_id',
         'calculated_at', 'approved_at', 'approved_by', 'created_by',
     ];
 
@@ -72,6 +72,18 @@ class PayrollPeriod extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /** El contraasiento, cuando la planilla se anuló. */
+    public function reversalJournalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'reversal_journal_entry_id');
+    }
+
+    /** La bitácora: quién la calculó, aprobó, reabrió o anuló, y por qué. */
+    public function events(): HasMany
+    {
+        return $this->hasMany(PayrollPeriodEvent::class)->orderBy('id');
     }
 
     public function documentType(): BelongsTo

@@ -10,7 +10,9 @@ use App\Domains\Payroll\Models\PayrollConcept;
 use App\Domains\Payroll\Models\PayrollEntry;
 use App\Domains\Payroll\Models\PayrollInput;
 use App\Domains\Payroll\Models\PayrollPeriod;
+use App\Domains\Payroll\Models\PayrollPeriodEvent;
 use App\Domains\Payroll\Services\CalculatePayrollService;
+use App\Domains\Payroll\Services\PayrollPeriodLifecycleService;
 use App\Domains\Payroll\Services\PayrollReadinessChecker;
 use App\Domains\Payroll\Services\PostPayrollService;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +28,7 @@ class PayrollPeriodController extends Controller
         private readonly CalculatePayrollService $calculator,
         private readonly PostPayrollService $poster,
         private readonly PayrollReadinessChecker $readiness,
+        private readonly PayrollPeriodLifecycleService $lifecycle,
     ) {}
 
     public function index(): Response
@@ -86,9 +89,27 @@ class PayrollPeriodController extends Controller
                 'status_label' => PayrollPeriod::STATUSES[$period->status] ?? $period->status,
                 'is_recalculable' => $period->isRecalculable(),
                 'journal_entry_id' => $period->journal_entry_id,
+                'reversal_journal_entry_id' => $period->reversal_journal_entry_id,
                 'calculated_at' => $period->calculated_at?->format('Y-m-d H:i'),
                 'approved_at' => $period->approved_at?->format('Y-m-d H:i'),
+                // Una planilla aprobada se REABRE (nada salió todavía); una
+                // contabilizada se ANULA, que es otra cosa: hay un asiento
+                // que revertir y saldos que devolver.
+                'can_reopen' => $period->status === 'approved',
+                'can_void' => in_array($period->status, ['posted', 'closed'], true),
             ],
+            'events' => $period->events()->with('createdBy:id,name')->get()
+                ->map(fn (PayrollPeriodEvent $e) => [
+                    'id' => $e->id,
+                    'event' => $e->event,
+                    'event_label' => PayrollPeriodEvent::EVENTS[$e->event] ?? $e->event,
+                    'from_status' => PayrollPeriod::STATUSES[$e->from_status] ?? $e->from_status,
+                    'to_status' => PayrollPeriod::STATUSES[$e->to_status] ?? $e->to_status,
+                    'reason' => $e->reason,
+                    'journal_entry_id' => $e->journal_entry_id,
+                    'user' => $e->createdBy?->name,
+                    'at' => $e->created_at?->format('Y-m-d H:i'),
+                ])->values(),
             'entries' => $entries->map(fn (PayrollEntry $e) => [
                 'id' => $e->id,
                 'employee_id' => $e->employee_id,
@@ -366,6 +387,60 @@ class PayrollPeriodController extends Controller
         }
 
         return back()->with('success', 'Planilla contabilizada.');
+    }
+
+    /**
+     * Devuelve una planilla aprobada a «calculada» para poder corregirla.
+     */
+    public function reopen(Request $request, int $payrollPeriod, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $period = PayrollPeriod::findOrFail($payrollPeriod);
+
+        $validated = $request->validate([
+            // La razón es obligatoria: un cambio de estado sin motivo es un
+            // dato que no sirve para nada seis meses después.
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        try {
+            $this->lifecycle->reopen(
+                $this->company($currentCompany->id()), $period, $validated['reason'], $request->user()->id
+            );
+        } catch (InvalidPayrollException $e) {
+            return back()->withErrors(['payroll' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Planilla reabierta. Corregí lo que haga falta y volvé a calcular.');
+    }
+
+    /**
+     * Anula una planilla contabilizada: revierte el asiento, deshace los
+     * saldos y la devuelve a «abierta» para rehacerla.
+     */
+    public function void(Request $request, int $payrollPeriod, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $period = PayrollPeriod::findOrFail($payrollPeriod);
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+            'posting_date' => ['nullable', 'date'],
+        ]);
+
+        try {
+            $this->lifecycle->void(
+                $this->company($currentCompany->id()),
+                $period,
+                $validated['reason'],
+                isset($validated['posting_date']) ? new \DateTimeImmutable($validated['posting_date']) : null,
+                $request->user()->id,
+            );
+        } catch (InvalidPayrollException|\RuntimeException $e) {
+            return back()->withErrors(['payroll' => $e->getMessage()]);
+        }
+
+        return back()->with('success',
+            'Planilla anulada: se contabilizó el asiento de reversión, se devolvieron los saldos de préstamo y '.
+            'se quitaron las vacaciones acreditadas. El período volvió a estar abierto.');
     }
 
     public function destroy(int $payrollPeriod): RedirectResponse

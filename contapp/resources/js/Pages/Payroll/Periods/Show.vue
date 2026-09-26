@@ -12,6 +12,7 @@ const props = defineProps({
     employees: { type: Array, default: () => [] },
     inputs: { type: Array, default: () => [] },
     readiness: { type: Object, default: null },
+    events: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -78,6 +79,30 @@ function post() {
 // no hace fallar el cálculo, produce una boleta en cero que se pierde entre
 // cincuenta. Las advertencias no bloquean — la decisión de seguir es del
 // usuario, no del sistema.
+// Deshacer una planilla son dos operaciones distintas, no una: reabrir una
+// aprobada no sacó nada del sistema; anular una contabilizada exige revertir
+// el asiento y devolver saldos.
+const undoing = ref(null);
+const undoForm = useForm({ reason: '', posting_date: '' });
+
+function openUndo(kind) {
+    undoForm.reset();
+    undoForm.clearErrors();
+    undoing.value = kind;
+}
+
+function submitUndo() {
+    const target = undoing.value === 'void' ? 'payroll-periods.void' : 'payroll-periods.reopen';
+
+    undoForm.transform((data) => ({
+        reason: data.reason,
+        ...(undoing.value === 'void' && data.posting_date !== '' ? { posting_date: data.posting_date } : {}),
+    })).post(route(target, props.period.id), {
+        preserveScroll: true,
+        onSuccess: () => (undoing.value = null),
+    });
+}
+
 const canCalculate = computed(
     () => props.period.is_recalculable && (props.readiness === null || props.readiness.ok)
 );
@@ -142,6 +167,10 @@ const statusClass = {
                 <Link v-if="period.journal_entry_id" :href="route('journal-entries.show', period.journal_entry_id)" class="small">
                     Asiento #{{ period.journal_entry_id }}
                 </Link>
+                <Link
+                    v-if="period.reversal_journal_entry_id"
+                    :href="route('journal-entries.show', period.reversal_journal_entry_id)" class="small"
+                >Reversión #{{ period.reversal_journal_entry_id }}</Link>
             </div>
 
             <div class="header-actions">
@@ -150,6 +179,8 @@ const statusClass = {
                 </button>
                 <button type="button" class="btn btn-ghost" :disabled="!canApprove" @click="approve">Aprobar</button>
                 <button type="button" class="btn btn-ghost" :disabled="!canPost" @click="posting = true">Contabilizar</button>
+                <button v-if="period.can_reopen" type="button" class="btn btn-ghost" @click="openUndo('reopen')">Reabrir</button>
+                <button v-if="period.can_void" type="button" class="btn btn-ghost danger" @click="openUndo('void')">Anular</button>
             </div>
         </div>
 
@@ -365,6 +396,94 @@ const statusClass = {
             </div>
         </div>
 
+        <section v-if="events.length" class="card">
+            <div class="card-header">
+                <h3>Bitácora del período</h3>
+                <span class="muted small">{{ events.length }} movimiento(s)</span>
+            </div>
+
+            <div class="table-scroll compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cuándo</th>
+                            <th>Qué pasó</th>
+                            <th>De</th>
+                            <th>A</th>
+                            <th>Quién</th>
+                            <th>Motivo</th>
+                            <th>Asiento</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="e in events" :key="e.id">
+                            <td class="num small">{{ e.at }}</td>
+                            <td class="small"><strong>{{ e.event_label }}</strong></td>
+                            <td class="muted small">{{ e.from_status ?? '—' }}</td>
+                            <td class="small">{{ e.to_status }}</td>
+                            <td class="muted small">{{ e.user ?? '—' }}</td>
+                            <td class="small">{{ e.reason ?? '—' }}</td>
+                            <td class="num small">
+                                <Link v-if="e.journal_entry_id" :href="route('journal-entries.show', e.journal_entry_id)">
+                                    #{{ e.journal_entry_id }}
+                                </Link>
+                                <span v-else class="muted">—</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div v-if="undoing" class="modal-backdrop" @click.self="undoing = null">
+            <form class="modal card" @submit.prevent="submitUndo">
+                <h2>{{ undoing === 'void' ? 'Anular la planilla' : 'Reabrir la planilla' }}</h2>
+
+                <template v-if="undoing === 'void'">
+                    <p class="hint small">
+                        Esta planilla ya está contabilizada. Anularla <strong>no la borra</strong>: se contabiliza
+                        un asiento de reversión que cancela exactamente al original, se devuelven los saldos de
+                        préstamo que se rebajaron y se quitan las vacaciones acreditadas. El período vuelve a
+                        estar abierto para rehacerlo con sus mismas fechas.
+                    </p>
+                    <p class="flash flash-warning">
+                        Las boletas actuales se van a reemplazar al recalcular. Si necesitás conservarlas,
+                        exportá el XLSX antes de anular.
+                    </p>
+                </template>
+
+                <p v-else class="hint small">
+                    Vuelve a <strong>calculada</strong> para corregirla. No hay asiento que revertir, porque
+                    todavía no se contabilizó. La aprobación anterior se limpia: la planilla corregida la tiene
+                    que volver a aprobar alguien.
+                </p>
+
+                <div class="field">
+                    <label>Motivo</label>
+                    <textarea v-model="undoForm.reason" rows="3" required
+                        placeholder="Por qué hay que deshacer esta planilla"></textarea>
+                    <span class="hint small">Queda en la bitácora del período.</span>
+                    <span v-if="undoForm.errors.reason" class="error">{{ undoForm.errors.reason }}</span>
+                </div>
+
+                <div v-if="undoing === 'void'" class="field">
+                    <label>Fecha del asiento de reversión</label>
+                    <input v-model="undoForm.posting_date" type="date">
+                    <span class="hint small">
+                        Vacío usa la fecha del asiento original, que es lo que deja los saldos como si la
+                        planilla nunca se hubiera contabilizado.
+                    </span>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" @click="undoing = null">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" :disabled="undoForm.processing">
+                        {{ undoing === 'void' ? 'Anular' : 'Reabrir' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+
         <div v-if="posting" class="modal-backdrop" @click.self="posting = false">
             <form class="modal card" @submit.prevent="post">
                 <h2>Contabilizar la planilla</h2>
@@ -509,4 +628,9 @@ td.strong { font-weight: 600; }
 tfoot td { font-weight: 600; border-top: 2px solid var(--color-border); }
 
 .error { color: var(--color-danger); font-size: 0.76rem; }
+
+/* Anular revierte un asiento contabilizado: no puede verse igual que los
+   demás botones de la barra. */
+.btn.danger { color: var(--color-danger); }
+.btn.danger:hover { background: var(--color-danger-soft); }
 </style>

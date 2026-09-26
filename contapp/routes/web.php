@@ -412,6 +412,11 @@ Route::middleware('auth')->group(function () {
         Route::post('payroll-periods/{payrollPeriod}/calculate', [PayrollPeriodController::class, 'calculate'])->name('payroll-periods.calculate');
         Route::post('payroll-periods/{payrollPeriod}/approve', [PayrollPeriodController::class, 'approve'])->name('payroll-periods.approve');
         Route::post('payroll-periods/{payrollPeriod}/post', [PayrollPeriodController::class, 'post'])->name('payroll-periods.post');
+        // Una planilla confirmada no se edita ni se borra: se reabre (si solo
+        // está aprobada) o se anula con asiento de reversión (si ya se
+        // contabilizó). Es la misma regla que el resto del sistema.
+        Route::post('payroll-periods/{payrollPeriod}/reopen', [PayrollPeriodController::class, 'reopen'])->name('payroll-periods.reopen');
+        Route::post('payroll-periods/{payrollPeriod}/void', [PayrollPeriodController::class, 'void'])->name('payroll-periods.void');
         // El archivo de pago mueve dinero de verdad: va del lado de
         // escritura aunque técnicamente solo genere un CSV.
         Route::get('payroll-periods/{payrollPeriod}/bank-file', [PayrollReportController::class, 'bankFile'])->name('payroll-periods.bank-file');
