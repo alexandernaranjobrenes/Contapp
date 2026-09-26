@@ -5,6 +5,7 @@ namespace App\Domains\Payroll\Models;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Core\Concerns\BelongsToCompany;
 use App\Domains\Core\Models\DocumentType;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -84,11 +85,58 @@ class PayrollPeriod extends Model
     }
 
     /**
-     * Cuántos días calendario cubre el período. Es el divisor de la parte
-     * proporcional cuando alguien ingresa o sale a mitad de período.
+     * Las frecuencias que se cuentan con el mes convencional de 30 días.
+     *
+     * Un salario mensual está definido POR MES, y en planilla el mes son 30
+     * días con dos quincenas idénticas de 15 — sin importar que agosto tenga
+     * 31 y febrero 28. La semanal no entra acá: una semana son siete días
+     * reales y forzarla a la convención la distorsionaría.
+     */
+    public const CONVENTIONAL_MONTH_FREQUENCIES = ['mensual', 'quincenal'];
+
+    /**
+     * El día del mes que le corresponde a una fecha en la convención de 30.
+     *
+     * El ÚLTIMO día del mes siempre cuenta como 30. De ahí salen las dos
+     * propiedades que se esperan de una planilla:
+     *
+     *   · el 31 de agosto no agrega un día que el mes de 30 no tiene, así
+     *     que la segunda quincena trabajada completa paga 15 y no 16;
+     *   · el 28 de febrero llega igual al final del mes, así que esa misma
+     *     quincena paga 15 y no 13.
+     *
+     * Sin esta regla, trabajar la segunda quincena completa pagaría distinto
+     * según el mes, que es justo lo que la convención existe para evitar.
+     */
+    public static function conventionalDay(\DateTimeInterface $date): int
+    {
+        $carbon = Carbon::instance(
+            $date instanceof \DateTimeImmutable ? \DateTime::createFromImmutable($date) : $date
+        );
+
+        if ($carbon->day === $carbon->daysInMonth) {
+            return 30;
+        }
+
+        return min($carbon->day, 30);
+    }
+
+    /**
+     * Cuántos días cuenta el período. Es el divisor de la parte proporcional
+     * cuando alguien ingresa o sale a mitad de período.
      */
     public function dayCount(): int
     {
-        return (int) $this->start_date->diffInDays($this->end_date) + 1;
+        if (! in_array($this->frequency, self::CONVENTIONAL_MONTH_FREQUENCIES, true)) {
+            return (int) $this->start_date->diffInDays($this->end_date) + 1;
+        }
+
+        return self::conventionalDay($this->end_date) - self::conventionalDay($this->start_date) + 1;
+    }
+
+    /** Si este período se cuenta con el mes convencional de 30 días. */
+    public function usesConventionalMonth(): bool
+    {
+        return in_array($this->frequency, self::CONVENTIONAL_MONTH_FREQUENCIES, true);
     }
 }

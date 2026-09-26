@@ -118,8 +118,10 @@ class CalculatePayrollService
 
             $byEmployee = collect($this->mergeInputs($inputs, $recurring))->groupBy('employeeId');
 
-            // Se devuelve el saldo ANTES de borrar: ver el encabezado.
-            $this->restoreBalances($period);
+            // Se descarta el cálculo anterior por completo —saldos de
+            // préstamo devueltos y acreditaciones de vacaciones quitadas—
+            // antes de rehacerlo. Ver discardCalculation().
+            $this->discardCalculation($period);
 
             // Y las obligaciones se leen DESPUÉS de devolverlo. Leerlas antes
             // funciona la primera vez y falla al recalcular: la colección en
@@ -134,10 +136,6 @@ class CalculatePayrollService
                 ->orderBy('id')
                 ->get()
                 ->groupBy('employee_id');
-
-            PayrollEntry::where('payroll_period_id', $period->id)->delete();
-            VacationMovement::withoutGlobalScope(CompanyScope::class)
-                ->where('payroll_period_id', $period->id)->where('type', 'accrual')->delete();
 
             foreach ($employees as $employee) {
                 $this->calculateEmployee(
@@ -298,6 +296,33 @@ class CalculatePayrollService
         }
 
         return $merged;
+    }
+
+    /**
+     * Deshace TODO lo que un cálculo movió fuera de la planilla.
+     *
+     * El cálculo no solo escribe boletas: rebaja el saldo de los préstamos y
+     * acredita días de vacaciones. Descartar un período —al recalcularlo o al
+     * borrarlo— tiene que deshacer las tres cosas, o el trabajador queda
+     * debiendo menos de lo que debe y con días que nadie le acreditó, sin
+     * ningún documento que lo explique.
+     *
+     * Es público porque el borrado del período lo necesita igual que el
+     * recálculo: los dos descartan un cálculo, y hacerlo distinto en cada
+     * lugar es como se separan dos copias de la misma regla.
+     */
+    public function discardCalculation(PayrollPeriod $period): void
+    {
+        $this->restoreBalances($period);
+
+        PayrollEntry::where('payroll_period_id', $period->id)->delete();
+
+        // Solo las acreditaciones automáticas: un ajuste o un disfrute los
+        // digitó una persona y no son consecuencia de este cálculo.
+        VacationMovement::withoutGlobalScope(CompanyScope::class)
+            ->where('payroll_period_id', $period->id)
+            ->where('type', 'accrual')
+            ->delete();
     }
 
     /**
@@ -717,9 +742,16 @@ class CalculatePayrollService
             return '0.00';
         }
 
-        $days = Carbon::parse($start)->diffInDays(Carbon::parse($end)) + 1;
+        // Con mes convencional de 30 días, quien ingresa el 20 de agosto cobra
+        // 11 días de la segunda quincena (del 20 al 30) y quien sale el 20
+        // cobra 5 (del 16 al 20); quien sale el 31 cobra los 15 de la
+        // quincena, porque el mes de planilla no tiene día 31.
+        $days = $period->usesConventionalMonth()
+            ? PayrollPeriod::conventionalDay(Carbon::parse($end))
+                - PayrollPeriod::conventionalDay(Carbon::parse($start)) + 1
+            : Carbon::parse($start)->diffInDays(Carbon::parse($end)) + 1;
 
-        return number_format($days, 2, '.', '');
+        return number_format(max($days, 0), 2, '.', '');
     }
 
     /**
@@ -734,7 +766,7 @@ class CalculatePayrollService
             return $fullPeriodSalary;
         }
 
-        return bcdiv(bcmul($fullPeriodSalary, $daysWorked, 4), $periodDays, 2);
+        return $this->round(bcdiv(bcmul($fullPeriodSalary, $daysWorked, 6), $periodDays, 6));
     }
 
     /**

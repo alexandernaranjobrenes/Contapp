@@ -324,9 +324,55 @@ it('paga proporcional a quien ingresa a mitad de período en vez de excluirlo o 
 
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
 
-    // Del 17 al 31 son 15 días de un período de 31.
+    // Mes convencional de 30 días: del 17 al 30 son 14, no 15. El día 31 no
+    // existe en el mes de planilla, y por eso un mes trabajado completo paga
+    // siempre 30 días — en agosto igual que en febrero.
+    expect($entry->days_worked)->toBe('14.00')
+        ->and($entry->total_earnings)->toBe('466666.67');
+});
+
+it('cuenta las dos quincenas como quince días, sin importar los días del mes', function () {
+    $f = payrollFixture();
+    $ingresa = payrollEmployee($f, ['hire_date' => '2026-08-20']);
+    $sale = payrollEmployee($f, ['termination_date' => '2026-08-20', 'status' => 'active']);
+    $completo = payrollEmployee($f);
+
+    // Agosto tiene 31 días; la segunda quincena va del 16 al 31.
+    $segunda = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 16, 'name' => 'Agosto 2026 · 2.ª quincena',
+        'start_date' => '2026-08-16', 'end_date' => '2026-08-31', 'payment_date' => '2026-08-31',
+    ]);
+
+    calculatePayroll($f, $segunda);
+
+    $dias = PayrollEntry::where('payroll_period_id', $segunda->id)
+        ->get()->keyBy('employee_id')->map(fn ($e) => $e->days_worked);
+
+    // Quien ingresó el 20 cobra del 20 al 30: once días.
+    expect($dias[$ingresa->id])->toBe('11.00')
+        // Quien salió el 20 cobra del 16 al 20: cinco.
+        ->and($dias[$sale->id])->toBe('5.00')
+        // Y la quincena completa son quince, aunque el mes tenga 31 días.
+        ->and($dias[$completo->id])->toBe('15.00');
+});
+
+it('una quincena completa de febrero también paga quince días', function () {
+    $f = payrollFixture();
+    payrollEmployee($f);
+
+    // Febrero de 2026 termina el 28: sin la convención pagaría 13 días y la
+    // misma quincena valdría distinto según el mes.
+    $febrero = payrollPeriod($f, [
+        'frequency' => 'quincenal', 'number' => 4, 'name' => 'Febrero 2026 · 2.ª quincena',
+        'start_date' => '2026-02-16', 'end_date' => '2026-02-28', 'payment_date' => '2026-02-28',
+    ]);
+
+    calculatePayroll($f, $febrero);
+
+    $entry = PayrollEntry::where('payroll_period_id', $febrero->id)->firstOrFail();
+
     expect($entry->days_worked)->toBe('15.00')
-        ->and($entry->total_earnings)->toBe(bcdiv(bcmul('1000000.00', '15', 4), '31', 2));
+        ->and($entry->total_earnings)->toBe('500000.00');
 });
 
 it('acumula las dos quincenas: la primera no retiene y la segunda retiene el mes', function () {
@@ -504,8 +550,10 @@ it('acredita vacaciones proporcionales al período y no las duplica al recalcula
 
     expect($movements)->toHaveCount(1);
 
-    // 31 días sobre 30, por 1 día al mes.
-    expect((string) $movements->first()->days)->toBe('1.0333');
+    // Un mes trabajado completo acredita exactamente un día. Con días
+    // calendario daba 1,0333 en marzo y 0,9667 en febrero: el mismo mes
+    // trabajado valía distinto según cuántos días tuviera.
+    expect((string) $movements->first()->days)->toBe('1.0000');
 });
 
 it('cobra el costo patronal encima del salario sin tocar el neto del trabajador', function () {

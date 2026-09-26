@@ -15,6 +15,7 @@ use App\Domains\Payroll\Services\PayrollReadinessChecker;
 use App\Domains\Payroll\Services\PostPayrollService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -381,7 +382,17 @@ class PayrollPeriodController extends Controller
             ]);
         }
 
-        $period->delete();
+        // Borrar el período es descartar su cálculo, y eso alcanza más allá de
+        // las boletas: hay que devolver el saldo de los préstamos que se
+        // rebajaron y quitar los días de vacaciones que se acreditaron. Sin
+        // esto, el trabajador queda debiendo menos de lo que debe y con días
+        // que nadie le acreditó, y el período que los produjo ya no existe
+        // para explicarlo.
+        DB::transaction(function () use ($period) {
+            $this->calculator->discardCalculation($period);
+
+            $period->delete();
+        });
 
         return back()->with('success', 'Período eliminado.');
     }
