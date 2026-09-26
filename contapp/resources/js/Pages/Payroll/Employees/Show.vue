@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
@@ -12,6 +12,8 @@ const props = defineProps({
     personnelActions: { type: Array, default: () => [] },
     options: { type: Object, required: true },
     costCenters: { type: Array, default: () => [] },
+    notes: { type: Array, default: () => [] },
+    noteCategories: { type: Object, default: () => ({}) },
 });
 
 const page = usePage();
@@ -41,6 +43,40 @@ const vacationLiability = computed(
 );
 
 const liveDeductions = computed(() => props.deductions.filter((d) => d.status === 'active'));
+
+// ── Bitácora ────────────────────────────────────────────────────────────
+
+const noting = ref(false);
+const noteForm = useForm({
+    happened_on: new Date().toISOString().slice(0, 10),
+    category: 'observation',
+    title: '',
+    body: '',
+    is_confidential: false,
+});
+
+function submitNote() {
+    noteForm.post(route('employee-notes.store', props.employee.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            noting.value = false;
+            noteForm.reset();
+            noteForm.happened_on = new Date().toISOString().slice(0, 10);
+        },
+    });
+}
+
+function destroyNote(note) {
+    if (! confirm('¿Eliminar esta anotación?')) return;
+
+    router.delete(route('employee-notes.destroy', [props.employee.id, note.id]), { preserveScroll: true });
+}
+
+const noteClass = {
+    warning: 'is-warning',
+    incident: 'is-warning',
+    recognition: 'is-good',
+};
 </script>
 
 <template>
@@ -208,6 +244,40 @@ const liveDeductions = computed(() => props.deductions.filter((d) => d.status ==
 
         <section class="card">
             <div class="card-header">
+                <h3>Bitácora</h3>
+                <button type="button" class="btn btn-primary btn-sm" @click="noting = true">+ Anotar</button>
+            </div>
+
+            <div v-if="page.props.errors?.note" class="flash flash-error note-error">{{ page.props.errors.note }}</div>
+
+            <p class="hint small">
+                Hechos, observaciones y llamadas de atención, con la fecha en que <em>pasaron</em>. Una anotación
+                no se edita: si hay que corregirla, se anota encima — así queda constancia de que hubo una
+                corrección.
+            </p>
+
+            <ul v-if="notes.length" class="note-list">
+                <li v-for="n in notes" :key="n.id" :class="noteClass[n.category]">
+                    <div class="note-head">
+                        <span class="note-date num small">{{ n.happened_on }}</span>
+                        <span class="badge badge-neutral">{{ n.category_label }}</span>
+                        <span v-if="n.is_confidential" class="badge badge-warning">confidencial</span>
+                        <strong class="note-title">{{ n.title }}</strong>
+                        <span class="spacer" />
+                        <button v-if="n.can_delete" type="button" class="btn btn-ghost btn-sm" @click="destroyNote(n)">
+                            Eliminar
+                        </button>
+                    </div>
+                    <p class="note-body">{{ n.body }}</p>
+                    <span class="muted small">Anotó {{ n.user ?? '—' }} · {{ n.at }}</span>
+                </li>
+            </ul>
+
+            <p v-else class="muted empty-row">Sin anotaciones.</p>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
                 <h3>Historial laboral</h3>
                 <Link :href="route('personnel-actions.index')" class="btn btn-ghost btn-sm">Nueva acción</Link>
             </div>
@@ -245,6 +315,49 @@ const liveDeductions = computed(() => props.deductions.filter((d) => d.status ==
                 </table>
             </div>
         </section>
+        <div v-if="noting" class="modal-backdrop" @click.self="noting = false">
+            <form class="modal card" @submit.prevent="submitNote">
+                <h2>Anotar en la bitácora</h2>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label>Fecha del hecho</label>
+                        <input v-model="noteForm.happened_on" type="date" required>
+                        <span class="hint small">Cuándo pasó, no cuándo lo estás anotando.</span>
+                        <span v-if="noteForm.errors.happened_on" class="error">{{ noteForm.errors.happened_on }}</span>
+                    </div>
+                    <div class="field">
+                        <label>Tipo</label>
+                        <select v-model="noteForm.category" required>
+                            <option v-for="(label, value) in noteCategories" :key="value" :value="value">{{ label }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Título</label>
+                    <input v-model="noteForm.title" type="text" maxlength="255" required>
+                    <span v-if="noteForm.errors.title" class="error">{{ noteForm.errors.title }}</span>
+                </div>
+
+                <div class="field">
+                    <label>Detalle</label>
+                    <textarea v-model="noteForm.body" rows="5" required
+                        placeholder="Qué pasó, con los hechos concretos"></textarea>
+                    <span v-if="noteForm.errors.body" class="error">{{ noteForm.errors.body }}</span>
+                </div>
+
+                <label class="check">
+                    <input v-model="noteForm.is_confidential" type="checkbox">
+                    Confidencial
+                </label>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" @click="noting = false">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" :disabled="noteForm.processing">Anotar</button>
+                </div>
+            </form>
+        </div>
     </AppLayout>
 </template>
 
@@ -353,4 +466,46 @@ const liveDeductions = computed(() => props.deductions.filter((d) => d.status ==
 .negative { color: var(--color-danger); }
 
 .error { color: var(--color-danger); font-size: 0.74rem; }
+
+/* ── Bitácora ───────────────────────────────────────────────────────── */
+
+.note-error { margin: 0 1.1rem 0.5rem; }
+
+.note-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 1.1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.note-list li {
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-alt);
+    border-left: 3px solid var(--color-border);
+}
+
+/* Una llamada de atención y un reconocimiento no se leen igual de rápido si
+   se ven iguales. */
+.note-list li.is-warning { border-left-color: #d08a55; }
+.note-list li.is-good { border-left-color: var(--color-success); }
+
+.note-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.note-head .spacer { flex: 1; }
+.note-date { color: var(--color-text-muted); }
+.note-title { font-size: 0.88rem; }
+
+.note-body {
+    margin: 0.35rem 0 0.25rem;
+    font-size: 0.84rem;
+    white-space: pre-line;
+}
 </style>

@@ -33,10 +33,23 @@ class PersonnelAction extends Model
         'position_change' => 'Cambio de puesto',
         'cost_center_change' => 'Cambio de centro de costo',
         'journey_change' => 'Cambio de jornada',
+        'vacation' => 'Vacaciones',
+        'warning' => 'Amonestación',
         'suspension' => 'Suspensión',
         'reinstatement' => 'Reincorporación',
         'termination' => 'Terminación',
     ];
+
+    /**
+     * Las que no cambian ningún campo de la ficha: son hechos que se
+     * registran y se aprueban, no modificaciones.
+     *
+     * Una amonestación y unas vacaciones aprobadas tienen que quedar en el
+     * historial con su fecha y su firma —de eso depende un despido con causa
+     * o un reclamo por días no disfrutados— pero no tocan la ficha: el saldo
+     * de vacaciones lo llevan sus propios movimientos.
+     */
+    public const RECORD_ONLY = ['vacation', 'warning'];
 
     public const STATUSES = [
         'draft' => 'Borrador',

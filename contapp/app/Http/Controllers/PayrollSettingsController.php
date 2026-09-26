@@ -94,6 +94,7 @@ class PayrollSettingsController extends Controller
                     'affects_ccss' => (bool) $c->affects_ccss,
                     'affects_income_tax' => (bool) $c->affects_income_tax,
                     'affects_provisions' => (bool) $c->affects_provisions,
+                    'sign' => (int) $c->sign,
                     'calculation' => $c->calculation,
                     'factor' => $c->factor === null ? null : (float) $c->factor,
                     'account_id' => $c->account_id,
@@ -492,6 +493,9 @@ class PayrollSettingsController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::in(['earning', 'deduction'])],
+            // -1 solo tiene sentido en un ingreso: una deducción ya resta por
+            // su naturaleza, y ponerle signo negativo la haría sumar.
+            'sign' => ['integer', Rule::in([1, -1])],
             // Las tres banderas deciden qué es salario y qué no: son lo más
             // consecuente de toda la configuración.
             'affects_ccss' => ['boolean'],
@@ -522,6 +526,10 @@ class PayrollSettingsController extends Controller
             'affects_income_tax' => $validated['affects_income_tax'] ?? false,
             'affects_provisions' => $validated['affects_provisions'] ?? false,
             'is_recurring' => $validated['is_recurring'] ?? false,
+            // Una deducción siempre suma dentro de su bloque: el signo
+            // negativo la haría restar de las deducciones, o sea sumar al
+            // neto. Se fuerza en vez de confiar en el formulario.
+            'sign' => $validated['type'] === 'deduction' ? 1 : ($validated['sign'] ?? 1),
         ];
     }
 }

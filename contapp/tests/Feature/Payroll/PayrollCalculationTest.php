@@ -652,3 +652,42 @@ it('reproduce una planilla vieja con las tasas de su fecha, no con las de hoy', 
     expect($marzoEntry->lines->firstWhere('code', 'IVM-OBR')->rate)->toBe('4.1700')
         ->and($agostoEntry->lines->firstWhere('code', 'IVM-OBR')->rate)->toBe('5.1700');
 });
+
+it('un rubro con signo negativo resta del devengado Y de la base de cargas', function () {
+    $f = payrollFixture();
+    $employee = payrollEmployee($f);
+    $period = payrollPeriod($f);
+
+    $incapacidad = PayrollConcept::where('company_id', $f['company']->id)
+        ->where('code', 'HORAS-INC')->firstOrFail();
+
+    // Ocho horas de incapacidad sobre un salario de 1.000.000: la hora vale
+    // 1.000.000 ÷ 30 ÷ 8 = 4.166,67, así que se rebajan 33.333,33.
+    calculatePayroll($f, $period, [
+        new PayrollInputLine($employee->id, $incapacidad->id, quantity: 8),
+    ]);
+
+    $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
+
+    expect($entry->total_earnings)->toBe('966666.67')
+        // Lo que importa: la base de CARGAS también baja. Como deducción
+        // habría rebajado el neto y dejado la base en 1.000.000, y la empresa
+        // y el trabajador cotizarían sobre horas que nadie pagó.
+        ->and($entry->ccss_base)->toBe('966666.67')
+        ->and($entry->lines->firstWhere('code', 'HORAS-INC')->amount)->toBe('-33333.33');
+});
+
+it('una deducción no puede tener signo negativo, porque sumaría al neto', function () {
+    $f = payrollFixture();
+
+    $this->put(route('payroll-settings.concepts.update',
+        PayrollConcept::where('company_id', $f['company']->id)->where('code', 'PRESTAMO')->firstOrFail()->id
+    ), [
+        'code' => 'PRESTAMO', 'name' => 'Cuota de préstamo', 'type' => 'deduction',
+        'sign' => -1, 'calculation' => 'amount', 'status' => 'active',
+    ])->assertSessionHasNoErrors();
+
+    // Se fuerza a +1 en vez de confiar en el formulario: una deducción que
+    // resta dentro de su propio bloque le sumaría al neto del trabajador.
+    expect(PayrollConcept::where('code', 'PRESTAMO')->firstOrFail()->sign)->toBe(1);
+});

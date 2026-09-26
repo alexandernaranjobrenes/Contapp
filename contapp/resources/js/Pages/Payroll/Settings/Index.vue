@@ -211,7 +211,7 @@ const blanks = {
         valid_from: '', valid_to: '', status: 'active', legal_basis: '',
     },
     concept: {
-        code: '', name: '', type: 'earning',
+        code: '', name: '', type: 'earning', sign: 1,
         affects_ccss: true, affects_income_tax: true, affects_provisions: true,
         calculation: 'amount', factor: '', account_id: '', is_recurring: false,
         status: 'active', legal_basis: '',
@@ -973,7 +973,10 @@ const accountLabel = (id) => {
                         <tbody>
                             <tr v-for="c in concepts" :key="c.id" :class="{ dim: c.status !== 'active' }">
                                 <td class="num">{{ c.code }}</td>
-                                <td>{{ c.name }}</td>
+                                <td>
+                                    {{ c.name }}
+                                    <span v-if="c.sign < 0" class="badge badge-warning sign-tag">resta del devengado</span>
+                                </td>
                                 <td class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
                                 <td class="muted small">
                                     {{ { amount: 'Monto', percentage: 'Porcentaje', hours: 'Horas' }[c.calculation] }}
@@ -1207,6 +1210,19 @@ const accountLabel = (id) => {
                         <input v-model="rowForm.name" type="text" required>
                     </div>
 
+                    <div v-if="rowForm.type === 'earning'" class="field">
+                        <label>Efecto sobre el devengado</label>
+                        <select v-model="rowForm.sign" required>
+                            <option :value="1">Suma (+)</option>
+                            <option :value="-1">Resta (−)</option>
+                        </select>
+                        <span class="hint small">
+                            Un rubro que <strong>resta</strong> —horas de incapacidad, ausencias sin goce— baja el
+                            devengado <strong>y la base de cargas</strong>. Como deducción solo bajaría el neto, y
+                            se cotizaría sobre horas que nadie pagó.
+                        </span>
+                    </div>
+
                     <div class="field-row">
                         <div class="field">
                             <label>Cómo se calcula</label>
@@ -1364,6 +1380,8 @@ td.strong { font-weight: 600; }
 }
 
 .problem-list { margin: 0.4rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.2rem; }
+
+.sign-tag { margin-left: 0.4rem; font-size: 0.6rem; }
 
 .error { color: var(--color-danger); font-size: 0.76rem; }
 

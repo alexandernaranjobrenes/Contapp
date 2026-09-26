@@ -231,6 +231,7 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                     <select v-model="form.type" required>
                         <option value="taken">Disfrute</option>
                         <option value="paid">Pago en efectivo</option>
+                        <option value="settlement">Liquidación definitiva</option>
                         <option value="adjustment">Ajuste</option>
                     </select>
                     <span class="hint small">
@@ -266,7 +267,7 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                     </div>
                 </div>
 
-                <div v-if="form.type === 'paid'" class="field">
+                <div v-if="form.type === 'paid' || form.type === 'settlement'" class="field">
                     <label>Monto pagado</label>
                     <input v-model="form.amount" type="number" step="0.01" min="0">
                 </div>

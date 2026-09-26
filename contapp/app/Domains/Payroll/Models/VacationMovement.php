@@ -19,8 +19,16 @@ class VacationMovement extends Model
         'accrual' => 'Acreditación',
         'taken' => 'Disfrute',
         'paid' => 'Pago en efectivo',
+        // Se separa del pago en efectivo a propósito: un pago ordinario deja
+        // al trabajador activo con saldo cero, y una liquidación cierra el
+        // saldo porque la relación laboral terminó. Distinguirlos es lo que
+        // permite después contar cuántos días se pagaron por liquidación.
+        'settlement' => 'Liquidación definitiva',
         'adjustment' => 'Ajuste',
     ];
+
+    /** Los que rebajan el saldo y por eso se guardan en negativo. */
+    public const REDUCING_TYPES = ['taken', 'paid', 'settlement'];
 
     protected $fillable = [
         'company_id', 'employee_id', 'type', 'movement_date', 'days',

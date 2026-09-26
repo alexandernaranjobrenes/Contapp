@@ -84,7 +84,7 @@ class VacationController extends Controller
             'employee_id' => ['required', Rule::exists('employees', 'id')->where('company_id', $companyId)],
             // La acreditación automática la hace el motor al calcular la
             // planilla; a mano solo se registran disfrutes, pagos y ajustes.
-            'type' => ['required', Rule::in(['taken', 'paid', 'adjustment'])],
+            'type' => ['required', Rule::in(['taken', 'paid', 'settlement', 'adjustment'])],
             'movement_date' => ['required', 'date'],
             'days' => ['required', 'numeric', 'not_in:0'],
             'from_date' => ['nullable', 'date'],
@@ -102,7 +102,7 @@ class VacationController extends Controller
         // vacaciones.
         $days = (string) $validated['days'];
 
-        if (in_array($validated['type'], ['taken', 'paid'], true)) {
+        if (in_array($validated['type'], VacationMovement::REDUCING_TYPES, true)) {
             $days = bccomp($days, '0', 4) > 0 ? bcmul($days, '-1', 4) : $days;
         }
 

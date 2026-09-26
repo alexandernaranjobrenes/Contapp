@@ -35,7 +35,7 @@ class PayrollConcept extends Model
     protected $fillable = [
         'company_id', 'code', 'name', 'type',
         'affects_ccss', 'affects_income_tax', 'affects_provisions',
-        'calculation', 'factor', 'account_id', 'is_recurring', 'status', 'legal_basis',
+        'sign', 'calculation', 'factor', 'account_id', 'is_recurring', 'status', 'legal_basis',
     ];
 
     protected function casts(): array
@@ -45,6 +45,7 @@ class PayrollConcept extends Model
             'affects_income_tax' => 'boolean',
             'affects_provisions' => 'boolean',
             'is_recurring' => 'boolean',
+            'sign' => 'integer',
         ];
     }
 

@@ -31,6 +31,7 @@ use App\Http\Controllers\DocumentTypeNumberSeriesController;
 use App\Http\Controllers\DocumentTypeRegisterController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeDeductionController;
+use App\Http\Controllers\EmployeeNoteController;
 use App\Http\Controllers\EmployeeRecurringInputController;
 use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\FxRevaluationController;
@@ -403,6 +404,10 @@ Route::middleware('auth')->group(function () {
         Route::post('employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::put('employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
         Route::post('employees/{employee}/photo', [EmployeeController::class, 'photo'])->name('employees.photo');
+        // La bitácora del funcionario vive dentro de su ficha, que es donde
+        // se consulta: no tiene pantalla propia.
+        Route::post('employees/{employee}/notes', [EmployeeNoteController::class, 'store'])->name('employee-notes.store');
+        Route::delete('employees/{employee}/notes/{note}', [EmployeeNoteController::class, 'destroy'])->name('employee-notes.destroy');
         Route::delete('employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
 
         Route::post('payroll-periods', [PayrollPeriodController::class, 'store'])->name('payroll-periods.store');

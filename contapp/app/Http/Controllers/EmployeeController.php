@@ -7,6 +7,7 @@ use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
+use App\Domains\Payroll\Models\EmployeeNote;
 use App\Domains\Payroll\Models\PersonnelAction;
 use App\Domains\Payroll\Models\VacationMovement;
 use Illuminate\Http\RedirectResponse;
@@ -119,6 +120,27 @@ class EmployeeController extends Controller
                     'status' => $a->status,
                     'status_label' => PersonnelAction::STATUSES[$a->status] ?? $a->status,
                 ])->values(),
+            // La bitácora: hechos con fecha, en el orden en que pasaron y no
+            // en el que se digitaron.
+            'notes' => EmployeeNote::with('createdBy:id,name')
+                ->where('employee_id', $model->id)
+                ->orderByDesc('happened_on')->orderByDesc('id')
+                ->get()
+                ->map(fn (EmployeeNote $n) => [
+                    'id' => $n->id,
+                    'happened_on' => $n->happened_on->format('Y-m-d'),
+                    'category' => $n->category,
+                    'category_label' => EmployeeNote::CATEGORIES[$n->category] ?? $n->category,
+                    'title' => $n->title,
+                    'body' => $n->body,
+                    'is_confidential' => (bool) $n->is_confidential,
+                    'user' => $n->createdBy?->name,
+                    'at' => $n->created_at?->format('Y-m-d H:i'),
+                    // Solo quien la escribió y solo el mismo día: ver el
+                    // controlador de la bitácora.
+                    'can_delete' => $n->created_by === request()->user()?->id && $n->created_at?->isToday(),
+                ])->values(),
+            'noteCategories' => EmployeeNote::CATEGORIES,
             'options' => $this->options(),
             'costCenters' => CostCenter::where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
@@ -367,6 +389,17 @@ class EmployeeController extends Controller
             'is_income_tax_exempt' => $validated['is_income_tax_exempt'] ?? false,
             'is_ccss_exempt' => $validated['is_ccss_exempt'] ?? false,
             'children_credit_count' => $validated['children_credit_count'] ?? 0,
+            // Con fecha de salida, el trabajador queda dado de baja sin que
+            // nadie tenga que acordarse de cambiar el estado. Olvidarlo lo
+            // dejaría apareciendo como activo en la verificación previa y en
+            // la lista de la planilla siguiente.
+            //
+            // No opera al revés: borrar la fecha NO lo reactiva. Una
+            // reincorporación es una decisión con su propia acción de
+            // personal, no la consecuencia de vaciar un campo.
+            'status' => ($validated['termination_date'] ?? null) !== null
+                ? 'terminated'
+                : $validated['status'],
         ];
     }
 }

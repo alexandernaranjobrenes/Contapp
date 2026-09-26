@@ -416,6 +416,14 @@ class CalculatePayrollService
                 continue;
             }
 
+            // Un rubro de ingreso con signo negativo RESTA del devengado —las
+            // horas de incapacidad, que el patrono no paga—. Es distinto de
+            // una deducción: la deducción rebaja el neto y deja intacta la
+            // base de cargas, y sobre horas no pagadas no se cotiza.
+            if ($concept->type === 'earning' && (int) $concept->sign < 0) {
+                $amount = bcmul($amount, '-1', 2);
+            }
+
             $lines[] = [
                 'kind' => $concept->type === 'earning' ? 'earning' : 'deduction',
                 'code' => $concept->code,

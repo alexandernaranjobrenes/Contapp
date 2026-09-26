@@ -204,6 +204,21 @@ class CostaRicaPayrollDefaults
             'affects_ccss' => true, 'affects_income_tax' => true, 'affects_provisions' => true,
             'legal_basis' => 'Lo que la empresa paga POR ENCIMA del subsidio: eso sí es salario.'],
 
+        // ── Ingresos que RESTAN del devengado ───────────────────────────
+        //
+        // El patrono no paga las horas de incapacidad: las cubre el subsidio
+        // de la CCSS o del INS. Van como rubro de ingreso con signo negativo
+        // y no como deducción, porque tienen que bajar también la BASE DE
+        // CARGAS: sobre horas que no se pagaron no se cotiza.
+        ['code' => 'HORAS-INC', 'name' => 'Horas por incapacidad (rebajo)', 'type' => 'earning',
+            'sign' => -1, 'calculation' => 'hours', 'factor' => '1.0000',
+            'affects_ccss' => true, 'affects_income_tax' => true, 'affects_provisions' => true,
+            'legal_basis' => 'Las horas no laboradas por incapacidad no las paga el patrono; se rebajan del devengado.'],
+        ['code' => 'AUSENCIA', 'name' => 'Ausencias y permisos sin goce (rebajo)', 'type' => 'earning',
+            'sign' => -1, 'calculation' => 'hours', 'factor' => '1.0000',
+            'affects_ccss' => true, 'affects_income_tax' => true, 'affects_provisions' => true,
+            'legal_basis' => 'Tiempo no laborado y no pagado: sale del devengado y de la base de cargas.'],
+
         // ── Ingresos que NO son salario ─────────────────────────────────
         ['code' => 'VIATICO', 'name' => 'Viáticos y reembolsos', 'type' => 'earning',
             'calculation' => 'amount',
@@ -290,7 +305,10 @@ class CostaRicaPayrollDefaults
             foreach (self::CONCEPTS as $row) {
                 PayrollConcept::withoutGlobalScope(CompanyScope::class)->updateOrCreate(
                     ['company_id' => $company->id, 'code' => $row['code']],
-                    $row + ['company_id' => $company->id, 'status' => 'active', 'is_recurring' => false]
+                    // El signo va explícito: sin él, recargar la plantilla no
+                    // devolvería a +1 un rubro que alguien puso en -1, y la
+                    // carga dejaría de ser idempotente.
+                    $row + ['company_id' => $company->id, 'status' => 'active', 'is_recurring' => false, 'sign' => 1]
                 );
                 $counts['concepts']++;
             }
