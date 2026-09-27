@@ -26,7 +26,9 @@ const nav = computed(() => {
         { label: 'Panel', href: route('dashboard'), match: ['dashboard'], icon: '⌂' },
         {
             label: 'Contabilidad', icon: '☰', module: 'accounting',
-            match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*'],
+            match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*',
+                'reports.trial-balance.*', 'reports.income-statement.*', 'reports.balance-sheet.*', 'reports.period-comparison.*',
+                'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*'],
             children: [
                 { label: 'Tipos de documento', href: route('document-types.index'), match: ['document-types.*'] },
                 { label: 'Catálogo de cuentas', href: route('chart-of-accounts.index'), match: ['chart-of-accounts.*'] },
@@ -34,14 +36,39 @@ const nav = computed(() => {
                 { label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
                 { label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
                 { label: 'Cierre de períodos', href: route('period-close.index'), match: ['period-close.*'] },
+
+                // Los reportes de contabilidad, adentro del módulo al que
+                // pertenecen. Van al final y no al principio porque lo diario
+                // son los registros; los estados se consultan al cerrar.
+                //
+                // Cada uno conserva su propio `module: 'reports'`: el permiso
+                // de reportería es distinto del de contabilidad, y el
+                // middleware del backend sigue exigiendo el de reportes.
+                { label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'], module: 'reports' },
+                { label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'], module: 'reports' },
+                { label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'], module: 'reports' },
+                { label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'], module: 'reports' },
+                { label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'], module: 'reports' },
+                { label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'], module: 'reports' },
+                // Exporta cuentas, centros de costo, normas de reparto,
+                // indicadores de IVA y socios: casi todo catálogo contable, y
+                // no tiene un módulo propio donde vivir.
+                { label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'], module: 'reports' },
+                // Guarda combinaciones de parámetros de VARIOS reportes, no
+                // solo de los contables; queda acá porque la mayoría lo son.
+                { label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'], module: 'reports' },
             ],
         },
         {
             label: 'Centros de costo y cambiario', icon: '🏷', module: 'accounting',
-            match: ['cost-centers.*', 'cost-allocation-rules.*', 'exchange-rates.*', 'fx-revaluation.*'],
+            match: ['cost-centers.*', 'cost-allocation-rules.*', 'exchange-rates.*', 'fx-revaluation.*',
+                'reports.cost-center.*', 'reports.cost-allocation-rule.*'],
             children: [
                 { label: 'Centros de costo', href: route('cost-centers.index'), match: ['cost-centers.*'] },
                 { label: 'Normas de reparto', href: route('cost-allocation-rules.index'), match: ['cost-allocation-rules.*'] },
+                // Los dos reportes de este módulo, junto a lo que reportan.
+                { label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'], module: 'reports' },
+                { label: 'Reporte de normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'], module: 'reports' },
                 { label: 'Tipos de cambio', href: route('exchange-rates.index'), match: ['exchange-rates.*'] },
                 { label: 'Diferencial: ejecutar', href: route('fx-revaluation.create'), match: ['fx-revaluation.create', 'fx-revaluation.preview', 'fx-revaluation.store'] },
                 { label: 'Diferencial: historial', href: route('fx-revaluation.index'), match: ['fx-revaluation.index', 'fx-revaluation.show'] },
@@ -49,9 +76,15 @@ const nav = computed(() => {
         },
         {
             label: 'Inventario', icon: '▦', module: 'inventory',
-            match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*'],
+            match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*',
+                'reports.inventory-valuation.*', 'reports.inventory-aging.*'],
             children: [
                 { label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
+                // Estos dos son de inventario y estaban en el menú general de
+                // reportes. El índice de «Reportes de inventario» ya los
+                // enlazaba: ahora también están donde se los busca.
+                { label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'], module: 'reports' },
+                { label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'], module: 'reports' },
                 { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
                 { label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
                 { label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
@@ -85,12 +118,14 @@ const nav = computed(() => {
         },
         {
             label: 'Planillas', icon: '👥', module: 'payroll',
-            match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'recurring-inputs.*', 'personnel-actions.*', 'vacations.*', 'job-structure.*', 'payroll-settings.*'],
+            match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'recurring-inputs.*', 'personnel-actions.*', 'vacations.*', 'labor-settlements.*', 'payroll-reports.*', 'job-structure.*', 'payroll-settings.*'],
             children: [
                 { label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
                 { label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
                 { label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
                 { label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
+                { label: 'Liquidaciones laborales', href: route('labor-settlements.index'), match: ['labor-settlements.*'] },
+                { label: 'Reportes', href: route('payroll-reports.index'), match: ['payroll-reports.*'] },
                 { label: 'Departamentos y puestos', href: route('job-structure.index'), match: ['job-structure.*', 'departments.*', 'job-positions.*'] },
                 { label: 'Rubros fijos', href: route('recurring-inputs.index'), match: ['recurring-inputs.*'] },
                 { label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
@@ -99,19 +134,24 @@ const nav = computed(() => {
         },
         {
             label: 'Socios de negocio', icon: '⚭', module: 'business_partners',
-            match: ['business-partners.*', 'bp-categories.*'],
+            match: ['business-partners.*', 'bp-categories.*', 'reports.aging.*'],
             children: [
                 { label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
                 { label: 'Categorías de socios', href: route('bp-categories.index'), match: ['bp-categories.*'] },
+                // La antigüedad de saldos es de clientes y proveedores: su
+                // módulo es este, no contabilidad.
+                { label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'], module: 'reports' },
             ],
         },
         {
             label: 'Bancos', icon: '🏦', module: 'banking',
-            match: ['bank-accounts.*', 'bank-reconciliations.*', 'bank-reconciliation-report.*'],
+            match: ['bank-accounts.*', 'bank-reconciliations.*', 'bank-reconciliation-report.*', 'reports.cash-flow-projection.*'],
             children: [
                 { label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
                 { label: 'Conciliaciones bancarias', href: route('bank-reconciliations.hub'), match: ['bank-reconciliations.*'] },
                 { label: 'Reporte de conciliaciones', href: route('bank-reconciliation-report.index'), match: ['bank-reconciliation-report.*'] },
+                // Qué se espera cobrar y pagar: es tesorería, no contabilidad.
+                { label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'], module: 'reports' },
             ],
         },
         {
@@ -122,26 +162,24 @@ const nav = computed(() => {
                 { label: 'Reporte de IVA', href: route('tax-report.index'), match: ['tax-report.*'], module: 'tax' },
             ],
         },
-        {
-            label: 'Reportes', icon: '▤', module: 'reports',
-            match: ['reports.*', 'saved-reports.*'],
-            children: [
-                { label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'] },
-                { label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'] },
-                { label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'] },
-                { label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'] },
-                { label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'] },
-                { label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'] },
-                { label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'] },
-                { label: 'Normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'] },
-                { label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'] },
-                { label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'] },
-                { label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'] },
-                { label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'] },
-                { label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'] },
-                { label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'] },
-            ],
-        },
+        // Ya no hay un grupo «Reportes» de nivel superior: cada reporte vive
+        // dentro del módulo que reporta.
+        //
+        // ── Por qué, y qué se pierde ────────────────────────────────────
+        //
+        // Un menú general de reportes obliga a saber de antemano que lo que se
+        // busca es «un reporte» y no «algo de contabilidad». Quien quiere el
+        // balance de comprobación lo busca en Contabilidad, y quien quiere la
+        // antigüedad de saldos la busca en Socios de negocio. Inventario y
+        // Planillas ya tenían los suyos adentro; esto termina de aplicar el
+        // mismo criterio a los que quedaban sueltos.
+        //
+        // La contrapartida: el permiso de módulo de cada reporte sigue siendo
+        // `reports`, pero ahora también hay que poder ver el módulo que lo
+        // contiene para que aparezca en el menú. Un usuario con reportería y
+        // sin contabilidad ya no ve el balance en el menú —aunque la dirección
+        // le sigue funcionando, porque el gate del backend es el de reportes—.
+        // Es el precio de que los reportes vivan donde se los busca.
     ];
 
     const adminChildren = [];

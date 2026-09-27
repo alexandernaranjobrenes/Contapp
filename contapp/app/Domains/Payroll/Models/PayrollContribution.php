@@ -36,7 +36,7 @@ class PayrollContribution extends Model
 
     protected $fillable = [
         'company_id', 'code', 'name', 'payer', 'institution', 'percentage',
-        'base', 'ceiling_amount', 'expense_account_id', 'liability_account_id',
+        'base', 'exempt_for_pensioner', 'ceiling_amount', 'expense_account_id', 'liability_account_id',
         'valid_from', 'valid_to', 'status', 'legal_basis',
     ];
 
@@ -45,6 +45,7 @@ class PayrollContribution extends Model
         return [
             'valid_from' => 'date',
             'valid_to' => 'date',
+            'exempt_for_pensioner' => 'boolean',
         ];
     }
 

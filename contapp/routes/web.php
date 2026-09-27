@@ -50,6 +50,7 @@ use App\Http\Controllers\ItemSerialController;
 use App\Http\Controllers\JobStructureController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
+use App\Http\Controllers\LaborSettlementController;
 use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\LicenseCategoryController;
@@ -60,6 +61,7 @@ use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\OpenItemController;
 use App\Http\Controllers\PayrollPeriodController;
 use App\Http\Controllers\PayrollReportController;
+use App\Http\Controllers\PayrollReportsController;
 use App\Http\Controllers\PayrollSettingsController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PeriodCloseController;
@@ -394,11 +396,25 @@ Route::middleware('auth')->group(function () {
 
         Route::get('payslips/{entry}', [PayslipController::class, 'show'])->name('payslips.show');
         Route::get('payslips/{entry}/print', [PayslipController::class, 'print'])->name('payslips.print');
+        Route::get('payslips/{entry}/pdf', [PayslipController::class, 'pdf'])->name('payslips.pdf');
 
         Route::get('employee-deductions', [EmployeeDeductionController::class, 'index'])->name('employee-deductions.index');
         Route::get('recurring-inputs', [EmployeeRecurringInputController::class, 'index'])->name('recurring-inputs.index');
         Route::get('personnel-actions', [PersonnelActionController::class, 'index'])->name('personnel-actions.index');
         Route::get('vacations', [VacationController::class, 'index'])->name('vacations.index');
+
+        // Los reportes de planilla: un índice, una consulta y tres salidas,
+        // sirviendo a cualquier reporte del registro. Van del lado de LECTURA
+        // porque no mueven nada — a diferencia de calcular o contabilizar.
+        Route::get('payroll-reports', [PayrollReportsController::class, 'index'])->name('payroll-reports.index');
+        Route::get('payroll-reports/{report}', [PayrollReportsController::class, 'show'])->name('payroll-reports.show');
+        Route::get('payroll-reports/{report}/export', [PayrollReportsController::class, 'export'])->name('payroll-reports.export');
+        Route::get('payroll-reports/{report}/pdf', [PayrollReportsController::class, 'exportPdf'])->name('payroll-reports.export-pdf');
+        Route::get('payroll-reports/{report}/print', [PayrollReportsController::class, 'print'])->name('payroll-reports.print');
+
+        Route::get('labor-settlements', [LaborSettlementController::class, 'index'])->name('labor-settlements.index');
+        Route::get('labor-settlements/{settlement}', [LaborSettlementController::class, 'show'])->name('labor-settlements.show');
+
         Route::get('payroll-settings', [PayrollSettingsController::class, 'index'])->name('payroll-settings.index');
         Route::get('job-structure', [JobStructureController::class, 'index'])->name('job-structure.index');
     });
@@ -432,6 +448,12 @@ Route::middleware('auth')->group(function () {
         // escritura aunque técnicamente solo genere un CSV.
         Route::get('payroll-periods/{payrollPeriod}/bank-file', [PayrollReportController::class, 'bankFile'])->name('payroll-periods.bank-file');
 
+        // Enviar el comprobante por correo es una ACCIÓN, no una consulta: sale
+        // información salarial de la empresa hacia afuera, así que exige
+        // permiso de escritura igual que calcular o contabilizar.
+        Route::post('payslips/{entry}/email', [PayslipController::class, 'email'])->name('payslips.email');
+        Route::post('payroll-periods/{payrollPeriod}/email-payslips', [PayslipController::class, 'emailPeriod'])->name('payroll-periods.email-payslips');
+
         Route::post('recurring-inputs', [EmployeeRecurringInputController::class, 'store'])->name('recurring-inputs.store');
         Route::put('recurring-inputs/{recurringInput}', [EmployeeRecurringInputController::class, 'update'])->name('recurring-inputs.update');
         Route::delete('recurring-inputs/{recurringInput}', [EmployeeRecurringInputController::class, 'destroy'])->name('recurring-inputs.destroy');
@@ -450,6 +472,17 @@ Route::middleware('auth')->group(function () {
         // los saldos iniciales. Todo o nada, para no dejar un cierre a medias.
         Route::post('vacations/bulk', [VacationController::class, 'bulk'])->name('vacations.bulk');
         Route::delete('vacations/{movement}', [VacationController::class, 'destroy'])->name('vacations.destroy');
+
+        // Liquidaciones laborales. El ciclo es el de la planilla: borrador se
+        // recalcula y se puede eliminar, aprobada se congela, contabilizada
+        // solo se anula con reversión.
+        Route::post('labor-settlements', [LaborSettlementController::class, 'store'])->name('labor-settlements.store');
+        Route::post('labor-settlements/{settlement}/calculate', [LaborSettlementController::class, 'calculate'])->name('labor-settlements.calculate');
+        Route::post('labor-settlements/{settlement}/approve', [LaborSettlementController::class, 'approve'])->name('labor-settlements.approve');
+        Route::post('labor-settlements/{settlement}/reopen', [LaborSettlementController::class, 'reopen'])->name('labor-settlements.reopen');
+        Route::post('labor-settlements/{settlement}/post', [LaborSettlementController::class, 'post'])->name('labor-settlements.post');
+        Route::post('labor-settlements/{settlement}/void', [LaborSettlementController::class, 'void'])->name('labor-settlements.void');
+        Route::delete('labor-settlements/{settlement}', [LaborSettlementController::class, 'destroy'])->name('labor-settlements.destroy');
 
         Route::post('job-structure/departments', [JobStructureController::class, 'storeDepartment'])->name('departments.store');
         Route::put('job-structure/departments/{department}', [JobStructureController::class, 'updateDepartment'])->name('departments.update');

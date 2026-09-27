@@ -3,6 +3,10 @@
 namespace App\Domains\Inventory\Reports;
 
 use App\Domains\Core\Models\Company;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportFilter;
+use App\Domains\Reporting\Reports\ReportResult;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -99,13 +103,13 @@ class TurnoverKpiReport implements InventoryReport
     {
         $from = $filters['from'];
         $to = $filters['to'];
-        $days = max(1, (int) \Carbon\Carbon::parse($from)->diffInDays(\Carbon\Carbon::parse($to)) + 1);
+        $days = max(1, (int) Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1);
         $warehouseId = $filters['warehouse_id'] ?? null;
 
         $consumption = $this->consumptionInPeriod($company, $from, $to, $warehouseId);
         $closing = $this->quantityAt($company, $to, $warehouseId);
         // El día ANTERIOR al inicio: la existencia con la que se arrancó.
-        $opening = $this->quantityAt($company, \Carbon\Carbon::parse($from)->subDay()->format('Y-m-d'), $warehouseId);
+        $opening = $this->quantityAt($company, Carbon::parse($from)->subDay()->format('Y-m-d'), $warehouseId);
 
         $items = DB::table('items')
             ->leftJoin('item_groups', 'item_groups.id', '=', 'items.item_group_id')

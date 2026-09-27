@@ -2,6 +2,7 @@
 
 namespace App\Domains\Inventory\Reports\Concerns;
 
+use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 
 /**
@@ -31,7 +32,7 @@ trait FiltersDateRange
     {
         return $query
             ->where($column, '>=', $from)
-            ->where($column, '<', \Carbon\Carbon::parse($to)->addDay()->format('Y-m-d'));
+            ->where($column, '<', Carbon::parse($to)->addDay()->format('Y-m-d'));
     }
 
     /**
@@ -39,6 +40,6 @@ trait FiltersDateRange
      */
     protected function upToDate(Builder $query, string $column, string $date): Builder
     {
-        return $query->where($column, '<', \Carbon\Carbon::parse($date)->addDay()->format('Y-m-d'));
+        return $query->where($column, '<', Carbon::parse($date)->addDay()->format('Y-m-d'));
     }
 }

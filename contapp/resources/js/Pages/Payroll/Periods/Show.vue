@@ -85,6 +85,22 @@ function post() {
 const undoing = ref(null);
 const undoForm = useForm({ reason: '', posting_date: '' });
 
+// El envío masivo de comprobantes. Se confirma con la cuenta a la vista porque
+// manda el salario de cada persona a su correo y no se puede deshacer.
+const emailForm = useForm({});
+
+function emailPayslips() {
+    const withoutEmail = props.entries.filter((e) => ! e.employee_email).length;
+
+    const warning = withoutEmail
+        ? `\n\n${withoutEmail} trabajador(es) no tienen correo en la ficha y no lo van a recibir.`
+        : '';
+
+    if (! confirm(`¿Enviar el comprobante a los trabajadores de ${props.period.name}?${warning}`)) return;
+
+    emailForm.post(route('payroll-periods.email-payslips', props.period.id), { preserveScroll: true });
+}
+
 function openUndo(kind) {
     undoForm.reset();
     undoForm.clearErrors();
@@ -177,6 +193,14 @@ const statusClass = {
             <Link :href="route('payroll-periods.index')" class="btn btn-ghost">← Períodos</Link>
             <a v-if="entries.length" :href="route('payroll-periods.export', period.id)" class="btn btn-ghost">⤓ Exportar XLSX</a>
             <a v-if="canPay" :href="route('payroll-periods.bank-file', period.id)" class="btn btn-ghost">⤓ Archivo de pago</a>
+            <button
+                v-if="entries.length"
+                type="button" class="btn btn-ghost"
+                :disabled="emailForm.processing"
+                @click="emailPayslips"
+            >
+                ✉ Enviar comprobantes
+            </button>
         </template>
 
         <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>

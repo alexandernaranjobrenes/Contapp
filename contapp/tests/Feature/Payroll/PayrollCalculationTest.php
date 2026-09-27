@@ -149,8 +149,8 @@ it('rebaja cada componente de carga social por separado y contra la base correct
 
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
 
-    // 5,50 + 4,17 + 1,00 = 10,67% de un millón.
-    expect($entry->total_employee_contributions)->toBe('106700.00')
+    // 5,50 SEM + 4,33 IVM + 1,00 BP = 10,83% de un millón.
+    expect($entry->total_employee_contributions)->toBe('108300.00')
         ->and($entry->ccss_base)->toBe('1000000.00');
 
     // Cada componente deja su propia línea con su tasa congelada: es lo que
@@ -158,8 +158,8 @@ it('rebaja cada componente de carga social por separado y contra la base correct
     $lines = $entry->lines->where('kind', 'employee_contribution');
 
     expect($lines)->toHaveCount(3)
-        ->and($lines->firstWhere('code', 'IVM-OBR')->rate)->toBe('4.1700')
-        ->and($lines->firstWhere('code', 'IVM-OBR')->base_amount)->toBe('1000000.00');
+        ->and($lines->firstWhere('code', 'do002')->rate)->toBe('4.3300')
+        ->and($lines->firstWhere('code', 'do002')->base_amount)->toBe('1000000.00');
 });
 
 it('aplica la escala sobre el salario devengado, que es el criterio por defecto', function () {
@@ -190,8 +190,8 @@ it('puede aplicar la escala sobre el devengado menos las cargas obreras', functi
 
     $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
 
-    // 1.500.000 − 10,67% de cargas obreras = 1.339.950.
-    expect($entry->income_tax_base)->toBe('1339950.00');
+    // 1.500.000 − 10,83% de cargas obreras = 1.337.550.
+    expect($entry->income_tax_base)->toBe('1337550.00');
 });
 
 it('grava cada tramo por separado y no todo el salario a la tasa del tramo superior', function () {
@@ -209,7 +209,7 @@ it('grava cada tramo por separado y no todo el salario a la tasa del tramo super
     //   2.392.000 – 3.000.000 20%  → 121.600
     //                               ─────────
     //                                 319.350
-    expect($entry->income_tax)->toBe('319350.00');
+    expect($entry->income_tax)->toBe('322650.00');
 
     // El error clásico —20% sobre los tres millones— daría 600.000.
     expect($entry->income_tax)->not->toBe('600000.00');
@@ -236,12 +236,12 @@ it('resta los créditos familiares del impuesto y no de la base', function () {
     //                              ─────────
     //                                63.950
     $taxBeforeCredits = bcadd(
-        bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
-        bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1347000', '918000', 2), '10', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1500000', '1347000', 2), '15', 4), '100', 2),
         2
     );
 
-    $credits = bcadd('4000', bcmul('2600', '2', 2), 2); // cónyuge + 2 hijos
+    $credits = bcadd('2590', bcmul('1710', '2', 2), 2); // cónyuge + 2 hijos
 
     expect($entry->income_tax)->toBe(bcsub($taxBeforeCredits, $credits, 2));
 });
@@ -280,7 +280,7 @@ it('deja los viáticos fuera de la base de cargas y del impuesto', function () {
     // no entra a la base de cargas ni a la del impuesto.
     expect($entry->total_earnings)->toBe('1200000.00')
         ->and($entry->ccss_base)->toBe('1000000.00')
-        ->and($entry->total_employee_contributions)->toBe('106700.00');
+        ->and($entry->total_employee_contributions)->toBe('108300.00');
 });
 
 it('paga las horas extra al factor del concepto sobre el valor de la hora ordinaria', function () {
@@ -410,8 +410,8 @@ it('acumula las dos quincenas: la primera no retiene y la segunda retiene el mes
     //                              ─────────
     //                                63.950
     $impuestoDelMes = bcadd(
-        bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
-        bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1347000', '918000', 2), '10', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1500000', '1347000', 2), '15', 4), '100', 2),
         2
     );
 
@@ -439,8 +439,8 @@ it('en modo proyectado reparte el impuesto del mes entre las dos quincenas', fun
     // primera: con comisiones concentradas en una sola, retiene de más en
     // una y de menos en la otra.
     $impuestoDelMes = bcadd(
-        bcdiv(bcmul(bcsub('1363000', '929000', 2), '10', 4), '100', 2),
-        bcdiv(bcmul(bcsub('1500000', '1363000', 2), '15', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1347000', '918000', 2), '10', 4), '100', 2),
+        bcdiv(bcmul(bcsub('1500000', '1347000', 2), '15', 4), '100', 2),
         2
     );
 
@@ -628,10 +628,10 @@ it('reproduce una planilla vieja con las tasas de su fecha, no con las de hoy', 
 
     // A partir de julio sube la cuota de IVM obrero.
     PayrollContribution::where('company_id', $f['company']->id)
-        ->where('code', 'IVM-OBR')->update(['valid_to' => '2026-06-30']);
+        ->where('code', 'do002')->update(['valid_to' => '2026-06-30']);
 
     PayrollContribution::create([
-        'company_id' => $f['company']->id, 'code' => 'IVM-OBR',
+        'company_id' => $f['company']->id, 'code' => 'do002',
         'name' => 'CCSS · Invalidez, Vejez y Muerte (obrero)',
         'payer' => 'employee', 'institution' => 'ccss', 'percentage' => '5.17',
         'base' => 'ccss', 'valid_from' => '2026-07-01', 'status' => 'active',
@@ -649,8 +649,8 @@ it('reproduce una planilla vieja con las tasas de su fecha, no con las de hoy', 
     $marzoEntry = PayrollEntry::where('payroll_period_id', $marzo->id)->firstOrFail();
     $agostoEntry = PayrollEntry::where('payroll_period_id', $agosto->id)->firstOrFail();
 
-    expect($marzoEntry->lines->firstWhere('code', 'IVM-OBR')->rate)->toBe('4.1700')
-        ->and($agostoEntry->lines->firstWhere('code', 'IVM-OBR')->rate)->toBe('5.1700');
+    expect($marzoEntry->lines->firstWhere('code', 'do002')->rate)->toBe('4.3300')
+        ->and($agostoEntry->lines->firstWhere('code', 'do002')->rate)->toBe('5.1700');
 });
 
 it('un rubro con signo negativo resta del devengado Y de la base de cargas', function () {
@@ -690,4 +690,76 @@ it('una deducción no puede tener signo negativo, porque sumaría al neto', func
     // Se fuerza a +1 en vez de confiar en el formulario: una deducción que
     // resta dentro de su propio bloque le sumaría al neto del trabajador.
     expect(PayrollConcept::where('code', 'PRESTAMO')->firstOrFail()->sign)->toBe(1);
+});
+
+it('a un pensionado le rebaja 6,50% en vez de 10,83%: cotiza SEM pero no IVM', function () {
+    $f = payrollFixture();
+    $normal = payrollEmployee($f);
+    $pensionado = payrollEmployee($f, ['is_pensioner' => true]);
+    $period = payrollPeriod($f);
+
+    calculatePayroll($f, $period);
+
+    $entries = PayrollEntry::where('payroll_period_id', $period->id)->get()->keyBy('employee_id');
+
+    // 5,50 SEM + 4,33 IVM + 1,00 BP = 10,83% sobre un millón.
+    expect($entries[$normal->id]->total_employee_contributions)->toBe('108300.00')
+        // Sin IVM: 5,50 + 1,00 = 6,50%. Es el número del manual.
+        ->and($entries[$pensionado->id]->total_employee_contributions)->toBe('65000.00');
+
+    // Y no es una exención total: sigue cotizando sus dos componentes.
+    expect($entries[$pensionado->id]->lines->where('kind', 'employee_contribution'))->toHaveCount(2)
+        ->and($entries[$pensionado->id]->lines->firstWhere('code', 'do002'))->toBeNull();
+});
+
+it('el patrono tampoco cotiza IVM por un pensionado', function () {
+    $f = payrollFixture();
+    $normal = payrollEmployee($f);
+    $pensionado = payrollEmployee($f, ['is_pensioner' => true]);
+    $period = payrollPeriod($f);
+
+    calculatePayroll($f, $period);
+
+    $entries = PayrollEntry::where('payroll_period_id', $period->id)->get()->keyBy('employee_id');
+
+    // 26,83% patronal completo, contra 21,25% sin el IVM de 5,58%.
+    expect($entries[$normal->id]->total_employer_contributions)->toBe('268300.00')
+        ->and($entries[$pensionado->id]->total_employer_contributions)->toBe('212500.00');
+});
+
+it('la exención total sigue siendo otra cosa: no cotiza nada', function () {
+    $f = payrollFixture();
+    $exento = payrollEmployee($f, ['is_ccss_exempt' => true]);
+    $period = payrollPeriod($f);
+
+    calculatePayroll($f, $period);
+
+    $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
+
+    // Marcar «exento» a un pensionado le quitaría también el 6,50% que sí
+    // debe, y la empresa quedaría debiéndoselo a la Caja.
+    expect($entry->total_employee_contributions)->toBe('0.00')
+        ->and($entry->total_employer_contributions)->toBe('0.00');
+});
+
+it('usa la escala y los créditos de 2026 del manual', function () {
+    $f = payrollFixture();
+    payrollEmployee($f, [
+        'base_salary' => '1500000.00',
+        'is_ccss_exempt' => true,
+        'has_spouse_credit' => true,
+        'children_credit_count' => 2,
+    ]);
+    $period = payrollPeriod($f);
+
+    calculatePayroll($f, $period);
+
+    //   918.000 – 1.347.000  10%  →  42.900
+    //   1.347.000 – 1.500.000 15% →  22.950
+    //                              ─────────
+    //                                65.850
+    //   menos créditos: 2.590 cónyuge + 1.710 × 2 hijos = 6.010
+    $entry = PayrollEntry::where('payroll_period_id', $period->id)->firstOrFail();
+
+    expect($entry->income_tax)->toBe('59840.00');
 });

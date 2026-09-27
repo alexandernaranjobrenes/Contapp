@@ -534,6 +534,11 @@ input[type="date"] {
 .flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
 .flash-success { background: var(--color-success-soft); color: var(--color-success); }
 .flash-warning { background: #fdf0ea; color: #a04000; }
+// Informativo: ni error ni advertencia. Es para lo que el usuario tiene que
+// saber pero no tiene que arreglar —una regla de ley que explica el
+// resultado, por ejemplo— y que pintado de naranja haría que las
+// advertencias de verdad dejaran de leerse.
+.flash-info { background: #eef2ff; color: #3730a3; }
 
 .card-header {
     display: flex;

@@ -42,6 +42,7 @@ const blank = {
     contract_type: 'indefinido',
     journey_type: 'diurna',
     weekly_hours: 48,
+    weekly_salary_divisor: 6,
     salary_type: 'mensual',
     base_salary: '',
     payment_method: 'transferencia',
@@ -51,6 +52,7 @@ const blank = {
     children_credit_count: 0,
     is_income_tax_exempt: false,
     is_ccss_exempt: false,
+    is_pensioner: false,
     status: 'active',
     notes: '',
 };
@@ -251,7 +253,18 @@ const monthlyBase = computed(() => props.employees
                             <td class="muted small">
                                 {{ options.journeyTypes[e.journey_type] ?? e.journey_type }}
                             </td>
-                            <td class="right">{{ formatMoney(e.base_salary) }}</td>
+                            <td class="right">
+                                {{ formatMoney(e.base_salary) }}
+                                <!--
+                                    El día y la hora derivados, en letra chica bajo el
+                                    salario: son el primitivo con el que se paga todo lo
+                                    demás, y verlos aquí delata un divisor mal escogido
+                                    antes de que la planilla se calcule con él.
+                                -->
+                                <span class="muted small rate-hint">
+                                    día {{ formatMoney(e.day_rate) }} · hora {{ formatMoney(e.hour_rate) }}
+                                </span>
+                            </td>
                             <td class="muted small">
                                 {{ options.paymentMethods[e.payment_method] }}
                                 <span v-if="e.payment_method === 'transferencia' && ! e.bank_account" class="warn-dot" title="Sin cuenta bancaria: no va a entrar al archivo de pago">⚠</span>
@@ -423,6 +436,23 @@ const monthlyBase = computed(() => props.employees
                         <span class="hint small">En la unidad del tipo de salario elegido.</span>
                         <span v-if="activeForm.errors.base_salary" class="error">{{ activeForm.errors.base_salary }}</span>
                     </div>
+                    <!--
+                        El divisor del día solo existe para el salario semanal:
+                        en las demás modalidades lo fija la ley (30 el mes, 15
+                        la quincena) y preguntarlo sería ofrecer un error.
+                    -->
+                    <div v-if="activeForm.salary_type === 'semanal'" class="field">
+                        <label>Divisor del día</label>
+                        <select v-model.number="activeForm.weekly_salary_divisor" required>
+                            <option :value="6">6 — la semana paga los días laborados</option>
+                            <option :value="7">7 — la semana incluye el descanso</option>
+                        </select>
+                        <span class="hint small">
+                            Entre 6 y 7 hay un 16% de diferencia en el valor del día, y es el
+                            número que multiplica los días de vacaciones, aguinaldo y liquidación.
+                        </span>
+                        <span v-if="activeForm.errors.weekly_salary_divisor" class="error">{{ activeForm.errors.weekly_salary_divisor }}</span>
+                    </div>
                     <div class="field">
                         <label>Forma de pago</label>
                         <select v-model="activeForm.payment_method" required>
@@ -465,11 +495,22 @@ const monthlyBase = computed(() => props.employees
                 </label>
 
                 <label class="check">
-                    <input v-model="activeForm.is_ccss_exempt" type="checkbox">
-                    No cotiza cargas sociales por esta planilla
+                    <input v-model="activeForm.is_pensioner" type="checkbox">
+                    Pensionado
                 </label>
                 <span class="hint small">
-                    Las dos son excepciones y tienen que poder sustentarse. Marcarlas por error deja de rebajar
+                    Un pensionado <strong>sí cotiza</strong> Enfermedad y Maternidad y Banco Popular —el 6,50%—
+                    pero no IVM, ni él ni el patrono, porque ya está pensionado por ese régimen. No es lo mismo
+                    que la exención total de abajo: usar esa le quitaría también el 6,50% que sí debe, y la
+                    empresa quedaría debiéndoselo a la Caja.
+                </span>
+
+                <label class="check">
+                    <input v-model="activeForm.is_ccss_exempt" type="checkbox">
+                    No cotiza NINGUNA carga social por esta planilla
+                </label>
+                <span class="hint small">
+                    Las tres son excepciones y tienen que poder sustentarse. Marcarlas por error deja de rebajar
                     lo que la ley manda rebajar.
                 </span>
 
@@ -560,5 +601,10 @@ const monthlyBase = computed(() => props.employees
 .warn-dot {
     color: #b45309;
     cursor: help;
+}
+
+.rate-hint {
+    display: block;
+    font-variant-numeric: tabular-nums;
 }
 </style>

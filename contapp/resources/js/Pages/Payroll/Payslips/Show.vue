@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
 
@@ -12,6 +12,16 @@ const props = defineProps({
     deductions: { type: Array, default: () => [] },
     employerLines: { type: Array, default: () => [] },
 });
+
+const emailForm = useForm({});
+
+// Se confirma antes de mandar: el comprobante lleva el salario de la persona,
+// y un envío que se dispara por error no se puede deshacer.
+function sendEmail() {
+    if (! confirm(`¿Enviar el comprobante a ${props.employee.email}?`)) return;
+
+    emailForm.post(route('payslips.email', props.entry.id), { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -20,6 +30,21 @@ const props = defineProps({
     <AppLayout :title="`Comprobante — ${employee.name}`">
         <template #actions>
             <Link :href="route('payroll-periods.show', period.id)" class="btn btn-ghost">← Planilla</Link>
+            <a :href="route('payslips.pdf', entry.id)" class="btn btn-ghost">⤓ PDF</a>
+            <!--
+                Sin correo en la ficha el botón queda deshabilitado con el
+                motivo a la vista: ofrecerlo y que falle al presionarlo obliga a
+                adivinar qué pasó.
+            -->
+            <button
+                type="button"
+                class="btn btn-ghost"
+                :disabled="! employee.email || emailForm.processing"
+                :title="employee.email ? `Enviar a ${employee.email}` : 'La ficha no tiene correo electrónico'"
+                @click="sendEmail"
+            >
+                ✉ Enviar por correo
+            </button>
             <a :href="route('payslips.print', entry.id)" target="_blank" class="btn btn-primary">🖶 Ver e imprimir</a>
         </template>
 

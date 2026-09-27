@@ -69,7 +69,7 @@ class PayrollPeriodController extends Controller
     {
         $period = PayrollPeriod::findOrFail($payrollPeriod);
 
-        $entries = PayrollEntry::with(['employee:id,code,first_name,last_name1,last_name2', 'costCenter:id,code', 'lines'])
+        $entries = PayrollEntry::with(['employee:id,code,first_name,last_name1,last_name2,email', 'costCenter:id,code', 'lines'])
             ->where('payroll_period_id', $period->id)
             ->get()
             ->sortBy(fn (PayrollEntry $e) => $e->employee?->code)
@@ -115,6 +115,9 @@ class PayrollPeriodController extends Controller
                 'employee_id' => $e->employee_id,
                 'employee_code' => $e->employee?->code,
                 'employee_name' => $e->employee?->fullName(),
+                // Para el envío masivo de comprobantes: la pantalla avisa a
+                // cuántos no les va a llegar ANTES de mandarlos, no después.
+                'employee_email' => $e->employee?->email,
                 'cost_center' => $e->costCenter?->code,
                 'days_worked' => (float) $e->days_worked,
                 'total_earnings' => $e->total_earnings,

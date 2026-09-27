@@ -3,6 +3,10 @@
 namespace App\Domains\Inventory\Reports;
 
 use App\Domains\Core\Models\Company;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportFilter;
+use App\Domains\Reporting\Reports\ReportResult;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -157,7 +161,7 @@ class OpenItemsReport implements InventoryReport
                 'quantity' => (float) $row->quantity,
                 'fulfilled' => (float) $row->quantity_invoiced,
                 'pending' => (float) $row->quantity - (float) $row->quantity_invoiced,
-                'days_open' => $today->diffInDays(\Carbon\Carbon::parse($row->order_date)),
+                'days_open' => $today->diffInDays(Carbon::parse($row->order_date)),
                 'expected_date' => $row->delivery_date,
             ]);
     }
@@ -195,7 +199,7 @@ class OpenItemsReport implements InventoryReport
                 'quantity' => (float) $row->quantity,
                 'fulfilled' => (float) $row->quantity_received,
                 'pending' => (float) $row->quantity - (float) $row->quantity_received,
-                'days_open' => $today->diffInDays(\Carbon\Carbon::parse($row->order_date)),
+                'days_open' => $today->diffInDays(Carbon::parse($row->order_date)),
                 'expected_date' => $row->expected_date,
             ]);
     }

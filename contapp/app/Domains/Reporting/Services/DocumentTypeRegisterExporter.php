@@ -49,12 +49,12 @@ class DocumentTypeRegisterExporter
             ->orderBy('id')
             ->get();
 
-        $writer = new Writer();
+        $writer = new Writer;
         $writer->openToFile($outputPath);
         $writer->getCurrentSheet()->setName('Registro');
 
-        $bold = (new Style())->setFontBold();
-        $tableHeader = (new Style())->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
+        $bold = (new Style)->setFontBold();
+        $tableHeader = (new Style)->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
 
         $writer->addRows([
             Row::fromValues([$documentType ? "{$documentType->code} — {$documentType->name}" : 'Todos los tipos de documento'], $bold),

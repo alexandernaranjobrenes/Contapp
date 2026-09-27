@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domains\Inventory\Reports;
+namespace App\Domains\Reporting\Reports;
 
 /**
  * Una columna de un reporte de inventario: cómo se llama, de qué clave del

@@ -44,7 +44,14 @@ class PayrollSettingsController extends Controller
                 'income_tax_payable_account_id' => $settings->income_tax_payable_account_id,
                 'document_type_id' => $settings->document_type_id,
                 'vacation_days_per_month' => (float) $settings->vacation_days_per_month,
+                'vacation_average_basis' => $settings->vacation_average_basis ?? 'practice',
                 'max_deduction_percentage' => (float) $settings->max_deduction_percentage,
+                // Estos dos ya los leía el motor y no había dónde ponerlos:
+                // deciden cuánto impuesto se le retiene a cada trabajador
+                // todos los meses, así que no pueden vivir solo en la base de
+                // datos.
+                'income_tax_mode' => $settings->income_tax_mode ?? 'accumulated',
+                'income_tax_base' => $settings->income_tax_base ?? 'gross',
             ],
             'contributions' => PayrollContribution::orderBy('payer')->orderBy('code')
                 ->get()
@@ -52,6 +59,7 @@ class PayrollSettingsController extends Controller
                     'id' => $c->id, 'code' => $c->code, 'name' => $c->name,
                     'payer' => $c->payer, 'institution' => $c->institution,
                     'percentage' => (float) $c->percentage, 'base' => $c->base,
+                    'exempt_for_pensioner' => (bool) $c->exempt_for_pensioner,
                     'ceiling_amount' => $c->ceiling_amount,
                     'expense_account_id' => $c->expense_account_id,
                     'liability_account_id' => $c->liability_account_id,
@@ -107,6 +115,9 @@ class PayrollSettingsController extends Controller
                 ->orderBy('code')->get(['id', 'code', 'name']),
             'payers' => PayrollContribution::PAYERS,
             'institutions' => PayrollContribution::INSTITUTIONS,
+            'incomeTaxModes' => PayrollSetting::INCOME_TAX_MODES,
+            'incomeTaxBases' => PayrollSetting::INCOME_TAX_BASES,
+            'vacationAverageBases' => PayrollSetting::VACATION_AVERAGE_BASES,
             // Que la plantilla existe no significa que esté verificada: la
             // pantalla lo dice, y acá se le pasa el dato para que no dependa
             // de que alguien lo recuerde.
@@ -236,9 +247,13 @@ class PayrollSettingsController extends Controller
         $validated = $request->validate([
             'document_type_id' => ['nullable', Rule::exists('document_types', 'id')->where('company_id', $companyId)],
             'vacation_days_per_month' => ['required', 'numeric', 'gte:0', 'max:10'],
+            // Con qué promedio se pagan las vacaciones en una liquidación.
+            'vacation_average_basis' => ['required', Rule::in(array_keys(PayrollSetting::VACATION_AVERAGE_BASES))],
             // Cero significa sin tope. El máximo es 100 porque un tope mayor
             // que el salario disponible no es un tope.
             'max_deduction_percentage' => ['required', 'numeric', 'gte:0', 'max:100'],
+            'income_tax_mode' => ['required', Rule::in(array_keys(PayrollSetting::INCOME_TAX_MODES))],
+            'income_tax_base' => ['required', Rule::in(array_keys(PayrollSetting::INCOME_TAX_BASES))],
         ]);
 
         PayrollSetting::updateOrCreate(['company_id' => $companyId], $validated);
@@ -254,7 +269,14 @@ class PayrollSettingsController extends Controller
 
         $validated = $request->validate($this->contributionRules($companyId));
 
-        PayrollContribution::create([...$validated, 'company_id' => $companyId]);
+        PayrollContribution::create([
+            ...$validated,
+            'company_id' => $companyId,
+            // La casilla desmarcada llega ausente: sin esto no habría forma
+            // de apagar la exención una vez encendida, y un pensionado
+            // dejaría de cotizar algo que sí debe.
+            'exempt_for_pensioner' => $validated['exempt_for_pensioner'] ?? false,
+        ]);
 
         return back()->with('success', "Carga social {$validated['code']} creada.");
     }
@@ -263,7 +285,12 @@ class PayrollSettingsController extends Controller
     {
         $model = PayrollContribution::findOrFail($contribution);
 
-        $model->update($request->validate($this->contributionRules($currentCompany->id(), $model->id)));
+        $validated = $request->validate($this->contributionRules($currentCompany->id(), $model->id));
+
+        $model->update([
+            ...$validated,
+            'exempt_for_pensioner' => $validated['exempt_for_pensioner'] ?? false,
+        ]);
 
         return back()->with('success', "Carga social {$model->code} actualizada.");
     }
@@ -429,6 +456,10 @@ class PayrollSettingsController extends Controller
             'institution' => ['required', Rule::in(array_keys(PayrollContribution::INSTITUTIONS))],
             'percentage' => ['required', 'numeric', 'gte:0', 'max:100'],
             'base' => ['required', Rule::in(['ccss', 'gross'])],
+            // Los componentes de IVM: un pensionado ya no cotiza por ese
+            // régimen. Se marca acá y no se deduce del código, para que el
+            // día que cambie un nombre nadie empiece a cotizar de más.
+            'exempt_for_pensioner' => ['boolean'],
             'ceiling_amount' => ['nullable', 'numeric', 'gt:0'],
             'expense_account_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where('company_id', $companyId)],
             'liability_account_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where('company_id', $companyId)],

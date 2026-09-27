@@ -449,6 +449,15 @@ class CalculatePayrollService
 
         if (! $employee->is_ccss_exempt) {
             foreach ($contributions as $contribution) {
+                // Un pensionado que sigue trabajando NO está exento: cotiza
+                // Enfermedad y Maternidad y el Banco Popular. Lo que ya no
+                // cotiza —ni él ni el patrono— es Invalidez, Vejez y Muerte,
+                // porque ya está pensionado por ese régimen. Baja de 10,83%
+                // a 6,50% del lado obrero.
+                if ($employee->is_pensioner && $contribution->exempt_for_pensioner) {
+                    continue;
+                }
+
                 $base = $this->contributionBase($contribution, $ccssBase, $totalEarnings);
                 $amount = $this->percentageOf($base, (string) $contribution->percentage);
 

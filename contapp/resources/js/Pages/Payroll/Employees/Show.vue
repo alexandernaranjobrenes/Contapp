@@ -33,6 +33,17 @@ function pickPhoto(event) {
     });
 }
 
+// De qué se dividió el salario para llegar al día. No se recalcula el monto en
+// el navegador —ese número lo da el servidor— solo se nombra el divisor, que
+// es lo que nadie adivina al ver una liquidación.
+const dayDivisorLabel = computed(() => ({
+    mensual: '30 días del mes',
+    quincenal: '15 días de la quincena',
+    semanal: `${props.employee.weekly_salary_divisor} días de la semana`,
+    diario: '1 — el salario ya es el día',
+    hora: `no se divide: se multiplica por las ${props.employee.ordinary_hours} h de la jornada`,
+}[props.employee.salary_type] ?? '30 días del mes'));
+
 const balance = computed(() => parseFloat(props.vacationBalance) || 0);
 
 // Lo que valdrían hoy los días acumulados si hubiera que pagarlos. El saldo
@@ -131,16 +142,26 @@ const noteClass = {
                     <span class="pay-value">{{ formatMoney(employee.monthly_salary) }}</span>
                 </div>
                 <div class="pay-row">
-                    <span class="pay-label">Valor del día</span>
+                    <span class="pay-label">
+                        Valor del día
+                        <!--
+                            Se dice de qué se dividió, porque es la pregunta que
+                            hace cualquiera que revise una liquidación.
+                        -->
+                        <span class="muted small">÷ {{ dayDivisorLabel }}</span>
+                    </span>
                     <span class="pay-value">{{ formatMoney(employee.daily_rate) }}</span>
                 </div>
                 <div class="pay-row">
-                    <span class="pay-label">Valor de la hora ordinaria</span>
+                    <span class="pay-label">
+                        Valor de la hora ordinaria
+                        <span class="muted small">÷ {{ employee.ordinary_hours }} h de jornada</span>
+                    </span>
                     <span class="pay-value">{{ formatMoney(employee.hourly_rate) }}</span>
                 </div>
                 <p class="hint small">
-                    El valor de la hora sale del salario mensual y de la jornada declarada; es la base con la que
-                    se pagan las horas extra.
+                    El día es el primitivo: con él se pagan vacaciones, aguinaldo, incapacidades y liquidaciones.
+                    La hora sale de dividirlo entre las horas de la jornada declarada, y es la base de las horas extra.
                 </p>
             </div>
         </div>

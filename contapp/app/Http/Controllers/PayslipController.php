@@ -3,32 +3,42 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Payroll\Exceptions\InvalidPayrollException;
 use App\Domains\Payroll\Models\PayrollEntry;
-use App\Domains\Payroll\Models\PayrollEntryLine;
-use Illuminate\Support\Facades\Storage;
+use App\Domains\Payroll\Models\PayrollPeriod;
+use App\Domains\Payroll\Services\PayslipDocument;
+use App\Mail\PayslipMail;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * El comprobante de pago del trabajador.
+ * El comprobante de pago del trabajador, en sus cuatro salidas: pantalla,
+ * impresión, PDF y correo.
  *
- * ── Lo que un comprobante tiene que poder responder ──────────────────────
+ * Los datos los arma PayslipDocument, una sola vez, para las cuatro. Ver su
+ * encabezado: si cada salida armara los suyos, el comprobante que el trabajador
+ * recibe por correo podría no coincidir con el que firma en papel.
  *
- * No es un recibo del neto. Es el documento con el que el trabajador
- * verifica su propio rebajo, y para eso tiene que mostrar la BASE y la TASA
- * de cada carga, no solo el monto. Un comprobante que dice «CCSS ₡106.700»
- * no permite comprobar nada; uno que dice «IVM 4,17% sobre ₡1.000.000» sí.
+ * ── El envío por correo va a la COLA ─────────────────────────────────────
  *
- * ── Por qué muestra también lo patronal ──────────────────────────────────
+ * Una planilla de cien personas son cien correos con un PDF cada uno. Mandarlos
+ * dentro de la petición la haría expirar a mitad de camino, y entonces nadie
+ * sabría cuántos salieron. Encolados, la pantalla contesta de inmediato y el
+ * despacho lo hace el trabajador de cola.
  *
- * Porque no rebaja nada y por eso nadie lo ve. Un trabajador que solo
- * conoce su bruto subestima lo que su puesto le cuesta a la empresa en una
- * proporción grande, y la empresa que solo mira el bruto cotiza mal. Va en
- * un bloque aparte, claramente marcado como que no afecta el neto.
+ * Consecuencia operativa que conviene tener presente: si no hay un proceso
+ * `queue:work` corriendo, los correos quedan esperando en la tabla `jobs` sin
+ * salir. No es un error del envío — es que falta quien los despache.
  */
 class PayslipController extends Controller
 {
+    public function __construct(private readonly PayslipDocument $document) {}
+
     public function show(int $entry, CurrentCompany $currentCompany): Response
     {
         return Inertia::render('Payroll/Payslips/Show', $this->payload($entry, $currentCompany));
@@ -40,89 +50,125 @@ class PayslipController extends Controller
         return Inertia::render('Payroll/Payslips/Print', $this->payload($entry, $currentCompany));
     }
 
+    /** El PDF, que es el que se archiva y el que se adjunta al correo. */
+    public function pdf(int $entry, CurrentCompany $currentCompany): HttpResponse
+    {
+        $company = Company::findOrFail($currentCompany->id());
+        $model = $this->entryOrFail($company, $entry);
+
+        return $this->document->pdf($company, $model)
+            ->download($this->document->filename($model));
+    }
+
+    /**
+     * Manda el comprobante al correo del trabajador.
+     *
+     * Si la ficha no tiene correo no se falla en silencio: se dice de quién
+     * es, porque el único arreglo posible es llenarle la ficha.
+     */
+    public function email(int $entry, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $company = Company::findOrFail($currentCompany->id());
+        $model = $this->entryOrFail($company, $entry);
+
+        $email = $model->employee?->email;
+
+        if ($email === null || trim($email) === '') {
+            return back()->withErrors(['payroll' => 'La ficha de '.($model->employee?->fullName() ?? 'el trabajador').
+                ' no tiene correo electrónico: hay que llenarlo antes de poder enviarle el comprobante.']);
+        }
+
+        Mail::to($email)->queue(new PayslipMail($company->id, $model->id));
+
+        return back()->with('success',
+            "Comprobante en camino a {$email}. Si no llega, revisá que el despachador de correos esté corriendo.");
+    }
+
+    /**
+     * Manda los comprobantes de TODO un período.
+     *
+     * ── No es todo o nada, y es a propósito ─────────────────────────────
+     *
+     * Con cincuenta trabajadores, que uno no tenga correo no puede impedir que
+     * los otros cuarenta y nueve reciban el suyo. Así que se mandan los que se
+     * pueden y se informa, por nombre, a quiénes no se les pudo: es una lista
+     * de fichas por completar, no un error.
+     *
+     * Es la decisión opuesta a la del proceso masivo de vacaciones, que sí es
+     * todo o nada. La diferencia es que ahí se está moviendo un saldo —dejarlo
+     * a medias descuadra el control— y acá solo se está avisando algo.
+     */
+    public function emailPeriod(int $payrollPeriod, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $company = Company::findOrFail($currentCompany->id());
+        $period = PayrollPeriod::findOrFail($payrollPeriod);
+
+        if (! in_array($period->status, ['calculated', 'approved', 'posted', 'closed'], true)) {
+            return back()->withErrors(['payroll' => 'El período todavía no está calculado: no hay comprobantes que enviar.']);
+        }
+
+        $entries = PayrollEntry::withoutGlobalScope(CompanyScope::class)
+            ->with('employee:id,code,first_name,last_name1,last_name2,email')
+            ->where('payroll_period_id', $period->id)
+            ->get();
+
+        $sent = 0;
+        $missing = [];
+
+        foreach ($entries as $entry) {
+            $email = $entry->employee?->email;
+
+            if ($email === null || trim($email) === '') {
+                $missing[] = $entry->employee?->code.' '.$entry->employee?->fullName();
+
+                continue;
+            }
+
+            Mail::to($email)->queue(new PayslipMail($company->id, $entry->id));
+            $sent++;
+        }
+
+        $message = "Se encolaron {$sent} comprobante(s) de {$period->name}.";
+
+        if ($missing !== []) {
+            $message .= ' Sin correo en la ficha, así que no se les envió: '.
+                implode('; ', array_slice($missing, 0, 10)).
+                (count($missing) > 10 ? ' y '.(count($missing) - 10).' más.' : '.');
+        }
+
+        return back()->with('success', $message);
+    }
+
     /** @return array<string, mixed> */
     private function payload(int $entry, CurrentCompany $currentCompany): array
     {
-        $model = PayrollEntry::with(['employee', 'employee.costCenter:id,code,name', 'period', 'lines'])
-            ->findOrFail($entry);
-
         $company = Company::findOrFail($currentCompany->id());
-        $employee = $model->employee;
 
-        $lines = fn (array $kinds) => $model->lines
-            ->whereIn('kind', $kinds)
-            ->sortBy('line_number')
-            ->map(fn (PayrollEntryLine $l) => [
-                'kind' => $l->kind,
-                'kind_label' => PayrollEntryLine::KINDS[$l->kind] ?? $l->kind,
-                'code' => $l->code,
-                'name' => $l->name,
-                // La base y la tasa CONGELADAS son lo que hace verificable el
-                // comprobante: ver el encabezado.
-                'base_amount' => $l->base_amount,
-                'rate' => $l->rate === null ? null : (float) $l->rate,
-                'quantity' => $l->quantity === null ? null : (float) $l->quantity,
-                'amount' => $l->amount,
-            ])->values();
-
-        return [
-            'company' => [
-                'name' => $company->trade_name ?: $company->legal_name,
-                'legal_name' => $company->legal_name,
-                'tax_id' => $company->tax_id,
-                'logo_url' => $this->publicUrl($company->logo_path),
-            ],
-            'employee' => [
-                'code' => $employee?->code,
-                'name' => $employee?->fullName(),
-                'identification' => $employee?->identification_number,
-                'ccss_number' => $employee?->ccss_number,
-                'position' => $employee?->position,
-                'department' => $employee?->department,
-                'cost_center' => $employee?->costCenter?->code.' — '.$employee?->costCenter?->name,
-                'hire_date' => $employee?->hire_date->format('Y-m-d'),
-                'photo_url' => $this->publicUrl($employee?->photo_path),
-                'bank_account' => $model->bank_account,
-                'payment_method' => $model->payment_method,
-            ],
-            'period' => [
-                'id' => $model->period?->id,
-                'name' => $model->period?->name,
-                'start_date' => $model->period?->start_date->format('Y-m-d'),
-                'end_date' => $model->period?->end_date->format('Y-m-d'),
-                'payment_date' => $model->period?->payment_date->format('Y-m-d'),
-                'status' => $model->period?->status,
-            ],
-            'entry' => [
-                'id' => $model->id,
-                'days_worked' => (float) $model->days_worked,
-                'base_salary' => $model->base_salary,
-                'total_earnings' => $model->total_earnings,
-                'ccss_base' => $model->ccss_base,
-                'income_tax_base' => $model->income_tax_base,
-                'total_employee_contributions' => $model->total_employee_contributions,
-                'income_tax' => $model->income_tax,
-                'total_other_deductions' => $model->total_other_deductions,
-                'total_deductions' => $model->total_deductions,
-                'net_pay' => $model->net_pay,
-                'total_employer_contributions' => $model->total_employer_contributions,
-                'total_provisions' => $model->total_provisions,
-                'employer_cost' => $model->employerCost(),
-            ],
-            'earnings' => $lines(['earning']),
-            'deductions' => $lines(PayrollEntryLine::DEDUCTION_KINDS),
-            'employerLines' => $lines(PayrollEntryLine::EMPLOYER_KINDS),
-        ];
+        return $this->document->payload($company, $this->entryOrFail($company, $entry));
     }
 
-    private function publicUrl(?string $path): ?string
+    /**
+     * La boleta, comprobando que sea de la compañía activa.
+     *
+     * ── Por qué no alcanza con findOrFail ───────────────────────────────
+     *
+     * `payroll_entries` no tiene `company_id` —su compañía la hereda del
+     * período— así que el modelo no lleva el scope de compañía y un
+     * `findOrFail($id)` encuentra la boleta de CUALQUIER empresa. Con eso,
+     * alguien con permiso de planillas en su propia compañía podía abrir el
+     * comprobante de un trabajador de otra probando números de id, y con el
+     * envío por correo habría podido además mandárselo a un tercero.
+     *
+     * El filtro se hace por el período, que sí sabe de qué compañía es. Se
+     * contesta 404 y no 403 a propósito: confirmar que la boleta existe pero es
+     * de otra empresa ya es información.
+     */
+    private function entryOrFail(Company $company, int $entryId): PayrollEntry
     {
-        if ($path === null) {
-            return null;
+        try {
+            return $this->document->findEntry($company, $entryId);
+        } catch (InvalidPayrollException) {
+            abort(404, 'Esa boleta no existe en esta compañía.');
         }
-
-        $disk = Storage::disk('public');
-
-        return $disk->exists($path) ? $disk->url($path) : null;
     }
 }

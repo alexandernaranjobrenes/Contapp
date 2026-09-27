@@ -3,6 +3,122 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-27 — Reportes de planilla: trece reportes, tres salidas, y el comprobante por correo
+
+**Pedido del usuario:** todos los reportes del menú de planillas, configurables, exportados en XLSX, PDF e imprimibles; el comprobante de pago con envío por correo electrónico. Nombró ocho y dejó abierto «más todos los demás que a tu criterio sean necesarios».
+
+### Se compartió la arquitectura de inventario en vez de duplicarla
+
+Inventario ya tenía exactamente esto: un registro de reportes en código, un contrato (`InventoryReport`), tres DTO (`ReportColumn`, `ReportFilter`, `ReportResult`), un exportador XLSX único, una vista Blade genérica para PDF y dos pantallas Vue genéricas — ocho reportes contra tres salidas, sin una línea de controlador por reporte.
+
+Había dos caminos: copiar todo eso al dominio de planillas, o subir las piezas genéricas a `Domains/Reporting`. Copiarlas habría producido dos abstracciones idénticas que se separan con el tiempo — se arregla el ancho de una columna en el XLSX de inventario y el de planillas se queda atrás, y entonces dos exportaciones del mismo sistema se ven distintas sin ninguna razón. **Es el mismo argumento que justificó UN exportador para los ocho reportes de inventario, un nivel más arriba.**
+
+Así que los tres DTO se movieron a `App\Domains\Reporting\Reports`, el exportador pasó a ser `TabularReportExporter`, la vista Blade a `reports.tabular`, y el contrato común a `TabularReport`. `InventoryReport` ahora solo lo extiende, sin agregados: conserva su nombre para que el registro y el controlador de inventario sigan tipando contra el dominio, y para que el día que un reporte de inventario necesite declarar algo propio el lugar exista. Los 16 tests de reportes de inventario pasaron sin tocarles una assertion.
+
+**Lo que esto NO es:** el motor de reportería manejado por tablas de configuración que el proyecto descartó el 2026-08-27. Un reporte sigue siendo una **clase** —con su consulta, sus reglas y sus comentarios— y el registro de cada dominio es una lista en código. Lo que se comparte es la forma de la salida, no la definición del reporte.
+
+### Las columnas escogibles son una interfaz aparte, y a propósito
+
+El usuario pidió «parametrización de generación según campos de ficha de empleado». Se agregó `HasSelectableColumns`, que **no** es parte de `TabularReport`.
+
+La razón es que la mayoría de los reportes no debe tenerlo: un balance de comprobación con la columna de crédito apagada no es un balance incompleto, es un documento equivocado, y lo mismo pasa con la planilla de la Caja, donde el juego de columnas es el que la institución espera. Donde sí tiene sentido es en un catálogo: la lista de empleados sirve para armar carnés (cédula, puesto), para el archivo de pago (banco, cuenta), para revisar cargas (asegurado, pensionado) y para revisar salarios (valor del día, valor de la hora). Obligar a los cuatro a llevarse las cuarenta columnas para borrar a mano es lo que hace que la gente termine manteniendo su propio Excel aparte — y ese Excel es el que después no coincide con el sistema.
+
+El **orden** de las columnas es del reporte y no del usuario: dejar reordenar convierte cada exportación en una maqueta distinta, y dos archivos del mismo reporte que no se pueden comparar columna a columna dejan de servir para conciliar. Las columnas viajan en la URL igual que los filtros, así que un enlace compartido y una exportación traen exactamente lo que se estaba viendo.
+
+### Trece reportes, cinco más de los que se pidieron
+
+Los ocho pedidos: empleados (columnas escogibles), planilla íntegra por período, deducciones por rubro, control de préstamos y ahorros, vacaciones colectivo e individual, liquidaciones laborales, acciones de personal. Los cinco agregados por criterio propio, cada uno porque responde algo que ninguno de los otros responde:
+
+- **Planilla de la CCSS** — las columnas se arman con los componentes que APARECEN en las boletas del período, no escritas a mano: una columna fija por rubro quedaría desactualizada el día que un decreto agregue o renombre uno, y el reporte seguiría saliendo sin decir que le falta algo. Una celda **vacía** significa «no le aplica» (el IVM de un pensionado) y es distinta de un cero. No lleva netos ni préstamos a propósito: a la Caja solo le corresponden las bases y las cuotas.
+- **Retenciones de impuesto al salario** — por MES y no por período, porque la escala es mensual y la segunda quincena se calcula sobre el acumulado restando lo ya retenido. La columna de crédito familiar delata la ficha a la que alguien olvidó marcarle el cónyuge: aparece en «No» junto a compañeros con el mismo salario y crédito lleno.
+- **Detalle de boletas** — con base y tasa congeladas, que es lo único que contesta «¿por qué me rebajaron esto?» de hace ocho meses con las tasas de hace ocho meses.
+- **Pasivo laboral acumulado** — lo provisionado menos lo pagado en liquidaciones: es el número contra el cual debería cuadrar la cuenta contable de provisión. Sin él, la provisión crece año con año y nadie sabe si está bien.
+- **Costo patronal por centro de costo** — con el **recargo** sobre el bruto como columna propia. Ronda el 45% en Costa Rica, y quien cotiza un proyecto con el salario bruto se queda corto en esa proporción. No es algo que deba quedar para calcular mentalmente.
+
+Tres reportes **advierten cuando su propio número no se puede leer al pie de la letra**: la tarjeta de vacaciones avisa que con un filtro «desde» el saldo corrido no es el real; el detalle de boletas avisa que el total de la columna «Monto» solo tiene sentido filtrando por un tipo de línea; el control de préstamos compara el saldo guardado contra la suma de lo aplicado y nombra los descuadrados. Un reporte que no dice cómo leerse produce decisiones peores que no tenerlo.
+
+### Imprimir es el PDF, no la pantalla
+
+En inventario el botón de imprimir usa la pantalla con CSS de impresión, y para una consulta de trabajo está bien. Acá no: un reporte de planilla que se imprime **se firma y se archiva**, y tiene que salir con el encabezado de la empresa, los filtros con que se corrió y quién lo generó — que es justo lo que ya hace el PDF. Así que imprimir abre el mismo PDF en el navegador, en vez de mantener una segunda maqueta que se pueda desincronizar.
+
+### El comprobante por correo va a la cola
+
+`PayslipDocument` arma los datos una sola vez para las cuatro salidas —pantalla, impresión, PDF y correo—. Antes la pantalla los armaba en el controlador; con tres salidas más habrían habido cuatro versiones del mismo documento, y la que el trabajador recibe por correo podría no coincidir con la que firma en papel.
+
+El envío se **encola**: cien trabajadores son cien correos con un PDF cada uno, y mandarlos dentro de la petición la haría expirar sin que nadie sepa cuántos salieron. El Mailable viaja con los **ids** y no con el modelo, porque un job de cola corre sin compañía ambiental y el scope —que falla cerrado— cargaría la boleta como inexistente. El PDF se genera al enviar y no antes: adjuntar los bytes en el constructor metería 60 KB por trabajador dentro de la tabla `jobs`.
+
+El envío masivo **no es todo o nada**, al contrario que el proceso masivo de vacaciones: que a uno le falte el correo no puede impedir que los otros cuarenta y nueve reciban el suyo, así que se mandan los que se pueden y se nombran los que no. La diferencia con vacaciones es que allá se mueve un saldo —dejarlo a medias descuadra el control— y acá solo se avisa algo.
+
+**Dos hechos operativos que conviene tener presentes:** `MAIL_MAILER` está en `log`, así que hasta configurar un SMTP real los correos quedan escritos en el log y no salen; y si no hay un proceso `queue:work` corriendo, quedan esperando en `jobs`. Ninguno de los dos es un error del envío.
+
+### Hallazgo de seguridad: los comprobantes cruzaban compañías
+
+`payroll_entries` no tiene `company_id` —hereda la compañía de su período— así que el modelo **no lleva el scope de compañía**, y `PayslipController` resolvía la boleta con un `findOrFail($id)` pelado. Con eso, alguien con permiso de planillas en su propia empresa podía abrir el comprobante de un trabajador de otra probando números de id.
+
+Venía de antes de esta entrega, en `payslips.show` y `payslips.print`, y el envío por correo lo habría vuelto peor: no solo leer el salario ajeno, sino mandárselo a un tercero. Las cuatro salidas ahora resuelven por `PayslipDocument::findEntry()`, que filtra por el período. Se contesta **404 y no 403**: confirmar que la boleta existe pero es de otra empresa ya es información. Lo encontró una prueba de aislamiento que se escribió por costumbre, no por sospecha.
+
+**Enviar el comprobante exige `read_write`** y no `read`, aunque «solo mande un documento»: sale información salarial de la empresa hacia afuera, y eso es una acción, no una consulta.
+
+---
+## 2026-09-26 — Liquidaciones laborales, y el valor del día como primitivo
+
+**Pedido del usuario:** el proceso de liquidaciones laborales (aguinaldo anual, liquidación con y sin responsabilidad patronal, vacaciones anuales) con su registro contable, junto con un manual de liquidaciones de Costa Rica edición 2026 para integrar. Después, dos precisiones: las vacaciones de liquidación se pagan con el promedio de las últimas 2 semanas si el pago es semanal y con el de los últimos 6 meses si es quincenal o mensual —práctica aceptada por el Ministerio de Trabajo—; y en pagos semanales se considera el trabajo en 6 días.
+
+### El valor del día estaba mal para una modalidad de pago entera
+
+`dailyRate()` dividía el salario mensualizado entre 30 **para todos**. Para un mensual está bien. Para un semanal está mal: alguien que gana ₡140.000 a la semana se mensualizaba en ₡606.662 (× 4,3333 semanas) y entre 30 daba ₡20.222 el día, cuando su día vale ₡23.333,33. Un 15% de menos en cada día de vacaciones, aguinaldo, incapacidad y liquidación.
+
+La causa era mezclar dos convenciones: **4,3333 semanas son 26 días laborados, no 30**. Mensualizar y volver a dividir entre 30 no puede dar el día correcto de un trabajador semanal.
+
+Se arregló invirtiendo la dependencia: **el día es ahora el primitivo** y se deriva directo del salario de la modalidad, con su divisor —mensual 30, quincenal 15, semanal el de la ficha (6 por defecto), diario el salario mismo, por hora multiplicado por las horas de la jornada—. La hora sale del día. Antes uno dividía entre 30 y el otro entre 4,3333 semanas, y **los dos métodos se contradecían entre sí**; ahora la identidad `hora × horas de jornada = día` se cumple en toda modalidad, y hay una prueba que la recorre.
+
+El divisor semanal quedó **en la ficha y no fijo en el código** porque son dos criterios legales distintos: 6 en sector productivo, donde la semana paga los días laborados, y 7 en comercio, donde el patrono remunera expresamente el descanso (CT art. 152). Entre uno y otro hay un 16% en el valor del día.
+
+### La matriz de causales va como datos, no como condicionales
+
+Qué extremos se pagan lo decide la causal. El **aguinaldo y las vacaciones son irrenunciables**: se pagan en toda causal, incluso en un despido con justa causa. El preaviso y la cesantía dependen de quién y por qué terminó la relación.
+
+Está en `LaborSettlement::ENTITLEMENTS` como una tabla literal de diez causales, porque es una tabla legal: se lee de un vistazo, se compara con la ley renglón por renglón, y el día que cambie se corrige en un lugar. Dejarla como una casilla de la pantalla sería invitar a que alguien liquide un despido con responsabilidad sin cesantía y lo firme.
+
+Lo mismo con la escala del art. 29: **no es una progresión** —sube hasta el año 7, se mantiene tres años y vuelve a bajar— y cualquier fórmula inventada para simplificarla falla en los extremos. Va como tabla, con el tope de 8 años (167,74 días): alguien con veinte años de servicio cobra exactamente lo mismo que alguien con ocho.
+
+### Las bases salen del historial, no de la ficha
+
+El art. 30 manda promediar **todos los salarios, ordinarios y extraordinarios**. Liquidar con el salario de la ficha le paga de menos a cualquiera que haya hecho una hora extra en el semestre, que es casi todo el mundo.
+
+El promedio se convierte en valor del día dividiendo entre **los días que el historial pagó**, no entre 30 fijo, por lo mismo del punto anterior. Y se divide entre los meses que existen y no entre seis: a quien tiene tres meses de historial, dividir entre seis le partiría el promedio a la mitad.
+
+Se suma `ccss_base` y no `total_earnings`: lo que la ley promedia son los salarios. Los viáticos y los reembolsos no son salario, y meterlos infla la liquidación tanto como excluir las horas extra la desinfla.
+
+**Sin historial no se inventa en silencio:** se cae al salario de la ficha, se marca `bases_from_history = false` y la pantalla lo advierte arriba. Calcular en silencio con la ficha es lo que produce liquidaciones que pagan de menos sin que nadie se dé cuenta.
+
+### Las vacaciones: la práctica por defecto, pero con el mínimo del art. 157 vigilado
+
+Se implementó la práctica que indicó el usuario —2 semanas si el pago es semanal, los mismos 6 meses si es quincenal o mensual— como valor por defecto, y quedó como parámetro (`vacation_average_basis`) con el literal del art. 157 como alternativa.
+
+Hay un caso, poco frecuente pero real, en que la práctica **sí perjudica** al trabajador: quien tuvo horas extra fuertes hace ocho meses y ninguna en los últimos seis tiene un promedio de 50 semanas más alto. El art. 157 es un mínimo irrenunciable. Así que el cálculo no se limita a aplicar el criterio configurado: cuando hay historial para las dos ventanas calcula ambas y **avisa con la diferencia en colones** si la escogida quedó por debajo. La decisión sigue siendo de la empresa; lo que no puede pasar es que el perjuicio quede invisible.
+
+Los **días** de vacaciones salen del saldo acumulado sin disfrutar —fue la decisión del usuario, frente a la fórmula de proporcionalidad del manual— y eso traslada todo el peso a la tasa de acumulación mensual del parámetro, que es la que construyó ese saldo.
+
+### Las cargas no van sobre todo
+
+Solo los salarios pendientes y las vacaciones cotizan. La cesantía y el preaviso son indemnizatorios, y el aguinaldo tiene exención expresa. **Cobrarle el 10,83% a la cesantía le quita al trabajador plata que la ley no permite rebajar**, y es uno de los errores más comunes de una liquidación hecha a mano. Un pensionado paga 6,50%, por la misma bandera de IVM de la planilla.
+
+### El asiento cancela provisiones, no vuelve a cargar el gasto
+
+Es la diferencia más importante con el asiento de planilla. El aguinaldo, las vacaciones y la cesantía se provisionaron mes a mes: el gasto ya se reconoció y quedó un pasivo. Pagarlos **cancela ese pasivo**. Cargarlos otra vez a gasto registra el mismo costo dos veces y deja la provisión inflada creciendo año con año hasta que alguien la audita.
+
+El preaviso es la excepción: su provisión está en 0% porque solo existe cuando hay despido sin aviso, así que es gasto del período en que ocurre.
+
+Como en la planilla, **el banco no se toca**: el neto queda como pasivo y el pago es otro asiento. Y anular no borra: reversión, devolución de los días de vacaciones liquidados —rastreables por `labor_settlement_id`, agregado a los movimientos justo para poder devolver *esos* días y no los que parezcan— y el trabajador vuelve a estar activo.
+
+### Dos parámetros que el motor leía y nadie podía configurar
+
+`income_tax_mode` e `income_tax_base` existían en la tabla, los leía el motor y **no tenían pantalla**: se quedaban en su valor por defecto para siempre. Deciden cuánto impuesto se le retiene a cada trabajador todos los meses.
+
+Es la cuarta vez que aparece el mismo patrón en este proyecto (CAByS, `price_list_id`, `is_recurring`, y el XLSX que estuvo escrito sin conectar). Quedan expuestos en Configuración → Parámetros junto con el nuevo. **Un parámetro sin camino de escritura es una constante escondida.**
+
+---
 ## 2026-09-24 — Preparar la planilla: verificación previa y rubros fijos
 
 **Pedido del usuario:** una pantalla para preparar el cálculo de cada período, pasando empleado por empleado o cargando un XLSX; que la planilla revise si todos los empleados activos están con datos; y rubros con ficha propia donde se declare, entre otras cosas, si quedan fijos.

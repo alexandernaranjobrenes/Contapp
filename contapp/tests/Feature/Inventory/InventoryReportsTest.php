@@ -2,8 +2,8 @@
 
 use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Reports\InventoryReportRegistry;
-use App\Domains\Inventory\Reports\ReportColumn;
-use App\Domains\Inventory\Reports\ReportResult;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportResult;
 
 /**
  * Compañía con un artículo, existencia y un movimiento de salida: lo mínimo

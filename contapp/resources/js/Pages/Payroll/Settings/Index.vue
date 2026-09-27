@@ -15,6 +15,9 @@ const props = defineProps({
     documentTypes: { type: Array, default: () => [] },
     payers: { type: Object, required: true },
     institutions: { type: Object, required: true },
+    incomeTaxModes: { type: Object, default: () => ({}) },
+    incomeTaxBases: { type: Object, default: () => ({}) },
+    vacationAverageBases: { type: Object, default: () => ({}) },
     hasConfiguration: { type: Boolean, default: false },
 });
 
@@ -155,7 +158,10 @@ function saveAccounts() {
 const settingsForm = useForm({
     document_type_id: props.settings?.document_type_id ?? '',
     vacation_days_per_month: props.settings?.vacation_days_per_month ?? 1,
+    vacation_average_basis: props.settings?.vacation_average_basis ?? 'practice',
     max_deduction_percentage: props.settings?.max_deduction_percentage ?? 0,
+    income_tax_mode: props.settings?.income_tax_mode ?? 'accumulated',
+    income_tax_base: props.settings?.income_tax_base ?? 'gross',
 });
 
 function saveSettings() {
@@ -195,7 +201,8 @@ const editor = ref(null);
 const blanks = {
     contribution: {
         code: '', name: '', payer: 'employee', institution: 'ccss', percentage: '',
-        base: 'ccss', ceiling_amount: '', expense_account_id: '', liability_account_id: '',
+        base: 'ccss', exempt_for_pensioner: false, ceiling_amount: '',
+        expense_account_id: '', liability_account_id: '',
         valid_from: '', valid_to: '', status: 'active', legal_basis: '',
     },
     bracket: {
@@ -699,6 +706,54 @@ const accountLabel = (id) => {
                     </div>
                 </div>
 
+                <div class="field">
+                    <label>Promedio con el que se pagan las vacaciones en una liquidación</label>
+                    <select v-model="settingsForm.vacation_average_basis" required>
+                        <option v-for="(label, value) in vacationAverageBases" :key="value" :value="value">
+                            {{ label }}
+                        </option>
+                    </select>
+                    <span class="hint small">
+                        La práctica —aceptada por el Ministerio de Trabajo— usa una sola base para toda la
+                        liquidación. Si el trabajador tuvo extras hace más de seis meses y ninguna después, el
+                        promedio de 50 semanas le da más y la liquidación lo advierte: el art. 157 es un mínimo
+                        irrenunciable.
+                    </span>
+                </div>
+
+                <!--
+                    Estos dos deciden cuánto impuesto se le retiene a cada
+                    trabajador todos los meses. El motor ya los leía y no
+                    había dónde ponerlos: vivían solo en la base de datos.
+                -->
+                <div class="field-row">
+                    <div class="field">
+                        <label>Cómo se lleva la quincena al mes para el impuesto</label>
+                        <select v-model="settingsForm.income_tax_mode" required>
+                            <option v-for="(label, value) in incomeTaxModes" :key="value" :value="value">
+                                {{ label }}
+                            </option>
+                        </select>
+                        <span class="hint small">
+                            Acumulado suma lo devengado de las quincenas anteriores del mismo mes y resta lo ya
+                            retenido: con salarios variables da el número exacto sin ajuste a fin de año.
+                        </span>
+                    </div>
+                    <div class="field">
+                        <label>Sobre qué se aplica la escala</label>
+                        <select v-model="settingsForm.income_tax_base" required>
+                            <option v-for="(label, value) in incomeTaxBases" :key="value" :value="value">
+                                {{ label }}
+                            </option>
+                        </select>
+                        <span class="hint small">
+                            Es una cuestión de la Ley del Impuesto sobre la Renta, no del motor. Aplicar la
+                            escala al bruto sin restar las cargas obreras le cobra de más a todos, todos los
+                            meses.
+                        </span>
+                    </div>
+                </div>
+
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary" :disabled="settingsForm.processing">Guardar</button>
                 </div>
@@ -761,7 +816,11 @@ const accountLabel = (id) => {
                                     {{ c.name }}
                                     <span v-if="c.legal_basis?.includes('VERIFICAR')" class="verify" :title="c.legal_basis">sin verificar</span>
                                 </td>
-                                <td class="small">{{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}</td>
+                                <td class="small">
+                                    {{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}
+                                    <span v-if="c.exempt_for_pensioner" class="badge badge-neutral sign-tag"
+                                        title="Un pensionado no cotiza esta carga">sin pensionado</span>
+                                </td>
                                 <td class="muted small">{{ institutions[c.institution] ?? c.institution }}</td>
                                 <td class="right num strong">{{ c.percentage.toFixed(4) }}</td>
                                 <td class="muted small">{{ c.base === 'gross' ? 'Bruto' : 'Salarial' }}</td>
@@ -1070,6 +1129,17 @@ const accountLabel = (id) => {
                             </select>
                         </div>
                     </div>
+
+                    <label class="check">
+                        <input v-model="rowForm.exempt_for_pensioner" type="checkbox">
+                        Un pensionado NO cotiza esta carga
+                    </label>
+                    <span class="hint small">
+                        Se marca en los componentes de <strong>IVM</strong>: quien ya está pensionado por ese
+                        régimen no vuelve a cotizarlo, ni él ni el patrono. Con eso su carga obrera baja de
+                        10,83% a 6,50%. Se marca acá y no se deduce del código, para que el día que cambie un
+                        nombre nadie empiece a cotizar de más.
+                    </span>
 
                     <div class="field">
                         <label>Fundamento legal</label>

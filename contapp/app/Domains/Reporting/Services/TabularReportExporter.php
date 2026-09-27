@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Domains\Inventory\Services;
+namespace App\Domains\Reporting\Services;
 
-use App\Domains\Inventory\Reports\ReportColumn;
-use App\Domains\Inventory\Reports\ReportResult;
 use App\Domains\Reporting\DataTransferObjects\ReportHeader;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportResult;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
@@ -22,18 +22,18 @@ use OpenSpout\Writer\XLSX\Writer;
  * Los números salen como NÚMEROS y no como texto: un XLSX donde no se puede
  * sumar una columna no sirve para lo que la gente abre un XLSX.
  */
-class InventoryReportExporter
+class TabularReportExporter
 {
     public function writeTo(string $outputPath, ReportHeader $header, ReportResult $result): void
     {
-        $writer = new Writer();
+        $writer = new Writer;
         $writer->openToFile($outputPath);
         $writer->getCurrentSheet()->setName($this->sheetName($header->title));
 
-        $title = (new Style())->setFontBold()->setFontSize(13);
-        $bold = (new Style())->setFontBold();
-        $muted = (new Style())->setFontSize(9);
-        $tableHeader = (new Style())->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
+        $title = (new Style)->setFontBold()->setFontSize(13);
+        $bold = (new Style)->setFontBold();
+        $muted = (new Style)->setFontSize(9);
+        $tableHeader = (new Style)->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
 
         $writer->addRows([
             Row::fromValues([$header->companyName], $title),

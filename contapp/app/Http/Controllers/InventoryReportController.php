@@ -10,10 +10,10 @@ use App\Domains\Inventory\Models\PriceList;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Reports\InventoryReport;
 use App\Domains\Inventory\Reports\InventoryReportRegistry;
-use App\Domains\Inventory\Reports\ReportColumn;
-use App\Domains\Inventory\Reports\ReportFilter;
-use App\Domains\Inventory\Reports\ReportResult;
-use App\Domains\Inventory\Services\InventoryReportExporter;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportFilter;
+use App\Domains\Reporting\Reports\ReportResult;
+use App\Domains\Reporting\Services\TabularReportExporter;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -109,7 +109,7 @@ class InventoryReportController extends Controller
     public function export(
         Request $request,
         string $report,
-        InventoryReportExporter $exporter,
+        TabularReportExporter $exporter,
         ReportHeaderFactory $headerFactory,
     ): StreamedResponse {
         $definition = $this->definitionOrFail($report);
@@ -139,7 +139,7 @@ class InventoryReportController extends Controller
 
         $totals = $result->computedTotals();
 
-        return Pdf::loadView('reports.inventory-generic', compact('header', 'result', 'totals'))
+        return Pdf::loadView('reports.tabular', compact('header', 'result', 'totals'))
             // Horizontal siempre: estos reportes tienen de ocho a catorce
             // columnas y en vertical no entran.
             ->setPaper('letter', 'landscape')

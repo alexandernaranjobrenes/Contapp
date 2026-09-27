@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domains\Inventory\Reports;
+namespace App\Domains\Reporting\Reports;
 
 /**
  * Un parámetro de un reporte, declarado. La pantalla arma el control solo

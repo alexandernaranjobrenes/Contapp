@@ -40,7 +40,7 @@ class CatalogExporter
      */
     public function writeTo(string $outputPath, array $catalogs, bool $includeInactive): void
     {
-        $writer = new Writer();
+        $writer = new Writer;
         $writer->openToFile($outputPath);
 
         $isFirstSheet = true;
@@ -78,7 +78,7 @@ class CatalogExporter
 
     private function tableHeaderStyle(): Style
     {
-        return (new Style())->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
+        return (new Style)->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
     }
 
     private function boolLabel(bool $value): string

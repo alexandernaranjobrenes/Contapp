@@ -4,6 +4,9 @@ namespace App\Domains\Inventory\Reports;
 
 use App\Domains\Core\Models\Company;
 use App\Domains\Inventory\Models\PriceList;
+use App\Domains\Reporting\Reports\ReportColumn;
+use App\Domains\Reporting\Reports\ReportFilter;
+use App\Domains\Reporting\Reports\ReportResult;
 use Illuminate\Support\Facades\DB;
 
 /**

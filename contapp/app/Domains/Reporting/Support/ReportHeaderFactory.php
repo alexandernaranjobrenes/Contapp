@@ -5,8 +5,8 @@ namespace App\Domains\Reporting\Support;
 use App\Domains\Core\Models\Company;
 use App\Domains\Reporting\DataTransferObjects\ReportHeader;
 use App\Models\User;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Arma el encabezado de identidad de empresa + trazabilidad (CLAUDE.md secc.

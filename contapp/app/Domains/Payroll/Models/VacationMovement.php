@@ -33,7 +33,7 @@ class VacationMovement extends Model
     protected $fillable = [
         'company_id', 'employee_id', 'type', 'movement_date', 'days',
         'from_date', 'to_date', 'payroll_period_id', 'payroll_entry_id',
-        'amount', 'notes', 'created_by',
+        'labor_settlement_id', 'amount', 'notes', 'created_by',
     ];
 
     protected function casts(): array

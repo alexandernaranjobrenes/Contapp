@@ -15,21 +15,26 @@ use Illuminate\Support\Facades\DB;
  * Carga una configuración INICIAL de planilla costarricense en una compañía.
  *
  * ╔═══════════════════════════════════════════════════════════════════════╗
- * ║  LEA ESTO ANTES DE USAR LOS NÚMEROS DE ESTE ARCHIVO                   ║
+ * ║  DE DÓNDE SALEN ESTOS NÚMEROS                                         ║
  * ╠═══════════════════════════════════════════════════════════════════════╣
  * ║                                                                       ║
- * ║  Los porcentajes y montos de acá son una PLANTILLA DE ARRANQUE, no    ║
- * ║  una fuente autorizada. Cambian: las cuotas de la CCSS por acuerdo    ║
- * ║  de Junta Directiva, la escala del impuesto por decreto cada año,     ║
- * ║  los créditos familiares con ella, y la póliza de riesgos del INS     ║
- * ║  según la actividad de CADA empresa.                                  ║
+ * ║  Los valores de 2026 los aportó el usuario contador, del Manual de    ║
+ * ║  Liquidaciones Laborales en Costa Rica (edición 2026):                ║
  * ║                                                                       ║
- * ║  Antes de correr la primera planilla en serio hay que verificarlos    ║
- * ║  uno por uno contra el decreto y las publicaciones vigentes, y        ║
- * ║  corregirlos en la pantalla de configuración. El sistema está hecho   ║
- * ║  para eso: ninguna tasa vive en el código del cálculo, todas viven    ║
- * ║  en tablas con vigencia, y una planilla vieja se reproduce con las    ║
- * ║  tasas de su propia fecha.                                            ║
+ * ║   · IVM según el Acta n.º 9038 de la Junta Directiva de la CCSS:      ║
+ * ║     11,16% tripartita del 2026 al 2028 — 5,58 patrono, 4,33 obrero.   ║
+ * ║   · Escala del impuesto del Decreto Ejecutivo n.º 45333-H.            ║
+ * ║   · Créditos de ₡2.590 por cónyuge y ₡1.710 por hijo menor.           ║
+ * ║                                                                       ║
+ * ║  Los totales cuadran con los del manual: 10,83% obrero, 26,83%        ║
+ * ║  patronal, 14,83% de CCSS patronal, y 6,50% obrero para un            ║
+ * ║  pensionado (sin IVM).                                                ║
+ * ║                                                                       ║
+ * ║  Aun así siguen siendo una PLANTILLA: la póliza del INS depende de    ║
+ * ║  la actividad de cada empresa, y las tasas cambian. El sistema está   ║
+ * ║  hecho para eso: ninguna tasa vive en el código del cálculo, todas    ║
+ * ║  viven en tablas con vigencia, y una planilla vieja se reproduce con  ║
+ * ║  las tasas de su propia fecha.                                        ║
  * ║                                                                       ║
  * ║  Lo que SÍ es estructural y no cambia con un decreto:                 ║
  * ║   · qué componente lo paga el obrero y cuál el patrono                ║
@@ -59,48 +64,56 @@ class CostaRicaPayrollDefaults
      * @return array<int, array<string, mixed>>
      */
     public const CONTRIBUTIONS = [
-        // ── Obrero: se le rebaja al trabajador ──────────────────────────
-        ['code' => 'SEM-OBR', 'name' => 'CCSS · Enfermedad y Maternidad (obrero)',
+        // ── Obrero: 10,83% en total ─────────────────────────────────────
+        ['code' => 'do001', 'name' => 'CCSS · Enfermedad y Maternidad (SEM)',
             'payer' => 'employee', 'institution' => 'ccss', 'percentage' => '5.50',
-            'legal_basis' => 'Reglamento del Seguro de Salud, CCSS — VERIFICAR vigente'],
-        ['code' => 'IVM-OBR', 'name' => 'CCSS · Invalidez, Vejez y Muerte (obrero)',
-            'payer' => 'employee', 'institution' => 'ccss', 'percentage' => '4.17',
-            'legal_basis' => 'Reglamento del Seguro de IVM, CCSS — VERIFICAR vigente'],
-        ['code' => 'BPDC-OBR', 'name' => 'Banco Popular · Aporte obrero',
+            'legal_basis' => 'Reglamento del Seguro de Salud, CCSS'],
+        // Los pensionados no cotizan IVM: ya están pensionados por ese
+        // régimen. De ahí que su carga obrera baje de 10,83% a 6,50%.
+        ['code' => 'do002', 'name' => 'CCSS · Invalidez, Vejez y Muerte (IVM)',
+            'payer' => 'employee', 'institution' => 'ccss', 'percentage' => '4.33',
+            'exempt_for_pensioner' => true,
+            'legal_basis' => 'CCSS Acta n.º 9038 — plan trianual IVM vigente del 2026 al 2028'],
+        ['code' => 'do010', 'name' => 'Banco Popular · Aporte obrero',
             'payer' => 'employee', 'institution' => 'banco_popular', 'percentage' => '1.00',
-            'legal_basis' => 'Ley Orgánica del Banco Popular n.º 4351 — VERIFICAR vigente'],
+            'legal_basis' => 'Ley Orgánica del Banco Popular n.º 4351'],
 
-        // ── Patronal: lo paga la empresa ENCIMA del salario ─────────────
-        ['code' => 'SEM-PAT', 'name' => 'CCSS · Enfermedad y Maternidad (patronal)',
+        // ── Patronal: 26,83% en total, de los cuales 14,83% son CCSS ────
+        ['code' => 'dp001', 'name' => 'CCSS · Enfermedad y Maternidad (SEM)',
             'payer' => 'employer', 'institution' => 'ccss', 'percentage' => '9.25',
-            'legal_basis' => 'Reglamento del Seguro de Salud, CCSS — VERIFICAR vigente'],
-        ['code' => 'IVM-PAT', 'name' => 'CCSS · Invalidez, Vejez y Muerte (patronal)',
-            'payer' => 'employer', 'institution' => 'ccss', 'percentage' => '5.42',
-            'legal_basis' => 'Reglamento del Seguro de IVM, CCSS — VERIFICAR vigente'],
-        ['code' => 'BPDC-PAT', 'name' => 'Banco Popular · Aporte patronal',
-            'payer' => 'employer', 'institution' => 'banco_popular', 'percentage' => '0.50',
-            'legal_basis' => 'Ley n.º 4351 — VERIFICAR vigente'],
-        ['code' => 'ASIG-FAM', 'name' => 'Asignaciones Familiares (FODESAF)',
+            'legal_basis' => 'Reglamento del Seguro de Salud, CCSS'],
+        ['code' => 'dp002', 'name' => 'CCSS · Invalidez, Vejez y Muerte (IVM)',
+            'payer' => 'employer', 'institution' => 'ccss', 'percentage' => '5.58',
+            'exempt_for_pensioner' => true,
+            'legal_basis' => 'CCSS Acta n.º 9038 — plan trianual IVM vigente del 2026 al 2028'],
+        ['code' => 'dp003', 'name' => 'Banco Popular · Cuota patronal',
+            'payer' => 'employer', 'institution' => 'banco_popular', 'percentage' => '0.25',
+            'legal_basis' => 'Ley n.º 4351'],
+        ['code' => 'dp004', 'name' => 'Asignaciones Familiares (FODESAF)',
             'payer' => 'employer', 'institution' => 'otro', 'percentage' => '5.00',
-            'legal_basis' => 'Ley de Desarrollo Social y Asignaciones Familiares — VERIFICAR vigente'],
-        ['code' => 'IMAS', 'name' => 'IMAS',
+            'legal_basis' => 'Ley de Desarrollo Social y Asignaciones Familiares'],
+        ['code' => 'dp005', 'name' => 'IMAS',
             'payer' => 'employer', 'institution' => 'imas', 'percentage' => '0.50',
-            'legal_basis' => 'Ley n.º 4760 — VERIFICAR vigente'],
-        ['code' => 'INA', 'name' => 'INA',
+            'legal_basis' => 'Ley n.º 4760'],
+        ['code' => 'dp006', 'name' => 'INA',
             'payer' => 'employer', 'institution' => 'ina', 'percentage' => '1.50',
-            'legal_basis' => 'Ley Orgánica del INA n.º 6868 — VERIFICAR vigente'],
-        ['code' => 'FCL', 'name' => 'Fondo de Capitalización Laboral',
+            'legal_basis' => 'Ley Orgánica del INA n.º 6868'],
+        ['code' => 'dp007', 'name' => 'Banco Popular · Aporte patronal',
+            'payer' => 'employer', 'institution' => 'banco_popular', 'percentage' => '0.25',
+            'legal_basis' => 'Ley n.º 4351'],
+        ['code' => 'dp008', 'name' => 'Fondo de Capitalización Laboral',
             'payer' => 'employer', 'institution' => 'fcl', 'percentage' => '1.50',
-            'legal_basis' => 'Ley de Protección al Trabajador n.º 7983 — VERIFICAR vigente'],
-        ['code' => 'ROP', 'name' => 'Régimen Obligatorio de Pensiones Complementarias',
+            'legal_basis' => 'Ley de Protección al Trabajador n.º 7983'],
+        ['code' => 'dp009', 'name' => 'Régimen Obligatorio de Pensiones Complementarias',
             'payer' => 'employer', 'institution' => 'rop', 'percentage' => '2.00',
-            'legal_basis' => 'Ley de Protección al Trabajador n.º 7983 — VERIFICAR vigente'],
-        // La póliza de riesgos NO tiene una tasa nacional: depende de la
-        // actividad de cada empresa y la fija el INS en su póliza. Entra en
-        // cero a propósito, para que nadie la dé por buena sin ponerla.
-        ['code' => 'INS-RT', 'name' => 'INS · Riesgos del Trabajo',
-            'payer' => 'employer', 'institution' => 'ins', 'percentage' => '0.00',
-            'legal_basis' => 'Código de Trabajo, Título IV — la tasa la fija la póliza de CADA empresa según su actividad'],
+            'legal_basis' => 'Ley de Protección al Trabajador n.º 7983'],
+        // El 1,00% completa el 26,83% del manual, pero la póliza de riesgos
+        // NO tiene tasa nacional: la fija el INS según la actividad de cada
+        // empresa. Este valor es el de referencia y hay que confirmarlo
+        // contra la póliza propia.
+        ['code' => 'dp011', 'name' => 'INS · Riesgos del Trabajo',
+            'payer' => 'employer', 'institution' => 'ins', 'percentage' => '1.00',
+            'legal_basis' => 'Código de Trabajo, Título IV — la tasa depende de la póliza de CADA empresa'],
     ];
 
     /**
@@ -112,18 +125,18 @@ class CostaRicaPayrollDefaults
      * @return array<int, array<string, mixed>>
      */
     public const TAX_BRACKETS = [
-        ['bracket_number' => 1, 'from_amount' => '0', 'to_amount' => '929000', 'percentage' => '0.00'],
-        ['bracket_number' => 2, 'from_amount' => '929000', 'to_amount' => '1363000', 'percentage' => '10.00'],
-        ['bracket_number' => 3, 'from_amount' => '1363000', 'to_amount' => '2392000', 'percentage' => '15.00'],
-        ['bracket_number' => 4, 'from_amount' => '2392000', 'to_amount' => '4783000', 'percentage' => '20.00'],
+        ['bracket_number' => 1, 'from_amount' => '0', 'to_amount' => '918000', 'percentage' => '0.00'],
+        ['bracket_number' => 2, 'from_amount' => '918000', 'to_amount' => '1347000', 'percentage' => '10.00'],
+        ['bracket_number' => 3, 'from_amount' => '1347000', 'to_amount' => '2364000', 'percentage' => '15.00'],
+        ['bracket_number' => 4, 'from_amount' => '2364000', 'to_amount' => '4727000', 'percentage' => '20.00'],
         // El último tramo no tiene techo: to_amount null.
-        ['bracket_number' => 5, 'from_amount' => '4783000', 'to_amount' => null, 'percentage' => '25.00'],
+        ['bracket_number' => 5, 'from_amount' => '4727000', 'to_amount' => null, 'percentage' => '25.00'],
     ];
 
     /** Créditos familiares mensuales. Se restan DEL IMPUESTO. */
     public const TAX_CREDITS = [
-        ['code' => 'spouse', 'name' => 'Crédito por cónyuge', 'monthly_amount' => '4000'],
-        ['code' => 'child', 'name' => 'Crédito por hijo', 'monthly_amount' => '2600'],
+        ['code' => 'spouse', 'name' => 'Crédito por cónyuge', 'monthly_amount' => '2590'],
+        ['code' => 'child', 'name' => 'Crédito por hijo menor de edad', 'monthly_amount' => '1710'],
     ];
 
     /**
@@ -270,7 +283,13 @@ class CostaRicaPayrollDefaults
             foreach (self::CONTRIBUTIONS as $row) {
                 PayrollContribution::withoutGlobalScope(CompanyScope::class)->updateOrCreate(
                     ['company_id' => $company->id, 'code' => $row['code'], 'valid_from' => $validFrom],
-                    $row + ['company_id' => $company->id, 'base' => 'ccss', 'status' => 'active', 'valid_from' => $validFrom]
+                    // La exención del pensionado va explícita: sin ella,
+                    // recargar la plantilla no devolvería a false una carga
+                    // que alguien marcó, y la carga dejaría de ser idempotente.
+                    $row + [
+                        'company_id' => $company->id, 'base' => 'ccss', 'status' => 'active',
+                        'exempt_for_pensioner' => false, 'valid_from' => $validFrom,
+                    ]
                 );
                 $counts['contributions']++;
             }

@@ -66,6 +66,26 @@ function determinationPayload(array $f, array $overrides = []): array
     ], $overrides);
 }
 
+/**
+ * El formulario de parámetros manda los cinco: los tres primeros deciden
+ * cuánto se le rebaja a cada trabajador y los dos del impuesto, cuánto se le
+ * retiene. Son requeridos a propósito —una configuración a medias produce un
+ * cálculo silenciosamente distinto— así que el helper los completa igual que
+ * la pantalla.
+ *
+ * @return array<string, mixed>
+ */
+function determinationParameters(array $overrides = []): array
+{
+    return array_merge([
+        'vacation_days_per_month' => 1,
+        'vacation_average_basis' => 'practice',
+        'max_deduction_percentage' => 0,
+        'income_tax_mode' => 'accumulated',
+        'income_tax_base' => 'gross',
+    ], $overrides);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 
 it('guarda de un golpe las cuentas de la configuración, las cargas y las provisiones', function () {
@@ -84,7 +104,7 @@ it('guarda de un golpe las cuentas de la configuración, las cargas y las provis
         ->and(PayrollProvision::whereNull('expense_account_id')->count())->toBe(0);
 
     // Y la obrera sigue sin cuenta de gasto, que es lo correcto.
-    $obrera = PayrollContribution::where('code', 'SEM-OBR')->firstOrFail();
+    $obrera = PayrollContribution::where('code', 'do001')->firstOrFail();
     expect($obrera->expense_account_id)->toBeNull()
         ->and($obrera->liability_account_id)->toBe($f['liability']->id);
 });
@@ -191,10 +211,10 @@ it('guardar los parámetros no borra las cuentas ya asignadas', function () {
     // medio cargar dejaba las cuentas en null sin que nadie lo pidiera: la
     // planilla se volvía incontabilizable por haber cambiado los días de
     // vacaciones.
-    $this->put(route('payroll-settings.update'), [
+    $this->put(route('payroll-settings.update'), determinationParameters([
         'vacation_days_per_month' => 1.25,
         'max_deduction_percentage' => 50,
-    ])->assertSessionHasNoErrors();
+    ]))->assertSessionHasNoErrors();
 
     $settings = PayrollSetting::where('company_id', $f['company']->id)->firstOrFail();
 
@@ -208,19 +228,45 @@ it('el endpoint de parámetros no puede tocar cuentas ni pasándolas a mano', fu
 
     $this->put(route('payroll-settings.accounts.update'), determinationPayload($f));
 
-    $this->put(route('payroll-settings.update'), [
-        'vacation_days_per_month' => 1,
-        'max_deduction_percentage' => 0,
+    $this->put(route('payroll-settings.update'), determinationParameters([
         // Un cliente viejo, o alguien probando la API, podría seguir
         // mandándolas: se ignoran en vez de aplicarse.
         'salary_expense_account_id' => null,
         'net_payable_account_id' => null,
-    ])->assertSessionHasNoErrors();
+    ]))->assertSessionHasNoErrors();
 
     $settings = PayrollSetting::where('company_id', $f['company']->id)->firstOrFail();
 
     expect($settings->salary_expense_account_id)->toBe($f['expense']->id)
         ->and($settings->net_payable_account_id)->toBe($f['liability']->id);
+});
+
+it('guarda los parámetros del impuesto y del promedio de vacaciones', function () {
+    $f = determinationFixture();
+
+    // Los tres existían en la base y los leía el motor, pero no había
+    // pantalla: se quedaban en su valor por defecto para siempre. Un
+    // parámetro sin camino de escritura es lo mismo que una constante
+    // escondida, y esta decide cuánto impuesto se le retiene a la gente.
+    $this->put(route('payroll-settings.update'), determinationParameters([
+        'income_tax_mode' => 'projected',
+        'income_tax_base' => 'net_of_contributions',
+        'vacation_average_basis' => 'legal_50_weeks',
+    ]))->assertSessionHasNoErrors();
+
+    $settings = PayrollSetting::where('company_id', $f['company']->id)->firstOrFail();
+
+    expect($settings->income_tax_mode)->toBe('projected')
+        ->and($settings->income_tax_base)->toBe('net_of_contributions')
+        ->and($settings->vacation_average_basis)->toBe('legal_50_weeks');
+});
+
+it('rechaza un modo de impuesto que no existe', function () {
+    determinationFixture();
+
+    $this->put(route('payroll-settings.update'), determinationParameters([
+        'income_tax_mode' => 'inventado',
+    ]))->assertSessionHasErrors('income_tax_mode');
 });
 
 it('exige permiso de escritura sobre planillas', function () {

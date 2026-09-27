@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Domains\Inventory\Reports;
+namespace App\Domains\Reporting\Reports;
 
 /**
  * Lo que devuelve cualquier reporte de inventario: sus columnas, sus

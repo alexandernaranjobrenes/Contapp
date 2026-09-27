@@ -269,17 +269,26 @@ class EmployeeController extends Controller
             'journey_type' => $employee->journey_type,
             'salary_type' => $employee->salary_type,
             'base_salary' => $employee->base_salary,
+            'weekly_salary_divisor' => (int) ($employee->weekly_salary_divisor ?: Employee::DEFAULT_WEEKLY_DIVISOR),
             'payment_method' => $employee->payment_method,
             'bank_account' => $employee->bank_account,
             'has_spouse_credit' => (bool) $employee->has_spouse_credit,
             'children_credit_count' => $employee->children_credit_count,
             'is_income_tax_exempt' => (bool) $employee->is_income_tax_exempt,
             'is_ccss_exempt' => (bool) $employee->is_ccss_exempt,
+            'is_pensioner' => (bool) $employee->is_pensioner,
             'status' => $employee->status,
             'photo_url' => $this->photoUrl($employee->photo_path),
             // La jornada ordinaria que le corresponde: es el umbral a partir
             // del cual una hora es extra, y no es el mismo para todos.
             'ordinary_hours' => Employee::ORDINARY_HOURS[$employee->journey_type] ?? null,
+            // El valor del día y de la hora, derivados. Son el primitivo con
+            // el que se pagan vacaciones, aguinaldo, incapacidades, horas
+            // extra y liquidaciones. Van en la fila —y no solo en la ficha—
+            // porque un divisor mal escogido se detecta de una sola pasada
+            // sobre la lista, antes de calcular la planilla.
+            'day_rate' => $employee->dailyRate(),
+            'hour_rate' => $employee->hourlyRate(),
         ];
     }
 
@@ -374,6 +383,10 @@ class EmployeeController extends Controller
             'contract_type' => ['required', Rule::in(['indefinido', 'plazo_fijo', 'obra_determinada', 'ocasional'])],
             'journey_type' => ['required', Rule::in(['diurna', 'mixta', 'nocturna'])],
             'weekly_hours' => ['required', 'numeric', 'gt:0', 'max:168'],
+            // Solo pesa en el salario semanal, pero se guarda siempre: entre 6
+            // y 7 hay un 16% de diferencia en el valor del día, y ese es el
+            // número que multiplica los días de una liquidación.
+            'weekly_salary_divisor' => ['nullable', 'integer', Rule::in([6, 7])],
 
             'salary_type' => ['required', Rule::in(['mensual', 'quincenal', 'semanal', 'diario', 'hora'])],
             'base_salary' => ['required', 'numeric', 'gte:0'],
@@ -386,6 +399,9 @@ class EmployeeController extends Controller
             'children_credit_count' => ['integer', 'min:0', 'max:30'],
             'is_income_tax_exempt' => ['boolean'],
             'is_ccss_exempt' => ['boolean'],
+            // Distinto de la exención total: un pensionado sí cotiza SEM y
+            // Banco Popular (6,50%); lo que ya no cotiza es IVM.
+            'is_pensioner' => ['boolean'],
 
             'status' => ['required', Rule::in(['active', 'suspended', 'terminated'])],
             'notes' => ['nullable', 'string'],
@@ -406,6 +422,7 @@ class EmployeeController extends Controller
             'has_spouse_credit' => $validated['has_spouse_credit'] ?? false,
             'is_income_tax_exempt' => $validated['is_income_tax_exempt'] ?? false,
             'is_ccss_exempt' => $validated['is_ccss_exempt'] ?? false,
+            'is_pensioner' => $validated['is_pensioner'] ?? false,
             'children_credit_count' => $validated['children_credit_count'] ?? 0,
             // Con fecha de salida, el trabajador queda dado de baja sin que
             // nadie tenga que acordarse de cambiar el estado. Olvidarlo lo
