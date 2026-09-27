@@ -8,6 +8,8 @@ import { formatMoney } from '../../../Utils/money';
 const props = defineProps({
     employees: { type: Array, default: () => [] },
     costCenters: { type: Array, default: () => [] },
+    departmentOptions: { type: Array, default: () => [] },
+    positionOptions: { type: Array, default: () => [] },
     expenseAccounts: { type: Array, default: () => [] },
     options: { type: Object, required: true },
 });
@@ -33,6 +35,8 @@ const blank = {
     termination_reason: '',
     position: '',
     department: '',
+    department_id: '',
+    job_position_id: '',
     cost_center_id: '',
     salary_expense_account_id: '',
     contract_type: 'indefinido',
@@ -94,7 +98,8 @@ function normalize(data) {
     const blanks = [
         'birth_date', 'termination_date', 'termination_reason', 'cost_center_id',
         'salary_expense_account_id', 'gender', 'nationality', 'email', 'phone',
-        'address', 'ccss_number', 'bank_name', 'bank_account', 'position', 'department', 'notes',
+        'address', 'ccss_number', 'bank_name', 'bank_account', 'position', 'department',
+        'department_id', 'job_position_id', 'notes',
     ];
 
     const out = { ...data };
@@ -120,6 +125,49 @@ function destroy(employee) {
 
     router.delete(route('employees.destroy', employee.id), { preserveScroll: true });
 }
+
+// Los puestos del departamento elegido: ofrecer los de toda la empresa haría
+// que en una lista de cien puestos nadie encuentre el suyo.
+const positionsForDepartment = computed(() => {
+    const departmentId = Number(activeForm.value.department_id);
+
+    if (! departmentId) return props.positionOptions;
+
+    return props.positionOptions.filter((p) => ! p.department_id || p.department_id === departmentId);
+});
+
+// Al elegir departamento se propone su centro de costo, para no tener que
+// acordarse de ponérselo a cada ficha. Solo si todavía no hay uno puesto:
+// pisarlo cambiaría a dónde va el gasto de alguien sin avisar.
+function applyDepartmentDefaults() {
+    const department = props.departmentOptions.find((d) => d.id === Number(activeForm.value.department_id));
+
+    if (department?.cost_center_id && ! activeForm.value.cost_center_id) {
+        activeForm.value.cost_center_id = department.cost_center_id;
+    }
+
+    // Si el puesto elegido ya no pertenece al departamento nuevo, se suelta.
+    const stillValid = positionsForDepartment.value.some((p) => p.id === Number(activeForm.value.job_position_id));
+
+    if (! stillValid) activeForm.value.job_position_id = '';
+}
+
+// Un salario fuera del rango del puesto no bloquea nada: avisa. Un cero de
+// más en un aumento no lo detecta nadie leyendo la ficha.
+const salaryOutOfRange = computed(() => {
+    const position = props.positionOptions.find((p) => p.id === Number(activeForm.value.job_position_id));
+    const salary = parseFloat(activeForm.value.base_salary);
+
+    if (! position || ! salary) return null;
+
+    const min = position.min_salary === null ? null : parseFloat(position.min_salary);
+    const max = position.max_salary === null ? null : parseFloat(position.max_salary);
+
+    if (min !== null && salary < min) return `por debajo del mínimo del puesto (${formatMoney(min)})`;
+    if (max !== null && salary > max) return `por encima del máximo del puesto (${formatMoney(max)})`;
+
+    return null;
+});
 
 const activeCount = computed(() => props.employees.filter((e) => e.status === 'active').length);
 
@@ -295,14 +343,29 @@ const monthlyBase = computed(() => props.employees
                         <span v-if="activeForm.errors.hire_date" class="error">{{ activeForm.errors.hire_date }}</span>
                     </div>
                     <div class="field">
-                        <label>Puesto</label>
-                        <input v-model="activeForm.position" type="text">
+                        <label>Departamento</label>
+                        <select v-model="activeForm.department_id" @change="applyDepartmentDefaults">
+                            <option value="">Sin departamento</option>
+                            <option v-for="d in departmentOptions" :key="d.id" :value="d.id">{{ d.code }} — {{ d.name }}</option>
+                        </select>
+                        <span v-if="!departmentOptions.length" class="hint small">
+                            Todavía no hay departamentos en el catálogo.
+                        </span>
                     </div>
                     <div class="field">
-                        <label>Departamento</label>
-                        <input v-model="activeForm.department" type="text">
+                        <label>Puesto</label>
+                        <select v-model="activeForm.job_position_id">
+                            <option value="">Sin puesto</option>
+                            <option v-for="p in positionsForDepartment" :key="p.id" :value="p.id">{{ p.code }} — {{ p.name }}</option>
+                        </select>
+                        <span class="hint small">El código de ocupación de la CCSS sale del puesto.</span>
                     </div>
                 </div>
+
+                <p v-if="salaryOutOfRange" class="flash flash-warning">
+                    El salario está {{ salaryOutOfRange }}. No bloquea nada — hay excepciones legítimas — pero
+                    conviene mirarlo: un cero de más en un aumento no se detecta leyendo la ficha.
+                </p>
 
                 <div class="field-row">
                     <div class="field">

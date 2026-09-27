@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Payroll\Models\Department;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
 use App\Domains\Payroll\Models\EmployeeNote;
+use App\Domains\Payroll\Models\JobPosition;
 use App\Domains\Payroll\Models\PersonnelAction;
 use App\Domains\Payroll\Models\VacationMovement;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +31,12 @@ class EmployeeController extends Controller
             'employees' => $employees->map(fn (Employee $e) => $this->row($e))->values(),
             'costCenters' => CostCenter::where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
+            // El catálogo va con el centro de costo de cada departamento: la
+            // ficha lo propone al elegirlo, para no tener que acordarse.
+            'departmentOptions' => Department::where('status', 'active')
+                ->orderBy('code')->get(['id', 'code', 'name', 'cost_center_id']),
+            'positionOptions' => JobPosition::where('status', 'active')
+                ->orderBy('code')->get(['id', 'code', 'name', 'department_id', 'min_salary', 'max_salary']),
             'expenseAccounts' => ChartOfAccount::where('accepts_posting', true)
                 ->whereIn('account_type', ['expense', 'cost_of_sales'])
                 ->orderBy('code')->get(['id', 'code', 'description_es']),
@@ -247,8 +255,13 @@ class EmployeeController extends Controller
             'identification_number' => $employee->identification_number,
             'email' => $employee->email,
             'phone' => $employee->phone,
-            'position' => $employee->position,
-            'department' => $employee->department,
+            // Lo que se muestra: el catálogo si lo tiene, el texto escrito a
+            // mano si no. Las dos formas conviven mientras las fichas viejas
+            // se mapean.
+            'position' => $employee->positionLabel(),
+            'department' => $employee->departmentLabel(),
+            'department_id' => $employee->department_id,
+            'job_position_id' => $employee->job_position_id,
             'cost_center_id' => $employee->cost_center_id,
             'cost_center' => $employee->costCenter?->code,
             'hire_date' => $employee->hire_date->format('Y-m-d'),
@@ -346,8 +359,13 @@ class EmployeeController extends Controller
             // dejaría los días trabajados en negativo.
             'termination_date' => ['nullable', 'date', 'after_or_equal:hire_date'],
             'termination_reason' => ['nullable', 'string', 'max:40'],
+            // Se conservan las columnas de texto además del catálogo: hay
+            // fichas con el departamento escrito a mano, y quitarlas
+            // perdería ese dato antes de que alguien lo pueda mapear.
             'position' => ['nullable', 'string', 'max:255'],
             'department' => ['nullable', 'string', 'max:255'],
+            'department_id' => ['nullable', Rule::exists('departments', 'id')->where('company_id', $companyId)],
+            'job_position_id' => ['nullable', Rule::exists('job_positions', 'id')->where('company_id', $companyId)],
             'cost_center_id' => ['nullable', Rule::exists('cost_centers', 'id')->where('company_id', $companyId)],
             'salary_expense_account_id' => [
                 'nullable',

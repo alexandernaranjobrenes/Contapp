@@ -46,7 +46,7 @@ class Employee extends Model
         'first_name', 'last_name1', 'last_name2', 'birth_date', 'gender', 'nationality',
         'email', 'phone', 'address', 'photo_path',
         'hire_date', 'termination_date', 'termination_reason',
-        'position', 'department', 'cost_center_id', 'salary_expense_account_id',
+        'position', 'department', 'department_id', 'job_position_id', 'cost_center_id', 'salary_expense_account_id',
         'contract_type', 'journey_type', 'weekly_hours',
         'salary_type', 'base_salary',
         'payment_method', 'bank_name', 'bank_account',
@@ -78,6 +78,34 @@ class Employee extends Model
     public function costCenter(): BelongsTo
     {
         return $this->belongsTo(CostCenter::class);
+    }
+
+    public function departmentRecord(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+
+    public function jobPosition(): BelongsTo
+    {
+        return $this->belongsTo(JobPosition::class, 'job_position_id');
+    }
+
+    /**
+     * El departamento y el puesto que se muestran: el del catálogo si lo
+     * tiene, el texto escrito a mano si no.
+     *
+     * Las dos formas conviven a propósito mientras las fichas viejas se
+     * mapean al catálogo; sin esto, adoptar el catálogo dejaría en blanco lo
+     * que ya estaba escrito.
+     */
+    public function departmentLabel(): ?string
+    {
+        return $this->departmentRecord?->name ?? $this->department;
+    }
+
+    public function positionLabel(): ?string
+    {
+        return $this->jobPosition?->name ?? $this->position;
     }
 
     public function salaryExpenseAccount(): BelongsTo

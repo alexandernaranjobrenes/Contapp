@@ -81,6 +81,80 @@ const totalLiability = computed(
 );
 
 const negative = computed(() => props.employees.filter((e) => e.balance < 0));
+
+// ── Proceso masivo ──────────────────────────────────────────────────────
+//
+// El cierre de fin de año, los saldos iniciales, una acreditación por
+// convenio. Hacerlo uno por uno con cincuenta personas no es solo lento: es
+// donde se salta a alguien, y ese alguien se entera un año después.
+
+const selected = ref([]);
+const bulking = ref(false);
+
+const bulkForm = useForm({
+    employee_ids: [],
+    type: 'taken',
+    movement_date: '',
+    days: '',
+    from_date: '',
+    to_date: '',
+    notes: '',
+});
+
+const allVisibleSelected = computed(
+    () => visible.value.length > 0 && visible.value.every((e) => selected.value.includes(e.id))
+);
+
+function toggleAll() {
+    const ids = visible.value.map((e) => e.id);
+
+    selected.value = allVisibleSelected.value
+        ? selected.value.filter((id) => ! ids.includes(id))
+        : [...new Set([...selected.value, ...ids])];
+}
+
+function openBulk() {
+    bulkForm.reset();
+    bulkForm.clearErrors();
+    bulking.value = true;
+}
+
+function syncBulkDays() {
+    if (! bulkForm.from_date || ! bulkForm.to_date) return;
+
+    const from = new Date(`${bulkForm.from_date}T00:00:00`);
+    const to = new Date(`${bulkForm.to_date}T00:00:00`);
+
+    if (to < from) return;
+
+    bulkForm.days = Math.round((to - from) / 86400000) + 1;
+
+    if (! bulkForm.movement_date) bulkForm.movement_date = bulkForm.from_date;
+}
+
+function submitBulk() {
+    bulkForm.transform((data) => ({
+        ...data,
+        employee_ids: selected.value,
+        from_date: data.from_date === '' ? null : data.from_date,
+        to_date: data.to_date === '' ? null : data.to_date,
+        notes: data.notes === '' ? null : data.notes,
+    })).post(route('vacations.bulk'), {
+        preserveScroll: true,
+        onSuccess: () => { bulking.value = false; selected.value = []; },
+    });
+}
+
+// A quién NO le alcanza el saldo para lo que se va a rebajar. Se ve antes de
+// aplicar, no después de que el proceso rebote.
+const bulkShort = computed(() => {
+    const days = parseFloat(bulkForm.days);
+
+    if (! days || days <= 0 || bulkForm.type === 'adjustment') return [];
+
+    return props.employees
+        .filter((e) => selected.value.includes(e.id) && e.balance < days);
+});
 </script>
 
 <template>
@@ -119,7 +193,13 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
         <div class="card">
             <div class="card-header">
                 <input v-model="search" type="search" placeholder="Buscar trabajador" class="search-input">
-                <span class="muted">{{ visible.length }} trabajador(es)</span>
+                <span class="muted">
+                    {{ visible.length }} trabajador(es)
+                    <template v-if="selected.length"> · <strong>{{ selected.length }} seleccionado(s)</strong></template>
+                </span>
+                <button type="button" class="btn btn-ghost" :disabled="!selected.length" @click="openBulk()">
+                    Movimiento masivo
+                </button>
                 <button type="button" class="btn btn-primary" @click="openCreate()">+ Registrar movimiento</button>
             </div>
 
@@ -127,6 +207,9 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                 <table>
                     <thead>
                         <tr>
+                            <th class="pick">
+                                <input type="checkbox" :checked="allVisibleSelected" @change="toggleAll">
+                            </th>
                             <th>Código</th>
                             <th>Trabajador</th>
                             <th>Puesto</th>
@@ -140,7 +223,10 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="e in visible" :key="e.id">
+                        <tr v-for="e in visible" :key="e.id" :class="{ picked: selected.includes(e.id) }">
+                            <td class="pick">
+                                <input v-model="selected" type="checkbox" :value="e.id">
+                            </td>
                             <td class="num">{{ e.code }}</td>
                             <td><Link :href="route('employees.show', e.id)">{{ e.name }}</Link></td>
                             <td class="muted small">{{ e.position ?? '—' }}</td>
@@ -155,7 +241,7 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                             </td>
                         </tr>
                         <tr v-if="!visible.length">
-                            <td colspan="10" class="muted empty-row">Sin trabajadores.</td>
+                            <td colspan="11" class="muted empty-row">Sin trabajadores.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -211,6 +297,68 @@ const negative = computed(() => props.employees.filter((e) => e.balance < 0));
                 </table>
             </div>
         </section>
+
+        <div v-if="bulking" class="modal-backdrop" @click.self="bulking = false">
+            <form class="modal card" @submit.prevent="submitBulk">
+                <h2>Movimiento para {{ selected.length }} trabajador(es)</h2>
+
+                <p class="hint small">
+                    El mismo movimiento para todos los seleccionados: el cierre de fin de año, los saldos
+                    iniciales, una acreditación por convenio.
+                </p>
+
+                <div class="field">
+                    <label>Tipo</label>
+                    <select v-model="bulkForm.type" required>
+                        <option value="taken">Disfrute</option>
+                        <option value="paid">Pago en efectivo</option>
+                        <option value="adjustment">Ajuste</option>
+                    </select>
+                </div>
+
+                <div v-if="bulkForm.type !== 'adjustment'" class="field-row">
+                    <div class="field">
+                        <label>Desde</label>
+                        <input v-model="bulkForm.from_date" type="date" @change="syncBulkDays">
+                    </div>
+                    <div class="field">
+                        <label>Hasta</label>
+                        <input v-model="bulkForm.to_date" type="date" @change="syncBulkDays">
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label>Fecha del movimiento</label>
+                        <input v-model="bulkForm.movement_date" type="date" required>
+                    </div>
+                    <div class="field">
+                        <label>Días para cada uno</label>
+                        <input v-model="bulkForm.days" type="number" step="0.01" required>
+                        <span v-if="bulkForm.errors.days" class="error">{{ bulkForm.errors.days }}</span>
+                    </div>
+                </div>
+
+                <p v-if="bulkShort.length" class="flash flash-warning">
+                    A <strong>{{ bulkShort.length }}</strong> de los seleccionados no les alcanza el saldo:
+                    {{ bulkShort.slice(0, 6).map((e) => `${e.code} (${e.balance.toFixed(2)})`).join(', ') }}<template v-if="bulkShort.length > 6">…</template>.
+                    El proceso es <strong>todo o nada</strong>: sacalos de la selección, o registrales el
+                    adelanto como ajuste.
+                </p>
+
+                <div class="field">
+                    <label>Notas</label>
+                    <input v-model="bulkForm.notes" type="text" maxlength="255" placeholder="Cierre de fin de año, convenio…">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" @click="bulking = false">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" :disabled="bulkForm.processing">
+                        Aplicar a {{ selected.length }}
+                    </button>
+                </div>
+            </form>
+        </div>
 
         <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
             <form class="modal card" @submit.prevent="submit">
@@ -319,4 +467,8 @@ td.strong { font-weight: 600; }
 .negative { color: var(--color-danger); }
 .auto { margin-left: 0.3rem; font-size: 0.6rem; }
 .error { color: var(--color-danger); font-size: 0.76rem; }
+
+.pick { width: 2.2rem; text-align: center; }
+.pick input { width: auto; margin: 0; }
+tr.picked { background: var(--color-surface-alt); }
 </style>

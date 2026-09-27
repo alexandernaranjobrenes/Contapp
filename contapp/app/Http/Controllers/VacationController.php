@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Payroll\Exceptions\InvalidPayrollException;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\VacationMovement;
+use App\Domains\Payroll\Services\BulkVacationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -128,6 +131,48 @@ class VacationController extends Controller
         ]);
 
         return back()->with('success', 'Movimiento de vacaciones registrado.');
+    }
+
+    /**
+     * El mismo movimiento para muchos trabajadores: el cierre de fin de año,
+     * los saldos iniciales, una acreditación por convenio.
+     */
+    public function bulk(Request $request, CurrentCompany $currentCompany, BulkVacationService $bulk): RedirectResponse
+    {
+        $companyId = $currentCompany->id();
+
+        $validated = $request->validate([
+            // La lista es explícita: un «aplicar a todos los activos» parece
+            // cómodo hasta que alguien lo usa sin mirar quién entró la
+            // semana pasada.
+            'employee_ids' => ['required', 'array', 'min:1'],
+            'employee_ids.*' => [Rule::exists('employees', 'id')->where('company_id', $companyId)],
+            'type' => ['required', Rule::in(['taken', 'paid', 'settlement', 'adjustment'])],
+            'movement_date' => ['required', 'date'],
+            'days' => ['required', 'numeric', 'not_in:0'],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date', 'after_or_equal:from_date'],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $result = $bulk->apply(
+                Company::findOrFail($companyId),
+                $validated['employee_ids'],
+                $validated['type'],
+                $validated['movement_date'],
+                (string) $validated['days'],
+                $validated['from_date'] ?? null,
+                $validated['to_date'] ?? null,
+                $validated['notes'] ?? null,
+                $request->user()->id,
+            );
+        } catch (InvalidPayrollException $e) {
+            return back()->withErrors(['movement' => $e->getMessage()])->withInput();
+        }
+
+        return back()->with('success',
+            "Se registró el movimiento a {$result['applied']} trabajador(es): {$result['days']} día(s) cada uno.");
     }
 
     public function destroy(int $movement): RedirectResponse

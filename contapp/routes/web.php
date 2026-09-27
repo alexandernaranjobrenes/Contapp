@@ -47,6 +47,7 @@ use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemGroupController;
 use App\Http\Controllers\ItemLotController;
 use App\Http\Controllers\ItemSerialController;
+use App\Http\Controllers\JobStructureController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\JournalEntryScheduleController;
 use App\Http\Controllers\LandedCostController;
@@ -389,6 +390,7 @@ Route::middleware('auth')->group(function () {
         Route::get('payroll-periods', [PayrollPeriodController::class, 'index'])->name('payroll-periods.index');
         Route::get('payroll-periods/{payrollPeriod}', [PayrollPeriodController::class, 'show'])->name('payroll-periods.show');
         Route::get('payroll-periods/{payrollPeriod}/export', [PayrollReportController::class, 'export'])->name('payroll-periods.export');
+        Route::get('payroll-periods/{payrollPeriod}/inputs-template', [PayrollReportController::class, 'inputsTemplate'])->name('payroll-periods.inputs-template');
 
         Route::get('payslips/{entry}', [PayslipController::class, 'show'])->name('payslips.show');
         Route::get('payslips/{entry}/print', [PayslipController::class, 'print'])->name('payslips.print');
@@ -398,6 +400,7 @@ Route::middleware('auth')->group(function () {
         Route::get('personnel-actions', [PersonnelActionController::class, 'index'])->name('personnel-actions.index');
         Route::get('vacations', [VacationController::class, 'index'])->name('vacations.index');
         Route::get('payroll-settings', [PayrollSettingsController::class, 'index'])->name('payroll-settings.index');
+        Route::get('job-structure', [JobStructureController::class, 'index'])->name('job-structure.index');
     });
 
     Route::middleware('module-access:payroll,read_write')->group(function () {
@@ -414,6 +417,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('payroll-periods/{payrollPeriod}', [PayrollPeriodController::class, 'destroy'])->name('payroll-periods.destroy');
         Route::post('payroll-periods/{payrollPeriod}/inputs', [PayrollPeriodController::class, 'storeInput'])->name('payroll-periods.inputs.store');
         Route::delete('payroll-periods/{payrollPeriod}/inputs/{input}', [PayrollPeriodController::class, 'destroyInput'])->name('payroll-periods.inputs.destroy');
+        // La carga masiva REEMPLAZA los movimientos del período: si se sumara
+        // a lo anterior, subir un archivo corregido pagaría el doble.
+        Route::post('payroll-periods/{payrollPeriod}/inputs-import', [PayrollReportController::class, 'importInputs'])->name('payroll-periods.inputs-import');
         Route::post('payroll-periods/{payrollPeriod}/calculate', [PayrollPeriodController::class, 'calculate'])->name('payroll-periods.calculate');
         Route::post('payroll-periods/{payrollPeriod}/approve', [PayrollPeriodController::class, 'approve'])->name('payroll-periods.approve');
         Route::post('payroll-periods/{payrollPeriod}/post', [PayrollPeriodController::class, 'post'])->name('payroll-periods.post');
@@ -440,7 +446,18 @@ Route::middleware('auth')->group(function () {
         Route::post('personnel-actions/{personnelAction}/cancel', [PersonnelActionController::class, 'cancel'])->name('personnel-actions.cancel');
 
         Route::post('vacations', [VacationController::class, 'store'])->name('vacations.store');
+        // El mismo movimiento a varios trabajadores: el cierre de fin de año,
+        // los saldos iniciales. Todo o nada, para no dejar un cierre a medias.
+        Route::post('vacations/bulk', [VacationController::class, 'bulk'])->name('vacations.bulk');
         Route::delete('vacations/{movement}', [VacationController::class, 'destroy'])->name('vacations.destroy');
+
+        Route::post('job-structure/departments', [JobStructureController::class, 'storeDepartment'])->name('departments.store');
+        Route::put('job-structure/departments/{department}', [JobStructureController::class, 'updateDepartment'])->name('departments.update');
+        Route::delete('job-structure/departments/{department}', [JobStructureController::class, 'destroyDepartment'])->name('departments.destroy');
+
+        Route::post('job-structure/positions', [JobStructureController::class, 'storePosition'])->name('job-positions.store');
+        Route::put('job-structure/positions/{position}', [JobStructureController::class, 'updatePosition'])->name('job-positions.update');
+        Route::delete('job-structure/positions/{position}', [JobStructureController::class, 'destroyPosition'])->name('job-positions.destroy');
 
         Route::put('payroll-settings', [PayrollSettingsController::class, 'update'])->name('payroll-settings.update');
         // Todas las cuentas de la planilla en una sola pantalla y un solo

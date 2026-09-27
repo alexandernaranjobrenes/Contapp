@@ -103,6 +103,31 @@ function submitUndo() {
     });
 }
 
+// ── Carga masiva ────────────────────────────────────────────────────────
+
+const importForm = useForm({ file: null });
+const importInput = ref(null);
+
+function pickImport(event) {
+    const file = event.target.files?.[0];
+    if (! file) return;
+
+    importForm.file = file;
+    importForm.post(route('payroll-periods.inputs-import', props.period.id), {
+        preserveScroll: true,
+        forceFormData: true,
+        onFinish: () => { if (importInput.value) importInput.value.value = ''; },
+    });
+}
+
+// Los errores por celda llegan numerados para poder corregirlos de una
+// pasada, en vez de descubrirlos uno por uno al reintentar.
+const importErrors = computed(
+    () => Object.entries(page.props.errors ?? {})
+        .filter(([key]) => key.startsWith('payroll_import_'))
+        .map(([, message]) => message)
+);
+
 const canCalculate = computed(
     () => props.period.is_recalculable && (props.readiness === null || props.readiness.ok)
 );
@@ -232,6 +257,39 @@ const statusClass = {
                 sociales las calcula el motor: no se digitan, porque poder digitarlas permitiría cuadrar una
                 planilla a mano y romper la conciliación con la Caja.
             </p>
+
+            <div class="bulk-bar">
+                <div class="bulk-text">
+                    <strong>Carga masiva</strong>
+                    <span class="muted small">
+                        Descargá la plantilla con todos los trabajadores del período, llenala y subila. Los
+                        trabajadores se emparejan por su <strong>código</strong>, así que podés ordenar, insertar
+                        o borrar filas en Excel. La carga <strong>reemplaza</strong> los movimientos del período:
+                        subir un archivo corregido lo sustituye en vez de sumarse.
+                    </span>
+                </div>
+
+                <div class="bulk-actions">
+                    <a :href="route('payroll-periods.inputs-template', period.id)" class="btn btn-ghost">
+                        ⤓ Descargar plantilla
+                    </a>
+                    <label class="btn btn-primary file-btn" :class="{ disabled: importForm.processing }">
+                        {{ importForm.processing ? 'Cargando…' : '⤒ Subir archivo' }}
+                        <input ref="importInput" type="file" accept=".xlsx" class="file-input"
+                            :disabled="importForm.processing" @change="pickImport">
+                    </label>
+                </div>
+            </div>
+
+            <div v-if="page.props.errors?.payroll_import" class="import-errors">
+                <p class="import-errors-title">{{ page.props.errors.payroll_import }}</p>
+                <ul v-if="importErrors.length">
+                    <li v-for="(e, i) in importErrors" :key="i">{{ e }}</li>
+                </ul>
+                <p v-if="importErrors.length" class="muted small">
+                    No se cargó ningún movimiento: una carga a medias dejaría sin saber qué quedó adentro.
+                </p>
+            </div>
 
             <form class="input-form" @submit.prevent="submitInput">
                 <div class="field">
@@ -633,4 +691,37 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--color-border); }
    demás botones de la barra. */
 .btn.danger { color: var(--color-danger); }
 .btn.danger:hover { background: var(--color-danger-soft); }
+
+/* ── Carga masiva ───────────────────────────────────────────────────── */
+
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin: 0 1.1rem 1rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-alt);
+}
+
+.bulk-text { display: flex; flex-direction: column; gap: 0.15rem; max-width: 46rem; }
+.bulk-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-btn.disabled { opacity: 0.6; cursor: default; }
+.file-input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+
+.import-errors {
+    margin: 0 1.1rem 1rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+    font-size: 0.82rem;
+}
+
+.import-errors-title { font-weight: 700; margin: 0 0 0.4rem; }
+.import-errors ul { margin: 0 0 0.4rem; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.2rem; }
 </style>
