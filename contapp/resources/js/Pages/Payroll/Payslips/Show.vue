@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { ArrowLeftIcon, MailIcon, PrinterIcon } from '@lucide/vue';
 
 const props = defineProps({
     company: { type: Object, required: true },
@@ -29,7 +30,7 @@ function sendEmail() {
 
     <AppLayout :title="`Comprobante — ${employee.name}`">
         <template #actions>
-            <Link :href="route('payroll-periods.show', period.id)" class="btn btn-ghost">← Planilla</Link>
+            <Link :href="route('payroll-periods.show', period.id)" class="btn btn-ghost"><ArrowLeftIcon /> Planilla</Link>
             <a :href="route('payslips.pdf', entry.id)" class="btn btn-ghost">⤓ PDF</a>
             <!--
                 Sin correo en la ficha el botón queda deshabilitado con el
@@ -43,9 +44,9 @@ function sendEmail() {
                 :title="employee.email ? `Enviar a ${employee.email}` : 'La ficha no tiene correo electrónico'"
                 @click="sendEmail"
             >
-                ✉ Enviar por correo
+                <MailIcon /> Enviar por correo
             </button>
-            <a :href="route('payslips.print', entry.id)" target="_blank" class="btn btn-primary">🖶 Ver e imprimir</a>
+            <a :href="route('payslips.print', entry.id)" target="_blank" class="btn btn-primary"><PrinterIcon /> Ver e imprimir</a>
         </template>
 
         <p class="hint">

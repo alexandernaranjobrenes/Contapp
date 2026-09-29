@@ -1,6 +1,7 @@
 <script setup>
 import { Head, useForm, router, Link } from '@inertiajs/vue3';
 import BackofficeLayout from '../../../Layouts/BackofficeLayout.vue';
+import { ArrowLeftIcon } from '@lucide/vue';
 
 const props = defineProps({
     license: { type: Object, required: true },
@@ -68,9 +69,9 @@ const completedFollowUps = () => (props.profile?.follow_ups ?? []).filter((f) =>
     <Head title="Perfil comercial" />
 
     <BackofficeLayout title="Perfil comercial">
-        <template #actions>
-            <Link :href="route('backoffice.licenses.index')" class="btn btn-ghost">← Volver a licencias</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('backoffice.licenses.index')" class="btn btn-ghost"><ArrowLeftIcon /> Volver a licencias</Link>
+        </div>
 
         <p class="license-line">
             Licencia <strong>{{ license.masked_code }}</strong>
@@ -159,29 +160,20 @@ const completedFollowUps = () => (props.profile?.follow_ups ?? []).filter((f) =>
 
 <style scoped>
 .license-line { color: var(--color-text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
-.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; margin-bottom: 1.25rem; }
+.columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; margin-bottom: 1.25rem; }
 .card { padding: 1rem 1.25rem; }
 h2 { font-size: 0.95rem; margin: 0 0 0.75rem; }
 h3 { font-size: 0.82rem; color: var(--color-text-muted); margin: 1rem 0 0.4rem; }
 
 .profile-form .field { margin-bottom: 0.6rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .profile-form label { font-size: 0.78rem; color: var(--color-text-muted); }
-.profile-form input, .profile-form textarea, .inline-form input, .inline-form select {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.85rem;
-    font-family: inherit;
-}
-
 .inline-form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; align-items: center; }
 .summary-input { flex: 1; min-width: 220px; }
 
 .hint { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
 
 .follow-up-list, .interaction-list { list-style: none; margin: 0; padding: 0; }
-.follow-up-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-top: 1px solid var(--color-border); font-size: 0.85rem; }
+.follow-up-list li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--color-border); font-size: 0.85rem; }
 .follow-up-list.completed li { color: var(--color-text-muted); text-decoration: line-through; }
 .muted { color: var(--color-text-muted); font-size: 0.85rem; }
 
@@ -190,4 +182,17 @@ h3 { font-size: 0.82rem; color: var(--color-text-muted); margin: 1rem 0 0.4rem; 
 .interaction-author { color: var(--color-text-muted); font-size: 0.8rem; margin-left: 0.5rem; }
 .interaction-summary { margin: 0.35rem 0 0; font-size: 0.88rem; }
 .badge-neutral { background: var(--color-surface-alt); color: var(--color-text); }
+
+/* Dos columnas de formulario no caben lado a lado en una tablet vertical:
+   cada una quedaría con campos de un par de palabras de ancho. */
+@media (max-width: 860px) {
+    .columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+    .card { padding: 0.9rem 1rem; }
+    .inline-form > * { flex: 1 1 100%; }
+    .inline-form .btn { justify-content: center; }
+    .summary-input { min-width: 0; }
+}
 </style>

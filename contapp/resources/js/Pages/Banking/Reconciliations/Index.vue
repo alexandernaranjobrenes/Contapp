@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     bankAccount: { type: Object, required: true },
@@ -26,7 +27,7 @@ function destroyReconciliation(r) {
     <AppLayout :title="`Conciliaciones — ${bankAccount.bank_name}`">
         <template #actions>
             <Link :href="route('bank-reconciliations.create', bankAccount.id)" class="btn btn-primary">
-                + Nueva conciliación
+                <PlusIcon /> Nueva conciliación
             </Link>
         </template>
 

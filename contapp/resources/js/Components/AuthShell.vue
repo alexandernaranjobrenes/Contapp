@@ -35,6 +35,7 @@ defineProps({
 <style scoped>
 .auth-shell {
     min-height: 100vh;
+    min-height: 100dvh;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
 }
@@ -112,8 +113,12 @@ defineProps({
 }
 
 @media (max-width: 860px) {
+    /* auto + 1fr: el panel de marca ocupa solo lo que mide, y el resto de la
+       pantalla es del formulario. Sin esto las dos filas se reparten la
+       altura por mitades y el formulario queda por debajo del pliegue. */
     .auth-shell {
         grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
     }
 
     .auth-panel {
@@ -126,6 +131,20 @@ defineProps({
 
     .auth-panel-extra {
         margin-top: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-panel {
+        padding: 1.25rem 1rem 1rem;
+    }
+
+    .auth-form-side {
+        padding: 1.25rem 1rem;
+    }
+
+    .auth-card {
+        padding: 1.5rem 1.25rem;
     }
 }
 </style>

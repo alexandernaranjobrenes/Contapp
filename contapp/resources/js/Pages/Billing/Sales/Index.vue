@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 defineProps({
     documents: { type: Array, default: () => [] },
@@ -23,7 +24,7 @@ function money(value) {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ documents.length }} comprobante(s)</span>
-                <Link :href="route('sales-documents.create')" class="btn btn-primary">+ Nueva factura</Link>
+                <Link :href="route('sales-documents.create')" class="btn btn-primary"><PlusIcon /> Nueva factura</Link>
             </div>
 
             <div class="table-scroll">

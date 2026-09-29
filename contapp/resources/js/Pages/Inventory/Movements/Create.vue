@@ -2,6 +2,7 @@
 import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     operations: { type: Object, default: () => ({}) },
@@ -380,7 +381,7 @@ function submit() {
             </div>
 
             <div class="actions">
-                <button type="button" class="btn btn-ghost" @click="addLine">+ Agregar línea</button>
+                <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Agregar línea</button>
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || !ready">
                     Contabilizar movimiento
                 </button>

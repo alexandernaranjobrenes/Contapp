@@ -2,6 +2,7 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { ArrowLeftIcon, PlusIcon, SaveIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     bom: { type: Object, required: true },
@@ -78,9 +79,9 @@ function submit() {
     <Head :title="'Componentes — ' + bom.code" />
 
     <AppLayout :title="'Componentes — ' + bom.code + ' ' + bom.name">
-        <template #actions>
-            <Link :href="route('bills-of-materials.index')" class="btn btn-ghost">Volver a las recetas</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('bills-of-materials.index')" class="btn btn-ghost"><ArrowLeftIcon /> Recetas</Link>
+        </div>
 
         <div v-if="page.props.errors?.lines" class="flash flash-error">{{ page.props.errors.lines }}</div>
 
@@ -99,59 +100,72 @@ function submit() {
             Hay un componente repetido. Dos líneas del mismo insumo emitirían el doble sin que nadie lo note.
         </p>
 
-        <form class="card" @submit.prevent="submit">
-            <div class="table-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Componente</th>
-                            <th class="right">Cantidad por lote</th>
-                            <th class="right">Merma %</th>
-                            <th class="right">Se emite</th>
-                            <th>Almacén</th>
-                            <th>Notas</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="(line, index) in form.lines" :key="index">
-                            <td>
-                                <select v-model="line.component_item_id" required class="wide">
-                                    <option value="">Elegí un artículo</option>
-                                    <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
-                                </select>
-                            </td>
-                            <td class="right">
-                                <input v-model="line.quantity" type="number" step="0.000001" min="0.000001" required class="qty">
-                            </td>
-                            <td class="right">
-                                <input v-model="line.scrap_percentage" type="number" step="0.0001" min="0" max="100" class="scrap">
-                            </td>
-                            <td class="right"><strong>{{ quantity(required(line)) }}</strong></td>
-                            <td>
-                                <select v-model="line.warehouse_id">
-                                    <option value="">Lo elige quien emite</option>
-                                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
-                                </select>
-                            </td>
-                            <td><input v-model="line.notes" type="text" maxlength="255"></td>
-                            <td>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="removeLine(index)">Quitar</button>
-                            </td>
-                        </tr>
-                        <tr v-if="!form.lines.length">
-                            <td colspan="7" class="muted empty-row">
-                                La receta no tiene componentes todavía.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <!-- Grilla de captura: cada línea se edita en la tabla y conserva su
+             botón de quitar (CLAUDE.md secc. 20, excepción). -->
+        <form @submit.prevent="submit">
+            <div class="card">
+                <div class="table-responsive capture-grid">
+                    <table class="lines-table">
+                        <colgroup>
+                            <col>
+                            <col class="col-qty">
+                            <col class="col-scrap">
+                            <col class="col-emit">
+                            <col class="col-warehouse">
+                            <col class="col-notes">
+                            <col class="col-remove">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Componente</th>
+                                <th class="num">Cantidad por lote</th>
+                                <th class="num">Merma %</th>
+                                <th class="num">Se emite</th>
+                                <th>Almacén</th>
+                                <th>Notas</th>
+                                <th><span class="sr-only">Quitar</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(line, index) in form.lines" :key="index">
+                                <td>
+                                    <select v-model="line.component_item_id" required aria-label="Componente">
+                                        <option value="">Elegí un artículo</option>
+                                        <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
+                                    </select>
+                                </td>
+                                <td data-label="Cantidad por lote" class="num">
+                                    <input v-model="line.quantity" type="number" step="0.000001" min="0.000001" required class="num-input" aria-label="Cantidad por lote">
+                                </td>
+                                <td data-label="Merma %" class="num">
+                                    <input v-model="line.scrap_percentage" type="number" step="0.0001" min="0" max="100" class="num-input" aria-label="Merma %">
+                                </td>
+                                <td data-label="Se emite" class="num"><strong>{{ quantity(required(line)) }}</strong></td>
+                                <td data-label="Almacén">
+                                    <select v-model="line.warehouse_id" aria-label="Almacén">
+                                        <option value="">Lo elige quien emite</option>
+                                        <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
+                                    </select>
+                                </td>
+                                <td data-label="Notas"><input v-model="line.notes" type="text" maxlength="255" aria-label="Notas"></td>
+                                <td class="remove-cell">
+                                    <button type="button" class="btn btn-ghost remove-btn" aria-label="Quitar componente" title="Quitar componente" @click="removeLine(index)"><XIcon /></button>
+                                </td>
+                            </tr>
+                            <tr v-if="!form.lines.length">
+                                <td colspan="7" class="muted empty-row">
+                                    La receta no tiene componentes todavía.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="form-actions">
-                <button type="button" class="btn btn-ghost" @click="addLine">+ Agregar componente</button>
+            <div class="form-actions lines-actions">
+                <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Agregar componente</button>
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || selfReference || duplicated">
-                    Guardar componentes
+                    <SaveIcon /> Guardar componentes
                 </button>
             </div>
         </form>
@@ -161,44 +175,59 @@ function submit() {
             queden 100. Sin declararla, la orden cierra con una desviación sistemática que parece un error.
         </p>
 
-        <div v-if="preview.length" class="card">
-            <div class="card-header">
-                <strong>Con qué se cuenta para un lote de {{ quantity(bom.output_quantity) }}</strong>
+        <template v-if="preview.length">
+            <h2 class="block-title">Con qué se cuenta para un lote de {{ quantity(bom.output_quantity) }}</h2>
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Componente</th>
+                                <th class="num">Hace falta</th>
+                                <th class="num">Hay</th>
+                                <th class="num">Falta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="p in preview" :key="p.component_item_id">
+                                <td><strong class="item-code">{{ p.item_code }}</strong> — {{ p.item_name }}</td>
+                                <td data-label="Hace falta" class="num">{{ quantity(p.required_quantity) }} {{ p.uom }}</td>
+                                <td data-label="Hay" class="num muted">{{ quantity(p.on_hand) }}</td>
+                                <td data-label="Falta" class="num" :class="{ short: Number(p.shortage) > 0 }">
+                                    {{ Number(p.shortage) > 0 ? quantity(p.shortage) : '—' }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Componente</th>
-                        <th class="right">Hace falta</th>
-                        <th class="right">Hay</th>
-                        <th class="right">Falta</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="p in preview" :key="p.component_item_id">
-                        <td><strong class="num">{{ p.item_code }}</strong> — {{ p.item_name }}</td>
-                        <td class="right">{{ quantity(p.required_quantity) }} {{ p.uom }}</td>
-                        <td class="right muted">{{ quantity(p.on_hand) }}</td>
-                        <td class="right" :class="{ short: Number(p.shortage) > 0 }">
-                            {{ Number(p.shortage) > 0 ? quantity(p.shortage) : '—' }}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+        </template>
     </AppLayout>
 </template>
 
 <style scoped>
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.small { font-size: 0.76rem; }
-.hint { color: var(--color-text-muted); font-size: 0.82rem; margin: 0 0 0.75rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.qty, .scrap { width: 7rem; text-align: right; }
-.wide { min-width: 14rem; }
+table { font-size: 0.84rem; }
+.item-code { font-variant-numeric: tabular-nums; }
 .short { color: var(--color-danger); font-weight: 600; }
-.form-actions { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.1rem; }
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
+
+/* Anchos fijos para lo que tiene un largo conocido: la grilla cabe en los
+   ~720px que deja la barra lateral a 1025px, y el componente y las notas se
+   quedan con el resto. */
+.lines-table { table-layout: fixed; }
+.lines-table th, .lines-table td { padding: 0.4rem 0.5rem; }
+.col-qty { width: 7rem; }
+.col-scrap { width: 5.5rem; }
+.col-emit { width: 6rem; }
+.col-warehouse { width: 8.5rem; }
+.col-notes { width: 18%; }
+.col-remove { width: 3rem; }
+.lines-table select,
+.lines-table input { width: 100%; min-width: 0; }
+.num-input { text-align: right; }
+.remove-btn { width: 2.25rem; padding: 0; }
+.lines-actions { justify-content: space-between; margin-bottom: 0.75rem; }
+
+@media screen and (max-width: 1024px) {
+    .remove-cell { justify-content: flex-end; }
+}
 </style>

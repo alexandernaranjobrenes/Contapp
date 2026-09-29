@@ -16,6 +16,16 @@ class CommercialFollowUp extends Model
         ];
     }
 
+    /**
+     * next_action_date se muestra tal cual en el backoffice (listado de
+     * licencias, perfil comercial): sin esto saldría con hora y zona. Mismo
+     * criterio que License::serializeDate().
+     */
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
+
     public function commercialProfile(): BelongsTo
     {
         return $this->belongsTo(CommercialProfile::class);

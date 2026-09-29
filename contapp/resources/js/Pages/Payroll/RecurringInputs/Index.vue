@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     items: { type: Array, default: () => [] },
@@ -129,7 +130,7 @@ const visible = computed(
                     Mostrar suspendidos
                 </label>
                 <button type="button" class="btn btn-primary" :disabled="!concepts.length" @click="openCreate()">
-                    + Asignar rubro fijo
+                    <PlusIcon /> Asignar rubro fijo
                 </button>
             </div>
 

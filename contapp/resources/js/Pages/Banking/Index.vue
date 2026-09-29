@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     bankAccounts: { type: Array, default: () => [] },
@@ -44,7 +45,7 @@ function submitEdit() {
 
     <AppLayout title="Cuentas bancarias">
         <template #actions>
-            <Link :href="route('bank-accounts.create')" class="btn btn-primary">+ Nueva cuenta</Link>
+            <Link :href="route('bank-accounts.create')" class="btn btn-primary"><PlusIcon /> Nueva cuenta</Link>
         </template>
 
         <DocumentToolbar :new-href="route('bank-accounts.create')" />

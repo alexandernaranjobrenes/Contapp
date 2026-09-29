@@ -1,8 +1,11 @@
 <script setup>
-import { Head, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { PencilIcon, PlusIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
     determinations: { type: Array, default: () => [] },
@@ -34,55 +37,46 @@ const scopeOptions = computed(() => ({
     company: [],
 }));
 
-const creating = ref(false);
-
-const createForm = useForm({
-    scope_level: 'company',
-    scope_id: '',
-    category: 'inventory',
-    account_id: '',
-    cost_allocation_rule_id: '',
+// Ficha, alta y edición en un solo modal (CLAUDE.md secc. 20 y 21). Alcance y
+// categoría solo se eligen al crear: cambiarlos sería otra regla distinta.
+const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit } = useCrudModal({
+    records: () => props.determinations,
+    defaults: () => ({ scope_level: 'company', scope_id: '', category: 'inventory', account_id: '', cost_allocation_rule_id: '' }),
+    toForm: (d) => ({
+        scope_level: d.scope_level,
+        scope_id: d.scope_id ?? '',
+        category: d.category,
+        account_id: d.account_id,
+        cost_allocation_rule_id: d.cost_allocation_rule_id ?? '',
+    }),
+    store: () => route('gl-determinations.store'),
+    update: (d) => route('gl-determinations.update', d.id),
+    storePayload: (data) => ({
+        ...data,
+        scope_id: data.scope_level === 'company' || data.scope_id === '' ? null : data.scope_id,
+        cost_allocation_rule_id: data.cost_allocation_rule_id === '' ? null : data.cost_allocation_rule_id,
+    }),
+    updatePayload: ({ account_id, cost_allocation_rule_id }) => ({
+        account_id,
+        cost_allocation_rule_id: cost_allocation_rule_id === '' ? null : cost_allocation_rule_id,
+    }),
 });
 
-function openCreate() {
-    createForm.reset();
-    creating.value = true;
-}
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva regla de determinación';
+    return selected.value ? `${props.categories[selected.value.category]} — ${selected.value.scope_name}` : '';
+});
 
-function submitCreate() {
-    createForm
-        .transform((data) => ({
-            ...data,
-            scope_id: data.scope_level === 'company' || data.scope_id === '' ? null : data.scope_id,
-            cost_allocation_rule_id: data.cost_allocation_rule_id === '' ? null : data.cost_allocation_rule_id,
-        }))
-        .post(route('gl-determinations.store'), { onSuccess: () => (creating.value = false), preserveScroll: true });
-}
+function destroy() {
+    const d = selected.value;
 
-const editing = ref(null);
-
-const editForm = useForm({ account_id: '', cost_allocation_rule_id: '' });
-
-function openEdit(determination) {
-    editForm.clearErrors();
-    editForm.account_id = determination.account_id;
-    editForm.cost_allocation_rule_id = determination.cost_allocation_rule_id ?? '';
-    editing.value = determination;
-}
-
-function submitEdit() {
-    editForm
-        .transform((data) => ({
-            ...data,
-            cost_allocation_rule_id: data.cost_allocation_rule_id === '' ? null : data.cost_allocation_rule_id,
-        }))
-        .put(route('gl-determinations.update', editing.value.id), { onSuccess: () => (editing.value = null), preserveScroll: true });
-}
-
-function destroy(determination) {
-    if (! confirm(`¿Eliminar la regla de "${props.categories[determination.category]}" para ${determination.scope_name}?`)) return;
-
-    router.delete(route('gl-determinations.destroy', determination.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar regla',
+        message: `Se elimina la regla de «${props.categories[d.category]}» para ${d.scope_name}.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('gl-determinations.destroy', d.id), { preserveScroll: true }),
+    });
 }
 </script>
 
@@ -90,7 +84,11 @@ function destroy(determination) {
     <Head title="Determinación de cuentas" />
 
     <AppLayout title="Determinación de cuentas">
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.gl_determination" class="flash flash-error">{{ page.props.errors.gl_determination }}</div>
 
@@ -101,37 +99,33 @@ function destroy(determination) {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ sorted.length }} regla(s)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva regla</button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive table-scroll">
                 <table>
                     <thead>
                         <tr>
+                            <th>Categoría</th>
                             <th>Alcance</th>
                             <th>Aplica a</th>
-                            <th>Categoría</th>
                             <th>Cuenta</th>
-                            <th>Norma de reparto</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="d in sorted" :key="d.id">
-                            <td><span class="badge badge-neutral">{{ scopeLevels[d.scope_level] }}</span></td>
-                            <td class="code-cell">{{ d.scope_name }}</td>
+                        <tr
+                            v-for="d in sorted"
+                            :key="d.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(d)"
+                            @keydown.enter="openDetail(d)"
+                            @keydown.space.prevent="openDetail(d)"
+                        >
                             <td>{{ categories[d.category] }}</td>
-                            <td class="muted small">{{ d.account_label }}</td>
-                            <td class="muted small">{{ d.cost_allocation_rule_label ?? '—' }}</td>
-                            <td class="actions-cell">
-                                <button type="button" class="btn btn-ghost" @click="openEdit(d)">Editar</button>
-                                <button type="button" class="btn btn-ghost" @click="destroy(d)">Eliminar</button>
-                            </td>
+                            <td data-label="Alcance"><span class="badge badge-neutral">{{ scopeLevels[d.scope_level] }}</span></td>
+                            <td data-label="Aplica a" class="code-cell">{{ d.scope_name }}</td>
+                            <td data-label="Cuenta" class="muted">{{ d.account_label }}</td>
                         </tr>
                         <tr v-if="!sorted.length">
-                            <td colspan="6" class="muted empty-row">
+                            <td colspan="4" class="muted empty-row">
                                 Todavía no hay reglas configuradas. Sin al menos las de nivel compañía, ningún movimiento de
                                 inventario podrá contabilizarse.
                             </td>
@@ -141,147 +135,101 @@ function destroy(determination) {
             </div>
         </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal-card card" @submit.prevent="submitCreate">
-                <h2>Nueva regla de determinación</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="close">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge badge-neutral">{{ scopeLevels[selected.scope_level] }}</span>
+            </template>
 
-                <div class="grid-2">
-                    <div class="field">
-                        <label>Alcance</label>
-                        <select v-model="createForm.scope_level" @change="createForm.scope_id = ''">
-                            <option v-for="(label, key) in scopeLevels" :key="key" :value="key">{{ label }}</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label>Aplica a</label>
-                        <select v-model="createForm.scope_id" :disabled="createForm.scope_level === 'company'">
-                            <option value="">{{ createForm.scope_level === 'company' ? 'Toda la compañía' : '— Elegir —' }}</option>
-                            <option v-for="o in scopeOptions[createForm.scope_level]" :key="o.id" :value="o.id">
-                                {{ o.code }} — {{ o.name }}
-                            </option>
-                        </select>
-                        <span v-if="createForm.errors.scope_id" class="error">{{ createForm.errors.scope_id }}</span>
-                    </div>
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Categoría</dt>
+                    <dd>{{ categories[selected.category] }}</dd>
                 </div>
-
-                <div class="field">
-                    <label>Categoría contable</label>
-                    <select v-model="createForm.category">
-                        <option v-for="(label, key) in categories" :key="key" :value="key">{{ label }}</option>
-                    </select>
-                    <span v-if="createForm.errors.category" class="error">{{ createForm.errors.category }}</span>
+                <div>
+                    <dt>Aplica a</dt>
+                    <dd>{{ selected.scope_name }}</dd>
                 </div>
-
-                <div class="field">
-                    <label>Cuenta contable</label>
-                    <select v-model="createForm.account_id" required>
-                        <option value="" disabled>— Elegir —</option>
-                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
-                    </select>
-                    <span v-if="createForm.errors.account_id" class="error">{{ createForm.errors.account_id }}</span>
+                <div class="full">
+                    <dt>Cuenta contable</dt>
+                    <dd>{{ selected.account_label }}</dd>
                 </div>
-
-                <div class="field">
-                    <label>Norma de reparto (obligatoria si la cuenta exige centro de costo)</label>
-                    <select v-model="createForm.cost_allocation_rule_id">
-                        <option value="">— Ninguna —</option>
-                        <option v-for="r in costAllocationRules" :key="r.id" :value="r.id">{{ r.code }} — {{ r.name }}</option>
-                    </select>
-                    <span v-if="createForm.errors.cost_allocation_rule_id" class="error">{{ createForm.errors.cost_allocation_rule_id }}</span>
+                <div class="full">
+                    <dt>Norma de reparto</dt>
+                    <dd>{{ selected.cost_allocation_rule_label ?? '—' }}</dd>
                 </div>
+            </dl>
 
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="createForm.processing">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                </div>
-            </form>
-        </div>
-
-        <div v-if="editing" class="modal-backdrop" @click.self="editing = null">
-            <form class="modal-card card" @submit.prevent="submitEdit">
-                <h2>Editar regla</h2>
-                <p class="muted small">
-                    {{ scopeLevels[editing.scope_level] }} · {{ editing.scope_name }} · {{ categories[editing.category] }}.
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="determination-form" @submit.prevent="submit">
+                <p v-if="mode === 'edit'" class="muted small">
+                    {{ scopeLevels[selected.scope_level] }} · {{ selected.scope_name }} · {{ categories[selected.category] }}.
                     El alcance y la categoría no se cambian: sería otra regla distinta.
                 </p>
 
+                <template v-if="mode === 'create'">
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="det-scope">Alcance</label>
+                            <select id="det-scope" v-model="form.scope_level" @change="form.scope_id = ''">
+                                <option v-for="(label, key) in scopeLevels" :key="key" :value="key">{{ label }}</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="det-scope-id">Aplica a</label>
+                            <select id="det-scope-id" v-model="form.scope_id" :disabled="form.scope_level === 'company'">
+                                <option value="">{{ form.scope_level === 'company' ? 'Toda la compañía' : '— Elegir —' }}</option>
+                                <option v-for="o in scopeOptions[form.scope_level]" :key="o.id" :value="o.id">
+                                    {{ o.code }} — {{ o.name }}
+                                </option>
+                            </select>
+                            <span v-if="form.errors.scope_id" class="error">{{ form.errors.scope_id }}</span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="det-category">Categoría contable</label>
+                        <select id="det-category" v-model="form.category">
+                            <option v-for="(label, key) in categories" :key="key" :value="key">{{ label }}</option>
+                        </select>
+                        <span v-if="form.errors.category" class="error">{{ form.errors.category }}</span>
+                    </div>
+                </template>
+
                 <div class="field">
-                    <label>Cuenta contable</label>
-                    <select v-model="editForm.account_id" required>
+                    <label for="det-account">Cuenta contable</label>
+                    <select id="det-account" v-model="form.account_id" required>
+                        <option value="" disabled>— Elegir —</option>
                         <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
                     </select>
-                    <span v-if="editForm.errors.account_id" class="error">{{ editForm.errors.account_id }}</span>
+                    <span v-if="form.errors.account_id" class="error">{{ form.errors.account_id }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Norma de reparto</label>
-                    <select v-model="editForm.cost_allocation_rule_id">
+                    <label for="det-rule">Norma de reparto (obligatoria si la cuenta exige centro de costo)</label>
+                    <select id="det-rule" v-model="form.cost_allocation_rule_id">
                         <option value="">— Ninguna —</option>
                         <option v-for="r in costAllocationRules" :key="r.id" :value="r.id">{{ r.code }} — {{ r.name }}</option>
                     </select>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="editForm.processing">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="editing = null">Cancelar</button>
+                    <span v-if="form.errors.cost_allocation_rule_id" class="error">{{ form.errors.cost_allocation_rule_id }}</span>
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="determination-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 1.1rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: -0.5rem 0 1rem; }
-
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
+table { font-size: 0.85rem; }
 .code-cell { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; white-space: normal; }
-.actions-cell { display: flex; gap: 0.4rem; }
-
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(11, 31, 58, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-    padding: 1rem;
-}
-
-.modal-card { width: 560px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.5rem; }
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-
-.field input, .field select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.error { color: var(--color-danger); font-size: 0.76rem; }
-.modal-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
 </style>

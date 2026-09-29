@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     employees: { type: Array, default: () => [] },
@@ -200,7 +201,7 @@ const bulkShort = computed(() => {
                 <button type="button" class="btn btn-ghost" :disabled="!selected.length" @click="openBulk()">
                     Movimiento masivo
                 </button>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Registrar movimiento</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Registrar movimiento</button>
             </div>
 
             <div class="table-scroll freeze-2">

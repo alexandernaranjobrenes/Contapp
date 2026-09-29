@@ -1,6 +1,7 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { formatMoney } from '../../../Utils/money';
+import { ArrowLeftIcon, PrinterIcon } from '@lucide/vue';
 
 // Comprobante de pago: deliberadamente SIN AppLayout, igual que la
 // presentación de un asiento. Es la superficie pensada para imprimirse o
@@ -25,9 +26,9 @@ function printNow() {
 
     <div class="page">
         <div class="toolbar no-print">
-            <a href="javascript:history.back()" class="btn btn-ghost">← Volver</a>
+            <a href="javascript:history.back()" class="btn btn-ghost"><ArrowLeftIcon /> Volver</a>
             <span class="spacer" />
-            <button type="button" class="btn btn-primary" @click="printNow">🖶 Imprimir</button>
+            <button type="button" class="btn btn-primary" @click="printNow"><PrinterIcon /> Imprimir</button>
         </div>
 
         <div class="slip">

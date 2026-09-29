@@ -3,6 +3,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import ConfirmModal from '../../../Components/ConfirmModal.vue';
+import { ArrowRightIcon } from '@lucide/vue';
 
 const props = defineProps({
     order: { type: Object, required: true },
@@ -50,7 +51,7 @@ const badgeClass = {
                 Cancelar pedido
             </button>
             <Link v-if="isOpen" :href="route('sales-documents.create', { order: order.id })" class="btn btn-primary">
-                Copiar a → Factura de venta
+                Copiar a <ArrowRightIcon /> Factura de venta
             </Link>
         </template>
 

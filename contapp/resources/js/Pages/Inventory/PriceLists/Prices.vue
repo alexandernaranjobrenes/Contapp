@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { ArrowLeftIcon, SaveIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -65,16 +66,18 @@ function submit() {
     <Head :title="'Precios — ' + priceList.code" />
 
     <AppLayout :title="'Precios — ' + priceList.code + ' ' + priceList.name">
-        <template #actions>
-            <input
-                v-model="search"
-                type="search"
-                placeholder="Buscar código o nombre..."
-                class="search-input"
-                @input="onSearchInput"
-            >
-            <Link :href="route('price-lists.index')" class="btn btn-ghost">Volver a las listas</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('price-lists.index')" class="btn btn-ghost"><ArrowLeftIcon /> Listas de precios</Link>
+            <div class="view-filters">
+                <input
+                    v-model="search"
+                    type="search"
+                    placeholder="Buscar código o nombre..."
+                    aria-label="Buscar artículo"
+                    @input="onSearchInput"
+                >
+            </div>
+        </div>
 
         <p class="hint">
             Lista en <strong>{{ priceList.currency_code }}</strong>,
@@ -107,31 +110,35 @@ function submit() {
             tendría significado sin fijar un tipo de cambio.
         </p>
 
-        <form class="card" @submit.prevent="submit">
-            <div class="table-scroll">
+        <!-- Grilla de captura: el precio se edita en la fila (CLAUDE.md secc.
+             20, excepción). -->
+        <form @submit.prevent="submit">
+            <div class="card">
+            <div class="table-responsive table-scroll capture-grid">
                 <table>
                     <thead>
                         <tr>
                             <th>Código</th>
                             <th>Artículo</th>
-                            <th class="right">Costo prom. (LC)</th>
-                            <th class="right">Precio ({{ priceList.currency_code }})</th>
-                            <th class="right">Margen</th>
+                            <th class="num">Costo prom. (LC)</th>
+                            <th class="num">Precio ({{ priceList.currency_code }})</th>
+                            <th class="num">Margen</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(i, index) in rows" :key="i.id">
-                            <td class="num">{{ i.code }}</td>
-                            <td>{{ i.name }}</td>
-                            <td class="right muted">{{ i.is_inventory_item ? money(i.avg_cost_local) : '—' }}</td>
-                            <td class="right">
+                            <td class="code-cell">{{ i.code }}</td>
+                            <td data-label="Artículo">{{ i.name }}</td>
+                            <td data-label="Costo prom. (LC)" class="num muted">{{ i.is_inventory_item ? money(i.avg_cost_local) : '—' }}</td>
+                            <td :data-label="`Precio (${priceList.currency_code})`" class="num">
                                 <input
                                     v-model="form.prices[index].unit_price"
                                     type="number" step="0.00001" min="0" class="price-input"
                                     placeholder="sin precio"
+                                    :aria-label="`Precio de ${i.code}`"
                                 >
                             </td>
-                            <td class="right">
+                            <td data-label="Margen" class="num">
                                 <span
                                     v-if="priceList.is_local_currency && margin(i, index) !== null"
                                     :class="{ negative: margin(i, index) < 0 }"
@@ -148,10 +155,12 @@ function submit() {
                 </table>
             </div>
 
-            <div class="form-actions">
+            </div>
+
+            <div class="form-actions prices-actions">
                 <span class="muted small">{{ items.total }} artículo(s) de venta · página {{ items.current_page }} de {{ items.last_page }}</span>
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || !rows.length">
-                    Guardar precios
+                    <SaveIcon /> Guardar precios
                 </button>
             </div>
         </form>
@@ -174,19 +183,10 @@ function submit() {
 </template>
 
 <style scoped>
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.small { font-size: 0.76rem; }
-.hint { color: var(--color-text-muted); font-size: 0.82rem; margin: 0 0 0.75rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .price-input { width: 8rem; text-align: right; }
 .negative { color: var(--color-danger); font-weight: 600; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.form-actions { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.1rem; }
+.prices-actions { align-items: center; justify-content: space-between; }
 .below-list { margin: 0.4rem 0 0 1.1rem; padding: 0; font-size: 0.78rem; }
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-warning { background: #fdf0ea; color: #a04000; }
-.pagination { display: flex; gap: 0.25rem; margin-top: 0.75rem; flex-wrap: wrap; }
-.page-link { padding: 0.25rem 0.55rem; border-radius: var(--radius-sm); font-size: 0.8rem; }
-.page-link.active { background: var(--color-primary, #0B1F3A); color: #fff; }
-.page-link.disabled { opacity: 0.4; pointer-events: none; }
 </style>

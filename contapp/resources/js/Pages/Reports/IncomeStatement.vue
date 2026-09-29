@@ -1,6 +1,7 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { DownloadIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
@@ -52,79 +53,96 @@ const sections3 = [
     <Head title="Estado de resultados" />
 
     <AppLayout title="Estado de resultados">
-        <template #actions>
-            <input v-model="from" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to" type="date" class="date-input">
-            <label class="hide-zero">
-                <input v-model="hideZero" type="checkbox">
-                Ocultar cuentas sin movimiento
-            </label>
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.income-statement.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.income-statement.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="income-statement" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="from" type="date" required>
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="to" type="date" required>
+                </label>
+                <label class="check">
+                    <input v-model="hideZero" type="checkbox">
+                    Ocultar cuentas sin movimiento
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
 
+            <div class="view-actions">
+                <a :href="exportUrl('reports.income-statement.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.income-statement.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="income-statement" :parameters="saveParameters" />
+            </div>
+        </div>
+
+        <!-- Estado de dos columnas: cabe como tabla hasta en un teléfono
+             (.no-cards). -->
         <div class="card">
-            <table>
-                <tbody>
-                    <template v-for="section in sections" :key="section.key">
-                        <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
-                        <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amount) }}</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
-                        </tr>
-                    </template>
+            <div class="table-responsive no-cards">
+                <table>
+                    <tbody>
+                        <template v-for="section in sections" :key="section.key">
+                            <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
+                            <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
+                                <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                                <td class="num">{{ formatMoney(line.amount) }}</td>
+                            </tr>
+                            <tr class="section-total">
+                                <td>Total {{ section.label.toLowerCase() }}</td>
+                                <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
+                            </tr>
+                        </template>
 
-                    <tr class="subtotal"><td>Utilidad bruta</td><td class="num">{{ formatMoney(result.gross_profit) }}</td></tr>
+                        <tr class="subtotal"><td>Utilidad bruta</td><td class="num">{{ formatMoney(result.gross_profit) }}</td></tr>
 
-                    <template v-for="section in sections2" :key="section.key">
-                        <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
-                        <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amount) }}</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
-                        </tr>
-                    </template>
+                        <template v-for="section in sections2" :key="section.key">
+                            <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
+                            <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
+                                <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                                <td class="num">{{ formatMoney(line.amount) }}</td>
+                            </tr>
+                            <tr class="section-total">
+                                <td>Total {{ section.label.toLowerCase() }}</td>
+                                <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
+                            </tr>
+                        </template>
 
-                    <tr class="subtotal"><td>Utilidad operativa</td><td class="num">{{ formatMoney(result.operating_profit) }}</td></tr>
+                        <tr class="subtotal"><td>Utilidad operativa</td><td class="num">{{ formatMoney(result.operating_profit) }}</td></tr>
 
-                    <template v-for="section in sections3" :key="section.key">
-                        <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
-                        <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amount) }}</td>
+                        <template v-for="section in sections3" :key="section.key">
+                            <tr class="section-label"><td colspan="2">{{ section.label }}</td></tr>
+                            <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
+                                <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                                <td class="num">{{ formatMoney(line.amount) }}</td>
+                            </tr>
+                            <tr class="section-total">
+                                <td>Total {{ section.label.toLowerCase() }}</td>
+                                <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
+                            </tr>
+                        </template>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="total-label">Utilidad neta del período</td>
+                            <td class="num total-value">{{ formatMoney(result.net_profit) }}</td>
                         </tr>
-                        <tr class="section-total">
-                            <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey]) }}</td>
-                        </tr>
-                    </template>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td class="total-label">Utilidad neta del período</td>
-                        <td class="num total-value">{{ formatMoney(result.net_profit) }}</td>
-                    </tr>
-                </tfoot>
-            </table>
+                    </tfoot>
+                </table>
+            </div>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-table { width: 100%; font-size: 0.85rem; }
-td { padding: 0.45rem 1.1rem; }
-.num { text-align: right; }
-.indent { color: var(--color-text-muted); }
+table { font-size: 0.85rem; }
+td { padding: 0.45rem 1.1rem; border-top: 0; }
+.indent {
+    padding-left: calc(2.2rem + var(--depth, 0) * 1.1rem);
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
 .is-header td { font-weight: 700; color: var(--color-text); }
 .section-label td { font-weight: 700; padding-top: 1rem; }
 .section-total td { border-top: 1px solid var(--color-border); font-weight: 600; }
@@ -132,13 +150,12 @@ td { padding: 0.45rem 1.1rem; }
 .total-label { text-align: right; font-weight: 700; }
 .total-value { font-weight: 800; color: var(--color-primary); }
 
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+/* En un teléfono, menos sangría: con 375px de ancho, cada nivel del
+   catálogo le quitaría demasiado lugar a la descripción. */
+@media (max-width: 640px) {
+    td { padding-left: 0.75rem; padding-right: 0.75rem; }
+    .indent { padding-left: calc(1rem + var(--depth, 0) * 0.6rem); }
+    .subtotal td { padding: 0.6rem 0.75rem; }
+    .total-label { text-align: left; }
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
-.hide-zero { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--color-text-muted); }
 </style>

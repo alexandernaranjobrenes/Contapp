@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon, TriangleAlertIcon } from '@lucide/vue';
 
 const props = defineProps({
     employees: { type: Array, default: () => [] },
@@ -220,7 +221,7 @@ const monthlyBase = computed(() => props.employees
                     Mostrar dados de baja
                 </label>
                 <span class="muted">{{ visible.length }} de {{ employees.length }}</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nuevo empleado</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nuevo empleado</button>
             </div>
 
             <div class="table-scroll freeze-2">
@@ -267,7 +268,7 @@ const monthlyBase = computed(() => props.employees
                             </td>
                             <td class="muted small">
                                 {{ options.paymentMethods[e.payment_method] }}
-                                <span v-if="e.payment_method === 'transferencia' && ! e.bank_account" class="warn-dot" title="Sin cuenta bancaria: no va a entrar al archivo de pago">⚠</span>
+                                <span v-if="e.payment_method === 'transferencia' && ! e.bank_account" class="warn-dot" title="Sin cuenta bancaria: no va a entrar al archivo de pago"><TriangleAlertIcon /></span>
                             </td>
                             <td>{{ options.statuses[e.status] ?? e.status }}</td>
                             <td class="row-actions">

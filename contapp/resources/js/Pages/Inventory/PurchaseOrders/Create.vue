@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     suppliers: { type: Array, default: () => [] },
@@ -144,7 +145,7 @@ function submit() {
             </table>
 
             <div class="form-actions">
-                <button type="button" class="btn btn-ghost" @click="addLine">+ Agregar línea</button>
+                <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Agregar línea</button>
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || !ready()">Crear orden</button>
             </div>
         </form>

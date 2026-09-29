@@ -85,10 +85,17 @@ const highlights = [
     position: relative;
 }
 
+/* El check de Lucide como máscara (ver --lucide-check en app.scss). */
 .highlight-list li::before {
-    content: '✓';
+    content: '';
     position: absolute;
     left: 0;
+    top: 0.3em;
+    width: 0.95em;
+    height: 0.95em;
+    background-color: currentColor;
+    -webkit-mask: var(--lucide-check) center / contain no-repeat;
+    mask: var(--lucide-check) center / contain no-repeat;
     opacity: .8;
 }
 

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import { ArrowLeftIcon } from '@lucide/vue';
 
 const props = defineProps({
     grantableRoleTypes: { type: Array, default: () => [] },
@@ -79,7 +80,7 @@ function submitInvite() {
 
     <AppLayout title="Nuevo usuario">
         <template #actions>
-            <Link :href="route('users.index')" class="btn btn-ghost">← Volver</Link>
+            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Volver</Link>
         </template>
 
         <div class="card form-card">

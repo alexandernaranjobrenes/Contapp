@@ -19,18 +19,18 @@ defineProps({
             al ver el detalle de un asiento.
         </p>
 
-        <div v-if="!documentTypes.length" class="card empty-card">
+        <div v-if="!documentTypes.length" class="card panel-card muted">
             Esta compañía no tiene tipos de documento activos que generen asientos.
         </div>
 
-        <div v-else class="card">
+        <!-- A todo el ancho de la pantalla (CLAUDE.md secc. 25): los campos del
+             panel se reparten en columnas según el lugar que haya. -->
+        <div v-else class="card panel-card">
             <DocumentTypeRegisterPanel :document-types="documentTypes" mode="inline" />
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 680px; }
-.card { padding: 1.1rem 1.25rem; max-width: 480px; }
-.empty-card { color: var(--color-text-muted); }
+.panel-card { padding: 1.1rem 1.25rem; }
 </style>

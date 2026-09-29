@@ -214,6 +214,55 @@ it('rechaza el acceso al panel de licencias a un usuario de compañía: no es Pr
     $this->get(route('backoffice.licenses.index'))->assertRedirect(route('backoffice.login'));
 });
 
+it('la clave completa no viaja en el listado: el Propietario la pide aparte, y sin caché', function () {
+    loginAsPropietario();
+    $license = License::factory()->create();
+
+    $this->get(route('backoffice.licenses.index'))
+        ->assertInertia(fn ($page) => $page
+            ->component('Backoffice/Licenses/Index')
+            ->where('licenses.0.masked_code', $license->maskedCode())
+            ->missing('licenses.0.code'));
+
+    $response = $this->getJson(route('backoffice.licenses.code', $license->id))
+        ->assertOk()
+        ->assertExactJson(['code' => $license->code]);
+
+    expect($response->headers->get('Cache-Control'))->toContain('no-store');
+});
+
+it('rechaza pedir la clave completa a un usuario de compañía: no es Propietario', function () {
+    logInAsCompanyUser();
+    $license = License::factory()->create();
+
+    // Fuera de api/* el proyecto redirige en vez de responder 401
+    // (bootstrap/app.php), igual que el listado en el test de arriba.
+    $this->getJson(route('backoffice.licenses.code', $license->id))
+        ->assertRedirect(route('backoffice.login'))
+        ->assertDontSee($license->code);
+});
+
+it('el mensaje de emitir trae la clave completa para entregarla; los demás, enmascarada', function () {
+    loginAsPropietario();
+    $category = LicenseCategory::factory()->create();
+
+    $this->post(route('backoffice.licenses.store'), [
+        'category_id' => $category->id,
+        'expires_at' => now()->addYear()->format('Y-m-d'),
+    ]);
+
+    $license = License::sole();
+    expect(session('success'))->toContain($license->code);
+
+    $this->post(route('backoffice.licenses.renew', $license->id), [
+        'expires_at' => now()->addYears(2)->format('Y-m-d'),
+    ]);
+
+    expect(session('success'))
+        ->toContain($license->maskedCode())
+        ->not->toContain($license->code);
+});
+
 it('activar una licencia la fija como superuser_id del usuario creado', function () {
     $license = License::factory()->create(['max_companies' => 1]);
 

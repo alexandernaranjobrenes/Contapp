@@ -1,7 +1,18 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import {
+    BookOpenIcon, ChevronRightIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, MoonIcon,
+    PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon, TagsIcon,
+    UsersIcon, XIcon,
+} from '@lucide/vue';
 
+/**
+ * La barra superior es la MISMA en todas las pantallas (CLAUDE.md secc. 24):
+ * título, compañía, tema y sesión. Lo único que cambia es el título. Por
+ * eso este layout no tiene un slot para acciones: los botones, filtros y
+ * buscadores de cada pantalla van en su .view-toolbar, arriba de la tabla.
+ */
 defineProps({
     title: { type: String, default: '' },
 });
@@ -23,9 +34,9 @@ function passesModule(mod) {
 
 const nav = computed(() => {
     const items = [
-        { label: 'Panel', href: route('dashboard'), match: ['dashboard'], icon: '⌂' },
+        { label: 'Panel', href: route('dashboard'), match: ['dashboard'], icon: LayoutDashboardIcon },
         {
-            label: 'Contabilidad', icon: '☰', module: 'accounting',
+            label: 'Contabilidad', icon: BookOpenIcon, module: 'accounting',
             match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*',
                 'reports.trial-balance.*', 'reports.income-statement.*', 'reports.balance-sheet.*', 'reports.period-comparison.*',
                 'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*'],
@@ -60,7 +71,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Centros de costo y cambiario', icon: '🏷', module: 'accounting',
+            label: 'Centros de costo y cambiario', icon: TagsIcon, module: 'accounting',
             match: ['cost-centers.*', 'cost-allocation-rules.*', 'exchange-rates.*', 'fx-revaluation.*',
                 'reports.cost-center.*', 'reports.cost-allocation-rule.*'],
             children: [
@@ -75,7 +86,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Inventario', icon: '▦', module: 'inventory',
+            label: 'Inventario', icon: PackageIcon, module: 'inventory',
             match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*',
                 'reports.inventory-valuation.*', 'reports.inventory-aging.*'],
             children: [
@@ -106,7 +117,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Facturación', icon: '🧾', module: 'billing',
+            label: 'Facturación', icon: ReceiptIcon, module: 'billing',
             match: ['sales-documents.*', 'sales-orders.*', 'billing-settings.*', 'price-overrides.*'],
             children: [
                 { label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
@@ -117,7 +128,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Planillas', icon: '👥', module: 'payroll',
+            label: 'Planillas', icon: UsersIcon, module: 'payroll',
             match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'recurring-inputs.*', 'personnel-actions.*', 'vacations.*', 'labor-settlements.*', 'payroll-reports.*', 'job-structure.*', 'payroll-settings.*'],
             children: [
                 { label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
@@ -133,7 +144,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Socios de negocio', icon: '⚭', module: 'business_partners',
+            label: 'Socios de negocio', icon: HandshakeIcon, module: 'business_partners',
             match: ['business-partners.*', 'bp-categories.*', 'reports.aging.*'],
             children: [
                 { label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
@@ -144,7 +155,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Bancos', icon: '🏦', module: 'banking',
+            label: 'Bancos', icon: LandmarkIcon, module: 'banking',
             match: ['bank-accounts.*', 'bank-reconciliations.*', 'bank-reconciliation-report.*', 'reports.cash-flow-projection.*'],
             children: [
                 { label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
@@ -155,7 +166,7 @@ const nav = computed(() => {
             ],
         },
         {
-            label: 'Impuestos', icon: '§',
+            label: 'Impuestos', icon: PercentIcon,
             match: ['tax-rates.*', 'tax-report.*'],
             children: [
                 { label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
@@ -191,7 +202,7 @@ const nav = computed(() => {
     }
     if (adminChildren.length) {
         items.push({
-            label: 'Administración', icon: '⚙',
+            label: 'Administración', icon: SettingsIcon,
             match: adminChildren.flatMap((c) => c.match),
             children: adminChildren,
         });
@@ -221,12 +232,44 @@ const currentYear = computed(() => new Date().getFullYear());
 const collapsed = ref(false);
 const theme = ref('light');
 
+// Hasta 1024px (una tablet, incluso en horizontal) la barra lateral le quita
+// al contenido el espacio que las tablas necesitan: pasa a ser un panel que
+// se abre con el botón de menú, siempre completo —el modo colapsado es solo
+// del escritorio—. Se cierra al navegar, al tocar fuera de él o con Escape.
+const narrowQuery = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1024px)') : null;
+const narrow = ref(narrowQuery?.matches ?? false);
+const navOpen = ref(false);
+
+// Colapsado de verdad (solo íconos): en escritorio y si el usuario lo pidió.
+const compact = computed(() => collapsed.value && !narrow.value);
+
+function onNarrowChange(event) {
+    narrow.value = event.matches;
+    if (!event.matches) navOpen.value = false;
+}
+
+function closeNavOnEscape(event) {
+    if (event.key === 'Escape' && navOpen.value) navOpen.value = false;
+}
+
+watch(() => page.url, () => {
+    navOpen.value = false;
+});
+
 onMounted(() => {
     const storedSidebar = localStorage.getItem('contapp-sidebar');
     collapsed.value = storedSidebar === 'collapsed';
 
     const storedTheme = localStorage.getItem('contapp-theme');
     theme.value = storedTheme === 'dark' ? 'dark' : (storedTheme === 'light' ? 'light' : theme.value);
+
+    narrowQuery?.addEventListener('change', onNarrowChange);
+    window.addEventListener('keydown', closeNavOnEscape);
+});
+
+onBeforeUnmount(() => {
+    narrowQuery?.removeEventListener('change', onNarrowChange);
+    window.removeEventListener('keydown', closeNavOnEscape);
 });
 
 function toggleSidebar() {
@@ -281,23 +324,28 @@ function toggleGroup(item) {
 </script>
 
 <template>
-    <div class="app-shell" :class="{ 'is-collapsed': collapsed }">
-        <aside class="sidebar">
+    <div class="app-shell" :class="{ 'is-collapsed': compact, 'nav-open': navOpen }">
+        <aside id="app-nav" class="sidebar">
             <div class="sidebar-brand">
                 <span class="brand-mark">C</span>
-                <span v-if="!collapsed" class="brand-name">CONTAPP</span>
+                <span v-if="!compact" class="brand-name">CONTAPP</span>
+                <button type="button" class="nav-close" aria-label="Cerrar menú" @click="navOpen = false"><XIcon :size="18" /></button>
             </div>
 
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" aria-label="Menú principal">
                 <template v-for="item in nav" :key="item.label">
+                    <!-- Colapsado se ve solo el ícono: el nombre queda como
+                         tooltip y como etiqueta para el lector de pantalla. -->
                     <Link
-                        v-if="!item.children || collapsed"
+                        v-if="!item.children || compact"
                         :href="item.children ? item.children[0].href : item.href"
                         class="sidebar-link"
                         :class="{ active: isCurrent(item.match) }"
+                        :title="compact ? item.label : null"
+                        :aria-label="compact ? item.label : null"
                     >
-                        <span class="sidebar-icon">{{ item.icon }}</span>
-                        <span v-if="!collapsed" class="sidebar-label">{{ item.label }}</span>
+                        <span class="sidebar-icon"><component :is="item.icon" :size="18" /></span>
+                        <span v-if="!compact" class="sidebar-label">{{ item.label }}</span>
                     </Link>
 
                     <div v-else class="sidebar-group">
@@ -305,11 +353,12 @@ function toggleGroup(item) {
                             type="button"
                             class="sidebar-link sidebar-group-toggle"
                             :class="{ active: isCurrent(item.match), 'is-open': isGroupExpanded(item) }"
+                            :aria-expanded="isGroupExpanded(item)"
                             @click="toggleGroup(item)"
                         >
-                            <span class="sidebar-icon-chip">{{ item.icon }}</span>
+                            <span class="sidebar-icon-chip"><component :is="item.icon" :size="16" /></span>
                             <span class="sidebar-label">{{ item.label }}</span>
-                            <span class="sidebar-chevron" :class="{ open: isGroupExpanded(item) }">›</span>
+                            <ChevronRightIcon class="sidebar-chevron" :class="{ open: isGroupExpanded(item) }" />
                         </button>
 
                         <div class="sidebar-subnav-wrap" :class="{ open: isGroupExpanded(item) }">
@@ -330,21 +379,42 @@ function toggleGroup(item) {
                 </template>
             </nav>
 
-            <button type="button" class="sidebar-collapse-btn" @click="toggleSidebar">
-                {{ collapsed ? '»' : '« Colapsar' }}
+            <button
+                type="button"
+                class="sidebar-collapse-btn"
+                :aria-label="collapsed ? 'Expandir menú' : 'Colapsar menú'"
+                :title="collapsed ? 'Expandir menú' : null"
+                @click="toggleSidebar"
+            >
+                <PanelLeftOpenIcon v-if="collapsed" :size="18" />
+                <template v-else><PanelLeftCloseIcon :size="18" /> Colapsar</template>
             </button>
         </aside>
 
+        <div class="nav-backdrop" @click="navOpen = false" />
+
         <div class="app-main">
             <header class="topbar">
-                <h1 class="topbar-title">{{ title }}</h1>
+                <div class="topbar-heading">
+                    <button
+                        type="button"
+                        class="nav-toggle"
+                        aria-controls="app-nav"
+                        :aria-expanded="navOpen"
+                        aria-label="Abrir menú"
+                        @click="navOpen = true"
+                    >
+                        <MenuIcon :size="20" />
+                    </button>
+
+                    <h1 class="topbar-title">{{ title }}</h1>
+                </div>
 
                 <div class="topbar-actions">
-                    <slot name="actions" />
-
                     <select
                         v-if="companies.length"
                         class="company-select"
+                        aria-label="Compañía"
                         :value="currentCompanyId"
                         @change="switchCompany"
                     >
@@ -353,15 +423,24 @@ function toggleGroup(item) {
                         </option>
                     </select>
 
-                    <button type="button" class="btn btn-ghost" @click="toggleTheme" title="Cambiar tema">
-                        {{ theme === 'dark' ? '☀' : '☾' }}
+                    <button type="button" class="btn btn-ghost topbar-icon-btn" title="Cambiar tema" aria-label="Cambiar tema" @click="toggleTheme">
+                        <SunIcon v-if="theme === 'dark'" />
+                        <MoonIcon v-else />
                     </button>
 
                     <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
                     <span v-if="user" class="topbar-user">{{ user.name }}</span>
 
-                    <Link v-if="user" :href="route('logout')" method="delete" as="button" class="btn btn-ghost">
-                        Salir del sistema
+                    <Link
+                        v-if="user"
+                        :href="route('logout')"
+                        method="delete"
+                        as="button"
+                        class="btn btn-ghost logout-btn"
+                        title="Salir del sistema"
+                    >
+                        <LogOutIcon />
+                        <span class="logout-label">Salir del sistema</span>
                     </Link>
                 </div>
             </header>
@@ -382,7 +461,7 @@ function toggleGroup(item) {
             </main>
 
             <footer v-if="page.props.license" class="app-footer">
-                Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}
+                <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
                 <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
                 <span class="app-footer-meta">CONTAPP {{ CONTAPP_VERSION }} · © {{ currentYear }}</span>
             </footer>
@@ -398,19 +477,22 @@ function toggleGroup(item) {
     scrollearía junto con el contenido y desaparecería de la vista al bajar
     por una tabla larga. En su lugar, cada columna scrollea la suya: el
     sidebar internamente si el menú no entra, y .content internamente para
-    el contenido de la página — así el sidebar queda siempre visible y la
-    barra de scroll horizontal de una tabla ancha queda siempre a una
-    distancia alcanzable, no al fondo de una página de cientos de filas.
+    el contenido de la página.
+
+    100dvh después de 100vh: en el navegador de un teléfono, 100vh incluye el
+    área que tapa la barra de direcciones y el final de la página quedaría
+    debajo de ella. El navegador que no entiende dvh se queda con vh.
 */
 .app-shell {
     display: grid;
-    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
     height: 100vh;
+    height: 100dvh;
     transition: grid-template-columns .15s ease;
 }
 
 .app-shell.is-collapsed {
-    grid-template-columns: var(--sidebar-width-collapsed) 1fr;
+    grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
 }
 
 .sidebar {
@@ -420,6 +502,7 @@ function toggleGroup(item) {
     flex-direction: column;
     padding: 0.75rem 0.6rem;
     height: 100vh;
+    height: 100dvh;
     overflow-y: auto;
 }
 
@@ -434,6 +517,7 @@ function toggleGroup(item) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 28px;
     height: 28px;
     border-radius: 8px;
@@ -476,8 +560,24 @@ function toggleGroup(item) {
 }
 
 .sidebar-icon {
-    width: 1.2em;
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    flex-shrink: 0;
+}
+
+/*
+    Colapsado, cada fila del menú es solo un ícono: va centrado en el ancho
+    de la barra, no pegado a la izquierda como cuando lo sigue el nombre. Lo
+    mismo la marca de arriba y el botón de expandir de abajo.
+*/
+.is-collapsed .sidebar-brand,
+.is-collapsed .sidebar-link,
+.is-collapsed .sidebar-collapse-btn {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
 }
 
 /*
@@ -495,6 +595,7 @@ function toggleGroup(item) {
     cursor: pointer;
     font: inherit;
     position: relative;
+    text-align: left;
 }
 
 /*
@@ -521,7 +622,6 @@ function toggleGroup(item) {
     flex-shrink: 0;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.10);
-    font-size: 0.88em;
     transition: background-color .15s ease, color .15s ease;
 }
 
@@ -540,8 +640,8 @@ function toggleGroup(item) {
 }
 
 .sidebar-chevron {
+    flex-shrink: 0;
     margin-left: auto;
-    font-size: 0.9em;
     color: rgba(244, 246, 250, 0.5);
     transition: transform .15s ease, color .15s ease;
 }
@@ -632,6 +732,9 @@ function toggleGroup(item) {
 }
 
 .sidebar-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     background: transparent;
     border: none;
     color: rgba(244, 246, 250, 0.7);
@@ -646,45 +749,80 @@ function toggleGroup(item) {
     flex-direction: column;
     min-width: 0;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
 .topbar {
-    height: var(--topbar-height);
+    min-height: var(--topbar-height);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1rem;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
     z-index: 10;
+}
+
+.topbar-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .topbar-title {
     font-size: 1rem;
     font-weight: 700;
     margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
+/* Si no cabe todo, cede primero el nombre del usuario (se recorta), no el
+   título de la pantalla: el título conserva un mínimo legible. */
 .topbar-actions {
     display: flex;
     align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
     gap: 0.5rem;
 }
 
+.topbar-actions > :not(.topbar-user) {
+    flex-shrink: 0;
+}
+
+/* El aspecto es el de todos los campos (app.scss); acá solo el ancho: un
+   nombre de compañía largo se corta en vez de empujar la barra. */
 .company-select {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.35rem 0.5rem;
-    font-size: 0.82rem;
-    color: var(--color-text);
+    max-width: 14rem;
+    text-overflow: ellipsis;
+}
+
+.topbar-icon-btn {
+    width: 2.25rem;
+    padding: 0;
 }
 
 .topbar-user {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 0.82rem;
     color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+@media (min-width: 641px) {
+    .topbar-heading {
+        min-width: 11rem;
+    }
 }
 
 .content {
@@ -721,7 +859,8 @@ function toggleGroup(item) {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
     padding: 0.5rem 1.25rem;
     background: var(--color-surface);
     border-top: 1px solid var(--color-border);
@@ -737,5 +876,136 @@ function toggleGroup(item) {
     background: var(--color-primary-soft, rgba(0, 0, 0, 0.06));
     color: var(--color-primary);
     font-weight: 700;
+    white-space: nowrap;
+}
+
+/* Solo existen en pantallas angostas (ver la media query de abajo). */
+.nav-toggle,
+.nav-close,
+.nav-backdrop {
+    display: none;
+}
+
+.nav-toggle {
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    margin-left: -0.35rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.nav-toggle:hover { background: var(--color-surface-alt); }
+
+.nav-close {
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-left: auto;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.nav-close:hover { background: rgba(255, 255, 255, 0.08); }
+
+@media (max-width: 1024px) {
+    .app-shell,
+    .app-shell.is-collapsed {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /*
+        Cerrado, el panel queda fuera de la pantalla Y oculto (visibility):
+        solo con el transform, sus enlaces seguirían recibiendo el foco con
+        Tab aunque no se vean. visibility cambia recién al terminar la
+        animación de cierre, para que el panel no desaparezca de golpe.
+    */
+    .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 40;
+        width: min(var(--sidebar-width), 85vw);
+        box-shadow: var(--shadow-md);
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform .2s ease, visibility 0s linear .2s;
+    }
+
+    .nav-open .sidebar {
+        transform: none;
+        visibility: visible;
+        transition: transform .2s ease;
+    }
+
+    .nav-open .nav-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    .nav-toggle,
+    .nav-close {
+        display: inline-flex;
+    }
+
+    /* El panel siempre se abre completo: colapsar es cosa del escritorio. */
+    .sidebar-collapse-btn {
+        display: none;
+    }
+
+    .badge-role {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .topbar-user {
+        display: none;
+    }
+}
+
+/*
+    En un teléfono la barra conserva los mismos elementos, más compactos: la
+    compañía se angosta, y Salir queda con su ícono (el texto sigue ahí para
+    el lector de pantalla).
+*/
+@media (max-width: 640px) {
+    .topbar { padding: 0.5rem 0.75rem; gap: 0.5rem; }
+    .topbar-actions { gap: 0.35rem; }
+    .company-select { max-width: 8rem; }
+    .logout-btn { width: 2.25rem; padding: 0; }
+    .logout-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+    }
+    .content { padding: 0.75rem; }
+    .flash { margin: 0.75rem 0.75rem 0; }
+    .app-footer { padding: 0.5rem 0.75rem; }
+    .app-footer-meta { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .nav-open .sidebar {
+        transition: none;
+    }
 }
 </style>

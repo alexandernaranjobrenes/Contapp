@@ -262,3 +262,71 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - [ ] ¿La versión y el año en el pie de página siguen la convención de SemVer y se calculan dinámicamente donde corresponde?
 - [ ] ¿Los datos comerciales (contacto, notas, seguimientos) están en tablas separadas de los datos técnicos de licencia, vinculados solo por `superusuario_id`?
 - [ ] ¿El historial de `interacciones_comerciales` es append-only (nunca editable retroactivamente)?
+
+---
+---
+
+# REGLAS DE UI/UX DE LAS PANTALLAS
+
+> Este bloque rige la forma de las pantallas, no un módulo funcional: aplica a cualquier trabajo de interfaz, con el alcance que indica cada regla. Si una regla de UI/UX choca con un requisito funcional de este documento, gana el requisito funcional y se deja anotado en el código por qué.
+
+## 20. TABLAS DE LISTADO: POCAS COLUMNAS, SIN BOTONES, DETALLE EN UN MODAL
+
+**Regla:** una tabla de listado (licencias, categorías, catálogos, maestros) muestra solo las columnas estrictamente necesarias para **identificar** un registro y **decidir si abrirlo**. No lleva botones de acción en sus filas: **la fila completa es clickeable** y abre un modal con el detalle completo y todas las acciones.
+
+- **Objetivo: que la tabla quepa sin desplazarse de lado.** Elegir las columnas para el ancho más angosto en que se muestra como tabla (1025px con la barra lateral: ~720px útiles). Por lo general alcanza con la identidad del registro más 3 a 5 datos para ubicarlo (estado, fecha clave, dueño, categoría). Notas, descripciones, cupos secundarios, fechas de auditoría y todo texto largo van al modal.
+- **Lo que este documento pide ver en un listado se queda en la tabla**, aunque la regla empuje a moverlo al modal (ej. secc. 15: el listado del backoffice muestra juntos el estado de la licencia y la próxima acción comercial). Se deja un comentario en la plantilla explicando por qué esa columna está ahí.
+- **Sin botones en la fila.** Editar, renovar, suspender, eliminar, etc. van en el pie del modal. Editar ocurre **dentro del mismo modal** (ficha → formulario → ficha), nunca en filas que se despliegan dentro de la tabla. Crear también es un modal: ver secc. 21.
+- **Acciones de corte o irreversibles** (suspender, revocar, anular) piden confirmación (`ConfirmModal`) encima de la ficha.
+- **Teclado:** la fila lleva `tabindex="0"` y abre con Enter y Espacio; el modal cierra con Escape, con el fondo y con su botón de cerrar, y devuelve el foco a la fila.
+- **Responsiva:** en ≤ 1024px la tabla pasa a tarjetas; cada `<td>` lleva `data-label`, salvo el primero, que es el título de la tarjeta.
+
+**Piezas ya hechas — usarlas, no reinventarlas:**
+- `resources/js/Components/DetailModal.vue`: el modal de la ficha (slots `badge`, contenido y `actions`).
+- `resources/css/app.scss`: `.table-responsive` (envuelve la tabla; tarjetas en ≤ 1024px), `.clickable-row` dentro de ella (la fila que abre la ficha, con el `chevron-right` de Lucide) y `.detail-list` (pares etiqueta/valor dentro del modal). Ojo: varias pantallas del plano operativo ya usan `.clickable-row` con estilo scoped propio y fuera de `.table-responsive`; el estilo global solo aplica dentro de esa clase.
+- Ejemplos de referencia: `resources/js/Pages/Backoffice/Licenses/Index.vue`, `LicenseCategories/Index.vue` y `TaxRates/Index.vue`.
+
+**Excepciones — la regla NO aplica a:**
+- **Reportes y estados financieros** (balance de comprobación, mayor, antigüedad de saldos, comparativos): ahí las columnas son el dato. Se permite desplazarse de lado con `.table-scroll`, que fija el encabezado y la columna de identidad.
+- **Grillas de captura**, donde editar dentro de la tabla es la tarea (líneas de un asiento, de una factura, de una toma física).
+
+**Alcance hoy:** aplicada en el backoffice del Propietario. Toda tabla de listado **nueva** la sigue. Las tablas existentes del plano operativo del cliente todavía no: migrarlas es una tarea explícita que se pide, nunca un efecto colateral de otro cambio.
+
+## 21. ALTA DE REGISTROS: «CREAR NUEVO» ARRIBA DE LA TABLA, FORMULARIO EN UN MODAL
+
+**Regla:** en una pantalla de listado, dar de alta un registro es un botón **«Crear nuevo»** ubicado **justo arriba de la tabla**, que abre el formulario en un **modal**. La pantalla no lleva formularios de alta incrustados: muestra el botón y la tabla.
+
+- **Arriba de la tabla, nunca en la barra superior (`.topbar`).** La barra superior es del título de la pantalla y de la sesión; el alta pertenece a la tabla que va a recibir el registro. El botón va en la fila `.list-actions`, alineado a la derecha (a lo ancho en un teléfono).
+- **Siempre «Crear nuevo»** (primario, con el ícono `Plus` de Lucide delante): el mismo texto en todas las pantallas, para que se encuentre sin leer. Lo específico lo dice el título del modal: «Emitir nueva licencia», «Nueva categoría», «Nuevo indicador de impuesto».
+- **El mismo modal de la ficha, en modo `create`** (`DetailModal`, secc. 20), con Cancelar y el botón que guarda en el pie. Si crear y editar tienen los mismos campos, comparten un solo formulario; al abrirlo se asigna cada campo, para que no le quede el rastro de lo que se escribió la vez anterior.
+- **Errores dentro del modal,** junto a cada campo. Al guardar bien, el modal se cierra y el mensaje de éxito queda a la vista en la página.
+
+**Excepción:** el alta de un documento con líneas que ya tiene su propia pantalla de captura (asiento, factura, orden): ahí «Crear nuevo», igual arriba de la tabla, lleva a esa pantalla en vez de abrir un modal. Una grilla de captura no cabe en un modal.
+
+**Piezas ya hechas:** `.list-actions` en `resources/css/app.scss` y el modo `create` de `DetailModal`. Ejemplos: `resources/js/Pages/Backoffice/Licenses/Index.vue`, `LicenseCategories/Index.vue` y `TaxRates/Index.vue`.
+
+**Alcance:** toda la aplicación, backoffice y plano operativo. Hoy aplicada en el backoffice; toda pantalla de listado nueva la sigue. Las pantallas existentes del plano operativo se migran cuando se pida, no como efecto colateral de otro cambio.
+
+## 22. CHECKLIST ANTES DE ENTREGAR UNA PANTALLA DE LISTADO
+
+- [ ] ¿La tabla cabe sin desplazarse de lado a 1025px de ancho (con la barra lateral)?
+- [ ] ¿La fila completa abre la ficha, también con Enter y Espacio?
+- [ ] ¿No quedó ningún botón de acción en la fila, y cada acción está en el pie del modal?
+- [ ] ¿Las acciones de corte o irreversibles piden confirmación?
+- [ ] ¿El alta es un botón «Crear nuevo» justo arriba de la tabla —no en la barra superior— que abre el formulario en un modal, sin formularios incrustados en la página?
+- [ ] ¿Cada `<td>`, salvo el primero, tiene `data-label` para la vista de tarjetas?
+- [ ] ¿Se verificó en teléfono (375px), tablet (768px) y escritorio?
+
+## 23. ÍCONOS: SOLO LUCIDE
+
+**Regla:** todo ícono de la aplicación sale de **Lucide** (https://lucide.dev/icons/). Nada de emojis, de caracteres Unicode usados como ícono (✕, ✓, ⚠, ›, ▾, ☰, ←, «, 🖶…) ni de SVG dibujados a mano.
+
+- **En las plantillas:** componentes de `@lucide/vue` (el paquete oficial; `lucide-vue-next` quedó deprecado), importados con el sufijo `Icon`: `import { PlusIcon, XIcon } from '@lucide/vue'` → `<PlusIcon />`. El sufijo evita choques de nombre: Lucide tiene un `Link`, y Inertia también.
+- **Tamaño y trazo:** 16px y trazo 2 por defecto para toda la app (`app.provide(LUCIDE_CONTEXT, …)` en `resources/js/app.js`). `:size` solo cuando hace falta otro: 18 en el menú lateral, 17 en la barra de documento. El color sale del texto (`currentColor`).
+- **Accesibilidad:** Lucide marca el ícono como decorativo (`aria-hidden`) si no lleva etiqueta. Un botón con solo ícono lleva `aria-label`, y `title` para el tooltip. Un ícono que por sí solo dice algo —el check de «sí» en una celda— lleva `aria-label` y `role="img"`.
+- **Desde CSS** (`::before`, `::after`, donde no hay plantilla): el SVG de lucide.dev como máscara, con las variables `--lucide-*` de `resources/css/app.scss`. Un ícono nuevo se agrega a `$lucide-icons`.
+- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`. Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`.
+
+**No son íconos (se quedan como están):** los caracteres tipográficos dentro de un texto —la flecha entre dos valores («Básica → Profesional», «USD → CRC», un rango de fechas, «borrador → aprobada»), las comillas «», el § de una cita de norma, el × de una fórmula, la raya y el punto medio—; los gráficos de datos (el minigráfico de `LedgerPanel`); y los documentos PDF, donde una advertencia se escribe con palabras («Atención: …»).
+
+**Alcance:** toda la aplicación, backoffice y plano operativo. Ya aplicada en todas las pantallas; todo ícono nuevo la sigue.

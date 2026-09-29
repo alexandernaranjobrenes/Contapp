@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     actions: { type: Array, default: () => [] },
@@ -112,7 +113,7 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ actions.length }} acción(es)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva acción</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nueva acción</button>
             </div>
 
             <div class="table-scroll">

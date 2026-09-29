@@ -34,6 +34,17 @@ class License extends Model
         ];
     }
 
+    /**
+     * Sin esto, expires_at llega a Inertia como "2027-09-29T00:00:00.000000Z"
+     * en vez de "2027-09-29" — la columna "Vence" del backoffice lo mostraba
+     * así. Es global al modelo (mismo criterio que JournalEntry): también
+     * created_at/updated_at salen sin hora, y ninguna pantalla los muestra.
+     */
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(LicenseCategory::class, 'category_id');

@@ -1,5 +1,9 @@
 <script setup>
 import { Link, router } from '@inertiajs/vue3';
+import {
+    ChevronFirstIcon, ChevronLastIcon, ChevronLeftIcon, ChevronRightIcon, CircleHelpIcon, DownloadIcon,
+    PaperclipIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SaveIcon, SearchIcon,
+} from '@lucide/vue';
 
 const props = defineProps({
     newHref: { type: String, default: null },
@@ -31,81 +35,83 @@ function print() {
 }
 </script>
 
+<!-- Botones de solo ícono: el title da el tooltip al pasar el mouse, y el
+     aria-label es lo que lee un lector de pantalla. -->
 <template>
     <div class="doc-toolbar">
-        <button type="button" class="tool-btn" title="Buscar" @click="emit('find')">
-            <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" /><line x1="20" y1="20" x2="15.3" y2="15.3" /></svg>
+        <button type="button" class="tool-btn" title="Buscar" aria-label="Buscar" @click="emit('find')">
+            <SearchIcon :size="17" />
         </button>
 
-        <Link v-if="newHref" :href="newHref" class="tool-btn" title="Nuevo">
-            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        <Link v-if="newHref" :href="newHref" class="tool-btn" title="Nuevo" aria-label="Nuevo">
+            <PlusIcon :size="17" />
         </Link>
-        <button v-else-if="canCreate" type="button" class="tool-btn" title="Nuevo" @click="emit('new')">
-            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        <button v-else-if="canCreate" type="button" class="tool-btn" title="Nuevo" aria-label="Nuevo" @click="emit('new')">
+            <PlusIcon :size="17" />
         </button>
-        <button v-else type="button" class="tool-btn" disabled title="Nuevo">
-            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        <button v-else type="button" class="tool-btn" disabled title="Nuevo" aria-label="Nuevo">
+            <PlusIcon :size="17" />
         </button>
 
-        <button type="button" class="tool-btn" :disabled="!canSave || saving" title="Guardar" @click="emit('save')">
-            <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v6h8V4" /><path d="M8 20v-6h8v6" /></svg>
+        <button type="button" class="tool-btn" :disabled="!canSave || saving" title="Guardar" aria-label="Guardar" @click="emit('save')">
+            <SaveIcon :size="17" />
         </button>
 
         <span class="tool-sep" />
 
-        <button type="button" class="tool-btn" title="Imprimir" @click="print">
-            <svg viewBox="0 0 24 24"><path d="M6 9V3h12v6" /><rect x="4" y="9" width="16" height="8" rx="1" /><path d="M6 17v4h12v-4" /></svg>
+        <button type="button" class="tool-btn" title="Imprimir" aria-label="Imprimir" @click="print">
+            <PrinterIcon :size="17" />
         </button>
 
-        <a v-if="exportHref" :href="exportHref" class="tool-btn" title="Exportar">
-            <svg viewBox="0 0 24 24"><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M4 20h16" /></svg>
+        <a v-if="exportHref" :href="exportHref" class="tool-btn" title="Exportar" aria-label="Exportar">
+            <DownloadIcon :size="17" />
         </a>
-        <button v-else type="button" class="tool-btn" disabled title="Exportar">
-            <svg viewBox="0 0 24 24"><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M4 20h16" /></svg>
+        <button v-else type="button" class="tool-btn" disabled title="Exportar" aria-label="Exportar">
+            <DownloadIcon :size="17" />
         </button>
 
-        <button type="button" class="tool-btn" title="Actualizar" @click="refresh">
-            <svg viewBox="0 0 24 24"><path d="M4 4v6h6" /><path d="M20 20v-6h-6" /><path d="M5.5 15a8 8 0 0 0 13.9 2.5M18.5 9A8 8 0 0 0 4.6 6.5" /></svg>
-        </button>
-
-        <span class="tool-sep" />
-
-        <Link v-if="firstHref" :href="firstHref" class="tool-btn" title="Primer registro">
-            <svg viewBox="0 0 24 24"><polyline points="17 6 11 12 17 18" /><line x1="7" y1="5" x2="7" y2="19" /></svg>
-        </Link>
-        <button v-else type="button" class="tool-btn" disabled title="Primer registro">
-            <svg viewBox="0 0 24 24"><polyline points="17 6 11 12 17 18" /><line x1="7" y1="5" x2="7" y2="19" /></svg>
-        </button>
-
-        <Link v-if="prevHref" :href="prevHref" class="tool-btn" title="Registro anterior">
-            <svg viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18" /></svg>
-        </Link>
-        <button v-else type="button" class="tool-btn" disabled title="Registro anterior">
-            <svg viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18" /></svg>
-        </button>
-
-        <Link v-if="nextHref" :href="nextHref" class="tool-btn" title="Registro siguiente">
-            <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18" /></svg>
-        </Link>
-        <button v-else type="button" class="tool-btn" disabled title="Registro siguiente">
-            <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18" /></svg>
-        </button>
-
-        <Link v-if="lastHref" :href="lastHref" class="tool-btn" title="Último registro">
-            <svg viewBox="0 0 24 24"><polyline points="7 6 13 12 7 18" /><line x1="17" y1="5" x2="17" y2="19" /></svg>
-        </Link>
-        <button v-else type="button" class="tool-btn" disabled title="Último registro">
-            <svg viewBox="0 0 24 24"><polyline points="7 6 13 12 7 18" /><line x1="17" y1="5" x2="17" y2="19" /></svg>
+        <button type="button" class="tool-btn" title="Actualizar" aria-label="Actualizar" @click="refresh">
+            <RefreshCwIcon :size="17" />
         </button>
 
         <span class="tool-sep" />
 
-        <button type="button" class="tool-btn" disabled title="Adjuntos (próximamente)">
-            <svg viewBox="0 0 24 24"><path d="M8 12V6a4 4 0 1 1 8 0v9a3 3 0 1 1-6 0V7" /></svg>
+        <Link v-if="firstHref" :href="firstHref" class="tool-btn" title="Primer registro" aria-label="Primer registro">
+            <ChevronFirstIcon :size="17" />
+        </Link>
+        <button v-else type="button" class="tool-btn" disabled title="Primer registro" aria-label="Primer registro">
+            <ChevronFirstIcon :size="17" />
         </button>
 
-        <button type="button" class="tool-btn" disabled title="Ayuda (próximamente)">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7" /><line x1="12" y1="17" x2="12" y2="17" /></svg>
+        <Link v-if="prevHref" :href="prevHref" class="tool-btn" title="Registro anterior" aria-label="Registro anterior">
+            <ChevronLeftIcon :size="17" />
+        </Link>
+        <button v-else type="button" class="tool-btn" disabled title="Registro anterior" aria-label="Registro anterior">
+            <ChevronLeftIcon :size="17" />
+        </button>
+
+        <Link v-if="nextHref" :href="nextHref" class="tool-btn" title="Registro siguiente" aria-label="Registro siguiente">
+            <ChevronRightIcon :size="17" />
+        </Link>
+        <button v-else type="button" class="tool-btn" disabled title="Registro siguiente" aria-label="Registro siguiente">
+            <ChevronRightIcon :size="17" />
+        </button>
+
+        <Link v-if="lastHref" :href="lastHref" class="tool-btn" title="Último registro" aria-label="Último registro">
+            <ChevronLastIcon :size="17" />
+        </Link>
+        <button v-else type="button" class="tool-btn" disabled title="Último registro" aria-label="Último registro">
+            <ChevronLastIcon :size="17" />
+        </button>
+
+        <span class="tool-sep" />
+
+        <button type="button" class="tool-btn" disabled title="Adjuntos (próximamente)" aria-label="Adjuntos (próximamente)">
+            <PaperclipIcon :size="17" />
+        </button>
+
+        <button type="button" class="tool-btn" disabled title="Ayuda (próximamente)" aria-label="Ayuda (próximamente)">
+            <CircleHelpIcon :size="17" />
         </button>
     </div>
 </template>
@@ -114,6 +120,9 @@ function print() {
 .doc-toolbar {
     display: flex;
     align-items: center;
+    /* Sin esto, en un teléfono los quince botones empujan la página hacia
+       la derecha. Con espacio de sobra nunca hace falta partir la línea. */
+    flex-wrap: wrap;
     gap: 0.15rem;
     padding: 0.4rem 0.6rem;
     background: var(--color-primary);
@@ -135,16 +144,6 @@ function print() {
     color: rgba(244, 246, 250, 0.85);
     cursor: pointer;
     text-decoration: none;
-}
-
-.tool-btn svg {
-    width: 17px;
-    height: 17px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
 }
 
 .tool-btn:hover:not(:disabled) {

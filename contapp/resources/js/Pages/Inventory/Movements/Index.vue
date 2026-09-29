@@ -4,6 +4,7 @@ import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 
 import { computed, ref } from 'vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     documents: { type: Object, required: true },
@@ -48,7 +49,7 @@ function goToCreate() {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ documents.total }} movimiento(s)</span>
-                <Link :href="route('inventory-movements.create')" class="btn btn-primary">+ Nuevo movimiento</Link>
+                <Link :href="route('inventory-movements.create')" class="btn btn-primary"><PlusIcon /> Nuevo movimiento</Link>
             </div>
 
             <div class="table-scroll">

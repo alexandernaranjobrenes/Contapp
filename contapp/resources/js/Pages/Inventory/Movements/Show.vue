@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import ConfirmModal from '../../../Components/ConfirmModal.vue';
 import PurchaseCycleMap from '../../../Components/PurchaseCycleMap.vue';
+import { ChevronDownIcon } from '@lucide/vue';
 
 const props = defineProps({
     document: { type: Object, required: true },
@@ -86,7 +87,7 @@ function submitVoid() {
 
             <div v-if="copyTargets.length" class="copy-to" @keydown.esc="copyOpen = false">
                 <button type="button" class="btn btn-primary" @click="copyOpen = ! copyOpen">
-                    Copiar a ▾
+                    Copiar a <ChevronDownIcon />
                 </button>
                 <div v-if="copyOpen" class="copy-backdrop" @click="copyOpen = false"></div>
                 <div v-if="copyOpen" class="copy-menu">

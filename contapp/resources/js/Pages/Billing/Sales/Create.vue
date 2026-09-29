@@ -2,6 +2,7 @@
 import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { PlusIcon, SlidersHorizontalIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     catalogs: { type: Object, required: true },
@@ -583,15 +584,15 @@ function submit() {
                                 </td>
                                 <td class="num right">{{ money(lineSubtotal(line)) }}</td>
                                 <td class="actions-cell">
-                                    <button type="button" class="btn btn-ghost" title="Descuentos, exoneración, VIN" @click="openAdvanced(index)">⚙</button>
-                                    <button type="button" class="btn btn-ghost" :disabled="form.lines.length === 1" @click="form.lines.splice(index, 1)">✕</button>
+                                    <button type="button" class="btn btn-ghost" title="Descuentos, exoneración, VIN" aria-label="Descuentos, exoneración, VIN" @click="openAdvanced(index)"><SlidersHorizontalIcon /></button>
+                                    <button type="button" class="btn btn-ghost" :disabled="form.lines.length === 1" aria-label="Quitar línea" @click="form.lines.splice(index, 1)"><XIcon /></button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <button type="button" class="btn btn-ghost" @click="form.lines.push(blankLine())">+ Agregar línea</button>
+                <button type="button" class="btn btn-ghost" @click="form.lines.push(blankLine())"><PlusIcon /> Agregar línea</button>
             </section>
 
             <!-- PANEL 5 -->
@@ -631,7 +632,7 @@ function submit() {
                 </div>
 
                 <button type="button" class="btn btn-ghost" @click="form.references.push({ document_type: '01', number: '', reason_code: '01', reason: '' })">
-                    + Referencia
+                    <PlusIcon /> Referencia
                 </button>
             </section>
 
@@ -683,7 +684,7 @@ function submit() {
                             :disabled="form.payments.length >= catalogs.maxPaymentMethods"
                             @click="addPayment"
                         >
-                            + Medio de pago
+                            <PlusIcon /> Medio de pago
                         </button>
                         <span :class="paymentsMatch ? 'muted small' : 'mismatch'">
                             Suman {{ money(paymentsTotal) }} de {{ money(totals.total) }}
@@ -868,7 +869,7 @@ function submit() {
                     </div>
                 </div>
 
-                <button type="button" class="btn btn-ghost" @click="addTax(form.lines[advancedLine])">+ Impuesto</button>
+                <button type="button" class="btn btn-ghost" @click="addTax(form.lines[advancedLine])"><PlusIcon /> Impuesto</button>
 
                 <h3>Trazabilidad</h3>
                 <div class="field">

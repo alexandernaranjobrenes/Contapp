@@ -6,6 +6,7 @@ import SaveReportButton from '../../Components/SaveReportButton.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
 import { wrapDate } from '../../Utils/reportParameters';
 import { formatMoney } from '../../Utils/money';
+import { DownloadIcon, ScrollTextIcon } from '@lucide/vue';
 
 const props = defineProps({
     from: { type: String, default: null },
@@ -53,53 +54,66 @@ function closeLedger() {
     <Head title="Auxiliar por centro de costo" />
 
     <AppLayout title="Auxiliar por centro de costo">
-        <template #actions>
-            <input v-model="from" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to" type="date" class="date-input">
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.cost-center.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.cost-center.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="cost-center" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="from" type="date">
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="to" type="date">
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+
+            <div class="view-actions">
+                <a :href="exportUrl('reports.cost-center.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.cost-center.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="cost-center" :parameters="saveParameters" />
+            </div>
+        </div>
 
         <p class="hint">
             Solo incluye líneas de asiento con un centro de costo asignado (directo o por norma de reparto).
-            Para el detalle cronológico de movimientos de un solo centro, hacé clic en su nombre.
+            Para el detalle cronológico de movimientos de un solo centro, usá «Ver movimientos».
         </p>
 
-        <div v-for="group in result.groups" :key="group.cost_center_id" class="card group-card">
+        <section v-for="group in result.groups" :key="group.cost_center_id" class="report-group">
             <div class="group-header">
-                <button type="button" class="group-title-btn" title="Ver movimientos de este centro" @click="openLedger(group)">
-                    {{ group.cost_center_code }} — {{ group.cost_center_name }}
-                </button>
+                <h2 class="block-title">{{ group.cost_center_code }} — {{ group.cost_center_name }}</h2>
+                <button type="button" class="btn btn-ghost" @click="openLedger(group)"><ScrollTextIcon /> Ver movimientos</button>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Cuenta</th>
-                        <th>Descripción</th>
-                        <th class="num">Débito</th>
-                        <th class="num">Crédito</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="line in group.lines" :key="line.account_id">
-                        <td>{{ line.account_code }}</td>
-                        <td>{{ line.account_description }}</td>
-                        <td class="num">{{ formatMoney(line.debit) }}</td>
-                        <td class="num">{{ formatMoney(line.credit) }}</td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="2" class="total-label">Subtotal</td>
-                        <td class="num total-value">{{ formatMoney(group.total_debit) }}</td>
-                        <td class="num total-value">{{ formatMoney(group.total_credit) }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Cuenta</th>
+                                <th>Descripción</th>
+                                <th class="num">Débito</th>
+                                <th class="num">Crédito</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="line in group.lines" :key="line.account_id">
+                                <td class="code-cell">{{ line.account_code }}</td>
+                                <td data-label="Descripción">{{ line.account_description }}</td>
+                                <td data-label="Débito" class="num">{{ formatMoney(line.debit) }}</td>
+                                <td data-label="Crédito" class="num">{{ formatMoney(line.credit) }}</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" class="total-label">Subtotal</td>
+                                <td data-label="Débito" class="num total-value">{{ formatMoney(group.total_debit) }}</td>
+                                <td data-label="Crédito" class="num total-value">{{ formatMoney(group.total_credit) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
 
         <div v-if="result.groups.length === 0" class="card empty-card">
             Sin movimientos con centro de costo asignado para el período seleccionado.
@@ -122,28 +136,28 @@ function closeLedger() {
 </template>
 
 <style scoped>
-table { width: 100%; font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.5rem 1.1rem; border-top: 1px solid var(--color-border); }
-.num { text-align: right; }
+table { font-size: 0.85rem; }
+th, td { padding: 0.5rem 0.9rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .total-label { text-align: right; font-weight: 700; }
 .total-value { font-weight: 800; color: var(--color-primary); }
 
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 680px; }
+.report-group + .report-group { margin-top: 1.25rem; }
 
-.group-card { margin-bottom: 1rem; padding: 0; overflow: hidden; }
-.group-header { padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--color-border); background: var(--color-surface-alt); }
-.group-title-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    cursor: pointer;
-    text-decoration: underline dotted;
+/* El centro de costo y su «Ver movimientos», arriba de su tabla. */
+.group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.6rem;
 }
 
+.group-header .block-title { margin: 0; }
+
 .empty-card, .grand-total-card {
+    margin-top: 1.25rem;
     padding: 1.1rem;
     color: var(--color-text-muted);
 }
@@ -151,17 +165,14 @@ th, td { text-align: left; padding: 0.5rem 1.1rem; border-top: 1px solid var(--c
 .grand-total-card {
     display: flex;
     justify-content: flex-end;
-    gap: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
     font-weight: 700;
     color: var(--color-text);
 }
 
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+@media screen and (max-width: 1024px) {
+    .total-label { text-align: left; }
+    .grand-total-card { justify-content: flex-start; }
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
 </style>

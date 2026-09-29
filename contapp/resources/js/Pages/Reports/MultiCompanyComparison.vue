@@ -1,6 +1,7 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { DownloadIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
@@ -38,18 +39,29 @@ function exportUrl(routeName) {
     <Head title="Comparativo de empresas" />
 
     <AppLayout title="Comparativo de empresas">
-        <template #actions>
-            <span class="label">Balance al</span>
-            <input v-model="asOf" type="date" class="date-input">
-            <span class="label">Actividad del</span>
-            <input v-model="from" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to" type="date" class="date-input">
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.multi-company-comparison.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.multi-company-comparison.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="multi-company-comparison" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Balance al</span>
+                    <input v-model="asOf" type="date" required>
+                </label>
+                <label class="filter-field">
+                    <span>Actividad desde</span>
+                    <input v-model="from" type="date" required>
+                </label>
+                <label class="filter-field">
+                    <span>Actividad hasta</span>
+                    <input v-model="to" type="date" required>
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+
+            <div class="view-actions">
+                <a :href="exportUrl('reports.multi-company-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.multi-company-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="multi-company-comparison" :parameters="saveParameters" />
+            </div>
+        </div>
 
         <p class="hint">
             Cada empresa mantiene su propio catálogo de cuentas y moneda — las cifras se muestran una junto a otra,
@@ -57,51 +69,51 @@ function exportUrl(routeName) {
         </p>
 
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Empresa</th>
-                        <th>Moneda</th>
-                        <th class="num">Activo</th>
-                        <th class="num">Pasivo</th>
-                        <th class="num">Patrimonio</th>
-                        <th class="num">Ventas del período</th>
-                        <th class="num">Utilidad neta del período</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="row in result.rows" :key="row.company_id">
-                        <td>{{ row.company_name }}</td>
-                        <td>{{ row.currency_code }}</td>
-                        <td class="num">{{ formatMoney(row.assets_total) }}</td>
-                        <td class="num">{{ formatMoney(row.liabilities_total) }}</td>
-                        <td class="num">{{ formatMoney(row.equity_total) }}</td>
-                        <td class="num">{{ formatMoney(row.sales_total) }}</td>
-                        <td class="num">{{ formatMoney(row.net_profit) }}</td>
-                    </tr>
-                    <tr v-if="result.rows.length === 0">
-                        <td colspan="7" class="empty">No hay otras empresas en este grupo (misma licencia) a las que tengas acceso.</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Empresa</th>
+                            <th class="num">Activo</th>
+                            <th class="num">Pasivo</th>
+                            <th class="num">Patrimonio</th>
+                            <th class="num">Ventas del período</th>
+                            <th class="num">Utilidad neta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="row in result.rows" :key="row.company_id">
+                            <td>
+                                {{ row.company_name }}
+                                <span class="currency">{{ row.currency_code }}</span>
+                            </td>
+                            <td data-label="Activo" class="num">{{ formatMoney(row.assets_total) }}</td>
+                            <td data-label="Pasivo" class="num">{{ formatMoney(row.liabilities_total) }}</td>
+                            <td data-label="Patrimonio" class="num">{{ formatMoney(row.equity_total) }}</td>
+                            <td data-label="Ventas del período" class="num">{{ formatMoney(row.sales_total) }}</td>
+                            <td data-label="Utilidad neta" class="num">{{ formatMoney(row.net_profit) }}</td>
+                        </tr>
+                        <tr v-if="result.rows.length === 0">
+                            <td colspan="6" class="muted empty-row">No hay otras empresas en este grupo (misma licencia) a las que tengas acceso.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-table { width: 100%; font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.6rem 1.1rem; border-top: 1px solid var(--color-border); }
-.num { text-align: right; }
-.empty { text-align: center; color: var(--color-text-muted); padding: 1.5rem; }
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 640px; }
-
-.label { color: var(--color-text-muted); font-size: 0.82rem; }
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+/* Seis columnas que tienen que caber en los ~720px que deja la barra
+   lateral a 1025px (CLAUDE.md secc. 20). */
+table { font-size: 0.82rem; }
+th, td { padding: 0.55rem 0.7rem; }
+th.num { white-space: normal; }
+.currency {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
 </style>

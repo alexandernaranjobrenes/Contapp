@@ -1,4 +1,5 @@
 <script setup>
+import { DownloadIcon, XIcon } from '@lucide/vue';
 import { ref, computed, watch, nextTick } from 'vue';
 import { formatMoney } from '../Utils/money';
 
@@ -139,7 +140,7 @@ const isPositiveTrend = computed(() => {
                         <div class="ledger-owner">{{ data ? `${data.owner_code} — ${data.owner_name}` : ownerLabel }}</div>
                         <div class="ledger-sub muted">Mayor auxiliar</div>
                     </div>
-                    <button type="button" class="btn btn-ghost close-btn" @click="close" title="Cerrar">✕</button>
+                    <button type="button" class="btn btn-ghost close-btn" title="Cerrar" aria-label="Cerrar" @click="close"><XIcon /></button>
                 </header>
 
                 <div class="ledger-filters">
@@ -149,10 +150,10 @@ const isPositiveTrend = computed(() => {
                         <button type="button" class="chip" :class="{ active: activePreset === 'year' }" @click="applyPreset('year')">Este año</button>
                     </div>
                     <div class="date-row">
-                        <input v-model="from" type="date" class="date-input" @change="applyCustomRange">
+                        <input v-model="from" type="date" aria-label="Desde" @change="applyCustomRange">
                         <span class="muted">—</span>
-                        <input v-model="to" type="date" class="date-input" @change="applyCustomRange">
-                        <a v-if="data" :href="exportHref" class="btn btn-ghost export-btn" title="Exportar a Excel">⤓ Excel</a>
+                        <input v-model="to" type="date" aria-label="Hasta" @change="applyCustomRange">
+                        <a v-if="data" :href="exportHref" class="btn btn-ghost export-btn" title="Exportar a Excel"><DownloadIcon /> Excel</a>
                     </div>
                 </div>
 
@@ -176,7 +177,7 @@ const isPositiveTrend = computed(() => {
                         </div>
                     </div>
 
-                    <div class="ledger-table-wrap">
+                    <div class="ledger-table-wrap table-responsive">
                         <table>
                             <thead>
                                 <tr>
@@ -191,11 +192,11 @@ const isPositiveTrend = computed(() => {
                             <tbody>
                                 <tr v-for="(m, i) in data.movements" :key="i">
                                     <td class="num">{{ m.date }}</td>
-                                    <td>{{ m.document }}</td>
-                                    <td class="desc-cell">{{ m.description }}</td>
-                                    <td class="num">{{ m.debit !== '0.00' ? formatMoney(m.debit) : '' }}</td>
-                                    <td class="num">{{ m.credit !== '0.00' ? formatMoney(m.credit) : '' }}</td>
-                                    <td class="num">{{ formatMoney(m.balance) }}</td>
+                                    <td data-label="Documento">{{ m.document }}</td>
+                                    <td data-label="Descripción" class="desc-cell">{{ m.description }}</td>
+                                    <td data-label="Débito" class="num">{{ m.debit !== '0.00' ? formatMoney(m.debit) : '' }}</td>
+                                    <td data-label="Crédito" class="num">{{ m.credit !== '0.00' ? formatMoney(m.credit) : '' }}</td>
+                                    <td data-label="Saldo" class="num">{{ formatMoney(m.balance) }}</td>
                                 </tr>
                                 <tr v-if="!data.movements.length">
                                     <td colspan="6" class="muted empty-row">No hay movimientos contabilizados en este rango.</td>
@@ -274,7 +275,12 @@ const isPositiveTrend = computed(() => {
 .preset-row, .date-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.4rem;
+}
+
+.date-row input[type="date"] {
+    flex: 1 1 8.5rem;
 }
 
 .chip {
@@ -291,15 +297,6 @@ const isPositiveTrend = computed(() => {
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: var(--color-on-primary);
-}
-
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.3rem 0.5rem;
-    font-size: 0.8rem;
-    color: var(--color-text);
 }
 
 .export-btn {
@@ -373,7 +370,7 @@ table { font-size: 0.8rem; width: 100%; }
 th, td { text-align: left; padding: 0.45rem 0.6rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums; text-align: right; }
 thead th.num { text-align: right; }
-.desc-cell { white-space: normal; max-width: 220px; }
+.desc-cell { white-space: normal; }
 .muted { color: var(--color-text-muted); }
 .small { font-size: 0.74rem; }
 .empty-row { text-align: center; padding: 1.5rem; white-space: normal; }

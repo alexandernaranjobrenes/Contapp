@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { ArrowLeftIcon, CircleAlertIcon, CircleXIcon, MailIcon } from '@lucide/vue';
 
 const props = defineProps({
     period: { type: Object, required: true },
@@ -190,7 +191,7 @@ const statusClass = {
 
     <AppLayout :title="`Planilla ${period.name}`">
         <template #actions>
-            <Link :href="route('payroll-periods.index')" class="btn btn-ghost">← Períodos</Link>
+            <Link :href="route('payroll-periods.index')" class="btn btn-ghost"><ArrowLeftIcon /> Períodos</Link>
             <a v-if="entries.length" :href="route('payroll-periods.export', period.id)" class="btn btn-ghost">⤓ Exportar XLSX</a>
             <a v-if="canPay" :href="route('payroll-periods.bank-file', period.id)" class="btn btn-ghost">⤓ Archivo de pago</a>
             <button
@@ -199,7 +200,7 @@ const statusClass = {
                 :disabled="emailForm.processing"
                 @click="emailPayslips"
             >
-                ✉ Enviar comprobantes
+                <MailIcon /> Enviar comprobantes
             </button>
         </template>
 
@@ -256,7 +257,7 @@ const statusClass = {
 
             <ul class="finding-list">
                 <li v-for="(f, i) in visibleFindings" :key="i" :class="f.severity">
-                    <span class="finding-mark">{{ f.severity === 'error' ? '✕' : '!' }}</span>
+                    <span class="finding-mark"><CircleXIcon v-if="f.severity === 'error'" /><CircleAlertIcon v-else /></span>
                     <span class="finding-body">
                         <strong>{{ f.title }}</strong>
                         <span class="muted small">{{ f.detail }}</span>
@@ -689,10 +690,10 @@ const statusClass = {
 
 .finding-mark {
     flex-shrink: 0;
+    display: inline-flex;
+    justify-content: center;
     width: 1.1rem;
-    text-align: center;
-    font-weight: 700;
-    font-size: 0.8rem;
+    padding-top: 0.1rem;
 }
 
 .finding-list li.error .finding-mark { color: var(--color-danger); }

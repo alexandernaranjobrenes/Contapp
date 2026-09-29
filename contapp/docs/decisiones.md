@@ -3,6 +3,47 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-29 — Historial en la ficha de la licencia
+
+**Pedido del usuario:** ver la bitácora desde la aplicación, en la ficha de cada licencia (la entrada anterior la dejaba solo en la base de datos).
+
+- **A pedido:** la sección «Historial» de la ficha pide `GET backoffice/licenses/{license}/history` al abrirse; no viaja en el listado, que con muchas licencias cargaría la bitácora entera. Abierta, se refresca sola después de cada acción de la ficha, incluido ver la clave.
+- **Legible:** cada movimiento dice qué pasó, cuándo, quién y desde qué IP, con los campos que cambiaron de antes a después. La categoría va por nombre y el estado en palabras; al renovar se omite el estado si no cambió.
+- **La hora, en la del que mira:** la base guarda UTC y el servidor manda ISO 8601 con su zona; el navegador la muestra en su hora local con el formato año-mes-día del sistema. No se fija ninguna zona en el código.
+- **Tope:** los últimos 50 movimientos, con aviso si hay más.
+- **Visto de paso:** los reportes exportados imprimen «Generado el …» con `now()` en UTC —seis horas adelante de Costa Rica—. No se tocó.
+
+---
+## 2026-09-29 — Bitácora de las acciones del Propietario
+
+**Pedido del usuario:** resolver el pendiente de la entrada anterior: registrar quién vio cada clave de licencia y, en general, lo que hace el Propietario.
+
+- **Columna propia, no `user_id`:** `audit_logs.propietario_id` (FK a `propietarios`, `nullOnDelete` igual que las otras dos). En una fila del Propietario, `company_id` y `user_id` quedan nulos. Meterlo en `user_id` —que apunta a `users`— habría mezclado los dos planos de CLAUDE.md secc. 11.
+- **Qué se registra:** licencias (emitir, editar, renovar, suspender, reactivar, revocar y ver la clave completa), categorías de licencia (crear, editar, eliminar) y el catálogo nacional de IVA (crear, editar, eliminar), con la IP de quien lo hizo. El código compartido es `RecordsPropietarioAudit`.
+- **Sin huecos:** cada cambio y su entrada van en la misma transacción; si la bitácora falla, el cambio no queda. Ver la clave se registra antes de responder; si la bitácora falla, la clave no sale.
+- **Legible:** al editar se guarda solo lo que cambió, con el valor de antes y el de después, y un guardado sin cambios no deja entrada. Al eliminar, `old_values` lleva la foto del registro, que deja de existir. Las fechas van como Y-m-d.
+- **Lo que nunca se guarda:** la clave de la licencia. `auditable_id` ya dice cuál es.
+- **Fuera, a propósito:** la capa comercial (perfil, interacciones, seguimientos): las interacciones ya son un historial con autor, y lo demás son notas de trabajo, no cambios sobre el acceso de un cliente. Los indicadores propios de cada compañía son del plano del cliente.
+- **Todavía sin pantalla:** la bitácora se consulta en la base de datos.
+
+---
+## 2026-09-29 — La clave de licencia fuera de la vista por defecto, y "Ver código completo" a pedido
+
+**Pedido del usuario:** los mensajes de editar, renovar, suspender, revocar y reactivar mostraban el código completo de la licencia, contra CLAUDE.md secc. 13; una vez enmascarado, un botón «Ver código completo» solo para el backoffice.
+
+- **Qué quedó:** esos cinco mensajes usan `maskedCode()`. El listado ya no manda `code` en los datos de la página. La clave completa se pide aparte (`GET backoffice/licenses/{license}/code`, JSON con `Cache-Control: no-store`) y la ficha de la licencia la muestra con Copiar y Ocultar; al cerrar la ficha o pasar a otra licencia, se olvida.
+- **La excepción al emitir:** el mensaje de emisión sí trae la clave completa. Es la que el cliente ingresa en /activate, y el Propietario tiene que poder entregarla. La secc. 13 se lee como «nunca a la vista por defecto»: revelarla es un acto explícito del mismo actor que la emitió.
+- **Por qué a pedido y no en la página:** en los datos de la página queda en el HTML, en las herramientas del navegador y en la caché, aunque la pantalla no la muestre.
+- **Pendiente:** hoy ninguna acción del Propietario queda en bitácora (`audit_logs.user_id` apunta a `users`, no a `propietarios`). Registrar quién vio cada clave pide una columna `propietario_id` (migración), no forzar `user_id` en nulo.
+
+---
+## 2026-09-29 — Mensajes de validación en español
+
+`APP_LOCALE=es` ya estaba configurado, pero sin `lang/es/` Laravel caía al inglés del framework. Se agregaron `validation`, `auth`, `passwords` y `pagination`, y los nombres en español de los campos validados de la app, con `:position` en los campos de listas («cantidad (línea 3)»).
+
+**Excepción deliberada:** las columnas de las planillas de importación (`ItemBulkImporter`, `ChartOfAccountBulkImporter`) no se traducen. El error tiene que nombrar la columna como la ve el usuario en su archivo («tarifa iva»), no con otro nombre («tarifa de IVA») que no encuentra en el encabezado; dos tests de `ItemImportHttpTest` lo exigen.
+
+---
 ## 2026-09-27 — Reportes de planilla: trece reportes, tres salidas, y el comprobante por correo
 
 **Pedido del usuario:** todos los reportes del menú de planillas, configurables, exportados en XLSX, PDF e imprimibles; el comprobante de pago con envío por correo electrónico. Nombró ocho y dejó abierto «más todos los demás que a tu criterio sean necesarios».

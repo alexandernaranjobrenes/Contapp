@@ -46,7 +46,7 @@
     <table class="data">
         <tr class="final-total"><td colspan="2">Total pasivo + patrimonio</td><td class="num">{{ $result->totalLiabilitiesAndEquity }}</td></tr>
         @unless ($result->isBalanced)
-            <tr><td colspan="3" class="warning">⚠ El activo no cuadra contra pasivo + patrimonio — revisar.</td></tr>
+            <tr><td colspan="3" class="warning">Atención: el activo no cuadra contra pasivo + patrimonio — revisar.</td></tr>
         @endunless
     </table>
 </body>

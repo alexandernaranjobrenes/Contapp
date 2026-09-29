@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { ArrowRightIcon } from '@lucide/vue';
 
 const props = defineProps({
     document: { type: Object, required: true },
@@ -33,7 +34,7 @@ const canCredit = props.document.fiscal_document_type !== '03' && props.document
                 :href="route('sales-documents.create', { correct: document.id })"
                 class="btn btn-primary"
             >
-                Copiar a → Nota de crédito
+                Copiar a <ArrowRightIcon /> Nota de crédito
             </Link>
         </template>
 

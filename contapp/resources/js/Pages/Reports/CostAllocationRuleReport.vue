@@ -5,6 +5,7 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
 import { formatMoney } from '../../Utils/money';
+import { DownloadIcon } from '@lucide/vue';
 
 const props = defineProps({
     from: { type: String, default: null },
@@ -47,15 +48,25 @@ function isOffNorm(line) {
     <Head title="Normas de reparto" />
 
     <AppLayout title="Normas de reparto">
-        <template #actions>
-            <input v-model="from" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to" type="date" class="date-input">
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.cost-allocation-rule.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.cost-allocation-rule.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="cost-allocation-rule" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="from" type="date">
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="to" type="date">
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+
+            <div class="view-actions">
+                <a :href="exportUrl('reports.cost-allocation-rule.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.cost-allocation-rule.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="cost-allocation-rule" :parameters="saveParameters" />
+            </div>
+        </div>
 
         <p class="hint">
             Para cada norma de reparto, compara el % que define hoy contra el % que realmente resultó de sumar los
@@ -63,32 +74,36 @@ function isOffNorm(line) {
             — más que el redondeo esperado (ver <em>CostAllocationSplitter</em>), vale la pena revisarla.
         </p>
 
-        <div v-for="group in result.groups" :key="group.rule_id" class="card group-card">
+        <section v-for="group in result.groups" :key="group.rule_id" class="report-group">
             <div class="group-header">
-                <strong>{{ group.rule_code }} — {{ group.rule_name }}</strong>
-                <span class="muted">Total distribuido: {{ formatMoney(group.total_amount) }}</span>
+                <h2 class="block-title">{{ group.rule_code }} — {{ group.rule_name }}</h2>
+                <span class="muted group-total">Total distribuido: {{ formatMoney(group.total_amount) }}</span>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Centro de costo</th>
-                        <th class="num">% definido</th>
-                        <th class="num">Monto real</th>
-                        <th class="num">% real</th>
-                        <th class="num">Variación (p.p.)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="line in group.lines" :key="line.cost_center_id" :class="{ 'off-norm': isOffNorm(line) }">
-                        <td>{{ line.cost_center_code }} — {{ line.cost_center_name }}</td>
-                        <td class="num">{{ line.defined_percentage }}%</td>
-                        <td class="num">{{ formatMoney(line.actual_amount) }}</td>
-                        <td class="num">{{ line.actual_percentage !== null ? line.actual_percentage + '%' : '—' }}</td>
-                        <td class="num">{{ line.variance_percentage_points ?? '—' }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Centro de costo</th>
+                                <th class="num">% definido</th>
+                                <th class="num">Monto real</th>
+                                <th class="num">% real</th>
+                                <th class="num">Variación (p.p.)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="line in group.lines" :key="line.cost_center_id" :class="{ 'off-norm': isOffNorm(line) }">
+                                <td>{{ line.cost_center_code }} — {{ line.cost_center_name }}</td>
+                                <td data-label="% definido" class="num">{{ line.defined_percentage }}%</td>
+                                <td data-label="Monto real" class="num">{{ formatMoney(line.actual_amount) }}</td>
+                                <td data-label="% real" class="num">{{ line.actual_percentage !== null ? line.actual_percentage + '%' : '—' }}</td>
+                                <td data-label="Variación (p.p.)" class="num">{{ line.variance_percentage_points ?? '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
 
         <div v-if="result.groups.length === 0" class="card empty-card">
             Sin movimientos generados por normas de reparto para el período seleccionado.
@@ -97,34 +112,30 @@ function isOffNorm(line) {
 </template>
 
 <style scoped>
-table { width: 100%; font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.5rem 1.1rem; border-top: 1px solid var(--color-border); }
-.num { text-align: right; }
+table { font-size: 0.85rem; }
+th, td { padding: 0.5rem 0.9rem; }
 
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 720px; }
+.report-group + .report-group { margin-top: 1.25rem; }
 
-.group-card { margin-bottom: 1rem; padding: 0; overflow: hidden; }
 .group-header {
-    padding: 0.75rem 1.1rem;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface-alt);
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-size: 0.9rem;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.6rem;
 }
-.muted { color: var(--color-text-muted); font-size: 0.8rem; font-weight: 400; }
+
+.group-header .block-title { margin: 0; }
+.group-total { font-size: 0.8rem; }
 
 .off-norm td { background: var(--color-warning-soft); color: var(--color-warning); font-weight: 600; }
 
-.empty-card { padding: 1.1rem; color: var(--color-text-muted); }
-
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+/* En tarjetas, la fila fuera de norma se marca en la tarjeta entera. */
+@media screen and (max-width: 1024px) {
+    .table-responsive tbody tr.off-norm { background: var(--color-warning-soft); }
+    .off-norm td { background: none; }
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
+
+.empty-card { padding: 1.1rem; color: var(--color-text-muted); }
 </style>

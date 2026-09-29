@@ -2,13 +2,18 @@
 import { Head, router } from '@inertiajs/vue3';
 import { useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
 import SearchableCombobox from '../../Components/SearchableCombobox.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
 import DocumentSearchModal from '../../Components/DocumentSearchModal.vue';
+import RecordNav from '../../Components/RecordNav.vue';
+import { confirmAction } from '../../Utils/confirm';
 import { formatMoney } from '../../Utils/money';
+import {
+    ArrowLeftIcon, CheckIcon, CopyIcon, EllipsisIcon, KeyRoundIcon, PlusIcon, PrinterIcon, SearchIcon, TriangleAlertIcon,
+    XIcon,
+} from '@lucide/vue';
 
 const props = defineProps({
     entry: { type: Object, default: null }, // presente = editando un borrador existente
@@ -242,7 +247,8 @@ function emptyLine(dueDate = null) {
 // — la mayoría de las líneas son cuenta+monto simples — pero se muestra
 // sola si ya trae algún dato (línea copiada/duplicada/cargada desde una
 // plantilla) o si el socio de esta línea exige vencimiento/aplicación de
-// partida (ver bpLineRequirement); el botón "⋯" alterna el resto de casos.
+// partida (ver bpLineRequirement); el botón de detalle (Ellipsis) alterna el
+// resto de casos.
 function lineHasSecondaryData(line) {
     return !! (line.cost_allocation_rule_id || line.reference_document || line.reference_document_date || line.due_date || line.tax_rate_id || line.tax_rate_account_id);
 }
@@ -496,9 +502,18 @@ function submit(intent = 'post') {
 // los que arrancó el formulario (útil tanto en "nuevo" como editando un
 // borrador existente).
 function cancel() {
-    if (form.isDirty && ! confirm('¿Salir sin guardar? Se pierde lo digitado en este formulario.')) return;
+    if (! form.isDirty) {
+        router.get(route('journal-entries.index'));
+        return;
+    }
 
-    router.get(route('journal-entries.index'));
+    confirmAction({
+        title: 'Salir sin guardar',
+        message: 'Se pierde lo digitado en este formulario.',
+        confirmLabel: 'Salir',
+        danger: true,
+        onConfirm: () => router.get(route('journal-entries.index')),
+    });
 }
 
 // "Programable": en vez de contabilizar/guardar ESTE asiento, guarda una
@@ -537,28 +552,21 @@ function submitSchedule() {
     <Head :title="entry?.id ? 'Editar borrador' : 'Nuevo asiento'" />
 
     <AppLayout :title="entry?.id ? 'Editar borrador' : 'Nuevo asiento'">
-        <template #actions>
-            <a
-                v-if="entry?.id"
-                :href="route('journal-entries.presentation', entry.id)"
-                target="_blank"
-                class="btn btn-ghost"
-                title="Abrir este documento en una pantalla aparte, lista para exportar a XLSX/PDF o imprimir"
-            >🖶 Presentar documento</a>
-            <button type="button" class="btn btn-ghost" @click="cancel">← Salir / Volver</button>
-        </template>
+        <div class="view-toolbar">
+            <button type="button" class="btn btn-ghost" @click="cancel"><ArrowLeftIcon /> Salir / Volver</button>
+            <!-- Recorrer asientos solo tiene sentido editando uno que ya existe:
+                 uno nuevo todavía no tiene posición. -->
+            <RecordNav v-if="entry?.id" :nav="nav" :current-id="entry.id" route-name="journal-entries.show" />
 
-        <DocumentToolbar
-            :new-href="route('journal-entries.create')"
-            can-save
-            :saving="form.processing"
-            :first-href="entry?.id && nav.first && nav.first !== entry.id ? route('journal-entries.show', nav.first) : null"
-            :prev-href="entry?.id && nav.prev ? route('journal-entries.show', nav.prev) : null"
-            :next-href="entry?.id && nav.next ? route('journal-entries.show', nav.next) : null"
-            :last-href="entry?.id && nav.last && nav.last !== entry.id ? route('journal-entries.show', nav.last) : null"
-            @save="submit('draft')"
-            @find="documentSearchOpen = true"
-        />
+            <div v-if="entry?.id" class="view-actions">
+                <a
+                    :href="route('journal-entries.presentation', entry.id)"
+                    target="_blank"
+                    class="btn btn-ghost"
+                    title="Abrir este documento en una pantalla aparte, lista para exportar a XLSX/PDF o imprimir"
+                ><PrinterIcon /> Presentar documento</a>
+            </div>
+        </div>
 
         <form class="card form-card" @submit.prevent="submit()">
             <button
@@ -567,7 +575,7 @@ function submitSchedule() {
                 title="Buscar un documento ya registrado por número, descripción o tipo, y cargarlo acá como punto de partida"
                 @click="documentSearchOpen = true"
             >
-                <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" /><line x1="20" y1="20" x2="15.3" y2="15.3" /></svg>
+                <SearchIcon />
                 Buscar y cargar un documento existente…
             </button>
 
@@ -654,7 +662,7 @@ function submitSchedule() {
                 "línea activa" que sigue el cursor: hacé clic en cualquier
                 campo de una fila (@focusin más abajo) y este editor pasa a
                 apuntar a esa línea. Cada fila con clave ya cargada se marca
-                con 🔑 (ver account-cell) para poder ver de un vistazo cuáles
+                con el ícono de llave (ver account-cell) para poder ver de un vistazo cuáles
                 ya la tienen. Documento de referencia y fecha, en cambio, ya
                 son columnas propias de la tabla (más abajo) — son compactos,
                 no necesitan este editor compartido.
@@ -680,21 +688,25 @@ function submitSchedule() {
                 >
                 <span class="hint">
                     <template v-if="!activeLine">Hacé clic en una línea de la tabla para asociarle una clave.</template>
-                    <template v-else-if="(activeLine.electronic_key || '').length === 50">✓ 50 dígitos completos para esta línea.</template>
+                    <template v-else-if="(activeLine.electronic_key || '').length === 50"><CheckIcon /> 50 dígitos completos para esta línea.</template>
                     <template v-else>Pegá la clave de 50 dígitos de la factura que corresponde a esta línea. Si el asiento junta varias facturas, hacé clic en cada línea y pegale la clave que le toca.</template>
                 </span>
                 <span v-if="activeLineElectronicKeyError" class="error">{{ activeLineElectronicKeyError }}</span>
             </div>
 
-            <div class="lines-table-scroll">
+            <!-- Grilla de captura: editar dentro de la tabla es la tarea, así que
+                 cada línea conserva sus botones (CLAUDE.md secc. 20, excepción).
+                 En ≤ 1024px cada línea es una tarjeta, una por fila, con su
+                 detalle pegado debajo. -->
+            <div class="table-responsive capture-grid lines-table-wrap">
             <table class="lines-table">
                 <colgroup>
-                    <col style="width: 21%">
-                    <col style="width: 7%">
-                    <col style="width: 11%">
-                    <col style="width: 11%">
-                    <col style="width: 38%">
-                    <col style="width: 12%">
+                    <col class="col-account">
+                    <col class="col-currency">
+                    <col class="col-amount">
+                    <col class="col-amount">
+                    <col>
+                    <col class="col-actions">
                 </colgroup>
                 <thead>
                     <tr>
@@ -714,7 +726,7 @@ function submitSchedule() {
                     >
                         <td class="account-cell">
                             <div class="mode-toggle">
-                                <span v-if="line.electronic_key" class="key-indicator" title="Esta línea tiene una clave numérica electrónica asociada">🔑</span>
+                                <span v-if="line.electronic_key" class="key-indicator" title="Esta línea tiene una clave numérica electrónica asociada"><KeyRoundIcon :size="14" /></span>
                                 <button
                                     type="button"
                                     class="mode-btn"
@@ -751,42 +763,46 @@ function submitSchedule() {
                             />
                             <span v-else class="muted small">No hay socios de negocio activos.</span>
                         </td>
-                        <td>
-                            <select v-model="line.currency_id" required>
+                        <td data-label="Moneda">
+                            <select v-model="line.currency_id" required aria-label="Moneda">
                                 <option v-for="c in currencies" :key="c.id" :value="c.id">{{ c.code }}</option>
                             </select>
                         </td>
-                        <td>
-                            <MoneyInput class="num-input" :model-value="line.debit" @update:model-value="(v) => onDebitInput(line, v)" />
+                        <td data-label="Débito">
+                            <MoneyInput class="num-input" aria-label="Débito" :model-value="line.debit" @update:model-value="(v) => onDebitInput(line, v)" />
                         </td>
-                        <td>
-                            <MoneyInput class="num-input" :model-value="line.credit" @update:model-value="(v) => onCreditInput(line, v)" />
+                        <td data-label="Crédito">
+                            <MoneyInput class="num-input" aria-label="Crédito" :model-value="line.credit" @update:model-value="(v) => onCreditInput(line, v)" />
                         </td>
-                        <td>
-                            <input v-model="line.description" type="text" maxlength="255">
+                        <td data-label="Descripción">
+                            <input v-model="line.description" type="text" maxlength="255" aria-label="Descripción">
                         </td>
-                        <td>
+                        <td class="actions-td">
                             <div class="row-actions">
                                 <button
                                     type="button"
                                     class="btn btn-ghost detail-btn"
                                     :class="{ active: showSecondary(line) }"
                                     title="Norma de reparto, IVA, documento de referencia, vencimiento..."
+                                    aria-label="Detalle de la línea"
+                                    :aria-expanded="showSecondary(line)"
                                     @click="toggleSecondary(line)"
-                                >⋯</button>
+                                ><EllipsisIcon /></button>
                                 <button
                                     type="button"
                                     class="btn btn-ghost duplicate-btn"
                                     title="Duplicar línea"
+                                    aria-label="Duplicar línea"
                                     @click="duplicateLine(index)"
-                                >⧉</button>
+                                ><CopyIcon /></button>
                                 <button
                                     type="button"
                                     class="btn btn-ghost remove-btn"
                                     title="Eliminar línea"
+                                    aria-label="Eliminar línea"
                                     :disabled="form.lines.length <= 1"
                                     @click="removeLine(index)"
-                                >✕</button>
+                                ><XIcon /></button>
                             </div>
                         </td>
                     </tr>
@@ -857,7 +873,7 @@ function submitSchedule() {
                                     </span>
 
                                     <span v-if="bpLineRequirementUnmet(line)" class="bp-requirement-warning" :title="`Este tipo de documento exige: ${bpLineRequirementLabels[bpLineRequirement]}`">
-                                        ⚠ falta {{ bpLineRequirementLabels[bpLineRequirement].toLowerCase() }}
+                                        <TriangleAlertIcon /> falta {{ bpLineRequirementLabels[bpLineRequirement].toLowerCase() }}
                                     </span>
                                 </div>
                             </div>
@@ -868,10 +884,10 @@ function submitSchedule() {
                 <tfoot>
                     <tr>
                         <td colspan="2">
-                            <button type="button" class="btn btn-ghost" @click="addLine">+ Línea</button>
+                            <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Línea</button>
                         </td>
-                        <td class="num total-cell">{{ formatMoney(totalDebit) }}</td>
-                        <td class="num total-cell">{{ formatMoney(totalCredit) }}</td>
+                        <td data-label="Total débito" class="num total-cell">{{ formatMoney(totalDebit) }}</td>
+                        <td data-label="Total crédito" class="num total-cell">{{ formatMoney(totalCredit) }}</td>
                         <td colspan="2">
                             <span class="badge" :class="isBalanced ? 'badge-success' : 'badge-danger'">
                                 {{ isBalanced ? 'Cuadrado' : 'No cuadra' }}
@@ -979,35 +995,21 @@ function submitSchedule() {
     background: var(--color-primary-soft);
 }
 
-.load-existing-btn svg {
-    width: 16px;
-    height: 16px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    flex-shrink: 0;
-}
-
+/* Todo el ancho: tantas columnas como quepan (cuatro en un monitor, una en
+   un teléfono). La descripción ocupa la fila entera. */
 .header-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.6rem 0.85rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0 0.85rem;
     margin-bottom: 0.85rem;
 }
 
-.field label {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    margin-bottom: 0.2rem;
+.header-grid .field {
+    margin-bottom: 0.6rem;
 }
 
 .description-field {
-    grid-column: span 2;
+    grid-column: 1 / -1;
 }
 
 .active-line-panel {
@@ -1018,10 +1020,15 @@ function submitSchedule() {
     margin-bottom: 0.6rem;
 }
 
+.active-line-panel input {
+    width: 100%;
+}
+
 .active-key-label {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 0.5rem;
     font-size: 0.78rem;
     color: var(--color-text-muted);
@@ -1037,13 +1044,9 @@ function submitSchedule() {
     letter-spacing: 0.05em;
 }
 
-.active-row {
-    background: var(--color-primary-soft);
-}
-
 .key-indicator {
-    font-size: 0.8rem;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
     margin-right: 0.15rem;
 }
 
@@ -1056,40 +1059,42 @@ function submitSchedule() {
     display: block;
     font-size: 0.76rem;
     color: var(--color-text-muted);
-    margin-top: 0.2rem;
+    margin: 0.2rem 0 0;
 }
 
-.lines-table-scroll {
-    overflow-x: auto;
+.lines-table-wrap {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
 }
 
+/* Anchos fijos para lo que tiene un largo conocido (moneda, montos, los
+   botones de la línea); la descripción se queda con lo que sobra. Sin un
+   ancho mínimo: la tabla cabe en los ~720px que deja la barra lateral a
+   1025px, sin desplazarse de lado. */
 .lines-table {
     width: 100%;
-    min-width: 760px;
     table-layout: fixed;
     font-size: 0.83rem;
-    border-collapse: collapse;
 }
+
+.col-account { width: 27%; }
+.col-currency { width: 6rem; }
+.col-amount { width: 13%; }
+.col-actions { width: 7.5rem; }
 
 .lines-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
     background: var(--color-surface-alt);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
     color: var(--color-text-muted);
-    text-align: left;
 }
 
 .lines-table th, .lines-table td {
-    padding: 0.32rem 0.5rem;
+    padding: 0.35rem 0.5rem;
     border-top: 1px solid var(--color-border);
-    overflow: hidden;
 }
 
 .lines-table tbody tr:not(.secondary-row):hover {
@@ -1100,34 +1105,16 @@ function submitSchedule() {
     background: var(--color-primary-soft);
 }
 
+.lines-table select,
+.lines-table input,
+.lines-table .combobox {
+    width: 100%;
+    min-width: 0;
+}
+
 .num-input {
-    width: 100%;
     text-align: right;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.3rem 0.45rem;
     font-variant-numeric: tabular-nums;
-    transition: border-color .12s ease, box-shadow .12s ease;
-}
-
-select, .lines-table input[type="text"], .lines-table input[type="date"] {
-    width: 100%;
-    max-width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.3rem 0.45rem;
-    font-size: 0.83rem;
-    color: var(--color-text);
-    text-overflow: ellipsis;
-    transition: border-color .12s ease, box-shadow .12s ease;
-}
-
-select:focus, .lines-table input:focus, .num-input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px var(--color-primary-soft);
 }
 
 .row-actions {
@@ -1137,8 +1124,9 @@ select:focus, .lines-table input:focus, .num-input:focus {
 }
 
 .detail-btn, .duplicate-btn, .remove-btn {
-    padding: 0.18rem 0.4rem;
-    font-size: 0.78rem;
+    width: 2.1rem;
+    min-height: 2.1rem;
+    padding: 0;
 }
 
 .detail-btn.active {
@@ -1152,6 +1140,7 @@ select:focus, .lines-table input:focus, .num-input:focus {
 
 .mode-toggle {
     display: flex;
+    align-items: center;
     gap: 0.2rem;
     margin-bottom: 0.25rem;
 }
@@ -1197,7 +1186,7 @@ select:focus, .lines-table input:focus, .num-input:focus {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    min-width: 140px;
+    min-width: min(100%, 140px);
     flex: 1;
 }
 
@@ -1206,10 +1195,8 @@ select:focus, .lines-table input:focus, .num-input:focus {
 }
 
 .field-inline label {
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 600;
     color: var(--color-text-muted);
 }
 
@@ -1224,32 +1211,20 @@ select:focus, .lines-table input:focus, .num-input:focus {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.72rem;
+    font-size: 0.76rem;
     color: var(--color-text-muted);
     white-space: normal;
 }
 
-.bp-open-item-select {
-    font-size: 0.76rem;
-}
-
 .bp-requirement-warning {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     color: var(--color-warning);
     white-space: normal;
 }
 
-.muted {
-    color: var(--color-text-muted);
-}
-
-.small {
-    font-size: 0.76rem;
-}
-
 .cost-allocation-rule-select.needs-value {
     border-color: var(--color-warning);
-    background: var(--color-warning-soft);
+    background-color: var(--color-warning-soft);
 }
 
 .total-cell {
@@ -1275,8 +1250,8 @@ select:focus, .lines-table input:focus, .num-input:focus {
 
 .schedule-fields {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0 1rem;
     margin-top: 0.75rem;
 }
 
@@ -1287,11 +1262,51 @@ select:focus, .lines-table input:focus, .num-input:focus {
 
 .form-actions {
     margin-top: 1.25rem;
-    display: flex;
-    gap: 0.75rem;
 }
 
 .cancel-btn {
-    margin-left: auto;
+    order: -1;
+    margin-right: auto;
+}
+
+/* En tarjetas (≤ 1024px): la cuenta o el socio es el título de la línea,
+   con el selector de modo arriba y el buscador a lo ancho; los botones de la
+   línea, abajo a la derecha. */
+@media screen and (max-width: 1024px) {
+    .lines-table-wrap {
+        border: 0;
+        border-radius: 0;
+    }
+
+    .lines-table tbody td.account-cell {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lines-table tbody td.actions-td {
+        justify-content: flex-end;
+    }
+
+    .lines-table tbody tr.secondary-row {
+        margin-top: -0.5rem;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+        background: var(--color-surface-alt);
+    }
+
+    .secondary-row td {
+        padding: 0;
+    }
+
+    .lines-table tfoot td[colspan] {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .cancel-btn {
+        order: 0;
+        margin-right: 0;
+    }
 }
 </style>

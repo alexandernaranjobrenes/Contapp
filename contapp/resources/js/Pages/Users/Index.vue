@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ConfirmModal from '../../Components/ConfirmModal.vue';
+import { PlusIcon } from '@lucide/vue';
 
 defineProps({
     users: { type: Array, default: () => [] },
@@ -76,7 +77,7 @@ function confirmAction() {
 
     <AppLayout title="Usuarios">
         <template #actions>
-            <Link :href="route('users.create')" class="btn btn-primary">+ Nuevo usuario</Link>
+            <Link :href="route('users.create')" class="btn btn-primary"><PlusIcon /> Nuevo usuario</Link>
         </template>
 
         <div class="card">

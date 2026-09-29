@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     deductions: { type: Array, default: () => [] },
@@ -134,7 +135,7 @@ const statusLabels = {
                     <input v-model="showSettled" type="checkbox">
                     Mostrar canceladas
                 </label>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva obligación</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nueva obligación</button>
             </div>
 
             <div class="table-scroll">

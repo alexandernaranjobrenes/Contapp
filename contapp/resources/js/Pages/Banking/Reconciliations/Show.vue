@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
 import { formatMoney } from '../../../Utils/money';
+import { CheckIcon } from '@lucide/vue';
 
 const props = defineProps({
     reconciliation: { type: Object, required: true },
@@ -105,7 +106,7 @@ function destroyReconciliation() {
                         <td class="num">{{ formatMoney(line.journal_detail?.debit_local) }}</td>
                         <td class="num">{{ formatMoney(line.journal_detail?.credit_local) }}</td>
                         <td class="check-cell">
-                            <span>{{ line.matched_in_books ? '✓' : '' }}</span>
+                            <CheckIcon v-if="line.matched_in_books" aria-label="Conciliado en libros" role="img" />
                         </td>
                         <td class="check-cell">
                             <button
@@ -114,8 +115,9 @@ function destroyReconciliation() {
                                 :class="{ checked: line.matched_in_bank }"
                                 :disabled="reconciliation.status === 'completed'"
                                 :title="line.matched_in_bank ? 'Visto en banco — clic para desmarcar' : 'Marcar como visto en el estado de cuenta del banco'"
+                                :aria-label="line.matched_in_bank ? 'Visto en banco — clic para desmarcar' : 'Marcar como visto en el estado de cuenta del banco'"
                                 @click="toggleBank(line)"
-                            >{{ line.matched_in_bank ? '✓' : '' }}</button>
+                            ><CheckIcon v-if="line.matched_in_bank" /></button>
                         </td>
                     </tr>
                     <tr v-if="!reconciliation.lines.length">
@@ -165,6 +167,10 @@ th, td { text-align: left; padding: 0.45rem 0.9rem; border-top: 1px solid var(--
 
 .check-cell { text-align: center; }
 .check-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     width: 22px;
     height: 22px;
     border-radius: 4px;

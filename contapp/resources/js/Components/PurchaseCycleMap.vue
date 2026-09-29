@@ -1,5 +1,6 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
+import { BanIcon, PackageCheckIcon, ReceiptIcon, ShipIcon, Undo2Icon } from '@lucide/vue';
 
 defineProps({
     // { root_id, nodes: [{ kind, label, date, detail, amount, state, current,
@@ -8,11 +9,11 @@ defineProps({
 });
 
 const ICONS = {
-    receipt: '📦',
-    landed_cost: '🚢',
-    invoice: '🧾',
-    credit_note: '↩️',
-    void: '🚫',
+    receipt: PackageCheckIcon,
+    landed_cost: ShipIcon,
+    invoice: ReceiptIcon,
+    credit_note: Undo2Icon,
+    void: BanIcon,
 };
 
 function money(value) {
@@ -42,7 +43,7 @@ function href(node) {
                 class="node"
                 :class="[`state-${node.state}`, { current: node.current }]"
             >
-                <span class="node-icon" aria-hidden="true">{{ ICONS[node.kind] }}</span>
+                <span class="node-icon" aria-hidden="true"><component :is="ICONS[node.kind]" :size="18" /></span>
 
                 <div class="node-body">
                     <div class="node-title">
@@ -129,7 +130,7 @@ function href(node) {
     border-radius: 50%;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    font-size: 0.85rem;
+    color: var(--color-text-muted);
     z-index: 1;
 }
 

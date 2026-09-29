@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { DownloadIcon } from '@lucide/vue';
 
 const props = defineProps({
     documentTypes: { type: Array, required: true }, // [{ id, code, name }]
@@ -13,6 +14,7 @@ const open = ref(props.mode === 'inline');
 const documentTypeId = ref(props.defaultDocumentTypeId ?? props.documentTypes[0]?.id ?? null);
 const from = ref('');
 const to = ref('');
+const ids = { type: useId(), from: useId(), to: useId() };
 
 const statusOptions = [
     { value: 'draft', label: 'Preliminar' },
@@ -58,8 +60,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
             v-if="mode === 'popover'"
             type="button"
             class="btn btn-ghost"
+            :aria-expanded="open"
             @click="open = !open"
-        >Exportar registro</button>
+        ><DownloadIcon /> Exportar registro</button>
 
         <div v-if="open" class="dtr-fields" :class="{ floating: mode === 'popover' }">
             <p v-if="mode === 'popover'" class="dtr-hint">
@@ -67,34 +70,40 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
                 "Todos los tipos de documento"), una fila por línea de detalle.
             </p>
 
-            <div class="field">
-                <label>Tipo de documento</label>
-                <select v-model="documentTypeId">
-                    <option :value="null">— Todos los tipos de documento —</option>
-                    <option v-for="dt in documentTypes" :key="dt.id" :value="dt.id">
-                        {{ dt.code }} — {{ dt.name }}
-                    </option>
-                </select>
-            </div>
-
-            <div class="field-row">
+            <!-- A lo ancho de la pantalla en su página, en una columna dentro
+                 del panel flotante: la grilla reparte los campos según el
+                 ancho que haya (CLAUDE.md secc. 25). -->
+            <div class="dtr-grid">
                 <div class="field">
-                    <label>Desde <span class="hint-inline">(opcional)</span></label>
-                    <input v-model="from" type="date">
+                    <label :for="ids.type">Tipo de documento</label>
+                    <select :id="ids.type" v-model="documentTypeId">
+                        <option :value="null">— Todos los tipos de documento —</option>
+                        <option v-for="dt in documentTypes" :key="dt.id" :value="dt.id">
+                            {{ dt.code }} — {{ dt.name }}
+                        </option>
+                    </select>
                 </div>
-                <div class="field">
-                    <label>Hasta <span class="hint-inline">(opcional)</span></label>
-                    <input v-model="to" type="date">
-                </div>
-            </div>
 
-            <div class="field">
-                <span class="field-label">Estado</span>
-                <label v-for="opt in statusOptions" :key="opt.value" class="option-row">
-                    <input v-model="statuses[opt.value]" type="checkbox">
-                    {{ opt.label }}
-                </label>
-                <span v-if="!selectedStatuses.length" class="error">Marcá al menos un estado.</span>
+                <div class="field">
+                    <label :for="ids.from">Desde <span class="hint-inline">(opcional)</span></label>
+                    <input :id="ids.from" v-model="from" type="date">
+                </div>
+
+                <div class="field">
+                    <label :for="ids.to">Hasta <span class="hint-inline">(opcional)</span></label>
+                    <input :id="ids.to" v-model="to" type="date">
+                </div>
+
+                <fieldset class="field status-field">
+                    <legend>Estado</legend>
+                    <div class="status-options">
+                        <label v-for="opt in statusOptions" :key="opt.value" class="check">
+                            <input v-model="statuses[opt.value]" type="checkbox">
+                            {{ opt.label }}
+                        </label>
+                    </div>
+                    <span v-if="!selectedStatuses.length" class="error">Marcá al menos un estado.</span>
+                </fieldset>
             </div>
 
             <div class="actions-row">
@@ -104,7 +113,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
                     :class="{ disabled: !canExport }"
                     :aria-disabled="!canExport"
                 >
-                    Exportar XLSX
+                    <DownloadIcon /> Exportar XLSX
                 </a>
             </div>
         </div>
@@ -122,7 +131,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
     top: calc(100% + 0.4rem);
     right: 0;
     z-index: 30;
-    width: 300px;
+    width: min(320px, calc(100vw - 2rem));
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
@@ -136,50 +145,47 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
     margin: 0 0 0.75rem;
 }
 
-.field { margin-bottom: 0.85rem; }
-.field:last-of-type { margin-bottom: 0; }
-.field-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.3rem; }
+.dtr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0 1rem;
+    align-items: start;
+}
 
-.field-row { display: flex; gap: 0.75rem; }
-.field-row .field { flex: 1; }
+.hint-inline { color: var(--color-text-muted); font-size: 0.74rem; font-weight: 400; }
 
-label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 600;
+.status-field {
+    margin: 0 0 0.9rem;
+    padding: 0;
+    border: 0;
+}
+
+.status-field legend {
     margin-bottom: 0.3rem;
+    padding: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
 }
 
-.hint-inline { color: var(--color-text-muted); font-size: 0.78rem; font-weight: 400; }
-
-select, input[type="date"] {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.option-row {
+.status-options {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 400;
-    padding: 0.3rem 0;
-    cursor: pointer;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+}
+
+.status-options .check {
+    margin: 0;
+    min-height: 2.25rem;
 }
 
 .error {
     display: block;
-    margin-top: 0.3rem;
     color: var(--color-danger);
-    font-size: 0.78rem;
+    font-size: 0.76rem;
 }
 
-.actions-row { margin-top: 1rem; }
+.actions-row { margin-top: 0.25rem; }
 
 .btn.disabled {
     opacity: 0.5;

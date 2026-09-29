@@ -1,5 +1,10 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
+import { LUCIDE_CONTEXT } from '@lucide/vue';
+import ConfirmHost from './Components/ConfirmHost.vue';
+// Botón ocupado mientras dura la operación que disparó (CLAUDE.md secc. 27).
+// Se instala solo al importarlo.
+import './Utils/busyButtons';
 
 createInertiaApp({
     title: (title) => (title ? `${title} — CONTAPP` : 'CONTAPP'),
@@ -8,7 +13,9 @@ createInertiaApp({
         return pages[`./Pages/${name}.vue`];
     },
     setup({ el, App, props, plugin }) {
-        const app = createApp({ render: () => h(App, props) });
+        // ConfirmHost va al lado de la página, no adentro: la confirmación de
+        // confirmAction() sigue abierta aunque la acción cambie de página.
+        const app = createApp({ render: () => [h(App, props), h(ConfirmHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada
@@ -18,6 +25,11 @@ createInertiaApp({
         // "_ctx.route is not a function". globalProperties lo deja
         // disponible en _ctx para toda plantilla, sin tocar cada página.
         app.config.globalProperties.route = window.route;
+
+        // Íconos: solo Lucide (CLAUDE.md secc. 23). 16px por defecto —el del
+        // texto de botones y tablas— para toda la app; donde haga falta otro
+        // tamaño (el menú lateral), el ícono lo pide con :size.
+        app.provide(LUCIDE_CONTEXT, { size: 16, strokeWidth: 2 });
 
         app.use(plugin).mount(el);
     },

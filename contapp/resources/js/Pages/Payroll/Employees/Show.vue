@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { ArrowLeftIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     employee: { type: Object, required: true },
@@ -95,7 +96,7 @@ const noteClass = {
 
     <AppLayout :title="employee.full_name">
         <template #actions>
-            <Link :href="route('employees.index')" class="btn btn-ghost">← Empleados</Link>
+            <Link :href="route('employees.index')" class="btn btn-ghost"><ArrowLeftIcon /> Empleados</Link>
             <Link :href="route('personnel-actions.index')" class="btn btn-ghost">Acciones de personal</Link>
         </template>
 
@@ -266,7 +267,7 @@ const noteClass = {
         <section class="card">
             <div class="card-header">
                 <h3>Bitácora</h3>
-                <button type="button" class="btn btn-primary btn-sm" @click="noting = true">+ Anotar</button>
+                <button type="button" class="btn btn-primary btn-sm" @click="noting = true"><PlusIcon /> Anotar</button>
             </div>
 
             <div v-if="page.props.errors?.note" class="flash flash-error note-error">{{ page.props.errors.note }}</div>

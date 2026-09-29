@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     categories: { type: Array, default: () => [] },
@@ -95,7 +96,7 @@ function destroy(category) {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ filtered.length }} categoría(s)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate">+ Nueva categoría</button>
+                <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Nueva categoría</button>
             </div>
 
             <table>

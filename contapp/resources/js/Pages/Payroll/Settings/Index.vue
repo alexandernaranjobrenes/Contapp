@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { CheckIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     settings: { type: Object, default: null },
@@ -788,7 +789,7 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ contributions.length }} componente(s)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('contribution')">+ Nueva carga</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('contribution')"><PlusIcon /> Nueva carga</button>
                 </div>
 
                 <div class="table-scroll">
@@ -862,7 +863,7 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <h3>Tramos</h3>
-                    <button type="button" class="btn btn-primary" @click="openEditor('bracket')">+ Nuevo tramo</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('bracket')"><PlusIcon /> Nuevo tramo</button>
                 </div>
 
                 <div class="table-scroll">
@@ -905,7 +906,7 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <h3>Créditos familiares</h3>
-                    <button type="button" class="btn btn-primary" @click="openEditor('credit')">+ Nuevo crédito</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('credit')"><PlusIcon /> Nuevo crédito</button>
                 </div>
 
                 <div class="table-scroll">
@@ -950,7 +951,7 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ provisions.length }} provisión(es)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('provision')">+ Nueva provisión</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('provision')"><PlusIcon /> Nueva provisión</button>
                 </div>
 
                 <div class="table-scroll">
@@ -1009,7 +1010,7 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ concepts.length }} concepto(s)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('concept')">+ Nuevo concepto</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('concept')"><PlusIcon /> Nuevo concepto</button>
                 </div>
 
                 <div class="table-scroll">
@@ -1041,9 +1042,9 @@ const accountLabel = (id) => {
                                     {{ { amount: 'Monto', percentage: 'Porcentaje', hours: 'Horas' }[c.calculation] }}
                                 </td>
                                 <td class="right num small">{{ c.factor ?? '—' }}</td>
-                                <td class="center">{{ c.affects_ccss ? '✓' : '·' }}</td>
-                                <td class="center">{{ c.affects_income_tax ? '✓' : '·' }}</td>
-                                <td class="center">{{ c.affects_provisions ? '✓' : '·' }}</td>
+                                <td class="center"><CheckIcon v-if="c.affects_ccss" aria-label="Sí" role="img" /><template v-else>·</template></td>
+                                <td class="center"><CheckIcon v-if="c.affects_income_tax" aria-label="Sí" role="img" /><template v-else>·</template></td>
+                                <td class="center"><CheckIcon v-if="c.affects_provisions" aria-label="Sí" role="img" /><template v-else>·</template></td>
                                 <td class="num small muted">{{ accountLabel(c.account_id) }}</td>
                                 <td class="small">{{ c.status === 'active' ? 'Activo' : 'Inactivo' }}</td>
                                 <td class="row-actions">

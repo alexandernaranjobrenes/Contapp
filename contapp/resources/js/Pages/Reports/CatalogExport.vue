@@ -1,6 +1,7 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { DownloadIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -39,7 +40,9 @@ function exportUrl() {
             no hace falta descargar los cinco cada vez.
         </p>
 
-        <div class="card">
+        <!-- A todo el ancho (CLAUDE.md secc. 25): los catálogos se reparten en
+             columnas en vez de quedar en una lista angosta a la izquierda. -->
+        <div class="card export-card">
             <div class="select-all-row">
                 <label class="option-row">
                     <input type="checkbox" :checked="allSelected" @change="toggleAll">
@@ -47,40 +50,46 @@ function exportUrl() {
                 </label>
             </div>
 
-            <label v-for="[key, label] in catalogEntries" :key="key" class="option-row">
-                <input v-model="selected[key]" type="checkbox">
-                {{ label }}
-            </label>
+            <div class="options-grid">
+                <label v-for="[key, label] in catalogEntries" :key="key" class="option-row">
+                    <input v-model="selected[key]" type="checkbox">
+                    {{ label }}
+                </label>
+            </div>
 
             <label class="option-row inactive-row">
                 <input v-model="includeInactive" type="checkbox">
                 Incluir inactivos / no vigentes
             </label>
 
-            <div class="actions-row">
+            <div class="form-actions actions-row">
+                <span v-if="!anySelected" class="muted small">Marcá al menos un catálogo para exportar.</span>
                 <a
                     :href="anySelected ? exportUrl() : null"
                     class="btn btn-primary"
                     :class="{ disabled: !anySelected }"
                     :aria-disabled="!anySelected"
                 >
-                    Exportar XLSX
+                    <DownloadIcon /> Exportar XLSX
                 </a>
-                <span v-if="!anySelected" class="muted small">Marcá al menos un catálogo para exportar.</span>
             </div>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 640px; }
-
-.card { padding: 1.1rem 1.25rem; max-width: 480px; }
+.export-card { padding: 1.1rem 1.25rem; }
 
 .select-all-row {
     padding-bottom: 0.6rem;
     margin-bottom: 0.6rem;
     border-bottom: 1px solid var(--color-border);
+}
+
+.options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0 1rem;
 }
 
 .option-row {
@@ -101,17 +110,12 @@ function exportUrl() {
 }
 
 .actions-row {
-    margin-top: 1rem;
-    display: flex;
     align-items: center;
-    gap: 0.75rem;
+    margin-top: 1rem;
 }
 
 .btn.disabled {
     opacity: 0.5;
     pointer-events: none;
 }
-
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.78rem; }
 </style>

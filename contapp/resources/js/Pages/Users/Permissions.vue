@@ -1,6 +1,7 @@
 <script setup>
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import { ArrowLeftIcon } from '@lucide/vue';
 
 const props = defineProps({
     targetUser: { type: Object, required: true },
@@ -32,7 +33,7 @@ function submit() {
 
     <AppLayout title="Editar permisos">
         <template #actions>
-            <Link :href="route('users.index')" class="btn btn-ghost">← Volver</Link>
+            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Volver</Link>
         </template>
 
         <p class="user-line">Permisos de <strong>{{ targetUser.name }}</strong> ({{ targetUser.email }})</p>

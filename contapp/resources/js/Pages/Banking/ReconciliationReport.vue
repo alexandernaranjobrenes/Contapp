@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { reactive, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../Utils/money';
+import { ChevronDownIcon, ChevronRightIcon } from '@lucide/vue';
 
 const props = defineProps({
     bankAccounts: { type: Array, default: () => [] },
@@ -101,7 +102,7 @@ function toggleExpanded(rowId) {
                 </thead>
                 <tbody v-for="row in rows" :key="row.id">
                     <tr class="selectable-row" @click="toggleExpanded(row.id)">
-                        <td class="expand-cell">{{ expanded.has(row.id) ? '▾' : '▸' }}</td>
+                        <td class="expand-cell"><ChevronDownIcon v-if="expanded.has(row.id)" /><ChevronRightIcon v-else /></td>
                         <td>{{ row.cutoff_date }}</td>
                         <td>
                             <span class="badge" :class="row.status === 'completed' ? 'badge-success' : 'badge-warning'">

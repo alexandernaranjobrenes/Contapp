@@ -8,8 +8,10 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\JournalDetailTax;
 use App\Domains\Tax\Models\TaxRate;
 use App\Domains\Tax\Models\TaxType;
+use App\Http\Controllers\Concerns\RecordsPropietarioAudit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -36,6 +38,14 @@ use Inertia\Response;
  */
 class TaxRateController extends Controller
 {
+    use RecordsPropietarioAudit;
+
+    /** Lo que queda en la bitácora de un cambio al catálogo nacional. */
+    private const GLOBAL_AUDIT_FIELDS = [
+        'tax_type_id', 'code', 'name', 'percentage', 'grants_fiscal_credit',
+        'fiscal_credit_note', 'effective_from', 'effective_to',
+    ];
+
     public function index(): Response
     {
         return Inertia::render('Tax/Rates', $this->ratesPayload());
@@ -203,7 +213,9 @@ class TaxRateController extends Controller
 
     /**
      * Crea/edita/borra en el catálogo NACIONAL (company_id NULL) — solo
-     * alcanzable vía el panel del Propietario.
+     * alcanzable vía el panel del Propietario. Cada cambio queda en la
+     * bitácora con el Propietario que lo hizo: afecta a todas las compañías
+     * a la vez (ver RecordsPropietarioAudit).
      */
     public function storeGlobal(Request $request): RedirectResponse
     {
@@ -218,7 +230,11 @@ class TaxRateController extends Controller
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
         ]);
 
-        TaxRate::create($validated);
+        DB::transaction(function () use ($request, $validated) {
+            $rate = TaxRate::create($validated);
+
+            $this->auditPropietario($request, 'tax_rate_created', $rate, null, $this->auditSnapshot($rate, self::GLOBAL_AUDIT_FIELDS));
+        });
 
         return back()->with('success', "Indicador {$validated['code']} creado.");
     }
@@ -239,7 +255,7 @@ class TaxRateController extends Controller
                 'effective_to' => ['nullable', 'date', 'after_or_equal:'.$rate->effective_from->format('Y-m-d')],
             ]);
 
-            $rate->update($validated);
+            $this->updateGlobalAudited($request, $rate, $validated);
 
             return back()->with('success', "Vigencia del indicador {$rate->code} actualizada.");
         }
@@ -255,12 +271,29 @@ class TaxRateController extends Controller
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
         ]);
 
-        $rate->update($validated);
+        $this->updateGlobalAudited($request, $rate, $validated);
 
         return back()->with('success', "Indicador {$rate->code} actualizado.");
     }
 
-    public function destroyGlobal(int $taxRate): RedirectResponse
+    /**
+     * La edición y su entrada en la bitácora, juntas. Se registra solo lo que
+     * cambió: guardar sin cambios no deja entrada.
+     */
+    private function updateGlobalAudited(Request $request, TaxRate $rate, array $validated): void
+    {
+        DB::transaction(function () use ($request, $rate, $validated) {
+            $before = $rate->only(self::GLOBAL_AUDIT_FIELDS);
+            $rate->update($validated);
+            [$old, $new] = $this->changedValues($before, $rate->only(self::GLOBAL_AUDIT_FIELDS));
+
+            if ($new) {
+                $this->auditPropietario($request, 'tax_rate_updated', $rate, $old, $new);
+            }
+        });
+    }
+
+    public function destroyGlobal(Request $request, int $taxRate): RedirectResponse
     {
         $rate = TaxRate::findOrFail($taxRate);
 
@@ -282,7 +315,12 @@ class TaxRateController extends Controller
             ]);
         }
 
-        $rate->delete();
+        // La foto va en old_values: el indicador deja de existir, y sin ella
+        // la entrada no diría cuál era ni qué porcentaje tenía.
+        DB::transaction(function () use ($request, $rate) {
+            $this->auditPropietario($request, 'tax_rate_deleted', $rate, $this->auditSnapshot($rate, self::GLOBAL_AUDIT_FIELDS));
+            $rate->delete();
+        });
 
         return back()->with('success', "Indicador {$rate->code} eliminado.");
     }

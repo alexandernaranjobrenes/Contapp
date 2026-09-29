@@ -1,12 +1,18 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { formatMoney } from '../../Utils/money';
+import { ArrowLeftIcon, DownloadIcon, PrinterIcon } from '@lucide/vue';
 
 // Pantalla de "Presentar documento": deliberadamente SIN AppLayout (sin menú
 // lateral ni barra superior) — es la superficie pensada para mostrarse tal
 // cual, exportarse o imprimirse, no para navegar/editar (eso vive en
 // Show.vue/Create.vue, que sí tienen todo el resto de acciones). Se abre en
 // una pestaña aparte para no perder el contexto de la pantalla de origen.
+//
+// El comprobante conserva el ancho de una hoja (900px) aunque la regla de
+// CLAUDE.md secc. 25 pida contenedores a todo el ancho: es la vista previa
+// de un documento impreso, y a lo ancho de un monitor dejaría de parecerse
+// a la hoja que va a salir.
 const props = defineProps({
     entry: { type: Object, required: true },
     header: { type: Object, required: true },
@@ -26,12 +32,13 @@ function printNow() {
     <Head :title="`Presentación — ${entry.label}`" />
 
     <div class="page">
-        <div class="toolbar no-print">
-            <a href="javascript:history.back()" class="btn btn-ghost">← Volver</a>
-            <span class="spacer" />
-            <a :href="route('journal-entries.export', entry.id)" class="btn btn-ghost">⤓ Exportar XLSX</a>
-            <a :href="route('journal-entries.export-pdf', entry.id)" class="btn btn-ghost">⤓ Exportar PDF</a>
-            <button type="button" class="btn btn-primary" @click="printNow">🖶 Imprimir</button>
+        <div class="view-toolbar presentation-toolbar no-print">
+            <a href="javascript:history.back()" class="btn btn-ghost"><ArrowLeftIcon /> Volver</a>
+            <div class="view-actions">
+                <a :href="route('journal-entries.export', entry.id)" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="route('journal-entries.export-pdf', entry.id)" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <button type="button" class="btn btn-primary" @click="printNow"><PrinterIcon /> Imprimir</button>
+            </div>
         </div>
 
         <div class="voucher">
@@ -64,6 +71,7 @@ function printNow() {
                 <dt>Fecha de documento</dt><dd>{{ entry.document_date }}</dd>
             </dl>
 
+            <div class="table-responsive">
             <table class="lines-table">
                 <thead>
                     <tr>
@@ -78,22 +86,23 @@ function printNow() {
                 <tbody>
                     <tr v-for="(line, i) in entry.lines" :key="i">
                         <td>{{ line.owner }}</td>
-                        <td class="muted">{{ line.cost_center ?? '—' }}</td>
-                        <td>{{ line.currency_code }}</td>
-                        <td class="num">{{ formatMoney(line.debit) }}</td>
-                        <td class="num">{{ formatMoney(line.credit) }}</td>
-                        <td class="muted">{{ line.description }}</td>
+                        <td data-label="Centro de costo" class="muted">{{ line.cost_center ?? '—' }}</td>
+                        <td data-label="Moneda">{{ line.currency_code }}</td>
+                        <td data-label="Débito" class="num">{{ formatMoney(line.debit) }}</td>
+                        <td data-label="Crédito" class="num">{{ formatMoney(line.credit) }}</td>
+                        <td data-label="Descripción" class="muted">{{ line.description }}</td>
                     </tr>
                 </tbody>
                 <tfoot>
                     <tr>
                         <td colspan="3">Total</td>
-                        <td class="num">{{ formatMoney(totalDebit) }}</td>
-                        <td class="num">{{ formatMoney(totalCredit) }}</td>
+                        <td data-label="Total débito" class="num">{{ formatMoney(totalDebit) }}</td>
+                        <td data-label="Total crédito" class="num">{{ formatMoney(totalCredit) }}</td>
                         <td></td>
                     </tr>
                 </tfoot>
             </table>
+            </div>
 
             <footer class="voucher-footer">
                 Generado por {{ header.generated_by_name }} el {{ header.generated_at }} — CONTAPP
@@ -109,16 +118,9 @@ function printNow() {
     padding: 1.5rem 1rem 3rem;
 }
 
-.toolbar {
+.presentation-toolbar {
     max-width: 900px;
     margin: 0 auto 1.25rem;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.spacer {
-    flex: 1;
 }
 
 .voucher {
@@ -140,7 +142,8 @@ function printNow() {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
 }
 
 .description-block {
@@ -208,7 +211,7 @@ function printNow() {
 
 .meta-grid {
     display: grid;
-    grid-template-columns: repeat(2, auto 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), max-content) minmax(min(100%, 7rem), 1fr));
     gap: 0.3rem 1.5rem;
     font-size: 0.85rem;
     margin-bottom: 1.5rem;
@@ -272,6 +275,20 @@ function printNow() {
     font-size: 0.72rem;
     color: var(--color-text-muted);
     text-align: center;
+}
+
+@media screen and (max-width: 640px) {
+    .page {
+        padding: 0.75rem 0.75rem 2rem;
+    }
+
+    .voucher {
+        padding: 1.25rem 1rem;
+    }
+
+    .doc-block {
+        text-align: left;
+    }
 }
 
 @media print {

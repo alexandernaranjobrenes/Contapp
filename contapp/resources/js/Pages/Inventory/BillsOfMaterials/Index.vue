@@ -1,65 +1,54 @@
 <script setup>
-import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { ListTreeIcon, PencilIcon, PlusIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useCrudModal } from '../../../Utils/crudModal';
 
-defineProps({
+const props = defineProps({
     billsOfMaterials: { type: Array, default: () => [] },
     items: { type: Array, default: () => [] },
 });
 
 const page = usePage();
 
-const blank = {
-    code: '',
-    name: '',
-    item_id: '',
-    output_quantity: 1,
-    is_default: false,
-    status: 'active',
-    notes: '',
-};
+// Ficha, alta y edición en un solo modal (CLAUDE.md secc. 20 y 21). El
+// código y el producto solo se eligen al crear: para otro producto, otra
+// receta.
+const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit } = useCrudModal({
+    records: () => props.billsOfMaterials,
+    defaults: () => ({ code: '', name: '', item_id: '', output_quantity: 1, is_default: false, status: 'active', notes: '' }),
+    toForm: (b) => ({
+        code: b.code,
+        name: b.name,
+        item_id: b.item_id ?? '',
+        output_quantity: b.output_quantity,
+        is_default: b.is_default,
+        status: b.status,
+        notes: b.notes ?? '',
+    }),
+    store: () => route('bills-of-materials.store'),
+    update: (b) => route('bills-of-materials.update', b.id),
+    updatePayload: ({ code, item_id, ...data }) => data,
+});
 
-const creating = ref(false);
-const createForm = useForm({ ...blank });
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva receta';
+    return selected.value ? `${selected.value.code} — ${selected.value.name}` : '';
+});
 
-function openCreate() {
-    createForm.reset();
-    creating.value = true;
-}
+function destroy() {
+    const b = selected.value;
 
-const editing = ref(null);
-const editForm = useForm({ ...blank });
-
-const activeForm = computed(() => (creating.value ? createForm : editForm));
-
-function openEdit(bom) {
-    editForm.clearErrors();
-    editForm.name = bom.name;
-    editForm.output_quantity = bom.output_quantity;
-    editForm.is_default = bom.is_default;
-    editForm.status = bom.status;
-    editForm.notes = bom.notes ?? '';
-    editing.value = bom;
-}
-
-function submitCreate() {
-    createForm.post(route('bills-of-materials.store'), {
-        onSuccess: () => (creating.value = false), preserveScroll: true,
+    confirmAction({
+        title: 'Eliminar receta',
+        message: `La receta ${b.code} — ${b.name} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('bills-of-materials.destroy', b.id), { preserveScroll: true }),
     });
-}
-
-function submitEdit() {
-    editForm.put(route('bills-of-materials.update', editing.value.id), {
-        onSuccess: () => (editing.value = null), preserveScroll: true,
-    });
-}
-
-function destroy(bom) {
-    if (! confirm(`¿Eliminar la receta ${bom.code} — ${bom.name}?`)) return;
-
-    router.delete(route('bills-of-materials.destroy', bom.id), { preserveScroll: true });
 }
 
 function quantity(value) {
@@ -71,11 +60,14 @@ function quantity(value) {
     <Head title="Listas de materiales" />
 
     <AppLayout title="Listas de materiales">
-        <template #actions>
-            <Link :href="route('production-orders.index')" class="btn btn-ghost">Órdenes de fabricación</Link>
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('production-orders.index')" class="btn btn-ghost">Órdenes de fabricación</Link>
+                <button type="button" class="btn btn-primary" :disabled="!items.length" @click="openCreate()">
+                    <PlusIcon /> Crear nuevo
+                </button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.bill_of_material" class="flash flash-error">
             {{ page.props.errors.bill_of_material }}
@@ -88,49 +80,44 @@ function quantity(value) {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ billsOfMaterials.length }} receta(s)</span>
-                <button type="button" class="btn btn-primary" :disabled="!items.length" @click="openCreate()">
-                    + Nueva receta
-                </button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Código</th>
                             <th>Nombre</th>
                             <th>Produce</th>
-                            <th class="right">Rinde</th>
-                            <th class="right">Componentes</th>
+                            <th class="num">Componentes</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="b in billsOfMaterials" :key="b.id">
-                            <td class="num">
-                                {{ b.code }}
-                                <span v-if="b.is_default" class="badge-default">predeterminada</span>
+                        <tr
+                            v-for="b in billsOfMaterials"
+                            :key="b.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(b)"
+                            @keydown.enter="openDetail(b)"
+                            @keydown.space.prevent="openDetail(b)"
+                        >
+                            <td>
+                                <span class="code-cell">
+                                    {{ b.code }}
+                                    <span v-if="b.is_default" class="badge badge-warning">Predeterminada</span>
+                                </span>
                             </td>
-                            <td>{{ b.name }}</td>
-                            <td><strong class="num">{{ b.item_code }}</strong> — {{ b.item_name }}</td>
-                            <td class="right">{{ quantity(b.output_quantity) }}</td>
-                            <td class="right" :class="{ warn: !b.lines_count }">
-                                {{ b.lines_count }}
-                            </td>
-                            <td>{{ b.status === 'active' ? 'Activa' : 'Inactiva' }}</td>
-                            <td class="row-actions">
-                                <Link :href="route('bills-of-materials.lines', b.id)" class="btn btn-ghost btn-sm">
-                                    Componentes
-                                </Link>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="openEdit(b)">Editar</button>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="destroy(b)">Eliminar</button>
+                            <td data-label="Nombre">{{ b.name }}</td>
+                            <td data-label="Produce"><strong class="item-code">{{ b.item_code }}</strong> — {{ b.item_name }}</td>
+                            <td data-label="Componentes" class="num" :class="{ warn: !b.lines_count }">{{ b.lines_count }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="b.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                                    {{ b.status === 'active' ? 'Activa' : 'Inactiva' }}
+                                </span>
                             </td>
                         </tr>
                         <tr v-if="!billsOfMaterials.length">
-                            <td colspan="7" class="muted empty-row">
+                            <td colspan="5" class="muted empty-row">
                                 Todavía no hay recetas. Sin una, cada emisión a producción se digita de memoria.
                             </td>
                         </tr>
@@ -139,89 +126,117 @@ function quantity(value) {
             </div>
         </div>
 
-        <div v-if="creating || editing" class="modal-backdrop" @click.self="creating = false; editing = null">
-            <form class="modal card" @submit.prevent="creating ? submitCreate() : submitEdit()">
-                <h2>{{ creating ? 'Nueva receta' : 'Editar ' + editing.code }}</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="close">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="selected.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                    {{ selected.status === 'active' ? 'Activa' : 'Inactiva' }}
+                </span>
+            </template>
 
-                <div v-if="creating" class="field">
-                    <label>Código</label>
-                    <input v-model="createForm.code" type="text" maxlength="20" required>
-                    <span v-if="createForm.errors.code" class="error">{{ createForm.errors.code }}</span>
+            <template v-if="selected && mode === 'details'">
+                <dl class="detail-list">
+                    <div class="full">
+                        <dt>Produce</dt>
+                        <dd>{{ selected.item_code }} — {{ selected.item_name }}</dd>
+                    </div>
+                    <div>
+                        <dt>Rinde (receta completa)</dt>
+                        <dd>{{ quantity(selected.output_quantity) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Componentes</dt>
+                        <dd>{{ selected.lines_count }}</dd>
+                    </div>
+                    <div>
+                        <dt>Predeterminada</dt>
+                        <dd>{{ selected.is_default ? 'Sí' : 'No' }}</dd>
+                    </div>
+                    <div class="full">
+                        <dt>Notas</dt>
+                        <dd>{{ selected.notes || '—' }}</dd>
+                    </div>
+                </dl>
+                <p v-if="!selected.lines_count" class="flash flash-warning no-lines">
+                    Todavía no tiene componentes: una orden de fabricación con esta receta no emitiría nada.
+                </p>
+            </template>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="bom-form" @submit.prevent="submit">
+                <div v-if="mode === 'create'" class="field">
+                    <label for="bom-code">Código</label>
+                    <input id="bom-code" v-model="form.code" type="text" maxlength="20" required>
+                    <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="activeForm.name" type="text" maxlength="255" required>
-                    <span v-if="activeForm.errors.name" class="error">{{ activeForm.errors.name }}</span>
+                    <label for="bom-name">Nombre</label>
+                    <input id="bom-name" v-model="form.name" type="text" maxlength="255" required>
+                    <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
                 </div>
 
-                <div v-if="creating" class="field">
-                    <label>Producto que fabrica</label>
-                    <select v-model="createForm.item_id" required>
+                <div v-if="mode === 'create'" class="field">
+                    <label for="bom-item">Producto que fabrica</label>
+                    <select id="bom-item" v-model="form.item_id" required>
                         <option value="">Elegí un artículo</option>
                         <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
                     </select>
-                    <span v-if="createForm.errors.item_id" class="error">{{ createForm.errors.item_id }}</span>
-                    <span class="hint small">
+                    <span v-if="form.errors.item_id" class="error">{{ form.errors.item_id }}</span>
+                    <span class="muted small">
                         Solo artículos de inventario: un servicio no se fabrica. El producto no puede cambiarse
                         después — para otro producto, otra receta.
                     </span>
                 </div>
 
                 <div class="field">
-                    <label>Unidades que rinde la receta completa</label>
-                    <input v-model="activeForm.output_quantity" type="number" step="0.000001" min="0.000001" required>
-                    <span v-if="activeForm.errors.output_quantity" class="error">{{ activeForm.errors.output_quantity }}</span>
-                    <span class="hint small">
+                    <label for="bom-output">Unidades que rinde la receta completa</label>
+                    <input id="bom-output" v-model="form.output_quantity" type="number" step="0.000001" min="0.000001" required>
+                    <span v-if="form.errors.output_quantity" class="error">{{ form.errors.output_quantity }}</span>
+                    <span class="muted small">
                         Si la fórmula rinde 100 litros, poné 100 y cargá los insumos del lote completo. Guardarla
                         por unidad y volver a multiplicar arrastra redondeo lote tras lote.
                     </span>
                 </div>
 
                 <label class="check">
-                    <input v-model="activeForm.is_default" type="checkbox">
+                    <input v-model="form.is_default" type="checkbox">
                     Predeterminada para este producto
                 </label>
 
                 <div class="field">
-                    <label>Estado</label>
-                    <select v-model="activeForm.status">
+                    <label for="bom-status">Estado</label>
+                    <select id="bom-status" v-model="form.status">
                         <option value="active">Activa</option>
                         <option value="inactive">Inactiva</option>
                     </select>
                 </div>
 
                 <div class="field">
-                    <label>Notas</label>
-                    <input v-model="activeForm.notes" type="text" maxlength="255">
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false; editing = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="activeForm.processing">Guardar</button>
+                    <label for="bom-notes">Notas</label>
+                    <input id="bom-notes" v-model="form.notes" type="text" maxlength="255">
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <Link :href="route('bills-of-materials.lines', selected.id)" class="btn btn-ghost"><ListTreeIcon /> Componentes</Link>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="bom-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.small { font-size: 0.76rem; }
-.hint { color: var(--color-text-muted); font-size: 0.82rem; margin: 0 0 0.75rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.row-actions { display: flex; gap: 0.3rem; justify-content: flex-end; }
-.warn { color: #a04000; font-weight: 600; }
-.badge-default { display: inline-block; margin-left: 0.4rem; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; background: var(--color-primary-soft, #e8eef7); color: var(--color-primary, #0B1F3A); font-weight: 600; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
-.modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 1.2rem; }
-.modal h2 { margin: 0 0 0.8rem; font-size: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.7rem; }
-.field label { font-size: 0.78rem; font-weight: 600; }
-.check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; margin-bottom: 0.5rem; }
-.error { color: var(--color-danger); font-size: 0.76rem; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
+table { font-size: 0.85rem; }
+.code-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-variant-numeric: tabular-nums; }
+.item-code { font-variant-numeric: tabular-nums; }
+.warn { color: var(--color-warning); font-weight: 700; }
+.no-lines { margin: 0.9rem 0 0; }
 </style>

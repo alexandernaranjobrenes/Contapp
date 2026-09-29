@@ -30,6 +30,15 @@ class CommercialInteraction extends Model
         ];
     }
 
+    /**
+     * occurred_at se muestra tal cual en el perfil comercial: sin esto
+     * saldría con hora y zona. Mismo criterio que License::serializeDate().
+     */
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
+
     public function commercialProfile(): BelongsTo
     {
         return $this->belongsTo(CommercialProfile::class);

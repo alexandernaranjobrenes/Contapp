@@ -2,6 +2,50 @@
 // (secundario), con modo claro/oscuro. Sin frameworks de terceros: la app es
 // Vue + Inertia y estos tokens son consumidos directamente por los componentes .vue.
 
+@use 'sass:map';
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Íconos de Lucide para usar desde CSS (CLAUDE.md secc. 23).
+ *
+ * En las plantillas los íconos son componentes de @lucide/vue. Donde no hay
+ * plantilla —un ::before o un ::after— va el SVG original de lucide.dev
+ * como máscara, pintado con background-color: currentColor o un token de
+ * color. Mismo trazo que los componentes (stroke-width 2). Las variables
+ * sirven también desde el CSS scoped de cualquier pantalla:
+ *
+ *     -webkit-mask: var(--lucide-check) center / contain no-repeat;
+ *     mask: var(--lucide-check) center / contain no-repeat;
+ *
+ * Un ícono nuevo se agrega a $lucide-icons con el contenido del SVG de
+ * lucide.dev (sin la etiqueta <svg>), codificado para URL.
+ *
+ * Va al principio del archivo porque los temas de abajo lo usan: la flecha
+ * de los select y la lupa del buscador son imágenes de fondo, no máscaras,
+ * y una imagen de fondo no toma el color del texto, así que cada tema pinta
+ * la suya con el gris que le corresponde.
+ * ──────────────────────────────────────────────────────────────────────── */
+$lucide-icons: (
+    'chevron-right': "%3Cpath d='m9 18 6-6-6-6'/%3E",
+    'chevron-down': "%3Cpath d='m6 9 6 6 6-6'/%3E",
+    'check': "%3Cpath d='M20 6 9 17l-5-5'/%3E",
+    'loader-circle': "%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56'/%3E",
+    'search': "%3Cpath d='m21 21-4.34-4.34'/%3E%3Ccircle cx='11' cy='11' r='8'/%3E",
+);
+
+@function lucide-icon($name, $stroke: 'black') {
+    @return url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#{$stroke}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E#{map.get($lucide-icons, $name)}%3C/svg%3E");
+}
+
+// Grises de --color-text-muted de cada tema, codificados para URL.
+$muted-light: '%23616a7a';
+$muted-dark: '%2397a2b8';
+
+:root {
+    @each $name, $_ in $lucide-icons {
+        --lucide-#{$name}: #{lucide-icon($name)};
+    }
+}
+
 :root {
     --color-primary: #0b1f3a;
     --color-primary-hover: #142b4d;
@@ -21,6 +65,14 @@
     --color-danger-soft: #fbeae9;
     --color-warning: #92600a;
     --color-warning-soft: #fbf0dd;
+    --color-info: #3730a3;
+    --color-info-soft: #eef2ff;
+
+    // Borde de los campos: un poco más marcado que el de las tarjetas, para
+    // que un campo vacío se distinga del fondo sin tener que enfocarlo.
+    --color-control-border: #cdcac0;
+    --control-chevron: #{lucide-icon('chevron-down', $muted-light)};
+    --control-search: #{lucide-icon('search', $muted-light)};
 
     --sidebar-width: 264px;
     --sidebar-width-collapsed: 72px;
@@ -56,6 +108,12 @@
     --color-danger-soft: #3a1a18;
     --color-warning: #d9a441;
     --color-warning-soft: #382a10;
+    --color-info: #a5b4fc;
+    --color-info-soft: #1e1b4b;
+
+    --color-control-border: #34446b;
+    --control-chevron: #{lucide-icon('chevron-down', $muted-dark)};
+    --control-search: #{lucide-icon('search', $muted-dark)};
 
     --marble-texture: radial-gradient(120% 90% at 10% 0%, rgba(255, 255, 255, 0.02), transparent 55%),
         radial-gradient(100% 80% at 90% 100%, rgba(255, 255, 255, 0.015), transparent 60%);
@@ -83,6 +141,12 @@
         --color-danger-soft: #3a1a18;
         --color-warning: #d9a441;
         --color-warning-soft: #382a10;
+        --color-info: #a5b4fc;
+        --color-info-soft: #1e1b4b;
+
+        --color-control-border: #34446b;
+        --control-chevron: #{lucide-icon('chevron-down', $muted-dark)};
+        --control-search: #{lucide-icon('search', $muted-dark)};
 
         color-scheme: dark;
     }
@@ -267,22 +331,12 @@ table {
     white-space: nowrap;
 }
 
-// Un input[type=date] nativo necesita este ancho mínimo para mostrar
-// "dd/mm/aaaa" completo (con el ícono de calendario) — sin esto, cualquier
-// celda de tabla o columna angosta lo recorta y el año queda truncado
-// (ej. "202" en vez de "2026"). Aplica a todo el sistema de una sola vez,
-// sin depender de que cada formulario le calcule un ancho suficiente.
-input[type="date"] {
-    min-width: 135px;
-}
-
-// El botón "Imprimir" del DocumentToolbar llama a window.print() directo
-// (sin plantilla propia) — así "imprimir" y "convertir a PDF" son lo mismo,
-// vía el diálogo nativo del navegador (Guardar como PDF). Acá se oculta
-// el chrome de la aplicación (barra lateral, topbar, la barra de
-// herramientas misma) para que solo salga el documento.
+// Imprimir una pantalla (window.print(), o Ctrl+P) saca solo el documento:
+// se oculta todo lo que es de la aplicación —barra lateral, barra superior,
+// pie— y la barra de la vista, con sus filtros y botones. "Imprimir" y
+// "convertir a PDF" son lo mismo, vía el diálogo nativo del navegador.
 @media print {
-    .sidebar, .topbar, .doc-toolbar, .app-footer, .sidebar-collapse-btn {
+    .sidebar, .topbar, .view-toolbar, .app-footer, .sidebar-collapse-btn, .nav-backdrop {
         display: none !important;
     }
 
@@ -345,15 +399,25 @@ input[type="date"] {
     box-shadow: var(--shadow-sm);
 }
 
+// <a class="btn"> y <button class="btn"> miden lo mismo: sin line-height y
+// font-family propios, el <button> toma los del navegador y el <a> los del
+// texto, y quedaban a distinta altura uno al lado del otro. Un enlace con
+// forma de botón tampoco va subrayado.
 .btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.4rem;
+    min-height: 2.25rem;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    padding: 0.45rem 0.9rem;
+    padding: 0.4rem 0.9rem;
+    font-family: inherit;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1.25;
+    text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
     transition: background-color .12s ease, border-color .12s ease;
 }
@@ -377,9 +441,189 @@ input[type="date"] {
     background: var(--color-surface-alt);
 }
 
+.btn-danger {
+    background: var(--color-danger);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    filter: brightness(1.08);
+}
+
+// Acción destructiva que no es la principal del pie (Eliminar, Anular):
+// contorno neutro y texto rojo.
+.btn-danger-text {
+    color: var(--color-danger);
+}
+
 .btn:disabled {
     opacity: .5;
     cursor: not-allowed;
+}
+
+// En un teléfono la etiqueta de un botón puede pasar a dos líneas antes que
+// salirse de la pantalla.
+@media (max-width: 640px) {
+    .btn {
+        white-space: normal;
+        text-align: center;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Botón ocupado (CLAUDE.md secc. 27).
+ *
+ * El botón que dispara una operación que escribe (guardar, eliminar, anular,
+ * contabilizar…) queda deshabilitado y con un spinner hasta que la
+ * operación termina. No hay que hacer nada en cada pantalla:
+ * resources/js/Utils/busyButtons.js lo marca con data-busy al empezar la
+ * visita de Inertia y lo libera al terminar.
+ *
+ * No se usa el atributo disabled a propósito: muchas plantillas lo manejan
+ * con :disabled="…" y Vue lo volvería a escribir por su cuenta. data-busy
+ * es solo de este mecanismo; el clic y el envío del formulario los frena
+ * busyButtons.js, y pointer-events lo frena para el mouse.
+ * ──────────────────────────────────────────────────────────────────────── */
+@keyframes contapp-spin {
+    to { transform: rotate(360deg); }
+}
+
+[data-busy] {
+    pointer-events: none;
+}
+
+:is(.btn, button)[data-busy] {
+    opacity: .75;
+}
+
+// El spinner (loader-circle de Lucide) ocupa el lugar del ícono del botón;
+// si el botón no tenía ícono, va delante del texto.
+:is(.btn, button)[data-busy] > svg.lucide {
+    display: none;
+}
+
+:is(.btn, button)[data-busy]::before {
+    content: '';
+    display: inline-block;
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    background-color: currentColor;
+    -webkit-mask: var(--lucide-loader-circle) center / contain no-repeat;
+    mask: var(--lucide-loader-circle) center / contain no-repeat;
+    animation: contapp-spin .8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :is(.btn, button)[data-busy]::before {
+        animation-duration: 2s;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Campos: una sola estética en toda la aplicación (CLAUDE.md secc. 26).
+ *
+ * Texto, número, fecha, búsqueda, select y textarea se ven igual en
+ * cualquier lugar —formulario, filtro arriba de una tabla, celda de una
+ * grilla de captura, modal—: mismo borde, radio, fondo, letra, alto y
+ * anillo de foco. Las pantallas no les cambian el aspecto: su CSS scoped
+ * decide solo el ancho y la alineación (text-align: right en un monto).
+ *
+ * :where() deja estas reglas sin especificidad, así que un ancho o una
+ * alineación de pantalla ganan sin pelear.
+ * ──────────────────────────────────────────────────────────────────────── */
+$text-control: 'input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="submit"], [type="button"], [type="reset"], [type="image"])';
+
+:where(#{$text-control}, select, textarea) {
+    min-height: 2.25rem;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid var(--color-control-border);
+    border-radius: var(--radius-sm);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 0.86rem;
+    line-height: 1.3;
+    transition: border-color .12s ease;
+}
+
+:where(#{$text-control}, select, textarea):focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+:where(#{$text-control}, select, textarea):disabled {
+    background-color: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+:where(#{$text-control}, textarea)[readonly] {
+    background-color: var(--color-surface-alt);
+}
+
+:where(input, textarea)::placeholder {
+    color: var(--color-text-muted);
+    opacity: .8;
+}
+
+:where(textarea) {
+    min-height: 4.5rem;
+    resize: vertical;
+}
+
+// La flecha del select es el chevron-down de Lucide: la del navegador
+// cambia de uno a otro y en modo oscuro quedaba negra sobre fondo oscuro.
+:where(select:not([multiple])) {
+    appearance: none;
+    padding-right: 2rem;
+    background-image: var(--control-chevron);
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1rem;
+}
+
+// El buscador lleva su lupa (search de Lucide): se reconoce sin leerlo.
+:where(input[type="search"]) {
+    padding-left: 2rem;
+    background-image: var(--control-search);
+    background-repeat: no-repeat;
+    background-position: left 0.6rem center;
+    background-size: 1rem;
+}
+
+// Un campo de fecha necesita este ancho para mostrar "dd/mm/aaaa" completo
+// con el ícono del calendario: más angosto, el año queda cortado ("202").
+input[type="date"] {
+    min-width: 135px;
+}
+
+:where(input[type="checkbox"], input[type="radio"]) {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+}
+
+:where(input[type="file"]) {
+    max-width: 100%;
+    color: var(--color-text-muted);
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+:where(input[type="file"])::file-selector-button {
+    margin-right: 0.6rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--color-control-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
 }
 
 .field {
@@ -387,6 +631,7 @@ input[type="date"] {
     flex-direction: column;
     gap: 0.3rem;
     margin-bottom: 0.9rem;
+    min-width: 0;
 }
 
 .field label {
@@ -395,27 +640,41 @@ input[type="date"] {
     color: var(--color-text-muted);
 }
 
-.field input,
-.field select,
-.field textarea {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.5rem 0.6rem;
-    color: var(--color-text);
-    font-size: 0.88rem;
-}
-
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 1px;
-}
-
-.field .error {
+.field .error,
+.error-text {
     color: var(--color-danger);
     font-size: 0.76rem;
+}
+
+// Formulario que ocupa todo el ancho (CLAUDE.md secc. 25): los campos se
+// reparten en columnas de al menos 15rem —varias en un monitor, una en un
+// teléfono— en vez de estirarse de un borde al otro de la pantalla.
+// .span-full ocupa la fila entera (notas, descripciones, tablas).
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+    gap: 0 1rem;
+    align-items: start;
+}
+
+.form-grid > .span-full {
+    grid-column: 1 / -1;
+}
+
+// Pie de un formulario en página: los botones a la derecha, a lo ancho en
+// un teléfono.
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+    .form-actions .btn {
+        flex: 1 1 auto;
+    }
 }
 
 .badge {
@@ -533,12 +792,12 @@ input[type="date"] {
 
 .flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
 .flash-success { background: var(--color-success-soft); color: var(--color-success); }
-.flash-warning { background: #fdf0ea; color: #a04000; }
+.flash-warning { background: var(--color-warning-soft); color: var(--color-warning); }
 // Informativo: ni error ni advertencia. Es para lo que el usuario tiene que
 // saber pero no tiene que arreglar —una regla de ley que explica el
 // resultado, por ejemplo— y que pintado de naranja haría que las
 // advertencias de verdad dejaran de leerse.
-.flash-info { background: #eef2ff; color: #3730a3; }
+.flash-info { background: var(--color-info-soft); color: var(--color-info); }
 
 .card-header {
     display: flex;
@@ -550,14 +809,6 @@ input[type="date"] {
     border-bottom: 1px solid var(--color-border);
 }
 
-.search-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-}
-
 .section-title {
     margin: 1.25rem 0 0.5rem;
     font-size: 0.78rem;
@@ -566,4 +817,510 @@ input[type="date"] {
     color: var(--color-text-muted);
     border-bottom: 1px solid var(--color-border);
     padding-bottom: 0.25rem;
+}
+
+// «Importar XLSX»: un <label class="btn file-btn"> con el <input type="file">
+// invisible encima, así el selector de archivos se abre con el aspecto de
+// un botón. Elegir el archivo dispara la importación.
+.file-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.file-btn > input[type="file"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.file-btn.disabled {
+    opacity: .6;
+    cursor: default;
+}
+
+// Errores de una importación: la lista completa, para corregir el archivo
+// de una vez y no fila por fila.
+.import-errors {
+    margin-bottom: 0.9rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+    font-size: 0.82rem;
+
+    p {
+        margin: 0 0 0.4rem;
+        font-weight: 700;
+    }
+
+    ul {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        margin: 0;
+        padding-left: 1.1rem;
+    }
+}
+
+// Paginación de un listado largo, al pie de su tabla.
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.75rem 0;
+}
+
+.card > .pagination {
+    padding: 0.75rem 1.1rem;
+}
+
+.page-link {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+
+    &.active {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: var(--color-on-primary);
+    }
+
+    &.disabled {
+        opacity: .4;
+        pointer-events: none;
+    }
+}
+
+// Título de un bloque de la pantalla (una segunda tabla, una sección): va
+// arriba de su tabla, no adentro de la tarjeta, así la tarjeta de la tabla
+// puede volverse transparente en el modo de tarjetas (≤ 1024px).
+.block-title {
+    margin: 1.5rem 0 0.6rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.block-title:first-child {
+    margin-top: 0;
+}
+
+// Texto solo para lectores de pantalla: la etiqueta de un botón que en un
+// teléfono muestra solo su ícono.
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+// Los componentes de @lucide/vue dibujan <svg class="lucide">. Dentro de un
+// texto quedan centrados con la línea (no apoyados en la base de la letra);
+// dentro de un botón o una fila flexible, no se encogen.
+svg.lucide {
+    flex-shrink: 0;
+    vertical-align: -0.125em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Barra de la vista (CLAUDE.md secc. 24).
+ *
+ * La barra superior (.topbar) es la misma en todas las pantallas —título,
+ * compañía, tema, sesión— y no lleva nada propio de la pantalla. Todo lo que
+ * es de ESTA vista va en .view-toolbar, justo arriba de la tabla (o del
+ * contenido principal, si la vista no tiene tabla):
+ *
+ *   .view-filters  a la izquierda: buscador, filtros, fechas de un reporte
+ *                  y su botón «Consultar».
+ *   .view-actions  a la derecha: «Crear nuevo», exportar, imprimir,
+ *                  volver, enlaces a pantallas vecinas.
+ *
+ *   <div class="view-toolbar">
+ *       <div class="view-filters">…</div>
+ *       <div class="view-actions">…</div>
+ *   </div>
+ *
+ * Un filtro que no se explica solo (una fecha, unos cortes) va en
+ * .filter-field, con su etiqueta arriba.
+ * ──────────────────────────────────────────────────────────────────────── */
+.view-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.view-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 0.6rem;
+    min-width: 0;
+}
+
+.view-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.filter-field > span:first-child {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+// El buscador, el filtro que más se usa, es también el más ancho.
+.view-filters > input[type="search"] {
+    width: 18rem;
+    max-width: 100%;
+}
+
+// Una casilla («Ocultar cuentas sin movimiento») se alinea con la base de
+// los campos que tiene al lado.
+.view-filters > .check {
+    min-height: 2.25rem;
+    margin: 0;
+}
+
+// En un teléfono cada filtro y cada botón va a lo ancho, uno debajo del
+// otro: más fáciles de tocar que una fila de controles angostos.
+@media (max-width: 640px) {
+    .view-filters,
+    .view-actions {
+        width: 100%;
+    }
+
+    .view-filters > *,
+    .view-filters > input[type="search"] {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .view-filters > .filter-field > :is(input, select) {
+        width: 100%;
+    }
+
+    .view-actions > * {
+        flex: 1 1 auto;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Tablas (CLAUDE.md secc. 20).
+ *
+ * Toda tabla va dentro de .table-responsive y cabe sin desplazarse de
+ * lado: un listado lleva solo las columnas necesarias para ubicar un
+ * registro, sin botones —cada fila (.clickable-row) abre su ficha en un
+ * DetailModal con el resto de los datos y las acciones—.
+ *
+ * En tablet y teléfono (≤ 1024px, el corte en el que la barra lateral pasa
+ * a ser un panel) cada fila pasa a ser una tarjeta: dos o tres por línea en
+ * una tablet, una en un teléfono. La primera celda hace de título y el
+ * resto se lee "etiqueta … valor". La etiqueta sale del atributo
+ * data-label de cada <td>, porque en este modo el encabezado no se ve.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+// La base de toda celda. Sin especificidad (:where), así que la pantalla
+// que necesita otro relleno lo pone sin pelear.
+:where(th, td) {
+    padding: 0.55rem 0.9rem;
+    text-align: left;
+    border-top: 1px solid var(--color-border);
+}
+
+:where(thead th) {
+    border-top: 0;
+    font-weight: 700;
+}
+
+.table-responsive {
+    // Red de seguridad, no el diseño: si una tabla igual no cupiera, se
+    // desplaza DENTRO de su caja en vez de empujar la página entera.
+    overflow-x: auto;
+    // Recorta lo que se desplaza a las esquinas redondeadas del .card.
+    border-radius: inherit;
+}
+
+// .no-cards: un estado financiero de dos o tres columnas (descripción y
+// monto) cabe como tabla hasta en un teléfono, y en tarjetas se leería peor:
+// se queda tabla. Solo para tablas que de verdad caben a 375px.
+//
+// Fila que abre la ficha de su registro. Va con tabindex="0" y abre también
+// con Enter/Espacio: con el teclado se llega igual que con el mouse.
+.table-responsive .clickable-row {
+    cursor: pointer;
+
+    &:hover {
+        background: var(--color-surface-alt);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: -2px;
+    }
+
+    // Sin botones en la fila, algo tiene que decir que se puede abrir: en
+    // una pantalla táctil no hay cursor que cambie al pasar por encima.
+    // Es el chevron-right de Lucide (ver arriba).
+    > td:last-child::after {
+        content: '';
+        float: right;
+        width: 1rem;
+        height: 1rem;
+        margin: 0.15rem 0 0 0.75rem;
+        background-color: var(--color-text-muted);
+        -webkit-mask: var(--lucide-chevron-right) center / contain no-repeat;
+        mask: var(--lucide-chevron-right) center / contain no-repeat;
+    }
+}
+
+// Solo en pantalla: una hoja A4 mide unos 794px de ancho, y sin "screen" la
+// tabla se imprimiría en tarjetas. En papel, una tabla sigue siendo tabla.
+@media screen and (max-width: 1024px) {
+    // Las tarjetas ya son cajas propias: el .card que envolvía a la tabla
+    // se vuelve transparente para no dibujar una caja alrededor de otras.
+    .card:has(> .table-responsive:not(.no-cards)) {
+        background: none;
+        border: 0;
+        box-shadow: none;
+    }
+
+    .table-responsive:not(.no-cards) {
+        overflow-x: visible;
+
+        thead {
+            display: none;
+        }
+
+        table,
+        tr {
+            display: block;
+        }
+
+        // min(100%, 18rem): en una pantalla más angosta que 18rem la
+        // tarjeta se achica en vez de desbordar.
+        tbody {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+            align-items: start;
+            gap: 0.75rem;
+        }
+
+        tbody tr {
+            padding: 0.7rem 0.9rem;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+        }
+
+        // "Sin datos", y los títulos de sección de un reporte: a todo el
+        // ancho.
+        tbody tr:has(> td[colspan]) {
+            grid-column: 1 / -1;
+        }
+
+        tbody td {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            padding: 0.2rem 0;
+            border: 0;
+            text-align: right;
+        }
+
+        tbody td[data-label]::before {
+            content: attr(data-label);
+            flex-shrink: 0;
+            text-align: left;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--color-text-muted);
+        }
+
+        tbody td:not([data-label]) {
+            justify-content: flex-start;
+            text-align: left;
+        }
+
+        // Una celda vacía no dice nada en la tarjeta: no ocupa una línea.
+        tbody td[data-label]:empty {
+            display: none;
+        }
+
+        // La primera celda es la identidad de la fila (código, nombre): es
+        // el título de la tarjeta.
+        tbody td:first-child:not([colspan]) {
+            font-size: 0.92rem;
+            font-weight: 700;
+            padding-bottom: 0.35rem;
+        }
+
+        tbody td[colspan] {
+            display: block;
+        }
+
+        // En una grilla de captura, el campo ocupa lo que la etiqueta deja
+        // libre en su línea.
+        tbody td > :is(input, select, textarea, .combobox, .money-input) {
+            flex: 1 1 60%;
+            min-width: 0;
+            max-width: 70%;
+        }
+
+        tbody td:not([data-label]) > :is(input, select, textarea, .combobox, .money-input) {
+            max-width: none;
+        }
+
+        // En la tarjeta, la flecha de "se abre" va arriba a la derecha,
+        // junto al título, que le deja lugar.
+        tbody tr.clickable-row {
+            position: relative;
+        }
+
+        tbody tr.clickable-row > td:first-child {
+            padding-right: 1.5rem;
+        }
+
+        tbody tr.clickable-row > td:last-child::after {
+            position: absolute;
+            top: 0.85rem;
+            right: 0.9rem;
+            float: none;
+            margin: 0;
+        }
+
+        // El pie de un reporte (totales) también es una tarjeta, al final.
+        tfoot {
+            display: block;
+            margin-top: 0.75rem;
+        }
+
+        tfoot tr {
+            padding: 0.7rem 0.9rem;
+            background: var(--color-surface-alt);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+        }
+
+        tfoot td {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+            padding: 0.2rem 0;
+            border: 0;
+            text-align: right;
+        }
+
+        tfoot td[data-label]::before {
+            content: attr(data-label);
+            flex-shrink: 0;
+            text-align: left;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--color-text-muted);
+        }
+
+        tfoot td:not([data-label]) {
+            justify-content: flex-start;
+            text-align: left;
+        }
+
+        tfoot td[data-label]:empty {
+            display: none;
+        }
+    }
+
+    // Una grilla de captura (las líneas de un asiento, de una factura) va de
+    // a una tarjeta por fila: cada línea puede tener debajo su fila de
+    // detalle, y tiene que quedar pegada a ella, no en otra columna.
+    .table-responsive.capture-grid tbody {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    // Un reporte largo (.table-scroll) tiene en escritorio su propio scroll
+    // vertical, con el encabezado y la primera columna fijos. En tarjetas no
+    // hay encabezado ni columnas que fijar: la tabla crece con la página.
+    .table-responsive.table-scroll {
+        max-height: none;
+        overflow: visible;
+
+        th,
+        td,
+        thead th:first-child {
+            position: static;
+            box-shadow: none;
+        }
+
+        tbody td:first-child {
+            background: none;
+        }
+    }
+}
+
+// Ficha de un registro en DetailModal: pares etiqueta/valor (<dl>) en dos
+// columnas, una en un teléfono. .full ocupa la fila entera (notas,
+// descripciones, textos largos).
+.detail-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1.25rem;
+    margin: 0;
+
+    .full {
+        grid-column: 1 / -1;
+    }
+
+    dt {
+        margin-bottom: 0.15rem;
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+    }
+
+    dd {
+        margin: 0;
+        font-size: 0.88rem;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 480px) {
+    .detail-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+// iOS Safari amplía la página al enfocar un campo con letra de menos de
+// 16px, y no la devuelve al salir: cada formulario terminaría desencuadrado.
+// En pantallas chicas los campos van a 16px. :is() le da a la regla la
+// especificidad de su selector más específico, así gana a los estilos
+// scoped de cada pantalla sin necesitar !important.
+@media (max-width: 640px) {
+    :is(.app-shell, .backoffice-shell, .auth-shell, .modal-backdrop) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+        font-size: 16px;
+    }
 }

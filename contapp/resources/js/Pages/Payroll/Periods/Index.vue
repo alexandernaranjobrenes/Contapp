@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     periods: { type: Array, default: () => [] },
@@ -97,7 +98,7 @@ const statusClass = {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ periods.length }} período(s)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nuevo período</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nuevo período</button>
             </div>
 
             <div class="table-scroll">

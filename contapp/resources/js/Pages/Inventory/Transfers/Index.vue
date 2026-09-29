@@ -3,6 +3,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     transfers: { type: Array, default: () => [] },
@@ -90,7 +91,7 @@ function submit() {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ transfers.length }} traslado(s)</span>
-                <button type="button" class="btn btn-primary" :disabled="!ready" @click="openCreate()">+ Nuevo traslado</button>
+                <button type="button" class="btn btn-primary" :disabled="!ready" @click="openCreate()"><PlusIcon /> Nuevo traslado</button>
             </div>
 
             <div class="table-scroll">
@@ -217,7 +218,7 @@ function submit() {
                 </div>
 
                 <div class="modal-actions spread">
-                    <button type="button" class="btn btn-ghost" @click="form.lines.push(blankLine())">+ Línea</button>
+                    <button type="button" class="btn btn-ghost" @click="form.lines.push(blankLine())"><PlusIcon /> Línea</button>
                     <div class="modal-actions">
                         <button type="submit" class="btn btn-primary" :disabled="form.processing">Trasladar</button>
                         <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>

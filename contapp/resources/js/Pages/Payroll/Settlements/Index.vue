@@ -3,6 +3,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { CheckIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     settlements: { type: Array, default: () => [] },
@@ -118,7 +119,7 @@ const drafts = computed(() => props.settlements.filter((s) => s.status === 'draf
             <div class="card-header">
                 <input v-model="search" type="search" placeholder="Buscar trabajador o causal" class="search-input">
                 <span class="muted">{{ visible.length }} liquidación(es)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva liquidación</button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nueva liquidación</button>
             </div>
 
             <div class="table-scroll">
@@ -205,7 +206,7 @@ const drafts = computed(() => props.settlements.filter((s) => s.status === 'draf
                     <span class="entitlement-title">Con esta causal se paga:</span>
                     <ul>
                         <li v-for="item in preview" :key="item.label" :class="{ off: ! item.on }">
-                            <span class="mark">{{ item.on ? '✓' : '—' }}</span>
+                            <span class="mark"><CheckIcon v-if="item.on" aria-label="Sí" role="img" /><template v-else>—</template></span>
                             {{ item.label }}
                             <span v-if="item.on && item.always" class="muted small">irrenunciable</span>
                         </li>

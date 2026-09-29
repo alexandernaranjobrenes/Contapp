@@ -335,9 +335,6 @@ Route::middleware('auth')->group(function () {
 
         Route::post('inventory-write-downs', [InventoryWriteDownController::class, 'store'])->name('inventory-write-downs.store');
 
-        Route::put('items/{item}/serials/{serial}', [ItemSerialController::class, 'update'])->name('item-serials.update');
-        Route::post('items/{item}/serials/{serial}/scrap', [ItemSerialController::class, 'scrap'])->name('item-serials.scrap');
-
         // Las series no se crean acá: nacen con la entrada que las trajo.
         // Solo se edita lo que el movimiento no sabe (garantía, notas) y la
         // baja de una unidad que ya salió.
@@ -757,6 +754,12 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('licenses/{license}/revoke', [LicenseController::class, 'revoke'])->name('licenses.revoke');
     Route::post('licenses/{license}/suspend', [LicenseController::class, 'suspend'])->name('licenses.suspend');
     Route::post('licenses/{license}/reactivate', [LicenseController::class, 'reactivate'])->name('licenses.reactivate');
+    // La clave completa solo a pedido ("Ver código completo" en la ficha):
+    // no viaja en los datos de la página del listado.
+    Route::get('licenses/{license}/code', [LicenseController::class, 'code'])->name('licenses.code');
+    // El historial de la licencia (bitácora), para su ficha: se pide al
+    // abrir la sección, no viaja en el listado.
+    Route::get('licenses/{license}/history', [LicenseController::class, 'history'])->name('licenses.history');
 
     Route::get('license-categories', [LicenseCategoryController::class, 'index'])->name('license-categories.index');
     Route::post('license-categories', [LicenseCategoryController::class, 'store'])->name('license-categories.store');

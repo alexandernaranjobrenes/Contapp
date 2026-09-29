@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     orders: { type: Object, required: true },
@@ -35,7 +36,7 @@ function badgeClass(s) {
                 <option value="">Todos los estados</option>
                 <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
             </select>
-            <Link :href="route('purchase-orders.create')" class="btn btn-primary">+ Nueva orden</Link>
+            <Link :href="route('purchase-orders.create')" class="btn btn-primary"><PlusIcon /> Nueva orden</Link>
         </template>
 
         <p class="hint">

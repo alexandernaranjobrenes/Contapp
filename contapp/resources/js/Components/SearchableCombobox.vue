@@ -166,14 +166,9 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll, true));
     position: relative;
 }
 
+/* El aspecto es el de todos los campos (app.scss); acá solo el ancho. */
 .combobox input {
     width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.35rem 0.5rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
 }
 
 .combobox-caption {

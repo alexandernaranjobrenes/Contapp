@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     departments: { type: Array, default: () => [] },
@@ -108,7 +109,7 @@ const withoutOccupation = computed(
         <div v-if="tab === 'departamentos'" class="card">
             <div class="card-header">
                 <span class="muted">{{ departments.length }} departamento(s)</span>
-                <button type="button" class="btn btn-primary" @click="openEditor('department')">+ Nuevo departamento</button>
+                <button type="button" class="btn btn-primary" @click="openEditor('department')"><PlusIcon /> Nuevo departamento</button>
             </div>
 
             <p class="hint small">
@@ -159,7 +160,7 @@ const withoutOccupation = computed(
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ positions.length }} puesto(s)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('position')">+ Nuevo puesto</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('position')"><PlusIcon /> Nuevo puesto</button>
                 </div>
 
                 <p class="hint small">

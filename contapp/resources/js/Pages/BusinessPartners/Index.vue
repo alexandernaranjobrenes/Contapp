@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
 import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     partners: { type: Array, default: () => [] },
@@ -42,7 +43,7 @@ function closeLedger() {
     <AppLayout title="Socios de negocio">
         <template #actions>
             <input v-model="search" type="search" placeholder="Buscar código, nombre, cédula o encargado..." class="search-input">
-            <Link :href="route('business-partners.create')" class="btn btn-primary">+ Nuevo socio</Link>
+            <Link :href="route('business-partners.create')" class="btn btn-primary"><PlusIcon /> Nuevo socio</Link>
         </template>
 
         <DocumentToolbar :new-href="route('business-partners.create')" />

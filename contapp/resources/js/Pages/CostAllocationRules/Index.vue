@@ -1,8 +1,10 @@
 <script setup>
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { PencilIcon, PlusIcon, XIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import DetailModal from '../../Components/DetailModal.vue';
+import { confirmAction } from '../../Utils/confirm';
 
 const props = defineProps({
     rules: { type: Array, default: () => [] },
@@ -29,15 +31,29 @@ function isVigenteHoy(r) {
     return true;
 }
 
+function statusLabel(r) {
+    if (isVigenteHoy(r)) return 'Vigente';
+    return r.is_active ? 'Fuera de vigencia' : 'Inactiva';
+}
+
 function emptyLine() {
     return { cost_center_id: props.costCenters[0]?.id ?? null, percentage: '' };
 }
 
-// --- crear ---
+// Ficha de la norma (CLAUDE.md secc. 20) y alta (secc. 21) en un solo modal.
+// Crear y editar comparten el formulario, con su reparto entre centros de
+// costo; el código solo se elige al crear.
+const mode = ref('details'); // 'create' | 'details' | 'edit'
+const selectedId = ref(null);
 
-const creating = ref(false);
+const selected = computed(() => props.rules.find((r) => r.id === selectedId.value) ?? null);
+const modalOpen = computed(() => mode.value === 'create' || !!selected.value);
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva norma de reparto';
+    return selected.value ? `${selected.value.code} — ${selected.value.name}` : '';
+});
 
-const createForm = useForm({
+const form = useForm({
     code: '',
     name: '',
     valid_from: today,
@@ -46,84 +62,84 @@ const createForm = useForm({
     lines: [emptyLine(), emptyLine()],
 });
 
+function fillForm(values) {
+    form.clearErrors();
+    for (const [key, value] of Object.entries(values)) form[key] = value;
+}
+
 function openCreate() {
-    createForm.reset();
-    createForm.valid_from = today;
-    createForm.is_active = true;
-    createForm.lines = [emptyLine(), emptyLine()];
-    creating.value = true;
+    fillForm({ code: '', name: '', valid_from: today, valid_until: '', is_active: true, lines: [emptyLine(), emptyLine()] });
+    selectedId.value = null;
+    mode.value = 'create';
 }
 
-function closeCreate() {
-    creating.value = false;
+function openRule(rule) {
+    selectedId.value = rule.id;
+    mode.value = 'details';
 }
 
-function addCreateLine() {
-    createForm.lines.push(emptyLine());
+function closeRule() {
+    selectedId.value = null;
+    mode.value = 'details';
 }
 
-function removeCreateLine(index) {
-    if (createForm.lines.length > 1) createForm.lines.splice(index, 1);
+function startEdit() {
+    const r = selected.value;
+    fillForm({
+        code: r.code,
+        name: r.name,
+        valid_from: r.valid_from,
+        valid_until: r.valid_until ?? '',
+        is_active: r.is_active,
+        lines: r.lines.map((l) => ({ cost_center_id: l.cost_center_id, percentage: l.percentage })),
+    });
+    mode.value = 'edit';
 }
 
-const createTotal = computed(() =>
-    createForm.lines.reduce((sum, l) => sum + (parseFloat(l.percentage) || 0), 0).toFixed(2)
+function cancelForm() {
+    if (mode.value === 'create') {
+        closeRule();
+        return;
+    }
+
+    mode.value = 'details';
+}
+
+function addLine() {
+    form.lines.push(emptyLine());
+}
+
+function removeLine(index) {
+    if (form.lines.length > 1) form.lines.splice(index, 1);
+}
+
+const total = computed(() =>
+    form.lines.reduce((sum, l) => sum + (parseFloat(l.percentage) || 0), 0).toFixed(2)
 );
-const createIsBalanced = computed(() => createTotal.value === '100.00');
+const isBalanced = computed(() => total.value === '100.00');
 
-function submitCreate() {
-    createForm.post(route('cost-allocation-rules.store'), { onSuccess: closeCreate, preserveScroll: true });
+function submit() {
+    if (mode.value === 'create') {
+        form.post(route('cost-allocation-rules.store'), { preserveScroll: true, onSuccess: closeRule });
+        return;
+    }
+
+    form.put(route('cost-allocation-rules.update', selected.value.id), {
+        preserveScroll: true,
+        onSuccess: () => { mode.value = 'details'; },
+    });
 }
 
-// --- editar ---
+function destroy() {
+    const r = selected.value;
 
-const editing = ref(null);
-
-const editForm = useForm({
-    code: '',
-    name: '',
-    valid_from: '',
-    valid_until: '',
-    is_active: true,
-    lines: [],
-});
-
-function openEdit(rule) {
-    editForm.clearErrors();
-    editForm.code = rule.code;
-    editForm.name = rule.name;
-    editForm.valid_from = rule.valid_from;
-    editForm.valid_until = rule.valid_until ?? '';
-    editForm.is_active = rule.is_active;
-    editForm.lines = rule.lines.map((l) => ({ cost_center_id: l.cost_center_id, percentage: l.percentage }));
-    editing.value = rule;
-}
-
-function closeEdit() {
-    editing.value = null;
-}
-
-function addEditLine() {
-    editForm.lines.push(emptyLine());
-}
-
-function removeEditLine(index) {
-    if (editForm.lines.length > 1) editForm.lines.splice(index, 1);
-}
-
-const editTotal = computed(() =>
-    editForm.lines.reduce((sum, l) => sum + (parseFloat(l.percentage) || 0), 0).toFixed(2)
-);
-const editIsBalanced = computed(() => editTotal.value === '100.00');
-
-function submitEdit() {
-    editForm.put(route('cost-allocation-rules.update', editing.value.id), { onSuccess: closeEdit, preserveScroll: true });
-}
-
-function destroy(rule) {
-    if (! confirm(`¿Eliminar la norma de reparto ${rule.code} — ${rule.name}?`)) return;
-
-    router.delete(route('cost-allocation-rules.destroy', rule.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar norma de reparto',
+        message: `La norma ${r.code} — ${r.name} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('cost-allocation-rules.destroy', r.id), { preserveScroll: true }),
+    });
 }
 </script>
 
@@ -131,11 +147,14 @@ function destroy(rule) {
     <Head title="Normas de reparto" />
 
     <AppLayout title="Normas de reparto">
-        <template #actions>
-            <input v-model="search" type="search" placeholder="Buscar código o nombre..." class="search-input">
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar norma de reparto">
+            </div>
+            <div class="view-actions">
+                <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Crear nuevo</button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.rule" class="flash flash-error">{{ page.props.errors.rule }}</div>
 
@@ -146,297 +165,183 @@ function destroy(rule) {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ filtered.length }} norma(s) de reparto</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva norma de reparto</button>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Vigencia</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="r in filtered"
+                            :key="r.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openRule(r)"
+                            @keydown.enter="openRule(r)"
+                            @keydown.space.prevent="openRule(r)"
+                        >
+                            <td class="code-cell">{{ r.code }}</td>
+                            <td data-label="Nombre">{{ r.name }}</td>
+                            <td data-label="Vigencia" class="muted date-range">{{ r.valid_from }} — {{ r.valid_until ?? 'sin fin' }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="isVigenteHoy(r) ? 'badge-success' : 'badge-neutral'">{{ statusLabel(r) }}</span>
+                            </td>
+                        </tr>
+                        <tr v-if="!filtered.length">
+                            <td colspan="4" class="muted empty-row">
+                                {{ rules.length ? 'Ninguna norma coincide con la búsqueda.' : 'Todavía no hay normas de reparto registradas.' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>Reparto</th>
-                        <th>Vigencia</th>
-                        <th>Estado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="r in filtered" :key="r.id">
-                        <td class="num code-cell">{{ r.code }}</td>
-                        <td>{{ r.name }}</td>
-                        <td class="muted small">
-                            {{ r.lines.map((l) => `${l.cost_center.code} ${l.percentage}%`).join(' · ') }}
-                        </td>
-                        <td class="muted small num">{{ r.valid_from }} — {{ r.valid_until ?? 'sin fin' }}</td>
-                        <td>
-                            <span class="badge" :class="isVigenteHoy(r) ? 'badge-success' : 'badge-neutral'">
-                                {{ isVigenteHoy(r) ? 'Vigente' : (r.is_active ? 'Fuera de vigencia' : 'Inactiva') }}
-                            </span>
-                        </td>
-                        <td class="actions-cell">
-                            <button type="button" class="btn btn-ghost" @click="openEdit(r)">Editar</button>
-                            <button type="button" class="btn btn-ghost" @click="destroy(r)">Eliminar</button>
-                        </td>
-                    </tr>
-                    <tr v-if="!filtered.length">
-                        <td colspan="6" class="muted empty-row">Todavía no hay normas de reparto registradas.</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
 
-        <!-- Nueva -->
-        <div v-if="creating" class="modal-backdrop" @click.self="closeCreate">
-            <form class="modal-card card" @submit.prevent="submitCreate">
-                <h2>Nueva norma de reparto</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="closeRule">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="isVigenteHoy(selected) ? 'badge-success' : 'badge-neutral'">
+                    {{ statusLabel(selected) }}
+                </span>
+            </template>
 
-                <div class="grid-2">
-                    <div class="field">
-                        <label>Código</label>
-                        <input v-model="createForm.code" type="text" maxlength="20" required>
-                        <span v-if="createForm.errors.code" class="error">{{ createForm.errors.code }}</span>
+            <template v-if="selected && mode === 'details'">
+                <dl class="detail-list">
+                    <div>
+                        <dt>Vigente desde</dt>
+                        <dd>{{ selected.valid_from }}</dd>
+                    </div>
+                    <div>
+                        <dt>Vigente hasta</dt>
+                        <dd>{{ selected.valid_until ?? 'Sin fin' }}</dd>
+                    </div>
+                </dl>
+
+                <h3 class="section-title">Reparto</h3>
+                <ul class="split-list">
+                    <li v-for="line in selected.lines" :key="line.cost_center_id">
+                        <span>{{ line.cost_center.code }} — {{ line.cost_center.name }}</span>
+                        <strong>{{ line.percentage }}%</strong>
+                    </li>
+                </ul>
+            </template>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="rule-form" @submit.prevent="submit">
+                <div class="field-row">
+                    <div v-if="mode === 'create'" class="field">
+                        <label for="rule-code">Código</label>
+                        <input id="rule-code" v-model="form.code" type="text" maxlength="20" required>
+                        <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">
-                        <label>Nombre</label>
-                        <input v-model="createForm.name" type="text" required>
-                        <span v-if="createForm.errors.name" class="error">{{ createForm.errors.name }}</span>
+                        <label for="rule-name">Nombre</label>
+                        <input id="rule-name" v-model="form.name" type="text" required>
+                        <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
                     </div>
                 </div>
 
-                <div class="grid-2">
+                <div class="field-row">
                     <div class="field">
-                        <label>Vigente desde</label>
-                        <input v-model="createForm.valid_from" type="date" required>
-                        <span v-if="createForm.errors.valid_from" class="error">{{ createForm.errors.valid_from }}</span>
+                        <label for="rule-from">Vigente desde</label>
+                        <input id="rule-from" v-model="form.valid_from" type="date" required>
+                        <span v-if="form.errors.valid_from" class="error">{{ form.errors.valid_from }}</span>
                     </div>
                     <div class="field">
-                        <label>Vigente hasta (opcional)</label>
-                        <input v-model="createForm.valid_until" type="date">
-                        <span v-if="createForm.errors.valid_until" class="error">{{ createForm.errors.valid_until }}</span>
+                        <label for="rule-until">Vigente hasta (opcional)</label>
+                        <input id="rule-until" v-model="form.valid_until" type="date">
+                        <span v-if="form.errors.valid_until" class="error">{{ form.errors.valid_until }}</span>
                     </div>
                 </div>
 
-                <label class="check-row">
-                    <input v-model="createForm.is_active" type="checkbox">
+                <label class="check">
+                    <input v-model="form.is_active" type="checkbox">
                     Activa
                 </label>
 
-                <div class="lines-editor">
-                    <div class="lines-editor-header">
-                        <span>Centro de costo</span>
-                        <span>Porcentaje</span>
-                        <span></span>
-                    </div>
-                    <div v-for="(line, index) in createForm.lines" :key="index" class="line-row">
-                        <select v-model="line.cost_center_id" required>
+                <fieldset class="lines-editor">
+                    <legend>Reparto entre centros de costo</legend>
+                    <div v-for="(line, index) in form.lines" :key="index" class="line-row">
+                        <select v-model="line.cost_center_id" required aria-label="Centro de costo">
                             <option v-for="c in costCenters" :key="c.id" :value="c.id">{{ c.code }} — {{ c.name }}</option>
                         </select>
-                        <input v-model="line.percentage" type="number" step="0.01" min="0" max="100" required>
-                        <button type="button" class="btn btn-ghost" :disabled="createForm.lines.length <= 1" @click="removeCreateLine(index)">✕</button>
+                        <input v-model="line.percentage" type="number" step="0.01" min="0" max="100" required aria-label="Porcentaje" placeholder="%">
+                        <button type="button" class="btn btn-ghost remove-btn" :disabled="form.lines.length <= 1" aria-label="Quitar centro de costo" @click="removeLine(index)"><XIcon /></button>
                     </div>
-                    <button type="button" class="btn btn-ghost" @click="addCreateLine">+ Centro de costo</button>
+                    <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Centro de costo</button>
                     <p class="total-row">
-                        Total: {{ createTotal }}%
-                        <span class="badge" :class="createIsBalanced ? 'badge-success' : 'badge-danger'">
-                            {{ createIsBalanced ? 'Cuadrado' : 'No cuadra' }}
+                        Total: {{ total }}%
+                        <span class="badge" :class="isBalanced ? 'badge-success' : 'badge-danger'">
+                            {{ isBalanced ? 'Cuadrado' : 'No cuadra' }}
                         </span>
                     </p>
-                    <span v-if="createForm.errors.lines" class="error">{{ createForm.errors.lines }}</span>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="createForm.processing || !createIsBalanced">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="closeCreate">Cancelar</button>
-                </div>
+                    <span v-if="form.errors.lines" class="error-text">{{ form.errors.lines }}</span>
+                </fieldset>
             </form>
-        </div>
 
-        <!-- Editar -->
-        <div v-if="editing" class="modal-backdrop" @click.self="closeEdit">
-            <form class="modal-card card" @submit.prevent="submitEdit">
-                <h2>Editar {{ editing.code }}</h2>
-
-                <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="editForm.name" type="text" required>
-                    <span v-if="editForm.errors.name" class="error">{{ editForm.errors.name }}</span>
-                </div>
-
-                <div class="grid-2">
-                    <div class="field">
-                        <label>Vigente desde</label>
-                        <input v-model="editForm.valid_from" type="date" required>
-                        <span v-if="editForm.errors.valid_from" class="error">{{ editForm.errors.valid_from }}</span>
-                    </div>
-                    <div class="field">
-                        <label>Vigente hasta (opcional)</label>
-                        <input v-model="editForm.valid_until" type="date">
-                        <span v-if="editForm.errors.valid_until" class="error">{{ editForm.errors.valid_until }}</span>
-                    </div>
-                </div>
-
-                <label class="check-row">
-                    <input v-model="editForm.is_active" type="checkbox">
-                    Activa
-                </label>
-
-                <div class="lines-editor">
-                    <div class="lines-editor-header">
-                        <span>Centro de costo</span>
-                        <span>Porcentaje</span>
-                        <span></span>
-                    </div>
-                    <div v-for="(line, index) in editForm.lines" :key="index" class="line-row">
-                        <select v-model="line.cost_center_id" required>
-                            <option v-for="c in costCenters" :key="c.id" :value="c.id">{{ c.code }} — {{ c.name }}</option>
-                        </select>
-                        <input v-model="line.percentage" type="number" step="0.01" min="0" max="100" required>
-                        <button type="button" class="btn btn-ghost" :disabled="editForm.lines.length <= 1" @click="removeEditLine(index)">✕</button>
-                    </div>
-                    <button type="button" class="btn btn-ghost" @click="addEditLine">+ Centro de costo</button>
-                    <p class="total-row">
-                        Total: {{ editTotal }}%
-                        <span class="badge" :class="editIsBalanced ? 'badge-success' : 'badge-danger'">
-                            {{ editIsBalanced ? 'Cuadrado' : 'No cuadra' }}
-                        </span>
-                    </p>
-                    <span v-if="editForm.errors.lines" class="error">{{ editForm.errors.lines }}</span>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="editForm.processing || !editIsBalanced">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="closeEdit">Cancelar</button>
-                </div>
-            </form>
-        </div>
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="rule-form" class="btn btn-primary" :disabled="form.processing || !isBalanced">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.search-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-    width: 220px;
-}
-
-.card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 1.1rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-.hint {
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-    margin: -0.5rem 0 1rem;
-}
-
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); }
+table { font-size: 0.85rem; }
 .code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.actions-cell { display: flex; gap: 0.4rem; white-space: nowrap; }
+.date-range { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(11, 31, 58, 0.45);
+.split-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.split-list li {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-    padding: 1rem;
-}
-
-.modal-card {
-    width: 560px;
-    max-width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 1.5rem;
-}
-
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-
-.field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    margin-bottom: 0.75rem;
-}
-
-.field label {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-}
-
-.field input, .field select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-top: 1px solid var(--color-border);
     font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.error {
-    color: var(--color-danger);
-    font-size: 0.76rem;
-}
-
-.check-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    margin: 0.5rem 0 1rem;
 }
 
 .lines-editor {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem 0 0;
+    border: 0;
     border-top: 1px solid var(--color-border);
-    padding-top: 0.75rem;
-    margin-top: 0.25rem;
 }
 
-.lines-editor-header {
-    display: grid;
-    grid-template-columns: 1fr 100px 32px;
-    gap: 0.5rem;
-    font-size: 0.74rem;
+.lines-editor legend {
+    padding: 0 0.4rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 600;
     color: var(--color-text-muted);
-    margin-bottom: 0.3rem;
 }
 
 .line-row {
     display: grid;
-    grid-template-columns: 1fr 100px 32px;
+    grid-template-columns: minmax(0, 1fr) 6.5rem auto;
     gap: 0.5rem;
     margin-bottom: 0.4rem;
 }
 
-.line-row select, .line-row input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.5rem;
-    font-size: 0.82rem;
-    color: var(--color-text);
+.remove-btn {
+    width: 2.25rem;
+    padding: 0;
 }
 
 .total-row {
@@ -447,6 +352,4 @@ th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--col
     font-weight: 600;
     margin: 0.6rem 0 0;
 }
-
-.modal-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
 </style>

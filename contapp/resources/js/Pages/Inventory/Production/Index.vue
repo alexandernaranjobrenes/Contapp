@@ -3,6 +3,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     orders: { type: Array, default: () => [] },
@@ -202,7 +203,7 @@ function closeOrder(order) {
         <div class="card">
             <div class="card-header">
                 <span class="muted">{{ orders.length }} orden(es)</span>
-                <button type="button" class="btn btn-primary" :disabled="!ready" @click="openCreate()">+ Nueva orden</button>
+                <button type="button" class="btn btn-primary" :disabled="!ready" @click="openCreate()"><PlusIcon /> Nueva orden</button>
             </div>
 
             <div class="table-scroll">
@@ -414,7 +415,7 @@ function closeOrder(order) {
                 </table>
 
                 <div class="modal-actions spread">
-                    <button type="button" class="btn btn-ghost" @click="issueForm.lines.push(blankLine())">+ Línea</button>
+                    <button type="button" class="btn btn-ghost" @click="issueForm.lines.push(blankLine())"><PlusIcon /> Línea</button>
                     <div class="modal-actions">
                         <button type="submit" class="btn btn-primary" :disabled="issueForm.processing">Emitir</button>
                         <button type="button" class="btn btn-ghost" @click="issuing = null">Cancelar</button>

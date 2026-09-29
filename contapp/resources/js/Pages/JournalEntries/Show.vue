@@ -2,11 +2,17 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import DetailModal from '../../Components/DetailModal.vue';
 import DocumentTypeRegisterPanel from '../../Components/DocumentTypeRegisterPanel.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
 import DocumentSearchModal from '../../Components/DocumentSearchModal.vue';
+import RecordNav from '../../Components/RecordNav.vue';
+import { confirmAction } from '../../Utils/confirm';
 import { formatMoney } from '../../Utils/money';
+import {
+    ArrowLeftIcon, CopyIcon, DownloadIcon, FileTextIcon, KeyRoundIcon, LinkIcon, LockOpenIcon, PencilIcon, PrinterIcon,
+    ScrollTextIcon,
+} from '@lucide/vue';
 
 const props = defineProps({
     entry: { type: Object, required: true },
@@ -16,9 +22,8 @@ const props = defineProps({
     nav: { type: Object, default: () => ({ prev: null, next: null, first: null, last: null }) },
 });
 
-// Doble clic sobre la cuenta/socio de una línea abre su mayor auxiliar
-// (mismo LedgerPanel que Reports y que JournalEntries/Create.vue) — también
-// disponible acá, en la vista de solo lectura de un asiento ya contabilizado.
+// Mayor auxiliar de la cuenta o del socio de una línea (mismo LedgerPanel que
+// Reports y que JournalEntries/Create.vue): se abre desde la ficha de la línea.
 const ledgerOpen = ref(false);
 const ledgerDimension = ref('account');
 const ledgerOwnerId = ref(null);
@@ -40,9 +45,9 @@ function openLedger(line) {
     ledgerOpen.value = true;
 }
 
-// Botón "buscar" del DocumentToolbar: salta directo a otro documento
-// (a diferencia de Create.vue, acá selecciona SIEMPRE navega a su Show, sin
-// importar si es preliminar o contabilizado).
+// «Buscar»: salta directo a otro documento (a diferencia de Create.vue, acá
+// elegir SIEMPRE navega a su Show, sin importar si es preliminar o
+// contabilizado).
 const documentSearchOpen = ref(false);
 
 function onDocumentSelected(found) {
@@ -54,9 +59,13 @@ const statusLabels = { draft: 'Preliminar', posted: 'Contabilizado', voided: 'An
 const statusBadge = { draft: 'badge-warning', posted: 'badge-success', voided: 'badge-neutral' };
 
 function reverseEntry() {
-    if (! confirm('¿Anular este asiento? Se va a contabilizar un asiento nuevo que lo revierte por completo — este no se modifica ni se borra.')) return;
-
-    router.post(route('journal-entries.reverse', props.entry.id));
+    confirmAction({
+        title: 'Anular asiento',
+        message: 'Se va a contabilizar un asiento nuevo que lo revierte por completo — este no se modifica ni se borra.',
+        confirmLabel: 'Anular',
+        danger: true,
+        onConfirm: () => router.post(route('journal-entries.reverse', props.entry.id)),
+    });
 }
 
 const isForeignEqualSystem = computed(() =>
@@ -89,24 +98,53 @@ function formatElectronicKey(digits) {
     return result;
 }
 
+function lineOwner(line) {
+    if (line.business_partner) return `${line.business_partner.code} — ${line.business_partner.name}`;
+    if (line.account) return `${line.account.code} — ${line.account.description_es}`;
+    return '—';
+}
+
+// --- ficha de una línea (CLAUDE.md secc. 20) ---
+//
+// El detalle completo de la línea y sus dos correcciones permitidas sobre un
+// asiento contabilizado, cada una en su propio modo del modal: nada se edita
+// en filas que se despliegan dentro de la tabla.
+const selectedLineId = ref(null);
+const lineMode = ref('details'); // 'details' | 'due-date' | 'link-partner'
+
+const selectedLine = computed(() => props.entry.lines.find((l) => l.id === selectedLineId.value) ?? null);
+
+function openLine(line) {
+    selectedLineId.value = line.id;
+    lineMode.value = 'details';
+}
+
+function closeLine() {
+    selectedLineId.value = null;
+    lineMode.value = 'details';
+}
+
+function opensItemRetroactively(line) {
+    return !!line.business_partner && !line.has_open_item;
+}
+
 // Única excepción a la inmutabilidad del asiento contabilizado: el
 // vencimiento de una línea no participa de la partida doble, es puro dato
 // de gestión de cartera — pero un error de tipeo ahí corrompe para siempre
 // la cédula de antigüedad de saldos si nunca se puede corregir. Nada más
 // que este campo se puede tocar acá; el resto de la línea sigue intocable.
-const editingDueDateLineId = ref(null);
 const dueDateForm = useForm({ due_date: '' });
 
-function openLineDueDateEdit(line) {
-    editingDueDateLineId.value = line.id;
-    dueDateForm.reset();
-    dueDateForm.due_date = line.due_date;
+function startDueDateEdit() {
+    dueDateForm.clearErrors();
+    dueDateForm.due_date = selectedLine.value.due_date ?? '';
+    lineMode.value = 'due-date';
 }
 
-function submitLineDueDate(line) {
-    dueDateForm.put(route('journal-entries.lines.update-due-date', [props.entry.id, line.id]), {
+function submitLineDueDate() {
+    dueDateForm.put(route('journal-entries.lines.update-due-date', [props.entry.id, selectedLine.value.id]), {
         preserveScroll: true,
-        onSuccess: () => { editingDueDateLineId.value = null; },
+        onSuccess: () => { lineMode.value = 'details'; },
     });
 }
 
@@ -123,62 +161,76 @@ function candidatePartnersForLine(line) {
     return props.businessPartners.filter((p) => p.gl_account_id === line.account.id);
 }
 
-const linkingPartnerLineId = ref(null);
+function canLinkPartner(line) {
+    return !line.business_partner && props.entry.status === 'posted' && candidatePartnersForLine(line).length > 0;
+}
+
 const linkPartnerForm = useForm({ business_partner_id: null });
 
-function openLinkPartner(line) {
-    linkingPartnerLineId.value = line.id;
-    linkPartnerForm.reset();
-    linkPartnerForm.business_partner_id = candidatePartnersForLine(line)[0]?.id ?? null;
+function startLinkPartner() {
+    linkPartnerForm.clearErrors();
+    linkPartnerForm.business_partner_id = candidatePartnersForLine(selectedLine.value)[0]?.id ?? null;
+    lineMode.value = 'link-partner';
 }
 
-function submitLinkPartner(line) {
-    linkPartnerForm.put(route('journal-entries.lines.link-business-partner', [props.entry.id, line.id]), {
+function submitLinkPartner() {
+    linkPartnerForm.put(route('journal-entries.lines.link-business-partner', [props.entry.id, selectedLine.value.id]), {
         preserveScroll: true,
-        onSuccess: () => { linkingPartnerLineId.value = null; },
+        onSuccess: () => { lineMode.value = 'details'; },
     });
 }
+
+function showLineLedger() {
+    const line = selectedLine.value;
+    closeLine();
+    openLedger(line);
+}
+
+const lineModalTitle = computed(() => {
+    if (!selectedLine.value) return '';
+    if (lineMode.value === 'due-date') return opensItemRetroactively(selectedLine.value) ? 'Abrir partida' : 'Corregir vencimiento';
+    if (lineMode.value === 'link-partner') return 'Vincular socio de negocio';
+    return lineOwner(selectedLine.value);
+});
 </script>
 
 <template>
     <Head :title="`Asiento ${entry.document_type?.code ?? ''}${entry.document_number ? '-' + entry.document_number : ''}`" />
 
     <AppLayout title="Detalle de asiento">
-        <template #actions>
-            <span class="badge" :class="statusBadge[entry.status] ?? 'badge-neutral'">
-                {{ statusLabels[entry.status] ?? entry.status }}
-            </span>
-            <Link v-if="entry.status === 'draft'" :href="route('journal-entries.edit', entry.id)" class="btn btn-ghost">Editar</Link>
-            <Link :href="route('journal-entries.duplicate', entry.id)" class="btn btn-ghost">Duplicar</Link>
-            <a
-                :href="route('journal-entries.presentation', entry.id)"
-                target="_blank"
-                class="btn btn-ghost"
-                title="Abrir este documento en una pantalla aparte, lista para exportar a XLSX/PDF o imprimir"
-            >🖶 Presentar documento</a>
-            <button
-                v-if="entry.status === 'posted'"
-                type="button"
-                class="btn btn-ghost"
-                @click="reverseEntry"
-            >Anulación</button>
-            <DocumentTypeRegisterPanel
-                :document-types="documentTypes"
-                :default-document-type-id="entry.document_type?.id"
-                mode="popover"
+        <div class="view-toolbar">
+            <Link :href="route('journal-entries.index')" class="btn btn-ghost"><ArrowLeftIcon /> Asientos</Link>
+            <RecordNav
+                :nav="nav"
+                :current-id="entry.id"
+                route-name="journal-entries.show"
+                searchable
+                @search="documentSearchOpen = true"
             />
-            <Link :href="route('journal-entries.index')" class="btn btn-ghost">← Volver</Link>
-        </template>
 
-        <DocumentToolbar
-            :new-href="route('journal-entries.create')"
-            :export-href="route('journal-entries.export', entry.id)"
-            :first-href="nav.first && nav.first !== entry.id ? route('journal-entries.show', nav.first) : null"
-            :prev-href="nav.prev ? route('journal-entries.show', nav.prev) : null"
-            :next-href="nav.next ? route('journal-entries.show', nav.next) : null"
-            :last-href="nav.last && nav.last !== entry.id ? route('journal-entries.show', nav.last) : null"
-            @find="documentSearchOpen = true"
-        />
+            <div class="view-actions">
+                <button
+                    v-if="entry.status === 'posted'"
+                    type="button"
+                    class="btn btn-ghost btn-danger-text"
+                    @click="reverseEntry"
+                >Anular</button>
+                <DocumentTypeRegisterPanel
+                    :document-types="documentTypes"
+                    :default-document-type-id="entry.document_type?.id"
+                    mode="popover"
+                />
+                <a :href="route('journal-entries.export', entry.id)" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a
+                    :href="route('journal-entries.presentation', entry.id)"
+                    target="_blank"
+                    class="btn btn-ghost"
+                    title="Abrir este documento en una pantalla aparte, lista para exportar a XLSX/PDF o imprimir"
+                ><PrinterIcon /> Presentar documento</a>
+                <Link :href="route('journal-entries.duplicate', entry.id)" class="btn btn-ghost"><CopyIcon /> Duplicar</Link>
+                <Link v-if="entry.status === 'draft'" :href="route('journal-entries.edit', entry.id)" class="btn btn-primary"><PencilIcon /> Editar</Link>
+            </div>
+        </div>
 
         <div v-if="$page.props.errors?.reversal" class="flash flash-error">{{ $page.props.errors.reversal }}</div>
 
@@ -191,7 +243,12 @@ function submitLinkPartner(line) {
 
         <div class="summary-grid">
             <div class="card summary-card">
-                <h3>Documento</h3>
+                <h3>
+                    Documento
+                    <span class="badge" :class="statusBadge[entry.status] ?? 'badge-neutral'">
+                        {{ statusLabels[entry.status] ?? entry.status }}
+                    </span>
+                </h3>
                 <dl>
                     <dt>Documento</dt>
                     <dd>
@@ -243,138 +300,201 @@ function submitLinkPartner(line) {
         <p v-if="entry.description" class="description-line"><strong>Descripción:</strong> {{ entry.description }}</p>
 
         <div class="card">
-            <table class="lines-table">
-                <thead>
-                    <tr>
-                        <th>Cuenta / Socio</th>
-                        <th>Centro de costo</th>
-                        <th>Moneda</th>
-                        <th class="num">Débito</th>
-                        <th class="num">Crédito</th>
-                        <th class="num">Débito ({{ company.system_currency?.code }})</th>
-                        <th class="num">Crédito ({{ company.system_currency?.code }})</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template v-for="line in entry.lines" :key="line.id">
+            <div class="table-responsive">
+                <table class="lines-table">
+                    <thead>
                         <tr>
-                            <td
-                                class="account-cell-ro"
-                                :class="{ clickable: line.business_partner || line.account }"
-                                title="Doble clic: ver mayor auxiliar"
-                                @dblclick="openLedger(line)"
-                            >
-                                <template v-if="line.business_partner">{{ line.business_partner.code }} — {{ line.business_partner.name }}</template>
-                                <template v-else-if="line.account">{{ line.account.code }} — {{ line.account.description_es }}</template>
-                                <div v-if="!line.business_partner && entry.status === 'posted' && candidatePartnersForLine(line).length" class="muted small">
-                                    <button
-                                        type="button"
-                                        class="link-btn"
-                                        title="Esta línea se contabilizó antes de que existiera este socio como registro — vincularlo no cambia la cuenta, el monto ni nada más de la línea"
-                                        @click="openLinkPartner(line)"
-                                    >🔗 vincular socio de negocio</button>
-                                </div>
-                                <div v-if="line.description" class="muted small">{{ line.description }}</div>
-                                <div v-if="line.electronic_key" class="muted small key-value">
-                                    🔑 {{ formatElectronicKey(line.electronic_key) }}
-                                </div>
-                                <div v-if="line.tax" class="muted small">
-                                    {{ line.tax.tax_rate?.name }} ({{ line.tax.tax_rate?.percentage }}%) s/ {{ line.tax.taxable_base }}
-                                </div>
-                                <div class="muted small due-date-row">
-                                    <template v-if="line.business_partner && !line.has_open_item">
-                                        <span class="badge badge-warning">sin partida abierta</span>
-                                    </template>
-                                    <template v-else>
-                                        Vence: {{ line.due_date ?? 'sin definir' }}
-                                    </template>
-                                    <button
-                                        v-if="entry.status === 'posted'"
-                                        type="button"
-                                        class="link-btn"
-                                        :title="line.business_partner && !line.has_open_item
-                                            ? 'Esta línea nunca abrió partida — definir un vencimiento acá la abre retroactivamente por el monto ya contabilizado, sin tocar el asiento'
-                                            : 'El resto de la línea no se puede modificar — solo el vencimiento, para no corromper antigüedad de saldos'"
-                                        @click="openLineDueDateEdit(line)"
-                                    >{{ line.business_partner && !line.has_open_item ? '🔓 abrir partida' : '✎ corregir' }}</button>
-                                </div>
-                                <div v-if="line.reference_document || line.reference_document_date" class="muted small">
-                                    📄 {{ line.reference_document || 'Documento sin número' }}<template v-if="line.reference_document_date"> — {{ line.reference_document_date }}</template>
-                                </div>
-                            </td>
+                            <th>Cuenta / Socio</th>
+                            <th>Centro de costo</th>
+                            <th class="num">Débito</th>
+                            <th class="num">Crédito</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="line in entry.lines"
+                            :key="line.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openLine(line)"
+                            @keydown.enter="openLine(line)"
+                            @keydown.space.prevent="openLine(line)"
+                        >
                             <td>
+                                <span class="owner-cell">
+                                    {{ lineOwner(line) }}
+                                    <span v-if="line.business_partner && !line.has_open_item" class="badge badge-warning">sin partida abierta</span>
+                                </span>
+                                <div v-if="line.description" class="muted small">{{ line.description }}</div>
+                            </td>
+                            <td data-label="Centro de costo">
                                 <template v-if="line.cost_center">{{ line.cost_center.code }} — {{ line.cost_center.name }}</template>
                                 <template v-else>—</template>
-                                <div v-if="line.cost_allocation_rule" class="muted small">norma {{ line.cost_allocation_rule.code }}</div>
                             </td>
-                            <td>{{ line.currency?.code }}</td>
-                            <td class="num">{{ formatMoney(line.debit_local) }}</td>
-                            <td class="num">{{ formatMoney(line.credit_local) }}</td>
-                            <td class="num muted">{{ formatMoney(line.debit_system) }}</td>
-                            <td class="num muted">{{ formatMoney(line.credit_system) }}</td>
+                            <td data-label="Débito" class="num">{{ formatMoney(line.debit_local) }}</td>
+                            <td data-label="Crédito" class="num">{{ formatMoney(line.credit_local) }}</td>
                         </tr>
-                        <tr v-if="editingDueDateLineId === line.id">
-                            <td colspan="7">
-                                <form class="due-date-edit-form" @submit.prevent="submitLineDueDate(line)">
-                                    <div class="field">
-                                        <label>Nuevo vencimiento</label>
-                                        <input v-model="dueDateForm.due_date" type="date">
-                                    </div>
-                                    <div class="field actions">
-                                        <button type="submit" class="btn btn-primary" :disabled="dueDateForm.processing">Confirmar</button>
-                                        <button type="button" class="btn btn-ghost" @click="editingDueDateLineId = null">Cancelar</button>
-                                    </div>
-                                    <p class="hint span-all">
-                                        <template v-if="line.business_partner && !line.has_open_item">
-                                            Esta línea nunca abrió partida — al confirmar se crea por el monto ya
-                                            contabilizado, con este vencimiento. El asiento original no se modifica.
-                                        </template>
-                                        <template v-else>
-                                            Solo se corrige el vencimiento de esta línea (y el de su partida abierta, si
-                                            tiene una) — el resto del asiento contabilizado no se modifica.
-                                        </template>
-                                    </p>
-                                    <p v-if="dueDateForm.errors.due_date" class="error span-all">{{ dueDateForm.errors.due_date }}</p>
-                                </form>
-                            </td>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2">Total</td>
+                            <td data-label="Total débito" class="num total-cell">{{ formatMoney(totalDebitLocal) }}</td>
+                            <td data-label="Total crédito" class="num total-cell">{{ formatMoney(totalCreditLocal) }}</td>
                         </tr>
-                        <tr v-if="linkingPartnerLineId === line.id">
-                            <td colspan="7">
-                                <form class="due-date-edit-form" @submit.prevent="submitLinkPartner(line)">
-                                    <div class="field">
-                                        <label>Socio de negocio</label>
-                                        <select v-model="linkPartnerForm.business_partner_id">
-                                            <option v-for="p in candidatePartnersForLine(line)" :key="p.id" :value="p.id">
-                                                {{ p.code }} — {{ p.name }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div class="field actions">
-                                        <button type="submit" class="btn btn-primary" :disabled="linkPartnerForm.processing">Confirmar</button>
-                                        <button type="button" class="btn btn-ghost" @click="linkingPartnerLineId = null">Cancelar</button>
-                                    </div>
-                                    <p class="hint span-all">
-                                        Solo se puede elegir un socio cuya cuenta de control sea exactamente
-                                        "{{ line.account?.code }} — {{ line.account?.description_es }}" — el monto y la
-                                        cuenta de esta línea no cambian. Si ya tiene vencimiento definido, se le abre la
-                                        partida en el mismo paso.
-                                    </p>
-                                    <p v-if="linkPartnerForm.errors.business_partner_id" class="error span-all">{{ linkPartnerForm.errors.business_partner_id }}</p>
-                                </form>
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3">Total</td>
-                        <td class="num total-cell">{{ formatMoney(totalDebitLocal) }}</td>
-                        <td class="num total-cell">{{ formatMoney(totalCreditLocal) }}</td>
-                        <td colspan="2"></td>
-                    </tr>
-                </tfoot>
-            </table>
+                    </tfoot>
+                </table>
+            </div>
         </div>
+
+        <DetailModal :open="!!selectedLine" :title="lineModalTitle" @close="closeLine">
+            <template v-if="selectedLine && lineMode === 'details'">
+                <dl class="detail-list">
+                    <div class="full">
+                        <dt>{{ selectedLine.business_partner ? 'Socio de negocio' : 'Cuenta' }}</dt>
+                        <dd>{{ lineOwner(selectedLine) }}</dd>
+                    </div>
+                    <div v-if="selectedLine.business_partner && selectedLine.account" class="full">
+                        <dt>Cuenta</dt>
+                        <dd>{{ selectedLine.account.code }} — {{ selectedLine.account.description_es }}</dd>
+                    </div>
+                    <div v-if="selectedLine.description" class="full">
+                        <dt>Descripción</dt>
+                        <dd>{{ selectedLine.description }}</dd>
+                    </div>
+                    <div>
+                        <dt>Centro de costo</dt>
+                        <dd>
+                            <template v-if="selectedLine.cost_center">{{ selectedLine.cost_center.code }} — {{ selectedLine.cost_center.name }}</template>
+                            <template v-else>—</template>
+                            <span v-if="selectedLine.cost_allocation_rule" class="muted"> · norma {{ selectedLine.cost_allocation_rule.code }}</span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Moneda</dt>
+                        <dd>{{ selectedLine.currency?.code ?? '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Débito</dt>
+                        <dd class="num-value">{{ formatMoney(selectedLine.debit_local) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Crédito</dt>
+                        <dd class="num-value">{{ formatMoney(selectedLine.credit_local) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Débito ({{ company.system_currency?.code }})</dt>
+                        <dd class="num-value">{{ formatMoney(selectedLine.debit_system) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Crédito ({{ company.system_currency?.code }})</dt>
+                        <dd class="num-value">{{ formatMoney(selectedLine.credit_system) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Vencimiento</dt>
+                        <dd>
+                            <span v-if="opensItemRetroactively(selectedLine)" class="badge badge-warning">sin partida abierta</span>
+                            <template v-else>{{ selectedLine.due_date ?? 'sin definir' }}</template>
+                        </dd>
+                    </div>
+                    <div v-if="selectedLine.tax">
+                        <dt>Impuesto</dt>
+                        <dd>{{ selectedLine.tax.tax_rate?.name }} ({{ selectedLine.tax.tax_rate?.percentage }}%) s/ {{ selectedLine.tax.taxable_base }}</dd>
+                    </div>
+                    <div v-if="selectedLine.electronic_key" class="full">
+                        <dt><KeyRoundIcon /> Clave electrónica</dt>
+                        <dd class="key-value">{{ formatElectronicKey(selectedLine.electronic_key) }}</dd>
+                    </div>
+                    <div v-if="selectedLine.reference_document || selectedLine.reference_document_date" class="full">
+                        <dt><FileTextIcon /> Documento de referencia</dt>
+                        <dd>{{ selectedLine.reference_document || 'Documento sin número' }}<template v-if="selectedLine.reference_document_date"> — {{ selectedLine.reference_document_date }}</template></dd>
+                    </div>
+                </dl>
+            </template>
+
+            <form v-if="selectedLine && lineMode === 'due-date'" id="line-due-date-form" @submit.prevent="submitLineDueDate">
+                <p class="muted small">{{ lineOwner(selectedLine) }}</p>
+                <div class="field">
+                    <label for="line-due-date">Nuevo vencimiento</label>
+                    <input id="line-due-date" v-model="dueDateForm.due_date" type="date">
+                    <span v-if="dueDateForm.errors.due_date" class="error">{{ dueDateForm.errors.due_date }}</span>
+                </div>
+                <p class="hint">
+                    <template v-if="opensItemRetroactively(selectedLine)">
+                        Esta línea nunca abrió partida — al confirmar se crea por el monto ya
+                        contabilizado, con este vencimiento. El asiento original no se modifica.
+                    </template>
+                    <template v-else>
+                        Solo se corrige el vencimiento de esta línea (y el de su partida abierta, si
+                        tiene una) — el resto del asiento contabilizado no se modifica.
+                    </template>
+                </p>
+            </form>
+
+            <form v-if="selectedLine && lineMode === 'link-partner'" id="line-partner-form" @submit.prevent="submitLinkPartner">
+                <div class="field">
+                    <label for="line-partner">Socio de negocio</label>
+                    <select id="line-partner" v-model="linkPartnerForm.business_partner_id">
+                        <option v-for="p in candidatePartnersForLine(selectedLine)" :key="p.id" :value="p.id">
+                            {{ p.code }} — {{ p.name }}
+                        </option>
+                    </select>
+                    <span v-if="linkPartnerForm.errors.business_partner_id" class="error">{{ linkPartnerForm.errors.business_partner_id }}</span>
+                </div>
+                <p class="hint">
+                    Solo se puede elegir un socio cuya cuenta de control sea exactamente
+                    "{{ selectedLine.account?.code }} — {{ selectedLine.account?.description_es }}" — el monto y la
+                    cuenta de esta línea no cambian. Si ya tiene vencimiento definido, se le abre la
+                    partida en el mismo paso.
+                </p>
+            </form>
+
+            <template #actions>
+                <template v-if="selectedLine && lineMode === 'details'">
+                    <button
+                        v-if="canLinkPartner(selectedLine)"
+                        type="button"
+                        class="btn btn-ghost"
+                        title="Esta línea se contabilizó antes de que existiera este socio como registro — vincularlo no cambia la cuenta, el monto ni nada más de la línea"
+                        @click="startLinkPartner"
+                    ><LinkIcon /> Vincular socio</button>
+                    <button
+                        v-if="entry.status === 'posted'"
+                        type="button"
+                        class="btn btn-ghost"
+                        :title="opensItemRetroactively(selectedLine)
+                            ? 'Esta línea nunca abrió partida — definir un vencimiento acá la abre retroactivamente por el monto ya contabilizado, sin tocar el asiento'
+                            : 'El resto de la línea no se puede modificar — solo el vencimiento, para no corromper antigüedad de saldos'"
+                        @click="startDueDateEdit"
+                    >
+                        <LockOpenIcon v-if="opensItemRetroactively(selectedLine)" /><PencilIcon v-else />
+                        {{ opensItemRetroactively(selectedLine) ? 'Abrir partida' : 'Corregir vencimiento' }}
+                    </button>
+                    <button
+                        v-if="selectedLine.business_partner || selectedLine.account"
+                        type="button"
+                        class="btn btn-primary"
+                        @click="showLineLedger"
+                    ><ScrollTextIcon /> Ver mayor auxiliar</button>
+                </template>
+                <template v-else-if="selectedLine">
+                    <button type="button" class="btn btn-ghost" @click="lineMode = 'details'">Cancelar</button>
+                    <button
+                        v-if="lineMode === 'due-date'"
+                        type="submit"
+                        form="line-due-date-form"
+                        class="btn btn-primary"
+                        :disabled="dueDateForm.processing"
+                    >Confirmar</button>
+                    <button
+                        v-else
+                        type="submit"
+                        form="line-partner-form"
+                        class="btn btn-primary"
+                        :disabled="linkPartnerForm.processing"
+                    >Confirmar</button>
+                </template>
+            </template>
+        </DetailModal>
 
         <LedgerPanel
             :open="ledgerOpen"
@@ -396,18 +516,18 @@ function submitLinkPartner(line) {
 <style scoped>
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
     gap: 1rem;
     margin-bottom: 1.25rem;
     align-items: stretch;
 }
 
 .summary-card { padding: 1rem 1.1rem; }
-.summary-card h3 { margin: 0 0 0.6rem; font-size: 0.85rem; }
+.summary-card h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 0.6rem; font-size: 0.85rem; }
 
-dl { margin: 0; display: grid; grid-template-columns: 1fr auto; row-gap: 0.35rem; column-gap: 0.75rem; font-size: 0.82rem; }
-dt { color: var(--color-text-muted); font-weight: 500; }
-dd { margin: 0; text-align: right; }
+.summary-card dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 0.35rem; column-gap: 0.75rem; font-size: 0.82rem; }
+.summary-card dt { color: var(--color-text-muted); font-weight: 500; }
+.summary-card dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 
 .description-line {
     font-size: 0.85rem;
@@ -420,19 +540,10 @@ dd { margin: 0; text-align: right; }
     font-weight: 600;
 }
 
-.flash-error {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-    padding: 0.6rem 0.9rem;
-    border-radius: 6px;
-    margin: -0.5rem 0 1.25rem;
-    font-size: 0.85rem;
-}
-
 .link-note {
     font-size: 0.82rem;
     color: var(--color-text-muted);
-    margin: -0.5rem 0 1.25rem;
+    margin: 0 0 1rem;
 }
 
 .key-value {
@@ -440,62 +551,14 @@ dd { margin: 0; text-align: right; }
     letter-spacing: 0.05em;
 }
 
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.45rem 0.9rem; border-top: 1px solid var(--color-border); }
-.num { text-align: right; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
+table { font-size: 0.85rem; }
+.owner-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
 .total-cell { font-weight: 700; }
-
-.due-date-row { display: flex; align-items: baseline; gap: 0.4rem; }
-
-.link-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--color-primary);
-    font-size: 0.76rem;
-    cursor: pointer;
-    text-decoration: underline dotted;
-}
-
-.due-date-edit-form {
-    display: flex;
-    align-items: flex-end;
-    gap: 1rem;
-    background: var(--color-surface-alt);
-    padding: 0.75rem 0.9rem;
-    flex-wrap: wrap;
-}
-
-.due-date-edit-form .field { margin-bottom: 0; min-width: 160px; }
-.due-date-edit-form label { display: block; font-size: 0.78rem; color: var(--color-text-muted); margin-bottom: 0.25rem; }
-.due-date-edit-form input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.85rem;
-}
-.due-date-edit-form .actions { flex-direction: row; gap: 0.5rem; }
-.span-all { width: 100%; }
-.hint { color: var(--color-text-muted); font-size: 0.76rem; margin: 0; }
-.error { color: var(--color-danger); font-size: 0.78rem; margin: 0; }
-
-.account-cell-ro.clickable {
-    cursor: pointer;
-}
-
-.account-cell-ro.clickable:hover {
-    background: var(--color-primary-soft);
-}
+tfoot td { font-weight: 700; }
+.num-value { font-variant-numeric: tabular-nums; }
+.hint { margin: 0; }
 
 @media print {
-    .link-btn,
-    .due-date-row button {
-        display: none !important;
-    }
-
     .card {
         box-shadow: none;
         border: 1px solid #ccc;

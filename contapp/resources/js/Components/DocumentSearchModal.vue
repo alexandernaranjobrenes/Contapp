@@ -1,4 +1,5 @@
 <script setup>
+import { XIcon } from '@lucide/vue';
 import { ref, watch, nextTick } from 'vue';
 
 // Modal genérico de búsqueda de asientos (backend: JournalEntryController::search,
@@ -79,14 +80,15 @@ const statusLabels = { draft: 'Preliminar', posted: 'Contabilizado', voided: 'An
             <div class="search-modal" role="dialog" aria-modal="true">
                 <header class="search-header">
                     <strong>{{ title }}</strong>
-                    <button type="button" class="btn btn-ghost close-btn" title="Cerrar" @click="close">✕</button>
+                    <button type="button" class="btn btn-ghost close-btn" title="Cerrar" aria-label="Cerrar" @click="close"><XIcon /></button>
                 </header>
 
                 <input
                     ref="inputEl"
                     v-model="query"
-                    type="text"
+                    type="search"
                     class="search-input"
+                    aria-label="Buscar documento"
                     placeholder="Número de documento, descripción o tipo..."
                     @input="onInput"
                 >
@@ -149,12 +151,6 @@ const statusLabels = { draft: 'Preliminar', posted: 'Contabilizado', voided: 'An
 
 .search-input {
     margin: 0.75rem 1rem;
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-alt);
-    font-size: 0.9rem;
-    color: var(--color-text);
 }
 
 .search-results {
@@ -170,7 +166,7 @@ const statusLabels = { draft: 'Preliminar', posted: 'Contabilizado', voided: 'An
 
 .result-row {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 0.6rem;
     width: 100%;

@@ -1,8 +1,11 @@
 <script setup>
-import { Head, useForm, router, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { PencilIcon, PlusIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
     unitsOfMeasure: { type: Array, default: () => [] },
@@ -19,39 +22,32 @@ const filtered = computed(() => {
     return sorted.filter((u) => u.code.toLowerCase().includes(q) || u.name.toLowerCase().includes(q));
 });
 
-const creating = ref(false);
+// Ficha, alta y edición en un solo modal (CLAUDE.md secc. 20 y 21). El
+// código solo se elige al crear.
+const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit } = useCrudModal({
+    records: () => props.unitsOfMeasure,
+    defaults: () => ({ code: '', name: '', decimals: 2, status: 'active' }),
+    toForm: (u) => ({ code: u.code, name: u.name, decimals: u.decimals, status: u.status }),
+    store: () => route('units-of-measure.store'),
+    update: (u) => route('units-of-measure.update', u.id),
+    updatePayload: ({ name, decimals, status }) => ({ name, decimals, status }),
+});
 
-const createForm = useForm({ code: '', name: '', decimals: 2, status: 'active' });
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva unidad de medida';
+    return selected.value ? `${selected.value.code} — ${selected.value.name}` : '';
+});
 
-function openCreate() {
-    createForm.reset();
-    creating.value = true;
-}
+function destroy() {
+    const u = selected.value;
 
-function submitCreate() {
-    createForm.post(route('units-of-measure.store'), { onSuccess: () => (creating.value = false), preserveScroll: true });
-}
-
-const editing = ref(null);
-
-const editForm = useForm({ name: '', decimals: 2, status: 'active' });
-
-function openEdit(uom) {
-    editForm.clearErrors();
-    editForm.name = uom.name;
-    editForm.decimals = uom.decimals;
-    editForm.status = uom.status;
-    editing.value = uom;
-}
-
-function submitEdit() {
-    editForm.put(route('units-of-measure.update', editing.value.id), { onSuccess: () => (editing.value = null), preserveScroll: true });
-}
-
-function destroy(uom) {
-    if (! confirm(`¿Eliminar la unidad de medida ${uom.code} — ${uom.name}?`)) return;
-
-    router.delete(route('units-of-measure.destroy', uom.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar unidad de medida',
+        message: `La unidad ${u.code} — ${u.name} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('units-of-measure.destroy', u.id), { preserveScroll: true }),
+    });
 }
 </script>
 
@@ -59,11 +55,14 @@ function destroy(uom) {
     <Head title="Unidades de medida" />
 
     <AppLayout title="Unidades de medida">
-        <template #actions>
-            <input v-model="search" type="search" placeholder="Buscar código o nombre..." class="search-input">
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar unidad de medida">
+            </div>
+            <div class="view-actions">
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.unit_of_measure" class="flash flash-error">{{ page.props.errors.unit_of_measure }}</div>
 
@@ -73,177 +72,107 @@ function destroy(uom) {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ filtered.length }} unidad(es) de medida</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva unidad</button>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th class="num">Decimales</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="u in filtered"
+                            :key="u.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(u)"
+                            @keydown.enter="openDetail(u)"
+                            @keydown.space.prevent="openDetail(u)"
+                        >
+                            <td class="code-cell">{{ u.code }}</td>
+                            <td data-label="Nombre">{{ u.name }}</td>
+                            <td data-label="Decimales" class="num">{{ u.decimals }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="u.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                                    {{ u.status === 'active' ? 'Activa' : 'Inactiva' }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr v-if="!filtered.length">
+                            <td colspan="4" class="muted empty-row">
+                                {{ unitsOfMeasure.length ? 'Ninguna unidad coincide con la búsqueda.' : 'Todavía no hay unidades de medida registradas.' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>Decimales</th>
-                        <th>Estado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="u in filtered" :key="u.id">
-                        <td class="num code-cell">{{ u.code }}</td>
-                        <td>{{ u.name }}</td>
-                        <td class="num">{{ u.decimals }}</td>
-                        <td>
-                            <span class="badge" :class="u.status === 'active' ? 'badge-success' : 'badge-neutral'">
-                                {{ u.status === 'active' ? 'Activa' : 'Inactiva' }}
-                            </span>
-                        </td>
-                        <td class="actions-cell">
-                            <button type="button" class="btn btn-ghost" @click="openEdit(u)">Editar</button>
-                            <button type="button" class="btn btn-ghost" @click="destroy(u)">Eliminar</button>
-                        </td>
-                    </tr>
-                    <tr v-if="!filtered.length">
-                        <td colspan="5" class="muted empty-row">Todavía no hay unidades de medida registradas.</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal-card card" @submit.prevent="submitCreate">
-                <h2>Nueva unidad de medida</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="close">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="selected.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                    {{ selected.status === 'active' ? 'Activa' : 'Inactiva' }}
+                </span>
+            </template>
 
-                <div class="field">
-                    <label>Código</label>
-                    <input v-model="createForm.code" type="text" maxlength="20" required>
-                    <span v-if="createForm.errors.code" class="error">{{ createForm.errors.code }}</span>
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Decimales</dt>
+                    <dd>{{ selected.decimals }}</dd>
+                </div>
+            </dl>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="uom-form" @submit.prevent="submit">
+                <p v-if="mode === 'edit'" class="muted small">El código no se puede cambiar una vez creada la unidad.</p>
+
+                <div v-if="mode === 'create'" class="field">
+                    <label for="uom-code">Código</label>
+                    <input id="uom-code" v-model="form.code" type="text" maxlength="20" required>
+                    <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="createForm.name" type="text" required>
-                    <span v-if="createForm.errors.name" class="error">{{ createForm.errors.name }}</span>
+                    <label for="uom-name">Nombre</label>
+                    <input id="uom-name" v-model="form.name" type="text" required>
+                    <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
                 </div>
 
-                <div class="grid-2">
+                <div class="field-row">
                     <div class="field">
-                        <label>Decimales</label>
-                        <input v-model.number="createForm.decimals" type="number" min="0" max="6" required>
-                        <span v-if="createForm.errors.decimals" class="error">{{ createForm.errors.decimals }}</span>
+                        <label for="uom-decimals">Decimales</label>
+                        <input id="uom-decimals" v-model.number="form.decimals" type="number" min="0" max="6" required>
+                        <span v-if="form.errors.decimals" class="error">{{ form.errors.decimals }}</span>
                     </div>
                     <div class="field">
-                        <label>Estado</label>
-                        <select v-model="createForm.status">
+                        <label for="uom-status">Estado</label>
+                        <select id="uom-status" v-model="form.status">
                             <option value="active">Activa</option>
                             <option value="inactive">Inactiva</option>
                         </select>
                     </div>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="createForm.processing">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                </div>
             </form>
-        </div>
 
-        <div v-if="editing" class="modal-backdrop" @click.self="editing = null">
-            <form class="modal-card card" @submit.prevent="submitEdit">
-                <h2>Editar {{ editing.code }}</h2>
-                <p class="muted small">El código no se puede cambiar una vez creada la unidad.</p>
-
-                <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="editForm.name" type="text" required>
-                    <span v-if="editForm.errors.name" class="error">{{ editForm.errors.name }}</span>
-                </div>
-
-                <div class="grid-2">
-                    <div class="field">
-                        <label>Decimales</label>
-                        <input v-model.number="editForm.decimals" type="number" min="0" max="6" required>
-                        <span v-if="editForm.errors.decimals" class="error">{{ editForm.errors.decimals }}</span>
-                    </div>
-                    <div class="field">
-                        <label>Estado</label>
-                        <select v-model="editForm.status">
-                            <option value="active">Activa</option>
-                            <option value="inactive">Inactiva</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="editForm.processing">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="editing = null">Cancelar</button>
-                </div>
-            </form>
-        </div>
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="uom-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.search-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-    width: 220px;
-}
-
-.card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 1.1rem;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: -0.5rem 0 1rem; }
-
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.code-cell { font-variant-numeric: tabular-nums; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; white-space: normal; }
-.actions-cell { display: flex; gap: 0.4rem; }
-
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(11, 31, 58, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-    padding: 1rem;
-}
-
-.modal-card { width: 460px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.5rem; }
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.5rem; }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-
-.field input, .field select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.error { color: var(--color-danger); font-size: 0.76rem; }
-.modal-actions { display: flex; gap: 0.6rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

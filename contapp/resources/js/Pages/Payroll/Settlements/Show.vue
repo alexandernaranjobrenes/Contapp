@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import { formatMoney } from '../../../Utils/money';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     settlement: { type: Object, required: true },
@@ -290,13 +291,13 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
             <div class="card-header">
                 <h2>Renglones manuales</h2>
                 <button type="button" class="btn btn-ghost btn-sm" @click="addManual('pending_salary')">
-                    + Salarios pendientes
+                    <PlusIcon /> Salarios pendientes
                 </button>
                 <button type="button" class="btn btn-ghost btn-sm" @click="addManual('indemnity')">
-                    + Indemnización
+                    <PlusIcon /> Indemnización
                 </button>
                 <button type="button" class="btn btn-ghost btn-sm" @click="addManual('deduction')">
-                    + Deducción
+                    <PlusIcon /> Deducción
                 </button>
             </div>
 

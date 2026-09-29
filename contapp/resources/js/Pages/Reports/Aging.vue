@@ -5,6 +5,7 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
 import { formatMoney } from '../../Utils/money';
+import { ChevronDownIcon, ChevronRightIcon } from '@lucide/vue';
 
 const props = defineProps({
     asOf: { type: String, required: true },
@@ -116,7 +117,7 @@ const bucketKeys = computed(() => Object.keys(props.result.bucket_labels));
                 <tbody>
                     <template v-for="row in group.rows" :key="row.partner_code">
                         <tr class="partner-row" @click="toggleRow(group.currency_code, row.partner_code)">
-                            <td class="expand-cell">{{ isExpanded(group.currency_code, row.partner_code) ? '▾' : '▸' }}</td>
+                            <td class="expand-cell"><ChevronDownIcon v-if="isExpanded(group.currency_code, row.partner_code)" /><ChevronRightIcon v-else /></td>
                             <td>{{ row.partner_code }}</td>
                             <td>{{ row.partner_name }}</td>
                             <td v-for="key in bucketKeys" :key="key" class="num">{{ formatMoney(row.buckets[key]) }}</td>

@@ -3,6 +3,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     rates: { type: Array, default: () => [] },
@@ -101,7 +102,7 @@ function destroy(rate) {
 
     <AppLayout title="Indicadores de impuesto">
         <template #actions>
-            <button type="button" class="btn btn-primary" @click="openCreate">+ Nuevo indicador propio</button>
+            <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Nuevo indicador propio</button>
         </template>
 
         <DocumentToolbar can-create @new="openCreate" />

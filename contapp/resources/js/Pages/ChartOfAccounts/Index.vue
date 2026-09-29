@@ -1,9 +1,12 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { DownloadIcon, PencilIcon, PlusIcon, ScrollTextIcon, UploadIcon } from '@lucide/vue';
+
 import AppLayout from '../../Layouts/AppLayout.vue';
+import DetailModal from '../../Components/DetailModal.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { confirmAction } from '../../Utils/confirm';
 
 const props = defineProps({
     accounts: { type: Array, default: () => [] },
@@ -79,11 +82,23 @@ const taxLabels = {
 
 const currencyLabels = { local: 'Local', foreign: 'Extranjera', both: 'Ambas' };
 
-// --- formulario crear/editar (modal) ---
+// --- ficha de la cuenta (CLAUDE.md secc. 20) y alta (secc. 21) ---
+//
+// Un solo modal: la fila lo abre en 'details' (con «Ver movimientos», que
+// abre el mayor auxiliar), «Crear nuevo» en 'create'. Crear y editar
+// comparten el formulario.
 
-const editing = ref(null); // null = cerrado; {} = nueva cuenta; objeto = editando
+const mode = ref('details'); // 'create' | 'details' | 'edit'
+const selectedId = ref(null);
 
-const form = useForm({
+const selected = computed(() => props.accounts.find((a) => a.id === selectedId.value) ?? null);
+const modalOpen = computed(() => mode.value === 'create' || !!selected.value);
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva cuenta';
+    return selected.value ? `${selected.value.code} — ${selected.value.description_es}` : '';
+});
+
+const DEFAULTS = {
     code: '',
     description_es: '',
     description_en: '',
@@ -96,47 +111,99 @@ const form = useForm({
     is_cash_account: false,
     requires_cost_center: false,
     is_active: true,
-});
+};
 
-function openCreate(type) {
-    form.reset();
-    form.account_type = type;
-    editing.value = { isNew: true };
-}
+const form = useForm({ ...DEFAULTS });
 
-function openEdit(account) {
+function fillForm(values) {
     form.clearErrors();
-    form.code = account.code;
-    form.description_es = account.description_es;
-    form.description_en = account.description_en ?? '';
-    form.account_type = account.account_type;
-    form.currency_mode = account.currency_mode;
-    form.tax_classification = account.tax_classification;
-    form.tax_rate_id = account.tax_rate_id;
-    form.accepts_posting = account.accepts_posting;
-    form.requires_business_partner = account.requires_business_partner;
-    form.is_cash_account = account.is_cash_account;
-    form.requires_cost_center = account.requires_cost_center;
-    form.is_active = account.is_active;
-    editing.value = account;
+    for (const [key, value] of Object.entries(values)) form[key] = value;
 }
 
-function closeModal() {
-    editing.value = null;
+// La clase de la cuenta nueva es la del cajón abierto: es donde el usuario
+// está mirando.
+function openCreate() {
+    fillForm({ ...DEFAULTS, account_type: openDrawer.value ?? Object.keys(props.accountTypes)[0] });
+    selectedId.value = null;
+    mode.value = 'create';
+}
+
+function openAccount(account) {
+    selectedId.value = account.id;
+    mode.value = 'details';
+}
+
+function closeAccount() {
+    selectedId.value = null;
+    mode.value = 'details';
+}
+
+function startEdit() {
+    const account = selected.value;
+    fillForm({
+        code: account.code,
+        description_es: account.description_es,
+        description_en: account.description_en ?? '',
+        account_type: account.account_type,
+        currency_mode: account.currency_mode,
+        tax_classification: account.tax_classification,
+        tax_rate_id: account.tax_rate_id,
+        accepts_posting: account.accepts_posting,
+        requires_business_partner: account.requires_business_partner,
+        is_cash_account: account.is_cash_account,
+        requires_cost_center: account.requires_cost_center,
+        is_active: account.is_active,
+    });
+    mode.value = 'edit';
+}
+
+function cancelForm() {
+    if (mode.value === 'create') {
+        closeAccount();
+        return;
+    }
+
+    mode.value = 'details';
 }
 
 function submit() {
-    if (editing.value.isNew) {
-        form.post(route('chart-of-accounts.store'), { onSuccess: closeModal, preserveScroll: true });
-    } else {
-        form.put(route('chart-of-accounts.update', editing.value.id), { onSuccess: closeModal, preserveScroll: true });
+    if (mode.value === 'create') {
+        form.post(route('chart-of-accounts.store'), { preserveScroll: true, onSuccess: closeAccount });
+        return;
     }
+
+    form.put(route('chart-of-accounts.update', selected.value.id), {
+        preserveScroll: true,
+        onSuccess: () => { mode.value = 'details'; },
+    });
 }
 
-function destroy(account) {
-    if (! confirm(`¿Eliminar la cuenta ${account.code} — ${account.description_es}? Esta acción no se puede deshacer.`)) return;
+function destroy() {
+    const account = selected.value;
 
-    router.delete(route('chart-of-accounts.destroy', account.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar cuenta',
+        message: `La cuenta ${account.code} — ${account.description_es} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('chart-of-accounts.destroy', account.id), { preserveScroll: true }),
+    });
+}
+
+// El mayor se abre en lugar de la ficha: son dos paneles que no conviven.
+function showMovements() {
+    const account = selected.value;
+    closeAccount();
+    openLedger(account);
+}
+
+function canReconcile(account) {
+    return account.accepts_posting && !account.requires_business_partner;
+}
+
+function taxRateLabel(account) {
+    const rate = taxRatesById.value[account.tax_rate_id];
+    return rate ? `${rate.code} (${rate.percentage}%)` : null;
 }
 </script>
 
@@ -144,159 +211,163 @@ function destroy(account) {
     <Head title="Catálogo de cuentas" />
 
     <AppLayout title="Catálogo de cuentas">
-        <template #actions>
-            <input v-model="search" type="search" placeholder="Buscar código o nombre..." class="search-input">
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate(Object.keys(accountTypes)[0])" />
-
-        <div class="bulk-bar card">
-            <div class="bulk-bar-row">
-                <div class="bulk-bar-text">
-                    <strong>Carga masiva</strong>
-                    <span class="muted small">Descargá la plantilla, completala en Excel y subila para crear o actualizar cuentas por lote.</span>
-                </div>
-                <div class="bulk-actions">
-                    <a :href="route('chart-of-accounts.template')" class="btn btn-ghost">Descargar plantilla</a>
-                    <label class="btn btn-primary file-btn" :class="{ disabled: importForm.processing }">
-                        {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
-                        <input ref="fileInput" type="file" accept=".xlsx" class="file-input" :disabled="importForm.processing" @change="onFileSelected">
-                    </label>
-                </div>
+        <div class="view-toolbar">
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar cuenta">
             </div>
-            <span v-if="importForm.errors.file" class="error">{{ importForm.errors.file }}</span>
-
-            <div v-if="importErrors.length" class="import-errors">
-                <p class="import-errors-title">No se importó nada porque el archivo tiene {{ importErrors.length }} error(es). Corregilos y subilo de nuevo:</p>
-                <ul>
-                    <li v-for="(msg, i) in importErrors" :key="i">{{ msg }}</li>
-                </ul>
+            <div class="view-actions">
+                <a
+                    :href="route('chart-of-accounts.template')"
+                    class="btn btn-ghost"
+                    title="Plantilla de Excel para crear o actualizar cuentas por lote"
+                ><DownloadIcon /> Descargar plantilla</a>
+                <label class="btn btn-ghost file-btn" :class="{ disabled: importForm.processing }" title="Subir la plantilla completa">
+                    <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
+                    <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
+                </label>
+                <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Crear nuevo</button>
             </div>
+        </div>
+
+        <p v-if="importForm.errors.file" class="flash flash-error">{{ importForm.errors.file }}</p>
+
+        <div v-if="importErrors.length" class="import-errors">
+            <p>No se importó nada porque el archivo tiene {{ importErrors.length }} error(es). Corregilos y subilo de nuevo:</p>
+            <ul>
+                <li v-for="(msg, i) in importErrors" :key="i">{{ msg }}</li>
+            </ul>
         </div>
 
         <div v-if="page.props.errors?.account" class="flash flash-error">{{ page.props.errors.account }}</div>
 
         <div class="cabinet">
             <div v-for="(label, type) in accountTypes" :key="type" class="drawer-unit">
-                <button type="button" class="drawer" :class="{ open: openDrawer === type }" @click="toggleDrawer(type)">
+                <button type="button" class="drawer" :class="{ open: openDrawer === type }" :aria-expanded="openDrawer === type" @click="toggleDrawer(type)">
                     <span class="drawer-handle"></span>
                     <span class="drawer-label">{{ label }}</span>
                     <span class="drawer-count">{{ grouped[type].length }}</span>
                 </button>
 
                 <div v-if="openDrawer === type" class="drawer-content card">
-                    <div class="drawer-content-header">
-                        <span class="muted">{{ grouped[type].length }} cuenta(s) en {{ label }}</span>
-                        <button type="button" class="btn btn-primary" @click="openCreate(type)">+ Nueva cuenta</button>
+                    <div class="table-responsive table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Nombre</th>
+                                    <th>Naturaleza</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="account in grouped[type]"
+                                    :key="account.id"
+                                    class="clickable-row"
+                                    :class="{ 'is-major-row': !account.accepts_posting }"
+                                    tabindex="0"
+                                    @click="openAccount(account)"
+                                    @keydown.enter="openAccount(account)"
+                                    @keydown.space.prevent="openAccount(account)"
+                                >
+                                    <td class="code-cell">{{ account.code }}</td>
+                                    <td data-label="Nombre" class="name-cell">{{ account.description_es }}</td>
+                                    <td data-label="Naturaleza">{{ account.normal_balance === 'debit' ? 'Débito' : 'Crédito' }}</td>
+                                    <td data-label="Estado">
+                                        <span class="badge" :class="account.is_active ? 'badge-success' : 'badge-danger'">
+                                            {{ account.is_active ? 'Activa' : 'Inactiva' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr v-if="!grouped[type].length">
+                                    <td colspan="4" class="muted empty-row">No hay cuentas en esta clase todavía.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Código</th>
-                                <th>Nombre</th>
-                                <th>Naturaleza</th>
-                                <th>Moneda</th>
-                                <th>Hoja</th>
-                                <th>Atributos</th>
-                                <th>IVA</th>
-                                <th>Estado</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="account in grouped[type]"
-                                :key="account.id"
-                                class="clickable-row"
-                                :class="{ 'is-major-row': !account.accepts_posting }"
-                                title="Ver movimientos y saldo"
-                                @click="openLedger(account)"
-                            >
-                                <td class="num code-cell">{{ account.code }}</td>
-                                <td>{{ account.description_es }}</td>
-                                <td>{{ account.normal_balance === 'debit' ? 'Débito' : 'Crédito' }}</td>
-                                <td>{{ currencyLabels[account.currency_mode] }}</td>
-                                <td>
-                                    <span class="badge" :class="account.accepts_posting ? 'badge-success' : 'badge-neutral'">
-                                        {{ account.accepts_posting ? 'Sí' : 'No' }}
-                                    </span>
-                                </td>
-                                <td class="attrs-cell">
-                                    <span v-if="account.requires_business_partner" class="badge badge-neutral" title="Exige socio de negocio">Socio</span>
-                                    <span v-if="account.is_cash_account" class="badge badge-neutral" title="Cuenta monetaria (bancos)">Monetaria</span>
-                                    <span v-if="account.requires_cost_center" class="badge badge-neutral" title="Exige norma de reparto">Norma</span>
-                                </td>
-                                <td>
-                                    <span v-if="account.tax_classification !== 'none'" class="badge badge-neutral">
-                                        {{ taxLabels[account.tax_classification] }}
-                                    </span>
-                                    <div v-if="taxRatesById[account.tax_rate_id]" class="muted small">
-                                        {{ taxRatesById[account.tax_rate_id].code }} ({{ taxRatesById[account.tax_rate_id].percentage }}%)
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="badge" :class="account.is_active ? 'badge-success' : 'badge-danger'">
-                                        {{ account.is_active ? 'Activa' : 'Inactiva' }}
-                                    </span>
-                                </td>
-                                <td class="actions-cell" @click.stop>
-                                    <button type="button" class="btn btn-ghost" @click="openEdit(account)">Editar</button>
-                                    <Link
-                                        v-if="account.accepts_posting && !account.requires_business_partner"
-                                        :href="route('account-reconciliation.index', account.id)"
-                                        class="btn btn-ghost"
-                                        title="Reconciliación interna: vincular movimientos de esta cuenta entre sí"
-                                    >Reconciliar</Link>
-                                    <button type="button" class="btn btn-ghost" @click="destroy(account)">Eliminar</button>
-                                </td>
-                            </tr>
-                            <tr v-if="!grouped[type].length">
-                                <td colspan="9" class="muted empty-row">No hay cuentas en esta clase todavía.</td>
-                            </tr>
-                        </tbody>
-                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- Modal crear/editar cuenta -->
-        <div v-if="editing" class="modal-backdrop" @click.self="closeModal">
-            <form class="modal-card card" @submit.prevent="submit">
-                <h2>{{ editing.isNew ? 'Nueva cuenta' : `Editar cuenta ${editing.code}` }}</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="closeAccount">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="selected.is_active ? 'badge-success' : 'badge-danger'">
+                    {{ selected.is_active ? 'Activa' : 'Inactiva' }}
+                </span>
+            </template>
 
-                <div class="grid">
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Clase</dt>
+                    <dd>{{ accountTypes[selected.account_type] ?? selected.account_type }}</dd>
+                </div>
+                <div>
+                    <dt>Naturaleza</dt>
+                    <dd>{{ selected.normal_balance === 'debit' ? 'Débito' : 'Crédito' }}</dd>
+                </div>
+                <div>
+                    <dt>Moneda</dt>
+                    <dd>{{ currencyLabels[selected.currency_mode] }}</dd>
+                </div>
+                <div>
+                    <dt>Cuenta hoja (acepta movimientos)</dt>
+                    <dd>{{ selected.accepts_posting ? 'Sí' : 'No — es una cuenta mayor' }}</dd>
+                </div>
+                <div>
+                    <dt>Atributos</dt>
+                    <dd class="badges">
+                        <span v-if="selected.requires_business_partner" class="badge badge-neutral">Exige socio</span>
+                        <span v-if="selected.is_cash_account" class="badge badge-neutral">Monetaria</span>
+                        <span v-if="selected.requires_cost_center" class="badge badge-neutral">Exige norma</span>
+                        <span v-if="!selected.requires_business_partner && !selected.is_cash_account && !selected.requires_cost_center">—</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>IVA</dt>
+                    <dd>
+                        {{ selected.tax_classification !== 'none' ? taxLabels[selected.tax_classification] : '—' }}
+                        <span v-if="taxRateLabel(selected)" class="muted"> · {{ taxRateLabel(selected) }}</span>
+                    </dd>
+                </div>
+                <div v-if="selected.description_en" class="full">
+                    <dt>Nombre en inglés</dt>
+                    <dd>{{ selected.description_en }}</dd>
+                </div>
+            </dl>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="account-form" @submit.prevent="submit">
+                <div class="form-grid">
                     <div class="field">
-                        <label>Código</label>
-                        <input v-model="form.code" type="text" placeholder="x-xx-xx-xx-xxx" required>
+                        <label for="account-code">Código</label>
+                        <input id="account-code" v-model="form.code" type="text" placeholder="x-xx-xx-xx-xxx" required>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">
-                        <label>Tipo (clase)</label>
-                        <select v-model="form.account_type" required>
+                        <label for="account-type">Tipo (clase)</label>
+                        <select id="account-type" v-model="form.account_type" required>
                             <option v-for="(label, key) in accountTypes" :key="key" :value="key">{{ label }}</option>
                         </select>
                     </div>
-                    <div class="field span-2">
-                        <label>Nombre</label>
-                        <input v-model="form.description_es" type="text" required>
+                    <div class="field span-full">
+                        <label for="account-name">Nombre</label>
+                        <input id="account-name" v-model="form.description_es" type="text" required>
                         <span v-if="form.errors.description_es" class="error">{{ form.errors.description_es }}</span>
                     </div>
-                    <div class="field span-2">
-                        <label>Nombre (inglés, opcional)</label>
-                        <input v-model="form.description_en" type="text">
+                    <div class="field span-full">
+                        <label for="account-name-en">Nombre (inglés, opcional)</label>
+                        <input id="account-name-en" v-model="form.description_en" type="text">
                     </div>
                     <div class="field">
-                        <label>Moneda</label>
-                        <select v-model="form.currency_mode">
+                        <label for="account-currency">Moneda</label>
+                        <select id="account-currency" v-model="form.currency_mode">
                             <option value="local">Local</option>
                             <option value="foreign">Extranjera</option>
                             <option value="both">Ambas</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>Clasificación IVA</label>
-                        <select v-model="form.tax_classification">
+                        <label for="account-tax-class">Clasificación IVA</label>
+                        <select id="account-tax-class" v-model="form.tax_classification">
                             <option value="none">Ninguno</option>
                             <option value="sales">Ventas</option>
                             <option value="purchases">Compras</option>
@@ -305,30 +376,45 @@ function destroy(account) {
                             <option value="iva_soportado">IVA Soportado</option>
                         </select>
                     </div>
-                    <div class="field span-2">
-                        <label>Indicador de impuesto vinculado (opcional)</label>
-                        <select v-model="form.tax_rate_id">
+                    <div class="field span-full">
+                        <label for="account-tax-rate">Indicador de impuesto vinculado (opcional)</label>
+                        <select id="account-tax-rate" v-model="form.tax_rate_id">
                             <option :value="null">— Esta cuenta no recibe impuesto derivado —</option>
                             <option v-for="r in taxRates" :key="r.id" :value="r.id">{{ r.code }} — {{ r.name }} ({{ r.percentage }}%)</option>
                         </select>
-                        <span class="hint">Si se elige uno, al armar un asiento se puede escoger este indicador en una línea y el sistema deriva el impuesto directo a esta cuenta.</span>
+                        <span class="muted small">Si se elige uno, al armar un asiento se puede escoger este indicador en una línea y el sistema deriva el impuesto directo a esta cuenta.</span>
                     </div>
                 </div>
 
                 <div class="checks">
-                    <label><input v-model="form.accepts_posting" type="checkbox"> Cuenta hoja (acepta movimientos)</label>
-                    <label><input v-model="form.requires_business_partner" type="checkbox"> Exige socio de negocio (CxC/CxP)</label>
-                    <label><input v-model="form.is_cash_account" type="checkbox"> Cuenta monetaria (elegible para bancos)</label>
-                    <label><input v-model="form.requires_cost_center" type="checkbox"> Exige norma de reparto en cada línea</label>
-                    <label><input v-model="form.is_active" type="checkbox"> Activa</label>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Guardar</button>
-                    <button type="button" class="btn btn-ghost" @click="closeModal">Cancelar</button>
+                    <label class="check"><input v-model="form.accepts_posting" type="checkbox"> Cuenta hoja (acepta movimientos)</label>
+                    <label class="check"><input v-model="form.requires_business_partner" type="checkbox"> Exige socio de negocio (CxC/CxP)</label>
+                    <label class="check"><input v-model="form.is_cash_account" type="checkbox"> Cuenta monetaria (elegible para bancos)</label>
+                    <label class="check"><input v-model="form.requires_cost_center" type="checkbox"> Exige norma de reparto en cada línea</label>
+                    <label class="check"><input v-model="form.is_active" type="checkbox"> Activa</label>
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <Link
+                        v-if="canReconcile(selected)"
+                        :href="route('account-reconciliation.index', selected.id)"
+                        class="btn btn-ghost"
+                        title="Reconciliación interna: vincular movimientos de esta cuenta entre sí"
+                    >Reconciliar</Link>
+                    <button type="button" class="btn btn-ghost" @click="showMovements"><ScrollTextIcon /> Ver movimientos</button>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="account-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
 
         <LedgerPanel
             :open="ledger.open"
@@ -341,96 +427,11 @@ function destroy(account) {
 </template>
 
 <style scoped>
-.search-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-    width: 220px;
-}
-
 .cabinet {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
 }
-
-.bulk-bar {
-    padding: 0.85rem 1.1rem;
-    margin-bottom: 0.75rem;
-}
-
-.bulk-bar-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.bulk-bar-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    font-size: 0.85rem;
-}
-
-.bulk-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-shrink: 0;
-}
-
-.file-btn {
-    position: relative;
-    cursor: pointer;
-    overflow: hidden;
-}
-
-.file-btn.disabled {
-    opacity: 0.6;
-    cursor: default;
-}
-
-.file-input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    width: 100%;
-    cursor: pointer;
-}
-
-.error {
-    display: block;
-    margin-top: 0.4rem;
-    color: var(--color-danger);
-    font-size: 0.76rem;
-}
-
-.import-errors {
-    margin-top: 0.75rem;
-    padding: 0.75rem 0.9rem;
-    border-radius: var(--radius-sm);
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-    font-size: 0.82rem;
-}
-
-.import-errors-title {
-    font-weight: 700;
-    margin: 0 0 0.4rem;
-}
-
-.import-errors ul {
-    margin: 0;
-    padding-left: 1.1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
 
 .drawer-unit + .drawer-unit {
     margin-top: 0.1rem;
@@ -501,74 +502,21 @@ function destroy(account) {
     padding: 0.1rem 0.55rem;
 }
 
-/*
-    max-height + overflow-y: sin esto, un cajón con muchas cuentas crece sin
-    límite y su propia barra de scroll horizontal (overflow-x) termina muy
-    lejos, al fondo de cientos de filas — acá queda acotado a una franja
-    visible, con scroll vertical Y horizontal propios, siempre alcanzables
-    sin importar cuántas cuentas tenga ese tipo.
-*/
+/* El cajón abierto: la tabla de la clase, con su propio scroll vertical y
+   el encabezado fijo (.table-scroll), así no hay que bajar hasta el fondo de
+   cientos de cuentas para ver el cajón siguiente. */
 .drawer-content {
     margin: 0.5rem 0 0.6rem;
-    padding: 0;
-    max-height: 60vh;
-    overflow-y: auto;
-    overflow-x: auto;
-    border-radius: var(--radius-md);
+    overflow: hidden;
     box-shadow:
         0 1px 2px rgba(11, 31, 58, 0.05),
         0 12px 28px -10px rgba(11, 31, 58, 0.20);
 }
 
-.drawer-content-header {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 1.1rem;
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
-}
-
-/* Encabezado de columnas también fijo al scrollear el cajón verticalmente,
-   justo debajo de la barra de título — mismo criterio, nada se pierde de
-   vista al bajar por muchas filas. */
-.drawer-content thead th {
-    position: sticky;
-    top: 2.55rem;
-    z-index: 1;
-    background: var(--color-surface);
-}
-
-/*
-    Sin border-collapse (default: separate), cada celda dibuja su propio
-    border-top por separado, y el border-spacing por defecto del navegador
-    (no está en 0 acá) deja un huequito entre celda y celda — la línea
-    horizontal de cada fila se ve cortada en segmentos en vez de una sola
-    línea continua. collapse funde los bordes de celdas vecinas en una
-    única línea real.
-*/
-table { font-size: 0.82rem; width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem 0.9rem; border-top: 1px solid var(--color-border); white-space: nowrap; vertical-align: middle; }
-/*
-    Sin esto, una fila donde ninguna celda lleva badge (texto liso, más bajo)
-    queda más baja que una fila con badges (que traen su propio padding) —
-    filas de distinta altura se ven "desfasadas" al bajar la vista por la
-    tabla. min-height empareja la altura mínima de fila sin importar si el
-    contenido de esa celda es texto, un badge, o nada (celdas de atributos
-    vacías cuando la cuenta no tiene ninguno).
-*/
-td { min-height: 1.6rem; box-sizing: content-box; }
-.code-cell { text-align: left; font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.72rem; }
-.empty-row { text-align: center; padding: 1.25rem; white-space: normal; }
-.attrs-cell { display: flex; align-items: center; min-height: 1.6rem; gap: 0.3rem; flex-wrap: wrap; }
-.actions-cell { display: flex; align-items: center; gap: 0.4rem; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: var(--color-primary-soft); }
+table { font-size: 0.82rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.checks { display: flex; flex-direction: column; gap: 0.1rem; margin-top: 0.25rem; }
 
 /*
     Cuenta mayor (accepts_posting=false, ej. "ACTIVOS CIRCULANTES"): nunca
@@ -588,60 +536,26 @@ td { min-height: 1.6rem; box-sizing: content-box; }
     box-shadow: inset 3px 0 0 0 #c1662d;
 }
 
-.is-major-row:hover td {
+.table-responsive .is-major-row:hover td {
     background: rgba(193, 102, 45, 0.12);
 }
 
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(11, 31, 58, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-    padding: 1rem;
-}
+/* En tarjetas (≤ 1024px), la cuenta mayor lleva el acento en el borde de la
+   tarjeta entera, no en una celda. */
+@media screen and (max-width: 1024px) {
+    .drawer-content {
+        overflow: visible;
+        box-shadow: none;
+    }
 
-.modal-card {
-    width: 560px;
-    max-width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    padding: 1.5rem;
-}
+    .is-major-row {
+        border-left: 3px solid #c1662d;
+    }
 
-.modal-card h2 { font-size: 1rem; margin: 0 0 1rem; }
-
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-.span-2 { grid-column: span 2; }
-
-select, .modal-card input[type="text"] {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.checks {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin: 1rem 0;
-    font-size: 0.85rem;
-}
-
-.checks label { display: flex; align-items: center; gap: 0.5rem; }
-
-.modal-actions { display: flex; gap: 0.6rem; }
-
-.hint {
-    display: block;
-    font-size: 0.74rem;
-    color: var(--color-text-muted);
-    margin-top: 0.2rem;
+    .is-major-row td,
+    .is-major-row td:first-child {
+        background: none;
+        box-shadow: none;
+    }
 }
 </style>

@@ -66,28 +66,48 @@ const incomeSections3 = [
     <Head title="Comparativo entre periodos" />
 
     <AppLayout title="Comparativo entre periodos">
-        <template #actions>
-            <span class="label">Periodo 1</span>
-            <input v-model="from1" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to1" type="date" class="date-input">
-            <span class="label">Periodo 2</span>
-            <input v-model="from2" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to2" type="date" class="date-input">
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.period-comparison.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.period-comparison.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="period-comparison" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <fieldset class="period-filter">
+                    <legend>Periodo 1</legend>
+                    <label class="filter-field">
+                        <span>Desde</span>
+                        <input v-model="from1" type="date" required>
+                    </label>
+                    <label class="filter-field">
+                        <span>Hasta</span>
+                        <input v-model="to1" type="date" required>
+                    </label>
+                </fieldset>
+                <fieldset class="period-filter">
+                    <legend>Periodo 2</legend>
+                    <label class="filter-field">
+                        <span>Desde</span>
+                        <input v-model="from2" type="date" required>
+                    </label>
+                    <label class="filter-field">
+                        <span>Hasta</span>
+                        <input v-model="to2" type="date" required>
+                    </label>
+                </fieldset>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+
+            <div class="view-actions">
+                <a :href="exportUrl('reports.period-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.period-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="period-comparison" :parameters="saveParameters" />
+            </div>
+        </div>
 
         <p class="hint">
             Balance general al cierre de cada periodo (saldo acumulado a la fecha "hasta") y estado de resultados con
             la actividad propia de cada periodo — mismo criterio de presentación comparativa NIIF.
         </p>
 
-        <h2 class="report-section-title">Balance general</h2>
+        <h2 class="block-title">Balance general</h2>
         <div class="card">
+            <div class="table-responsive">
             <table>
                 <thead>
                     <tr>
@@ -102,33 +122,35 @@ const incomeSections3 = [
                     <template v-for="section in balanceSheetSections" :key="section.key">
                         <tr class="section-label"><td colspan="5">{{ section.label }}</td></tr>
                         <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_1) }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_2) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
+                            <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(line.amounts.period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(line.amounts.period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
                         </tr>
                         <tr class="section-total">
                             <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
                         </tr>
                     </template>
                     <tr class="subtotal">
                         <td>Total pasivo + patrimonio</td>
-                        <td class="num">{{ formatMoney(result.total_liabilities_and_equity.period_1) }}</td>
-                        <td class="num">{{ formatMoney(result.total_liabilities_and_equity.period_2) }}</td>
-                        <td class="num" :class="varianceClass(result.total_liabilities_and_equity)">{{ formatMoney(result.total_liabilities_and_equity.variance) }}</td>
-                        <td class="num" :class="varianceClass(result.total_liabilities_and_equity)">{{ result.total_liabilities_and_equity.variance_percent !== null ? result.total_liabilities_and_equity.variance_percent + '%' : '—' }}</td>
+                        <td data-label="Periodo 1" class="num">{{ formatMoney(result.total_liabilities_and_equity.period_1) }}</td>
+                        <td data-label="Periodo 2" class="num">{{ formatMoney(result.total_liabilities_and_equity.period_2) }}</td>
+                        <td data-label="Variación" class="num" :class="varianceClass(result.total_liabilities_and_equity)">{{ formatMoney(result.total_liabilities_and_equity.variance) }}</td>
+                        <td data-label="Variación %" class="num" :class="varianceClass(result.total_liabilities_and_equity)">{{ result.total_liabilities_and_equity.variance_percent !== null ? result.total_liabilities_and_equity.variance_percent + '%' : '—' }}</td>
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
 
-        <h2 class="report-section-title">Estado de resultados</h2>
+        <h2 class="block-title">Estado de resultados</h2>
         <div class="card">
+            <div class="table-responsive">
             <table>
                 <thead>
                     <tr>
@@ -143,115 +165,138 @@ const incomeSections3 = [
                     <template v-for="section in incomeSections1" :key="section.key">
                         <tr class="section-label"><td colspan="5">{{ section.label }}</td></tr>
                         <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_1) }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_2) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
+                            <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(line.amounts.period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(line.amounts.period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
                         </tr>
                         <tr class="section-total">
                             <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
                         </tr>
                     </template>
 
                     <tr class="subtotal">
                         <td>Utilidad bruta</td>
-                        <td class="num">{{ formatMoney(result.gross_profit.period_1) }}</td>
-                        <td class="num">{{ formatMoney(result.gross_profit.period_2) }}</td>
-                        <td class="num" :class="varianceClass(result.gross_profit)">{{ formatMoney(result.gross_profit.variance) }}</td>
-                        <td class="num" :class="varianceClass(result.gross_profit)">{{ result.gross_profit.variance_percent !== null ? result.gross_profit.variance_percent + '%' : '—' }}</td>
+                        <td data-label="Periodo 1" class="num">{{ formatMoney(result.gross_profit.period_1) }}</td>
+                        <td data-label="Periodo 2" class="num">{{ formatMoney(result.gross_profit.period_2) }}</td>
+                        <td data-label="Variación" class="num" :class="varianceClass(result.gross_profit)">{{ formatMoney(result.gross_profit.variance) }}</td>
+                        <td data-label="Variación %" class="num" :class="varianceClass(result.gross_profit)">{{ result.gross_profit.variance_percent !== null ? result.gross_profit.variance_percent + '%' : '—' }}</td>
                     </tr>
 
                     <template v-for="section in incomeSections2" :key="section.key">
                         <tr class="section-label"><td colspan="5">{{ section.label }}</td></tr>
                         <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_1) }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_2) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
+                            <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(line.amounts.period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(line.amounts.period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
                         </tr>
                         <tr class="section-total">
                             <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
                         </tr>
                     </template>
 
                     <tr class="subtotal">
                         <td>Utilidad operativa</td>
-                        <td class="num">{{ formatMoney(result.operating_profit.period_1) }}</td>
-                        <td class="num">{{ formatMoney(result.operating_profit.period_2) }}</td>
-                        <td class="num" :class="varianceClass(result.operating_profit)">{{ formatMoney(result.operating_profit.variance) }}</td>
-                        <td class="num" :class="varianceClass(result.operating_profit)">{{ result.operating_profit.variance_percent !== null ? result.operating_profit.variance_percent + '%' : '—' }}</td>
+                        <td data-label="Periodo 1" class="num">{{ formatMoney(result.operating_profit.period_1) }}</td>
+                        <td data-label="Periodo 2" class="num">{{ formatMoney(result.operating_profit.period_2) }}</td>
+                        <td data-label="Variación" class="num" :class="varianceClass(result.operating_profit)">{{ formatMoney(result.operating_profit.variance) }}</td>
+                        <td data-label="Variación %" class="num" :class="varianceClass(result.operating_profit)">{{ result.operating_profit.variance_percent !== null ? result.operating_profit.variance_percent + '%' : '—' }}</td>
                     </tr>
 
                     <template v-for="section in incomeSections3" :key="section.key">
                         <tr class="section-label"><td colspan="5">{{ section.label }}</td></tr>
                         <tr v-for="line in result[section.key]" :key="line.code" :class="{ 'is-header': line.is_header }">
-                            <td class="indent" :style="{ paddingLeft: (2.2 + line.depth * 1.1) + 'rem' }">{{ line.description }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_1) }}</td>
-                            <td class="num">{{ formatMoney(line.amounts.period_2) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
-                            <td class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
+                            <td class="indent" :style="{ '--depth': line.depth }">{{ line.description }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(line.amounts.period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(line.amounts.period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(line.amounts)">{{ formatMoney(line.amounts.variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(line.amounts)">{{ line.amounts.variance_percent !== null ? line.amounts.variance_percent + '%' : '—' }}</td>
                         </tr>
                         <tr class="section-total">
                             <td>Total {{ section.label.toLowerCase() }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
-                            <td class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
-                            <td class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
+                            <td data-label="Periodo 1" class="num">{{ formatMoney(result[section.totalKey].period_1) }}</td>
+                            <td data-label="Periodo 2" class="num">{{ formatMoney(result[section.totalKey].period_2) }}</td>
+                            <td data-label="Variación" class="num" :class="varianceClass(result[section.totalKey])">{{ formatMoney(result[section.totalKey].variance) }}</td>
+                            <td data-label="Variación %" class="num" :class="varianceClass(result[section.totalKey])">{{ result[section.totalKey].variance_percent !== null ? result[section.totalKey].variance_percent + '%' : '—' }}</td>
                         </tr>
                     </template>
                 </tbody>
                 <tfoot>
                     <tr>
                         <td class="total-label">Utilidad neta</td>
-                        <td class="num total-value">{{ formatMoney(result.net_profit.period_1) }}</td>
-                        <td class="num total-value">{{ formatMoney(result.net_profit.period_2) }}</td>
-                        <td class="num total-value" :class="varianceClass(result.net_profit)">{{ formatMoney(result.net_profit.variance) }}</td>
-                        <td class="num total-value" :class="varianceClass(result.net_profit)">{{ result.net_profit.variance_percent !== null ? result.net_profit.variance_percent + '%' : '—' }}</td>
+                        <td data-label="Periodo 1" class="num total-value">{{ formatMoney(result.net_profit.period_1) }}</td>
+                        <td data-label="Periodo 2" class="num total-value">{{ formatMoney(result.net_profit.period_2) }}</td>
+                        <td data-label="Variación" class="num total-value" :class="varianceClass(result.net_profit)">{{ formatMoney(result.net_profit.variance) }}</td>
+                        <td data-label="Variación %" class="num total-value" :class="varianceClass(result.net_profit)">{{ result.net_profit.variance_percent !== null ? result.net_profit.variance_percent + '%' : '—' }}</td>
                     </tr>
                 </tfoot>
             </table>
+            </div>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-table { width: 100%; font-size: 0.85rem; }
-td { padding: 0.45rem 1.1rem; }
-th { text-align: left; padding: 0.5rem 1.1rem; }
-.num { text-align: right; }
-.indent { color: var(--color-text-muted); }
+/* Cinco columnas que tienen que caber en los ~720px que deja la barra
+   lateral a 1025px (CLAUDE.md secc. 20). En ≤ 1024px, tarjetas. */
+table { font-size: 0.82rem; }
+td { padding: 0.45rem 0.7rem; border-top: 0; }
+th { padding: 0.5rem 0.7rem; }
+.indent {
+    padding-left: calc(1.2rem + var(--depth, 0) * 0.8rem);
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
 .is-header td { font-weight: 700; color: var(--color-text); }
 .section-label td { font-weight: 700; padding-top: 1rem; color: var(--color-text-muted); }
 .section-total td { border-top: 1px solid var(--color-border); font-weight: 600; }
-.subtotal td { border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); font-weight: 700; padding: 0.6rem 1.1rem; }
+.subtotal td { border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); font-weight: 700; padding: 0.6rem 0.7rem; }
 .total-label { text-align: right; font-weight: 700; }
 .total-value { font-weight: 800; }
 
 .variance-positive { color: var(--color-success); }
 .variance-negative { color: var(--color-danger); }
 
-.report-section-title { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; color: var(--color-text-muted); }
-.report-section-title:first-of-type { margin-top: 0; }
-
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-bottom: 1rem; max-width: 720px; }
-
-.label { color: var(--color-text-muted); font-size: 0.82rem; }
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+/* Cada periodo, su par de fechas con su nombre: se lee «Periodo 1: desde …
+   hasta …» sin tener que adivinar cuál fecha es de cuál. */
+.period-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
+
+.period-filter legend {
+    float: left;
+    width: 100%;
+    margin-bottom: 0.2rem;
+    padding: 0;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+@media screen and (max-width: 1024px) {
+    .indent { padding-left: 0; }
+    .section-label td { padding-top: 0.2rem; }
+    .total-label { text-align: left; }
+}
+
+@media (max-width: 640px) {
+    .period-filter .filter-field { flex: 1 1 8rem; }
+}
 </style>

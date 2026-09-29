@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import { PlusIcon } from '@lucide/vue';
 
 defineProps({
     writeDowns: { type: Array, default: () => [] },
@@ -16,7 +17,7 @@ function money(value) {
 
     <AppLayout title="Deterioro de inventario">
         <template #actions>
-            <Link :href="route('inventory-write-downs.create')" class="btn btn-primary">+ Nuevo avalúo</Link>
+            <Link :href="route('inventory-write-downs.create')" class="btn btn-primary"><PlusIcon /> Nuevo avalúo</Link>
         </template>
 
         <p class="hint">

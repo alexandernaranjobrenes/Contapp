@@ -1,8 +1,11 @@
 <script setup>
-import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { PencilIcon, PlusIcon, TagIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
     priceLists: { type: Array, default: () => [] },
@@ -10,42 +13,6 @@ const props = defineProps({
 });
 
 const page = usePage();
-
-const blank = {
-    code: '',
-    name: '',
-    currency_id: '',
-    prices_include_tax: false,
-    valid_from: '',
-    valid_to: '',
-    is_default: false,
-    status: 'active',
-};
-
-const creating = ref(false);
-const createForm = useForm({ ...blank });
-
-function openCreate() {
-    createForm.reset();
-    creating.value = true;
-}
-
-const editing = ref(null);
-const editForm = useForm({ ...blank });
-
-const activeForm = computed(() => (creating.value ? createForm : editForm));
-
-function openEdit(list) {
-    editForm.clearErrors();
-    editForm.name = list.name;
-    editForm.currency_id = list.currency_id;
-    editForm.prices_include_tax = list.prices_include_tax;
-    editForm.valid_from = list.valid_from ?? '';
-    editForm.valid_to = list.valid_to ?? '';
-    editForm.is_default = list.is_default;
-    editForm.status = list.status;
-    editing.value = list;
-}
 
 // Vacío tiene que viajar como null: '' lo tomaría como una fecha inválida en
 // vez de "sin límite".
@@ -57,22 +24,49 @@ function normalize(data) {
     };
 }
 
-function submitCreate() {
-    createForm.transform(normalize).post(route('price-lists.store'), {
-        onSuccess: () => (creating.value = false), preserveScroll: true,
-    });
+// Ficha, alta y edición en un solo modal (CLAUDE.md secc. 20 y 21). El
+// código solo se elige al crear.
+const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit } = useCrudModal({
+    records: () => props.priceLists,
+    defaults: () => ({
+        code: '', name: '', currency_id: '', prices_include_tax: false, valid_from: '', valid_to: '', is_default: false, status: 'active',
+    }),
+    toForm: (l) => ({
+        code: l.code,
+        name: l.name,
+        currency_id: l.currency_id,
+        prices_include_tax: l.prices_include_tax,
+        valid_from: l.valid_from ?? '',
+        valid_to: l.valid_to ?? '',
+        is_default: l.is_default,
+        status: l.status,
+    }),
+    store: () => route('price-lists.store'),
+    update: (l) => route('price-lists.update', l.id),
+    storePayload: normalize,
+    updatePayload: ({ code, ...data }) => normalize(data),
+});
+
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nueva lista de precios';
+    return selected.value ? `${selected.value.code} — ${selected.value.name}` : '';
+});
+
+function validity(l) {
+    if (! l.valid_from && ! l.valid_to) return 'Sin límite';
+    return `${l.valid_from ?? '—'} a ${l.valid_to ?? '—'}`;
 }
 
-function submitEdit() {
-    editForm.transform(normalize).put(route('price-lists.update', editing.value.id), {
-        onSuccess: () => (editing.value = null), preserveScroll: true,
+function destroy() {
+    const l = selected.value;
+
+    confirmAction({
+        title: 'Eliminar lista de precios',
+        message: `La lista ${l.code} — ${l.name} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('price-lists.destroy', l.id), { preserveScroll: true }),
     });
-}
-
-function destroy(list) {
-    if (! confirm(`¿Eliminar la lista ${list.code} — ${list.name}?`)) return;
-
-    router.delete(route('price-lists.destroy', list.id), { preserveScroll: true });
 }
 
 const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l.status === 'active'));
@@ -82,11 +76,12 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
     <Head title="Listas de precios" />
 
     <AppLayout title="Listas de precios">
-        <template #actions>
-            <Link :href="route('items.index')" class="btn btn-ghost">Artículos</Link>
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('items.index')" class="btn btn-ghost">Artículos</Link>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.price_list" class="flash flash-error">{{ page.props.errors.price_list }}</div>
 
@@ -102,54 +97,44 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ priceLists.length }} lista(s)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()">+ Nueva lista</button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Código</th>
                             <th>Nombre</th>
                             <th>Moneda</th>
-                            <th>Impuesto</th>
                             <th>Vigencia</th>
-                            <th class="right">Artículos</th>
-                            <th class="right">Clientes</th>
-                            <th class="right">Categorías</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="l in priceLists" :key="l.id">
-                            <td class="num">
-                                {{ l.code }}
-                                <span v-if="l.is_default" class="badge-default">predeterminada</span>
+                        <tr
+                            v-for="l in priceLists"
+                            :key="l.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(l)"
+                            @keydown.enter="openDetail(l)"
+                            @keydown.space.prevent="openDetail(l)"
+                        >
+                            <td>
+                                <span class="code-cell">
+                                    {{ l.code }}
+                                    <span v-if="l.is_default" class="badge badge-warning">Predeterminada</span>
+                                </span>
                             </td>
-                            <td>{{ l.name }}</td>
-                            <td>{{ l.currency_code }}</td>
-                            <td class="muted small">{{ l.prices_include_tax ? 'Precios con IVA' : 'Precios sin IVA' }}</td>
-                            <td class="muted small">
-                                <template v-if="l.valid_from || l.valid_to">
-                                    {{ l.valid_from ?? '—' }} a {{ l.valid_to ?? '—' }}
-                                </template>
-                                <template v-else>Sin límite</template>
-                            </td>
-                            <td class="right">{{ l.lines_count }}</td>
-                            <td class="right">{{ l.customers_count }}</td>
-                            <td class="right">{{ l.categories_count }}</td>
-                            <td>{{ l.status === 'active' ? 'Activa' : 'Inactiva' }}</td>
-                            <td class="row-actions">
-                                <Link :href="route('price-lists.prices', l.id)" class="btn btn-ghost btn-sm">Precios</Link>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="openEdit(l)">Editar</button>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="destroy(l)">Eliminar</button>
+                            <td data-label="Nombre">{{ l.name }}</td>
+                            <td data-label="Moneda">{{ l.currency_code }}</td>
+                            <td data-label="Vigencia" class="muted">{{ validity(l) }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="l.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                                    {{ l.status === 'active' ? 'Activa' : 'Inactiva' }}
+                                </span>
                             </td>
                         </tr>
                         <tr v-if="!priceLists.length">
-                            <td colspan="10" class="muted empty-row">
+                            <td colspan="5" class="muted empty-row">
                                 Todavía no hay listas de precios. Sin una lista, cada precio se digita en la factura.
                             </td>
                         </tr>
@@ -158,29 +143,64 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
             </div>
         </div>
 
-        <div v-if="creating || editing" class="modal-backdrop" @click.self="creating = false; editing = null">
-            <form class="modal card" @submit.prevent="creating ? submitCreate() : submitEdit()">
-                <h2>{{ creating ? 'Nueva lista de precios' : 'Editar ' + editing.code }}</h2>
+        <DetailModal :open="modalOpen" :title="modalTitle" @close="close">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="selected.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                    {{ selected.status === 'active' ? 'Activa' : 'Inactiva' }}
+                </span>
+            </template>
 
-                <div v-if="creating" class="field">
-                    <label>Código</label>
-                    <input v-model="createForm.code" type="text" maxlength="20" required>
-                    <span v-if="createForm.errors.code" class="error">{{ createForm.errors.code }}</span>
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Moneda</dt>
+                    <dd>{{ selected.currency_code }}</dd>
+                </div>
+                <div>
+                    <dt>Impuesto</dt>
+                    <dd>{{ selected.prices_include_tax ? 'Precios con IVA' : 'Precios sin IVA' }}</dd>
+                </div>
+                <div>
+                    <dt>Vigencia</dt>
+                    <dd>{{ validity(selected) }}</dd>
+                </div>
+                <div>
+                    <dt>Predeterminada</dt>
+                    <dd>{{ selected.is_default ? 'Sí' : 'No' }}</dd>
+                </div>
+                <div>
+                    <dt>Artículos con precio</dt>
+                    <dd>{{ selected.lines_count }}</dd>
+                </div>
+                <div>
+                    <dt>Clientes asignados</dt>
+                    <dd>{{ selected.customers_count }}</dd>
+                </div>
+                <div>
+                    <dt>Categorías asignadas</dt>
+                    <dd>{{ selected.categories_count }}</dd>
+                </div>
+            </dl>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="price-list-form" @submit.prevent="submit">
+                <div v-if="mode === 'create'" class="field">
+                    <label for="pl-code">Código</label>
+                    <input id="pl-code" v-model="form.code" type="text" maxlength="20" required>
+                    <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="activeForm.name" type="text" maxlength="255" required>
-                    <span v-if="activeForm.errors.name" class="error">{{ activeForm.errors.name }}</span>
+                    <label for="pl-name">Nombre</label>
+                    <input id="pl-name" v-model="form.name" type="text" maxlength="255" required>
+                    <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Moneda</label>
-                    <select v-model="activeForm.currency_id" required>
+                    <label for="pl-currency">Moneda</label>
+                    <select id="pl-currency" v-model="form.currency_id" required>
                         <option value="">Elegí una moneda</option>
                         <option v-for="c in currencies" :key="c.id" :value="c.id">{{ c.code }} — {{ c.name }}</option>
                     </select>
-                    <span class="hint small">
+                    <span class="muted small">
                         Una lista en colones no da precio a una factura en dólares: son dos listas distintas,
                         cada una con su precio decidido.
                     </span>
@@ -188,66 +208,57 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
 
                 <div class="field-row">
                     <div class="field">
-                        <label>Vigente desde</label>
-                        <input v-model="activeForm.valid_from" type="date">
+                        <label for="pl-from">Vigente desde</label>
+                        <input id="pl-from" v-model="form.valid_from" type="date">
                     </div>
                     <div class="field">
-                        <label>Vigente hasta</label>
-                        <input v-model="activeForm.valid_to" type="date">
-                        <span v-if="activeForm.errors.valid_to" class="error">{{ activeForm.errors.valid_to }}</span>
+                        <label for="pl-to">Vigente hasta</label>
+                        <input id="pl-to" v-model="form.valid_to" type="date">
+                        <span v-if="form.errors.valid_to" class="error">{{ form.errors.valid_to }}</span>
                     </div>
                 </div>
-                <span class="hint small">
+                <p class="hint small">
                     Dejalas vacías para una lista sin límite. Sirven para cargar el aumento de enero en
                     diciembre y que entre solo.
-                </span>
+                </p>
 
                 <label class="check">
-                    <input v-model="activeForm.prices_include_tax" type="checkbox">
+                    <input v-model="form.prices_include_tax" type="checkbox">
                     Los precios ya incluyen el IVA
                 </label>
 
                 <label class="check">
-                    <input v-model="activeForm.is_default" type="checkbox">
+                    <input v-model="form.is_default" type="checkbox">
                     Predeterminada (la usan los clientes sin lista propia)
                 </label>
 
                 <div class="field">
-                    <label>Estado</label>
-                    <select v-model="activeForm.status">
+                    <label for="pl-status">Estado</label>
+                    <select id="pl-status" v-model="form.status">
                         <option value="active">Activa</option>
                         <option value="inactive">Inactiva</option>
                     </select>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false; editing = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="activeForm.processing">Guardar</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <Link :href="route('price-lists.prices', selected.id)" class="btn btn-ghost"><TagIcon /> Precios</Link>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="price-list-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.small { font-size: 0.76rem; }
-.hint { color: var(--color-text-muted); font-size: 0.82rem; margin: 0 0 0.75rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.row-actions { display: flex; gap: 0.3rem; justify-content: flex-end; }
-.badge-default { display: inline-block; margin-left: 0.4rem; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; background: var(--color-primary-soft, #e8eef7); color: var(--color-primary, #0B1F3A); font-weight: 600; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
-.modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 1.2rem; }
-.modal h2 { margin: 0 0 0.8rem; font-size: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.7rem; }
-.field-row { display: flex; gap: 0.7rem; }
-.field-row .field { flex: 1; }
-.field label { font-size: 0.78rem; font-weight: 600; }
-.check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; margin-bottom: 0.5rem; }
-.error { color: var(--color-danger); font-size: 0.76rem; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.flash-warning { background: #fdf0ea; color: #a04000; }
+table { font-size: 0.85rem; }
+.code-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-variant-numeric: tabular-nums; }
 </style>
