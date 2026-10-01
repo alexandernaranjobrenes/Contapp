@@ -1,7 +1,9 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { ArrowLeftIcon, DownloadIcon, PrinterIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
 
 const props = defineProps({
     report: { type: Object, required: true },
@@ -53,53 +55,64 @@ const hasTotals = computed(() => Object.keys(props.totals).length > 0);
 function print() {
     window.print();
 }
+
+// Las columnas las define cada reporte en el servidor y algunos traen una
+// docena. En pantalla se ven las primeras VISIBLE —la identidad de la fila y
+// sus cifras principales—, así la tabla cabe sin desplazarse de lado
+// (CLAUDE.md secc. 20); el resto está en la ficha de la fila. Al imprimir, y
+// en el XLSX y el PDF, salen todas.
+const VISIBLE = 6;
+const hiddenColumns = computed(() => props.columns.slice(VISIBLE));
+const hasHidden = computed(() => hiddenColumns.value.length > 0);
+
+const selectedIndex = ref(null);
+const selectedRow = computed(() => (selectedIndex.value === null ? null : props.rows[selectedIndex.value] ?? null));
+
+function openRow(index) {
+    if (hasHidden.value) selectedIndex.value = index;
+}
 </script>
 
 <template>
     <Head :title="report.label" />
 
     <AppLayout :title="report.label">
-        <template #actions>
-            <a :href="exportUrl('inventory-reports.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('inventory-reports.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <button type="button" class="btn btn-ghost" @click="print">Imprimir</button>
-            <Link :href="route('inventory-reports.index')" class="btn btn-ghost">Todos los reportes</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('inventory-reports.index')" class="btn btn-ghost"><ArrowLeftIcon /> Todos los reportes</Link>
+            <div class="view-actions">
+                <a :href="exportUrl('inventory-reports.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('inventory-reports.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <button type="button" class="btn btn-ghost" @click="print"><PrinterIcon /> Imprimir</button>
+            </div>
+        </div>
 
         <p class="decision no-print">
             <span class="decision-label">Sirve para decidir:</span> {{ report.decision }}
         </p>
 
-        <form class="card filters no-print" @submit.prevent="apply">
-            <div class="filter-grid">
-                <div v-for="f in filters" :key="f.key" class="field">
-                    <label :for="'f-' + f.key">{{ f.label }}</label>
-
-                    <select v-if="f.type === 'select'" :id="'f-' + f.key" v-model="draft[f.key]" @change="apply">
-                        <option value="">Todos</option>
-                        <option v-for="(label, value) in f.options" :key="value" :value="value">{{ label }}</option>
-                    </select>
-
-                    <input
-                        v-else-if="f.type === 'date'"
-                        :id="'f-' + f.key" v-model="draft[f.key]" type="date" @change="apply"
-                    >
-
-                    <label v-else-if="f.type === 'boolean'" class="check">
+        <!-- Filtros del reporte, arriba de la tabla (CLAUDE.md secc. 24). -->
+        <form class="view-toolbar no-print" @submit.prevent="apply">
+            <div class="view-filters">
+                <template v-for="f in filters" :key="f.key">
+                    <label v-if="f.type === 'boolean'" class="check" :title="f.hint ?? null">
                         <input v-model="draft[f.key]" type="checkbox" @change="apply">
-                        <span>{{ f.label }}</span>
+                        {{ f.label }}
                     </label>
 
-                    <input v-else :id="'f-' + f.key" v-model="draft[f.key]" type="text" @keyup.enter="apply">
+                    <label v-else class="filter-field" :title="f.hint ?? null">
+                        <span>{{ f.label }}</span>
+                        <select v-if="f.type === 'select'" v-model="draft[f.key]" @change="apply">
+                            <option value="">Todos</option>
+                            <option v-for="(label, value) in f.options" :key="value" :value="value">{{ label }}</option>
+                        </select>
+                        <input v-else-if="f.type === 'date'" v-model="draft[f.key]" type="date" @change="apply">
+                        <input v-else v-model="draft[f.key]" type="text" @keyup.enter="apply">
+                    </label>
+                </template>
 
-                    <span v-if="f.hint" class="hint small">{{ f.hint }}</span>
-                </div>
-            </div>
-
-            <div class="filter-actions">
                 <button type="submit" class="btn btn-primary">Consultar</button>
                 <button type="button" class="btn btn-ghost" @click="clearFilters">Limpiar filtros</button>
-                <span class="muted small">{{ rowCount }} fila(s)</span>
+                <span class="muted small row-count">{{ rowCount }} fila(s)</span>
             </div>
         </form>
 
@@ -115,20 +128,34 @@ function print() {
         </ul>
 
         <div class="card">
-            <div class="table-scroll" :class="{ 'freeze-2': report.frozen_columns === 2 }">
+            <div class="table-responsive table-scroll">
                 <table>
                     <thead>
                         <tr>
-                            <th v-for="c in columns" :key="c.key" :class="{ right: c.numeric }">{{ c.label }}</th>
+                            <th
+                                v-for="(c, index) in columns"
+                                :key="c.key"
+                                :class="{ num: c.numeric, 'col-extra': index >= VISIBLE }"
+                            >{{ c.label }}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(row, i) in rows" :key="i">
+                        <tr
+                            v-for="(row, i) in rows"
+                            :key="i"
+                            :class="{ 'clickable-row': hasHidden }"
+                            :tabindex="hasHidden ? 0 : null"
+                            @click="openRow(i)"
+                            @keydown.enter="openRow(i)"
+                            @keydown.space.prevent="hasHidden && openRow(i)"
+                        >
                             <td
-                                v-for="c in columns"
+                                v-for="(c, index) in columns"
                                 :key="c.key"
+                                :data-label="index === 0 ? null : c.label"
                                 :class="{
-                                    right: c.numeric,
+                                    num: c.numeric,
+                                    'col-extra': index >= VISIBLE,
                                     signal: (c.key === 'signal' || c.key === 'flag') && row[c.key] !== '—',
                                 }"
                             >{{ row[c.key] }}</td>
@@ -144,7 +171,8 @@ function print() {
                             <td
                                 v-for="(c, index) in columns"
                                 :key="c.key"
-                                :class="{ right: c.numeric }"
+                                :data-label="index === 0 ? null : c.label"
+                                :class="{ num: c.numeric, 'col-extra': index >= VISIBLE }"
                             >
                                 <template v-if="totals[c.key] !== undefined">{{ totals[c.key] }}</template>
                                 <template v-else-if="index === 0">Total</template>
@@ -154,34 +182,41 @@ function print() {
                 </table>
             </div>
         </div>
+
+        <p v-if="hasHidden && rows.length" class="hint more-columns no-print">
+            Tocá una fila para ver sus {{ columns.length }} columnas; el XLSX, el PDF y la impresión las traen todas.
+        </p>
+
+        <DetailModal :open="!!selectedRow" :title="selectedRow ? String(selectedRow[columns[0]?.key] ?? '') : ''" @close="selectedIndex = null">
+            <dl v-if="selectedRow" class="detail-list">
+                <div v-for="c in columns.slice(1)" :key="c.key">
+                    <dt>{{ c.label }}</dt>
+                    <dd :class="{ signal: (c.key === 'signal' || c.key === 'flag') && selectedRow[c.key] !== '—' }">{{ selectedRow[c.key] }}</dd>
+                </div>
+            </dl>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.decision { font-size: 0.85rem; margin: 0 0 0.75rem; max-width: 80ch; }
+.decision { font-size: 0.85rem; margin: 0 0 0.75rem; }
 .decision-label { font-weight: 600; color: var(--color-text-muted); }
-
-.filters { padding: 0.9rem 1.1rem; margin-bottom: 0.75rem; }
-.filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.75rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; }
-.field > label { font-size: 0.76rem; font-weight: 600; color: var(--color-text-muted); }
-.check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 400; }
-.check span { color: var(--color-text); }
-.filter-actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.8rem; }
+.row-count { align-self: center; }
 
 .notes { margin: 0 0 0.75rem 1.1rem; padding: 0; font-size: 0.78rem; color: var(--color-text-muted); }
 .notes li { margin-bottom: 0.15rem; }
 
-/* Ancho de la primera columna congelada: lo usa .freeze-2 para saber
-   dónde empieza la segunda. */
-.table-scroll.freeze-2 { --freeze-1-width: 9rem; }
-
-.right { text-align: right; }
-.signal { color: #a04000; font-weight: 600; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.small { font-size: 0.74rem; }
+table { font-size: 0.84rem; }
+th, td { padding: 0.5rem 0.75rem; }
+.signal { color: var(--color-warning); font-weight: 600; }
+.more-columns { margin: 0.6rem 0 0; }
 
 .print-only { display: none; }
+
+/* Las columnas de más solo se ocultan en pantalla. */
+@media screen {
+    .col-extra { display: none; }
+}
 
 @media print {
     /* Se imprime la tabla y nada más: filtros, botones y navegación no
@@ -191,7 +226,6 @@ function print() {
     .print-header { margin-bottom: 0.5rem; font-size: 12pt; }
 
     .card { border: none; box-shadow: none; padding: 0; }
-    .table-scroll { overflow: visible; }
     table { font-size: 7pt; width: 100%; }
     th, td { padding: 2px 4px; border: 1px solid #ccc; }
     thead { display: table-header-group; }

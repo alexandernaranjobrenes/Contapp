@@ -1,9 +1,11 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3';
-import { reactive, ref } from 'vue';
+import { ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import DetailModal from '../../Components/DetailModal.vue';
+import { useRecordDetail } from '../../Utils/recordDetail';
 import { formatMoney } from '../../Utils/money';
-import { ChevronDownIcon, ChevronRightIcon } from '@lucide/vue';
+import { DownloadIcon } from '@lucide/vue';
 
 const props = defineProps({
     bankAccounts: { type: Array, default: () => [] },
@@ -38,43 +40,41 @@ function exportUrl() {
     });
 }
 
-// Detalle línea por línea (depósitos en tránsito / cheques no pagados,
-// igual que el XLSX): plegado por defecto, un clic en la fila lo despliega.
-const expanded = reactive(new Set());
-
-function toggleExpanded(rowId) {
-    if (expanded.has(rowId)) expanded.delete(rowId);
-    else expanded.add(rowId);
-}
+// Detalle de la conciliación (CLAUDE.md secc. 20): la tabla muestra el corte,
+// si cuadra y los dos saldos ajustados; las partidas de conciliación y los
+// movimientos línea por línea (depósitos en tránsito / cheques no pagados,
+// igual que el XLSX) están en la ficha.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.rows);
 </script>
 
 <template>
     <Head title="Reporte de conciliaciones bancarias" />
 
     <AppLayout title="Reporte de conciliaciones bancarias">
-        <template #actions>
-            <a v-if="bankAccountId" :href="exportUrl()" class="btn btn-ghost">Exportar XLSX</a>
-        </template>
-
-        <div class="card filter-bar">
-            <div class="field">
-                <label>Cuenta bancaria</label>
-                <select v-model="bankAccountId">
-                    <option :value="null">Seleccione una cuenta —</option>
-                    <option v-for="a in bankAccounts" :key="a.id" :value="a.id">{{ a.bank_name }} — {{ a.account_number }}</option>
-                </select>
+        <div class="view-toolbar">
+            <div v-if="bankAccountId" class="view-actions">
+                <a :href="exportUrl()" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
             </div>
-            <div class="field">
-                <label>Año</label>
-                <input v-model.number="year" type="number" min="2000" max="2100" step="1">
-            </div>
-            <div class="field">
-                <label>Mes</label>
-                <select v-model.number="month">
-                    <option v-for="m in MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
-                </select>
-            </div>
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Cuenta bancaria</span>
+                    <select v-model="bankAccountId">
+                        <option :value="null">Seleccione una cuenta —</option>
+                        <option v-for="a in bankAccounts" :key="a.id" :value="a.id">{{ a.bank_name }} — {{ a.account_number }}</option>
+                    </select>
+                </label>
+                <label class="filter-field">
+                    <span>Año</span>
+                    <input v-model.number="year" type="number" min="2000" max="2100" step="1" class="year-input">
+                </label>
+                <label class="filter-field">
+                    <span>Mes</span>
+                    <select v-model.number="month">
+                        <option v-for="m in MONTHS" :key="m.value" :value="m.value">{{ m.label }}</option>
+                    </select>
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
         </div>
 
         <div v-if="!bankAccountId" class="card empty-card">
@@ -82,138 +82,142 @@ function toggleExpanded(rowId) {
         </div>
 
         <div v-else class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th>Corte</th>
-                        <th>Estado</th>
-                        <th class="num">Saldo banco</th>
-                        <th class="num">Depósitos no acred.</th>
-                        <th class="num">Cheques no pagados</th>
-                        <th class="num">Saldo banco ajustado</th>
-                        <th class="num">Saldo libros</th>
-                        <th class="num">Créd. banco no reg.</th>
-                        <th class="num">Déb. banco no reg.</th>
-                        <th class="num">Saldo libros ajustado</th>
-                        <th>Cuadra</th>
-                        <th>Generada por</th>
-                    </tr>
-                </thead>
-                <tbody v-for="row in rows" :key="row.id">
-                    <tr class="selectable-row" @click="toggleExpanded(row.id)">
-                        <td class="expand-cell"><ChevronDownIcon v-if="expanded.has(row.id)" /><ChevronRightIcon v-else /></td>
-                        <td>{{ row.cutoff_date }}</td>
-                        <td>
-                            <span class="badge" :class="row.status === 'completed' ? 'badge-success' : 'badge-warning'">
-                                {{ row.status_label }}
-                            </span>
-                        </td>
-                        <td class="num">{{ formatMoney(row.bank_balance) }}</td>
-                        <td class="num">{{ formatMoney(row.unrecorded_deposits) }}</td>
-                        <td class="num">{{ formatMoney(row.unpaid_checks) }}</td>
-                        <td class="num">{{ formatMoney(row.adjusted_bank_balance) }}</td>
-                        <td class="num">{{ formatMoney(row.book_balance) }}</td>
-                        <td class="num">{{ formatMoney(row.unrecorded_bank_credits) }}</td>
-                        <td class="num">{{ formatMoney(row.unrecorded_bank_debits) }}</td>
-                        <td class="num">{{ formatMoney(row.adjusted_book_balance) }}</td>
-                        <td>
-                            <span class="diff" :class="row.is_balanced ? 'ok' : 'off'">{{ row.is_balanced ? 'Sí' : 'No' }}</span>
-                        </td>
-                        <td>{{ row.created_by_name ?? '—' }}</td>
-                    </tr>
-                    <tr v-if="expanded.has(row.id)" class="detail-row">
-                        <td colspan="13">
-                            <table class="detail-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>Documento</th>
-                                        <th>Documento de referencia</th>
-                                        <th>Fecha de documento</th>
-                                        <th>Descripción</th>
-                                        <th class="num">Débito</th>
-                                        <th class="num">Crédito</th>
-                                        <th>Tipo</th>
-                                        <th>Confirmado en banco</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="line in row.lines" :key="`${row.id}-${line.document}-${line.date}-${line.debit}-${line.credit}`" :class="{ pending: !line.matched_in_bank }">
-                                        <td>{{ line.date }}</td>
-                                        <td>{{ line.document }}</td>
-                                        <td>{{ line.reference_document ?? '—' }}</td>
-                                        <td>{{ line.reference_document_date ?? '—' }}</td>
-                                        <td class="desc-cell">{{ line.description }}</td>
-                                        <td class="num">{{ line.debit !== '0.00' ? formatMoney(line.debit) : '' }}</td>
-                                        <td class="num">{{ line.credit !== '0.00' ? formatMoney(line.credit) : '' }}</td>
-                                        <td>{{ line.type === 'deposito' ? 'Depósito' : 'Cheque' }}</td>
-                                        <td>{{ line.matched_in_bank ? 'Sí' : 'No' }}</td>
-                                    </tr>
-                                    <tr v-if="!row.lines.length">
-                                        <td colspan="9" class="muted empty-row">Sin movimientos.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </td>
-                    </tr>
-                </tbody>
-                <tbody v-if="!rows.length">
-                    <tr>
-                        <td colspan="13" class="muted empty-row">Sin conciliaciones en el período seleccionado.</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Corte</th>
+                            <th>Estado</th>
+                            <th class="num">Saldo banco ajustado</th>
+                            <th class="num">Saldo libros ajustado</th>
+                            <th>Cuadra</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="row in rows"
+                            :key="row.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(row)"
+                            @keydown.enter="openDetail(row)"
+                            @keydown.space.prevent="openDetail(row)"
+                        >
+                            <td>{{ row.cutoff_date }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="row.status === 'completed' ? 'badge-success' : 'badge-warning'">
+                                    {{ row.status_label }}
+                                </span>
+                            </td>
+                            <td data-label="Saldo banco ajustado" class="num">{{ formatMoney(row.adjusted_bank_balance) }}</td>
+                            <td data-label="Saldo libros ajustado" class="num">{{ formatMoney(row.adjusted_book_balance) }}</td>
+                            <td data-label="Cuadra">
+                                <span class="diff" :class="row.is_balanced ? 'ok' : 'off'">{{ row.is_balanced ? 'Sí' : 'No' }}</span>
+                            </td>
+                        </tr>
+                        <tr v-if="!rows.length">
+                            <td colspan="5" class="muted empty-row">Sin conciliaciones en el período seleccionado.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <DetailModal :open="!!selected" wide :title="selected ? `Conciliación al ${selected.cutoff_date}` : ''" @close="closeDetail">
+            <template #badge>
+                <template v-if="selected">
+                    <span class="badge" :class="selected.status === 'completed' ? 'badge-success' : 'badge-warning'">{{ selected.status_label }}</span>
+                    <span class="badge" :class="selected.is_balanced ? 'badge-success' : 'badge-danger'">{{ selected.is_balanced ? 'Cuadra' : 'No cuadra' }}</span>
+                </template>
+            </template>
+
+            <template v-if="selected">
+                <div class="summary-grid">
+                    <dl class="summary">
+                        <dt>Saldo según banco</dt><dd>{{ formatMoney(selected.bank_balance) }}</dd>
+                        <dt>Depósitos no acreditados</dt><dd>{{ formatMoney(selected.unrecorded_deposits) }}</dd>
+                        <dt>Cheques no pagados</dt><dd>{{ formatMoney(selected.unpaid_checks) }}</dd>
+                        <dt class="total">Saldo banco ajustado</dt><dd class="total">{{ formatMoney(selected.adjusted_bank_balance) }}</dd>
+                    </dl>
+                    <dl class="summary">
+                        <dt>Saldo de libros</dt><dd>{{ formatMoney(selected.book_balance) }}</dd>
+                        <dt>Créd. banco no registrados</dt><dd>{{ formatMoney(selected.unrecorded_bank_credits) }}</dd>
+                        <dt>Déb. banco no registrados</dt><dd>{{ formatMoney(selected.unrecorded_bank_debits) }}</dd>
+                        <dt class="total">Saldo libros ajustado</dt><dd class="total">{{ formatMoney(selected.adjusted_book_balance) }}</dd>
+                    </dl>
+                </div>
+                <p class="muted small">Generada por {{ selected.created_by_name ?? '—' }}.</p>
+
+                <h4 class="block-title">Movimientos</h4>
+                <div class="table-responsive">
+                    <table class="detail-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Documento</th>
+                                <th>Descripción</th>
+                                <th class="num">Débito</th>
+                                <th class="num">Crédito</th>
+                                <th>Tipo</th>
+                                <th>En banco</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="line in selected.lines"
+                                :key="`${selected.id}-${line.document}-${line.date}-${line.debit}-${line.credit}`"
+                                :class="{ pending: !line.matched_in_bank }"
+                            >
+                                <td>{{ line.date }}</td>
+                                <td data-label="Documento">
+                                    {{ line.document }}
+                                    <span v-if="line.reference_document" class="muted small ref">
+                                        Ref. {{ line.reference_document }}<template v-if="line.reference_document_date"> ({{ line.reference_document_date }})</template>
+                                    </span>
+                                </td>
+                                <td data-label="Descripción">{{ line.description }}</td>
+                                <td data-label="Débito" class="num">{{ line.debit !== '0.00' ? formatMoney(line.debit) : '' }}</td>
+                                <td data-label="Crédito" class="num">{{ line.credit !== '0.00' ? formatMoney(line.credit) : '' }}</td>
+                                <td data-label="Tipo">{{ line.type === 'deposito' ? 'Depósito' : 'Cheque' }}</td>
+                                <td data-label="En banco">{{ line.matched_in_bank ? 'Sí' : 'No' }}</td>
+                            </tr>
+                            <tr v-if="!selected.lines.length">
+                                <td colspan="7" class="muted empty-row">Sin movimientos.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.filter-bar {
-    display: flex;
-    align-items: flex-end;
-    gap: 1rem;
-    padding: 1rem 1.1rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-}
-
-.field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-
-.field input, .field select {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
-    color: var(--color-text);
-}
-
-table { font-size: 0.82rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 0.75rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.num { text-align: right; font-variant-numeric: tabular-nums; }
-thead th.num { text-align: right; }
-.muted { color: var(--color-text-muted); }
-.empty-row { text-align: center; padding: 1.5rem; white-space: normal; }
+table { font-size: 0.84rem; }
+.year-input { width: 6.5rem; }
 .empty-card { padding: 1.5rem; color: var(--color-text-muted); }
 
 .diff { font-weight: 700; }
 .diff.ok { color: var(--color-success); }
 .diff.off { color: var(--color-danger); }
 
-.selectable-row { cursor: pointer; }
-.selectable-row:hover { background: var(--color-primary-soft); }
-.expand-cell { width: 1.5rem; text-align: center; color: var(--color-text-muted); }
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 0.75rem 1.5rem;
+    margin-bottom: 0.5rem;
+}
+.summary { margin: 0; display: grid; grid-template-columns: 1fr auto; row-gap: 0.35rem; column-gap: 1rem; font-size: 0.84rem; }
+.summary dt { color: var(--color-text-muted); }
+.summary dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.summary .total { font-weight: 800; color: var(--color-text); border-top: 1px solid var(--color-border); padding-top: 0.35rem; }
 
-.detail-row td { padding: 0.4rem 0.75rem 0.6rem; background: var(--color-surface-alt); }
-.detail-table { width: 100%; font-size: 0.78rem; }
-.detail-table th, .detail-table td { padding: 0.35rem 0.6rem; border-top: 1px solid var(--color-border); white-space: normal; }
-.detail-table .desc-cell { max-width: 320px; }
-.detail-table tr.pending { background: var(--color-warning-soft); }
+.detail-table { font-size: 0.8rem; }
+.detail-table tr.pending td { background: var(--color-warning-soft); }
+.ref { display: block; }
+
+@media screen and (max-width: 1024px) {
+    .detail-table tr.pending td { background: none; }
+    .table-responsive tbody tr.pending { background: var(--color-warning-soft); }
+}
 </style>

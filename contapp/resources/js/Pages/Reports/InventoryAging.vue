@@ -5,6 +5,8 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
 import { formatMoney } from '../../Utils/money';
+import { DownloadIcon, ScrollTextIcon } from '@lucide/vue';
+import DetailModal from '../../Components/DetailModal.vue';
 
 const props = defineProps({
     filters: { type: Object, required: true },
@@ -55,28 +57,49 @@ const lastBucketKey = computed(() => bucketKeys.value[bucketKeys.value.length - 
 function bucketClass(key) {
     return key === lastBucketKey.value ? 'bucket-critical' : '';
 }
+
+// Ficha de la fila (CLAUDE.md secc. 20): grupo, existencia y fecha desde la que
+// no rota, y el enlace al kardex.
+const selectedKey = ref(null);
+const selectedRow = computed(() => props.result.rows.find((r) => `${r.item_id}-${r.warehouse_id}` === selectedKey.value) ?? null);
 </script>
 
 <template>
     <Head title="Antigüedad de inventario" />
 
     <AppLayout title="Antigüedad de inventario">
-        <template #actions>
-            <input v-model="asOf" type="date" class="date-input">
-            <input v-model="buckets" type="text" class="date-input buckets-input" placeholder="30,60,90,180,360" title="Cortes en días">
-            <select v-model="warehouseId" class="date-input">
-                <option value="">Todos los almacenes</option>
-                <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
-            </select>
-            <select v-model="itemGroupId" class="date-input">
-                <option value="">Todos los grupos</option>
-                <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
-            </select>
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.inventory-aging.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.inventory-aging.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="inventory-aging" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.inventory-aging.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.inventory-aging.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="inventory-aging" :parameters="saveParameters" />
+            </div>
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Al</span>
+                    <input v-model="asOf" type="date">
+                </label>
+                <label class="filter-field" title="Cortes en días, separados por coma">
+                    <span>Tramos (días)</span>
+                    <input v-model="buckets" type="text" class="buckets-input" placeholder="30,60,90,180,360">
+                </label>
+                <label class="filter-field">
+                    <span>Almacén</span>
+                    <select v-model="warehouseId">
+                        <option value="">Todos los almacenes</option>
+                        <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
+                    </select>
+                </label>
+                <label class="filter-field">
+                    <span>Grupo</span>
+                    <select v-model="itemGroupId">
+                        <option value="">Todos los grupos</option>
+                        <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
+                    </select>
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+        </div>
 
         <p class="hint">
             La antigüedad se cuenta desde la <strong>última salida</strong>, no desde el último movimiento: un artículo
@@ -85,80 +108,125 @@ function bucketClass(key) {
             Es el insumo para decidir deterioro (NIC 2 §28); el reporte no lo calcula ni lo contabiliza.
         </p>
 
-        <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th v-for="(label, key) in result.bucket_labels" :key="key" class="num" :class="bucketClass(key)">
-                            {{ label }}
-                        </th>
-                        <th class="num">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td v-for="key in bucketKeys" :key="key" class="num" :class="bucketClass(key)">
-                            {{ formatMoney(result.bucket_totals[key]) }}
-                        </td>
-                        <td class="num total-value">{{ formatMoney(result.total_value_local) }}</td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Resumen por tramo: una rejilla y no una tabla, porque la cantidad
+             de tramos la escoge el usuario y una fila de columnas crecería de
+             lado (CLAUDE.md secc. 20). -->
+        <div class="bucket-grid">
+            <div v-for="(label, key) in result.bucket_labels" :key="key" class="card bucket-tile" :class="bucketClass(key)">
+                <span class="bucket-label">{{ label }}</span>
+                <strong class="bucket-value">{{ formatMoney(result.bucket_totals[key]) }}</strong>
+            </div>
+            <div class="card bucket-tile bucket-total">
+                <span class="bucket-label">Total</span>
+                <strong class="bucket-value">{{ formatMoney(result.total_value_local) }}</strong>
+            </div>
         </div>
 
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Artículo</th>
-                        <th>Descripción</th>
-                        <th>Grupo</th>
-                        <th>Almacén</th>
-                        <th class="num">Existencia</th>
-                        <th class="num">Valor local</th>
-                        <th>Sin rotar desde</th>
-                        <th class="num">Días</th>
-                        <th>Tramo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr
-                        v-for="row in result.rows"
-                        :key="`${row.item_id}-${row.warehouse_id}`"
-                        :class="bucketClass(row.bucket)"
-                    >
-                        <td>
-                            <Link :href="route('items.kardex', row.item_id)" class="code-link">{{ row.item_code }}</Link>
-                        </td>
-                        <td>{{ row.item_name }}</td>
-                        <td>{{ row.item_group ?? '—' }}</td>
-                        <td>{{ row.warehouse_code }}</td>
-                        <td class="num">{{ quantity(row.quantity) }}</td>
-                        <td class="num">{{ formatMoney(row.value_local) }}</td>
-                        <td>
-                            {{ row.since_date }}
-                            <span v-if="row.never_issued" class="never">nunca ha salido</span>
-                        </td>
-                        <td class="num">{{ row.days_idle }}</td>
-                        <td>{{ result.bucket_labels[row.bucket] }}</td>
-                    </tr>
-                    <tr v-if="result.rows.length === 0">
-                        <td colspan="9" class="empty">Sin existencias al {{ result.as_of }}.</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="table-responsive table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Almacén</th>
+                            <th class="num">Valor local</th>
+                            <th class="num">Días</th>
+                            <th>Tramo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="row in result.rows"
+                            :key="`${row.item_id}-${row.warehouse_id}`"
+                            class="clickable-row"
+                            :class="bucketClass(row.bucket)"
+                            tabindex="0"
+                            @click="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                            @keydown.enter="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                            @keydown.space.prevent="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                        >
+                            <td>
+                                <strong class="code">{{ row.item_code }}</strong> — {{ row.item_name }}
+                                <span v-if="row.never_issued" class="never">nunca ha salido</span>
+                            </td>
+                            <td data-label="Almacén">{{ row.warehouse_code }}</td>
+                            <td data-label="Valor local" class="num">{{ formatMoney(row.value_local) }}</td>
+                            <td data-label="Días" class="num">{{ row.days_idle }}</td>
+                            <td data-label="Tramo">{{ result.bucket_labels[row.bucket] }}</td>
+                        </tr>
+                        <tr v-if="result.rows.length === 0">
+                            <td colspan="5" class="muted empty-row">Sin existencias al {{ result.as_of }}.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <DetailModal :open="!!selectedRow" :title="selectedRow ? `${selectedRow.item_code} — ${selectedRow.item_name}` : ''" @close="selectedKey = null">
+            <dl v-if="selectedRow" class="detail-list">
+                <div>
+                    <dt>Grupo</dt>
+                    <dd>{{ selectedRow.item_group ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Almacén</dt>
+                    <dd>{{ selectedRow.warehouse_code }}</dd>
+                </div>
+                <div>
+                    <dt>Existencia</dt>
+                    <dd>{{ quantity(selectedRow.quantity) }}</dd>
+                </div>
+                <div>
+                    <dt>Valor local</dt>
+                    <dd>{{ formatMoney(selectedRow.value_local) }}</dd>
+                </div>
+                <div>
+                    <dt>Sin rotar desde</dt>
+                    <dd>
+                        {{ selectedRow.since_date }}
+                        <span v-if="selectedRow.never_issued" class="never">nunca ha salido</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>Días</dt>
+                    <dd>{{ selectedRow.days_idle }}</dd>
+                </div>
+                <div>
+                    <dt>Tramo</dt>
+                    <dd>{{ result.bucket_labels[selectedRow.bucket] }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selectedRow" :href="route('items.kardex', selectedRow.item_id)" class="btn btn-primary"><ScrollTextIcon /> Ver kardex</Link>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.date-input { margin-right: 0.4rem; }
-.buckets-input { width: 9rem; }
-.num { text-align: right; }
-.empty { text-align: center; font-style: italic; color: #666; padding: 1rem; }
-.total-value { font-weight: 700; }
-.code-link { font-variant-numeric: tabular-nums; }
-.never { display: inline-block; margin-left: 0.4rem; font-size: 0.75rem; color: #a04000; font-weight: 600; }
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; }
+.buckets-input { width: 10rem; }
+.never { display: inline-block; margin-left: 0.4rem; font-size: 0.75rem; color: var(--color-warning); font-weight: 600; }
+
+.bucket-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+.bucket-tile { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.7rem 0.9rem; margin: 0; }
+.bucket-label { font-size: 0.75rem; color: var(--color-text-muted); }
+.bucket-value { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.bucket-total { border-color: var(--color-primary); }
+
 /* El tramo más viejo es el que hay que mirar primero. */
-.bucket-critical { background: #fdf0ea; }
+.bucket-tile.bucket-critical,
+tr.bucket-critical td { background: var(--color-warning-soft); }
+
+@media screen and (max-width: 1024px) {
+    tr.bucket-critical td { background: none; }
+    .table-responsive tbody tr.bucket-critical { background: var(--color-warning-soft); }
+}
 </style>

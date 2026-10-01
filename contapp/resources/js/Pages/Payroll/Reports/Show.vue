@@ -2,6 +2,8 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { ArrowLeftIcon, Columns3Icon, DownloadIcon, PrinterIcon } from '@lucide/vue';
 
 const props = defineProps({
     report: { type: Object, required: true },
@@ -70,91 +72,79 @@ function allColumns() {
 }
 
 const hasTotals = computed(() => Object.keys(props.totals).length > 0);
+
+// Algunos reportes traen una docena de columnas, o las que el usuario
+// escoja. En pantalla se ven las primeras VISIBLE —la identidad del
+// trabajador y sus cifras principales—, así la tabla cabe sin desplazarse de
+// lado (CLAUDE.md secc. 20); el resto está en la ficha de la fila. El Excel,
+// el PDF y la impresión las traen todas.
+const VISIBLE = 6;
+const hasHidden = computed(() => props.columns.length > VISIBLE);
+
+const selectedIndex = ref(null);
+const selectedRow = computed(() => (selectedIndex.value === null ? null : props.rows[selectedIndex.value] ?? null));
+
+function openRow(index) {
+    if (hasHidden.value) selectedIndex.value = index;
+}
+
+function applyColumns() {
+    pickingColumns.value = false;
+    apply();
+}
 </script>
 
 <template>
     <Head :title="report.label" />
 
     <AppLayout :title="report.label">
-        <template #actions>
-            <a :href="outputUrl('payroll-reports.export')" class="btn btn-ghost">Excel</a>
-            <a :href="outputUrl('payroll-reports.export-pdf')" class="btn btn-ghost">PDF</a>
-            <!--
-                Imprimir abre el MISMO PDF en el navegador: un reporte de
-                planilla que se imprime se firma y se archiva, y tiene que
-                salir con el encabezado de la empresa y los filtros con que se
-                corrió. Imprimir la pantalla daría una hoja anónima.
-            -->
-            <a :href="outputUrl('payroll-reports.print')" target="_blank" rel="noopener" class="btn btn-ghost">
-                Imprimir
-            </a>
-            <Link :href="route('payroll-reports.index')" class="btn btn-ghost">Todos los reportes</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('payroll-reports.index')" class="btn btn-ghost"><ArrowLeftIcon /> Todos los reportes</Link>
+            <div class="view-actions">
+                <a :href="outputUrl('payroll-reports.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="outputUrl('payroll-reports.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <!--
+                    Imprimir abre el MISMO PDF en el navegador: un reporte de
+                    planilla que se imprime se firma y se archiva, y tiene que
+                    salir con el encabezado de la empresa y los filtros con que se
+                    corrió. Imprimir la pantalla daría una hoja anónima.
+                -->
+                <a :href="outputUrl('payroll-reports.print')" target="_blank" rel="noopener" class="btn btn-ghost">
+                    <PrinterIcon /> Imprimir
+                </a>
+            </div>
+        </div>
 
         <p class="decision">
             <span class="decision-label">Sirve para decidir:</span> {{ report.decision }}
         </p>
 
-        <form class="card filters" @submit.prevent="apply">
-            <div class="filter-grid">
-                <div v-for="f in filters" :key="f.key" class="field">
-                    <label :for="'f-' + f.key">{{ f.label }}</label>
-
-                    <select v-if="f.type === 'select'" :id="'f-' + f.key" v-model="draft[f.key]" @change="apply">
-                        <option value="">Todos</option>
-                        <option v-for="(label, value) in f.options" :key="value" :value="value">{{ label }}</option>
-                    </select>
-
-                    <input
-                        v-else-if="f.type === 'date'"
-                        :id="'f-' + f.key" v-model="draft[f.key]" type="date" @change="apply"
-                    >
-
-                    <label v-else-if="f.type === 'boolean'" class="check">
+        <!-- Filtros del reporte, arriba de la tabla (CLAUDE.md secc. 24). -->
+        <form class="view-toolbar" @submit.prevent="apply">
+            <div class="view-filters">
+                <template v-for="f in filters" :key="f.key">
+                    <label v-if="f.type === 'boolean'" class="check" :title="f.hint ?? null">
                         <input v-model="draft[f.key]" type="checkbox" @change="apply">
-                        <span>{{ f.label }}</span>
+                        {{ f.label }}
                     </label>
 
-                    <input v-else :id="'f-' + f.key" v-model="draft[f.key]" type="text" @keyup.enter="apply">
+                    <label v-else class="filter-field" :title="f.hint ?? null">
+                        <span>{{ f.label }}</span>
+                        <select v-if="f.type === 'select'" v-model="draft[f.key]" @change="apply">
+                            <option value="">Todos</option>
+                            <option v-for="(label, value) in f.options" :key="value" :value="value">{{ label }}</option>
+                        </select>
+                        <input v-else-if="f.type === 'date'" v-model="draft[f.key]" type="date" @change="apply">
+                        <input v-else v-model="draft[f.key]" type="text" @keyup.enter="apply">
+                    </label>
+                </template>
 
-                    <span v-if="f.hint" class="hint small">{{ f.hint }}</span>
-                </div>
-            </div>
-
-            <div class="filter-actions">
                 <button type="submit" class="btn btn-primary">Consultar</button>
                 <button type="button" class="btn btn-ghost" @click="clearFilters">Limpiar filtros</button>
-                <button
-                    v-if="availableColumns"
-                    type="button" class="btn btn-ghost"
-                    @click="pickingColumns = ! pickingColumns"
-                >
-                    Columnas ({{ picked.length }} de {{ availableColumns.length }})
+                <button v-if="availableColumns" type="button" class="btn btn-ghost" @click="pickingColumns = true">
+                    <Columns3Icon /> Columnas ({{ picked.length }} de {{ availableColumns.length }})
                 </button>
-                <span class="muted small">{{ rowCount }} fila(s)</span>
-            </div>
-
-            <div v-if="availableColumns && pickingColumns" class="columns-panel">
-                <p class="hint small">
-                    Escogé las columnas que necesitás. Salen en el orden del reporte —no en el que se marcan—
-                    para que dos exportaciones del mismo reporte se puedan comparar columna a columna.
-                </p>
-
-                <div class="columns-grid">
-                    <label v-for="c in availableColumns" :key="c.key" class="check">
-                        <input
-                            type="checkbox"
-                            :checked="picked.includes(c.key)"
-                            @change="toggleColumn(c.key)"
-                        >
-                        <span>{{ c.label }}</span>
-                    </label>
-                </div>
-
-                <div class="filter-actions">
-                    <button type="button" class="btn btn-primary btn-sm" @click="apply">Aplicar columnas</button>
-                    <button type="button" class="btn btn-ghost btn-sm" @click="allColumns">Marcar todas</button>
-                </div>
+                <span class="muted small row-count">{{ rowCount }} fila(s)</span>
             </div>
         </form>
 
@@ -163,19 +153,36 @@ const hasTotals = computed(() => Object.keys(props.totals).length > 0);
         </ul>
 
         <div class="card">
-            <div class="table-scroll" :class="{ 'freeze-2': report.frozen_columns === 2 }">
+            <div class="table-responsive table-scroll" :class="{ 'freeze-2': report.frozen_columns === 2 }">
                 <table>
                     <thead>
                         <tr>
-                            <th v-for="c in columns" :key="c.key" :class="{ right: c.numeric }">{{ c.label }}</th>
+                            <th
+                                v-for="(c, index) in columns"
+                                :key="c.key"
+                                :class="{ num: c.numeric, 'col-extra': index >= VISIBLE }"
+                            >{{ c.label }}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(row, i) in rows" :key="i">
+                        <tr
+                            v-for="(row, i) in rows"
+                            :key="i"
+                            :class="{ 'clickable-row': hasHidden }"
+                            :tabindex="hasHidden ? 0 : null"
+                            @click="openRow(i)"
+                            @keydown.enter="openRow(i)"
+                            @keydown.space.prevent="hasHidden && openRow(i)"
+                        >
                             <td
-                                v-for="c in columns"
+                                v-for="(c, index) in columns"
                                 :key="c.key"
-                                :class="{ right: c.numeric, signal: c.key === 'missing' && row[c.key] !== '—' }"
+                                :data-label="index === 0 ? null : c.label"
+                                :class="{
+                                    num: c.numeric,
+                                    'col-extra': index >= VISIBLE,
+                                    signal: c.key === 'missing' && row[c.key] !== '—',
+                                }"
                             >{{ row[c.key] }}</td>
                         </tr>
                         <tr v-if="!rows.length">
@@ -189,7 +196,8 @@ const hasTotals = computed(() => Object.keys(props.totals).length > 0);
                             <td
                                 v-for="(c, index) in columns"
                                 :key="c.key"
-                                :class="{ right: c.numeric }"
+                                :data-label="index === 0 ? null : c.label"
+                                :class="{ num: c.numeric, 'col-extra': index >= VISIBLE }"
                             >
                                 <template v-if="totals[c.key] !== undefined">{{ totals[c.key] }}</template>
                                 <template v-else-if="index === 0">Total</template>
@@ -199,40 +207,67 @@ const hasTotals = computed(() => Object.keys(props.totals).length > 0);
                 </table>
             </div>
         </div>
+
+        <p v-if="hasHidden && rows.length" class="hint more-columns">
+            Tocá una fila para ver sus {{ columns.length }} columnas; el XLSX, el PDF y la impresión las traen todas.
+        </p>
+
+        <DetailModal :open="!!selectedRow" :title="selectedRow ? String(selectedRow[columns[0]?.key] ?? '') : ''" @close="selectedIndex = null">
+            <dl v-if="selectedRow" class="detail-list">
+                <div v-for="c in columns.slice(1)" :key="c.key">
+                    <dt>{{ c.label }}</dt>
+                    <dd :class="{ signal: c.key === 'missing' && selectedRow[c.key] !== '—' }">{{ selectedRow[c.key] }}</dd>
+                </div>
+            </dl>
+        </DetailModal>
+
+        <DetailModal v-if="availableColumns" :open="pickingColumns" wide title="Columnas del reporte" @close="pickingColumns = false">
+            <p class="hint">
+                Escogé las columnas que necesitás. Salen en el orden del reporte —no en el que se marcan—
+                para que dos exportaciones del mismo reporte se puedan comparar columna a columna.
+            </p>
+
+            <div class="columns-grid">
+                <label v-for="c in availableColumns" :key="c.key" class="check">
+                    <input
+                        type="checkbox"
+                        :checked="picked.includes(c.key)"
+                        @change="toggleColumn(c.key)"
+                    >
+                    {{ c.label }}
+                </label>
+            </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="allColumns">Marcar todas</button>
+                <button type="button" class="btn btn-primary" @click="applyColumns">Aplicar columnas</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.decision { font-size: 0.85rem; margin: 0 0 0.75rem; max-width: 80ch; }
+.decision { font-size: 0.85rem; margin: 0 0 0.75rem; }
 .decision-label { font-weight: 600; color: var(--color-text-muted); }
-
-.filters { padding: 0.9rem 1.1rem; margin-bottom: 0.75rem; }
-.filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.75rem; }
-.field { display: flex; flex-direction: column; gap: 0.2rem; }
-.field > label { font-size: 0.76rem; font-weight: 600; color: var(--color-text-muted); }
-.check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 400; }
-.check span { color: var(--color-text); }
-.filter-actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.8rem; flex-wrap: wrap; }
-
-.columns-panel {
-    margin-top: 0.9rem;
-    padding-top: 0.8rem;
-    border-top: 1px solid var(--color-border);
-}
+.row-count { align-self: center; }
 
 .columns-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
     gap: 0.25rem 0.75rem;
 }
 
 .notes { margin: 0 0 0.75rem 1.1rem; padding: 0; font-size: 0.78rem; color: var(--color-text-muted); }
 .notes li { margin-bottom: 0.15rem; }
 
+table { font-size: 0.84rem; }
 .table-scroll.freeze-2 { --freeze-1-width: 9rem; }
 
-.right { text-align: right; }
-.signal { color: #a04000; font-weight: 600; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.small { font-size: 0.74rem; }
+.signal { color: var(--color-warning); font-weight: 600; }
+.more-columns { margin: 0.6rem 0 0; }
+
+/* Las columnas de más solo se ocultan en pantalla. */
+@media screen {
+    .col-extra { display: none; }
+}
 </style>

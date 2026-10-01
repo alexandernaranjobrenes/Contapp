@@ -2,6 +2,9 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { useRecordDetail } from '../../../Utils/recordDetail';
+import { ArrowRightIcon, EyeIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     orders: { type: Array, default: () => [] },
@@ -23,15 +26,30 @@ const badgeClass = {
     invoiced: 'badge-success',
     cancelled: 'badge-neutral',
 };
+
+// Ficha del pedido (CLAUDE.md secc. 20): abrirlo o pasarlo a factura.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.orders);
 </script>
 
 <template>
     <Head title="Órdenes de pedido" />
 
     <AppLayout title="Órdenes de pedido">
-        <template #actions>
-            <Link :href="route('sales-orders.create')" class="btn btn-primary">Nuevo pedido</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('sales-orders.create')" class="btn btn-primary"><PlusIcon /> Crear nuevo</Link>
+            </div>
+            <div class="view-filters">
+                <label class="filter-field">
+                    <span>Estado</span>
+                    <select v-model="filter">
+                        <option value="">Todos los estados</option>
+                        <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
+                    </select>
+                </label>
+                <span class="muted small">{{ visible.length }} pedido(s)</span>
+            </div>
+        </div>
 
         <p class="hint">
             Un pedido es un compromiso con el cliente, no un hecho económico: <strong>no genera asiento</strong>.
@@ -40,60 +58,82 @@ const badgeClass = {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ visible.length }} pedido(s)</span>
-                <select v-model="filter" class="filter">
-                    <option value="">Todos los estados</option>
-                    <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
-                </select>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Número</th>
                             <th>Fecha</th>
-                            <th>Entrega</th>
                             <th>Cliente</th>
-                            <th class="right">Líneas</th>
-                            <th class="right">Apartado</th>
+                            <th class="num">Apartado</th>
                             <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="order in visible" :key="order.id">
-                            <td class="num">
-                                <Link :href="route('sales-orders.show', order.id)" class="link">{{ order.number }}</Link>
-                            </td>
-                            <td class="num">{{ order.order_date }}</td>
-                            <td class="num muted">{{ order.delivery_date ?? '—' }}</td>
-                            <td>{{ order.customer }}</td>
-                            <td class="num right">{{ order.lines_count }}</td>
-                            <td class="num right">{{ order.status === 'open' ? quantity(order.pending) : '—' }}</td>
-                            <td><span class="badge" :class="badgeClass[order.status]">{{ order.status_label }}</span></td>
+                        <tr
+                            v-for="order in visible"
+                            :key="order.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(order)"
+                            @keydown.enter="openDetail(order)"
+                            @keydown.space.prevent="openDetail(order)"
+                        >
+                            <td class="code-cell">{{ order.number }}</td>
+                            <td data-label="Fecha" class="code-cell">{{ order.order_date }}</td>
+                            <td data-label="Cliente">{{ order.customer }}</td>
+                            <td data-label="Apartado" class="num">{{ order.status === 'open' ? quantity(order.pending) : '—' }}</td>
+                            <td data-label="Estado"><span class="badge" :class="badgeClass[order.status]">{{ order.status_label }}</span></td>
                         </tr>
                         <tr v-if="!visible.length">
-                            <td colspan="7" class="muted empty-row">No hay pedidos con ese estado.</td>
+                            <td colspan="5" class="muted empty-row">No hay pedidos con ese estado.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <DetailModal :open="!!selected" :title="selected ? `Pedido ${selected.number}` : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="badgeClass[selected.status]">{{ selected.status_label }}</span>
+            </template>
+
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Cliente</dt>
+                    <dd>{{ selected.customer }}</dd>
+                </div>
+                <div>
+                    <dt>Fecha del pedido</dt>
+                    <dd>{{ selected.order_date }}</dd>
+                </div>
+                <div>
+                    <dt>Entrega</dt>
+                    <dd>{{ selected.delivery_date ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Líneas</dt>
+                    <dd>{{ selected.lines_count }}</dd>
+                </div>
+                <div>
+                    <dt>Apartado ahora</dt>
+                    <dd>{{ selected.status === 'open' ? quantity(selected.pending) : '—' }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <template v-if="selected">
+                    <Link v-if="selected.status === 'open'" :href="route('sales-documents.create', { order: selected.id })" class="btn btn-ghost">
+                        Copiar a <ArrowRightIcon /> Factura
+                    </Link>
+                    <Link :href="route('sales-orders.show', selected.id)" class="btn btn-primary"><EyeIcon /> Ver pedido</Link>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-.card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; }
-.filter { font-size: 0.82rem; padding: 0.3rem 0.5rem; }
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.empty-row { text-align: center; padding: 1.5rem; }
-.link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
-.link:hover { text-decoration: underline; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

@@ -55,6 +55,11 @@ function closeLedger() {
 
     <AppLayout title="Auxiliar por centro de costo">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.cost-center.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.cost-center.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="cost-center" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Desde</span>
@@ -66,12 +71,6 @@ function closeLedger() {
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.cost-center.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.cost-center.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="cost-center" :parameters="saveParameters" />
-            </div>
         </div>
 
         <p class="hint">

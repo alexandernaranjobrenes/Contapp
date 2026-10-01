@@ -1,6 +1,6 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ArrowLeftIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
 
@@ -42,10 +42,12 @@ function submit() {
     <Head :title="`Editar ${partner.code}`" />
 
     <AppLayout :title="`Editar socio — ${partner.code}`">
-        <DocumentToolbar :new-href="route('business-partners.create')" can-save :saving="form.processing" @save="submit" />
+        <div class="view-toolbar">
+            <Link :href="route('business-partners.index')" class="btn btn-ghost"><ArrowLeftIcon /> Socios de negocio</Link>
+        </div>
 
         <form class="card form-card" @submit.prevent="submit">
-            <div class="grid">
+            <div class="form-grid">
                 <div class="field">
                     <label for="code">Código (x-xxx)</label>
                     <input id="code" v-model="form.code" type="text" required>
@@ -61,7 +63,7 @@ function submit() {
                     </select>
                 </div>
 
-                <div class="field span-2">
+                <div class="field span-full">
                     <label for="name">Nombre</label>
                     <input id="name" v-model="form.name" type="text" required>
                     <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
@@ -176,19 +178,6 @@ function submit() {
 
 <style scoped>
 .form-card { padding: 1.25rem; }
-.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 1.25rem; }
-.span-2 { grid-column: span 2; }
-select, input {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-.form-actions { margin-top: 0.5rem; }
-.error { display: block; color: var(--color-danger); font-size: 0.76rem; margin-top: 0.2rem; }
-.hint { display: block; font-size: 0.74rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+.field .hint { display: block; font-size: 0.74rem; margin: 0; }
 .hint a { color: var(--color-primary); }
 </style>

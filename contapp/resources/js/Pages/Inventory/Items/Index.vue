@@ -183,6 +183,20 @@ function onFileSelected(e) {
 
     <AppLayout title="Artículos">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a
+                    :href="route('items.template')"
+                    class="btn btn-ghost"
+                    title="Trae el catálogo actual y las hojas con los códigos válidos"
+                ><DownloadIcon /> Descargar plantilla</a>
+                <label class="btn btn-ghost file-btn" :class="{ disabled: importForm.processing }" title="Los códigos que ya existen se actualizan">
+                    <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
+                    <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
+                </label>
+                <button type="button" class="btn btn-primary" :disabled="!unitsOfMeasure.length" @click="openCreate()">
+                    <PlusIcon /> Crear nuevo
+                </button>
+            </div>
             <div class="view-filters">
                 <input
                     v-model="search"
@@ -200,20 +214,6 @@ function onFileSelected(e) {
                     <option value="active">Activos</option>
                     <option value="inactive">Inactivos</option>
                 </select>
-            </div>
-            <div class="view-actions">
-                <a
-                    :href="route('items.template')"
-                    class="btn btn-ghost"
-                    title="Trae el catálogo actual y las hojas con los códigos válidos"
-                ><DownloadIcon /> Descargar plantilla</a>
-                <label class="btn btn-ghost file-btn" :class="{ disabled: importForm.processing }" title="Los códigos que ya existen se actualizan">
-                    <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
-                    <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
-                </label>
-                <button type="button" class="btn btn-primary" :disabled="!unitsOfMeasure.length" @click="openCreate()">
-                    <PlusIcon /> Crear nuevo
-                </button>
             </div>
         </div>
 

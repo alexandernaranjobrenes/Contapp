@@ -1,10 +1,28 @@
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
 import { LUCIDE_CONTEXT } from '@lucide/vue';
+import CompanySwitchHost from './Components/CompanySwitchHost.vue';
 import ConfirmHost from './Components/ConfirmHost.vue';
 // Botón ocupado mientras dura la operación que disparó (CLAUDE.md secc. 27).
 // Se instala solo al importarlo.
 import './Utils/busyButtons';
+
+// El tema visual de la compañía activa (CLAUDE.md secc. 31): cada página
+// trae el suyo en companyTheme. La primera carga ya lo trae puesto desde
+// app.blade.php; esto lo mantiene al día —al cambiar de compañía, y al salir
+// de Apariencia sin guardar una vista previa—.
+//
+// En 'success' y no solo en 'navigate': una visita que termina en la misma
+// dirección (el cambio de compañía vuelve a la página en que se estaba)
+// reemplaza la entrada del historial y Inertia no dispara 'navigate'.
+// 'navigate' queda para ir atrás y adelante con el navegador.
+function applyCompanyTheme(page) {
+    const theme = page?.props?.companyTheme;
+    if (theme) document.documentElement.dataset.companyTheme = theme;
+}
+
+router.on('success', (event) => applyCompanyTheme(event.detail.page));
+router.on('navigate', (event) => applyCompanyTheme(event.detail.page));
 
 createInertiaApp({
     title: (title) => (title ? `${title} — CONTAPP` : 'CONTAPP'),
@@ -13,9 +31,10 @@ createInertiaApp({
         return pages[`./Pages/${name}.vue`];
     },
     setup({ el, App, props, plugin }) {
-        // ConfirmHost va al lado de la página, no adentro: la confirmación de
-        // confirmAction() sigue abierta aunque la acción cambie de página.
-        const app = createApp({ render: () => [h(App, props), h(ConfirmHost)] });
+        // ConfirmHost y CompanySwitchHost van al lado de la página, no
+        // adentro: la confirmación de confirmAction() y la ventana del cambio
+        // de compañía siguen abiertas aunque la acción termine en otra página.
+        const app = createApp({ render: () => [h(App, props), h(ConfirmHost), h(CompanySwitchHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada

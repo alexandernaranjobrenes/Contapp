@@ -3,6 +3,78 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-09-30 — Rediseño de las pantallas de acceso, y el fondo que nunca se aplicó
+
+**Pedido del usuario:** mejorar la estética del login y hacerlo responsivo.
+
+- **Causa del panel invisible:** `background: var(--color-primary) var(--marble-texture)` es inválido. La textura son dos capas separadas por coma, y en la forma abreviada el color solo puede ir en la última, así que el navegador descartaba la regla entera. El panel de marca quedaba sin fondo, con su texto claro sobre blanco.
+- **El mismo error en toda la aplicación:** el `body` y el lado del formulario del login usaban la misma forma desde el primer commit. El fondo de la aplicación nunca fue el del diseño, sino el predeterminado del navegador, y por eso tampoco se veía el fondo propio de cada tema. Se separó en `background-color` y `background-image`, y quedó como advertencia en CLAUDE.md secc. 31.
+- **Nuevo marco (`AuthShell.vue`), compartido por el login, la activación de licencia y el login del backoffice.**
+  - **Panel de marca:** fondo profundo con una retícula de libro contable desvanecida y un brillo del color de acento, titular grande, beneficios con íconos y pie con el año y el enlace a NcodeDigital (ncodedigital.com), que hizo la aplicación.
+  - **Formulario:** una tarjeta.
+  - **Teléfono y tablet (≤ 860px):** la marca pasa a ser un encabezado compacto y la tarjeta se monta sobre él.
+- **Login:** campos con ícono y botón para mostrar la contraseña (piezas globales `.input-with-icon`, `.input-icon` y `.reveal`), las credenciales incorrectas dichas en una línea arriba, y `autocomplete` para que el navegador ofrezca la contraseña guardada. En escritorio, una tarjeta decorativa de «Balance de comprobación».
+- **Backoffice:** mismo marco, pero grafito con acento ámbar y la etiqueta «Uso interno», para que nunca se confunda con el acceso de un cliente (CLAUDE.md secc. 11).
+- **Activación:** los tres pasos numerados, y los campos en una columna en el teléfono (antes eran dos columnas fijas).
+
+---
+## 2026-09-30 — Diez temas visuales, uno por compañía
+
+**Pedido del usuario:** hasta diez temas —colores primarios y secundarios, color de letra, tipografía— con la estética de la aplicación (moderna, elegante, profesional), y poder asignarle uno distinto a cada compañía. Se decidió con el usuario que lo elige el Superusuario de la compañía (y sus Administradores), desde Administración → Apariencia (CLAUDE.md secc. 31).
+
+- **Los colores ya eran tokens:** el cambio fue convertir la paleta original en un tema más (Marino) dentro de un mapa de SCSS, y generar desde ese mapa los diez temas en claro y en oscuro. Quedaban colores fijos en la barra lateral, el menú flotante y la ventana del cambio de compañía; ahora usan `--color-sidebar`, `--color-accent` y `--color-on-sidebar`.
+- **Barra lateral con su propio texto:** en Ónix oscuro el primario es dorado con texto oscuro, y la barra lateral usaba el texto del primario, así que no se habría leído. Por eso la barra tiene su propio color y su propio texto.
+- **Tipografías servidas desde el proyecto:** las nueve nuevas van por el mismo mecanismo que Instrument Sans (Bunny, en `vite.config.js`), sin precargar. El navegador solo baja la del tema en uso, salvo en Apariencia, donde cada tarjeta muestra la suya.
+- **Sin parpadeo:** `app.blade.php` pone el tema desde el servidor en la primera pintura.
+- **Encontrado al probar:** al volver a una compañía estando en la misma página, el tema no se actualizaba. Inertia no dispara `navigate` cuando una visita termina en la misma dirección. Ahora se aplica en cada visita exitosa, y en `navigate` solo para ir atrás y adelante.
+- **Encontrado de paso:** la etiqueta del rol (SUPERUSUARIO) casi no se leía en modo oscuro, ya desde antes. Ahora mezcla el primario con el color del texto y se lee en los diez temas.
+- **Datos de prueba:** «Compañía de Prueba» quedó con el tema Esmeralda, para ver la diferencia al cambiar de compañía. CONTAPP Demo sigue en Marino.
+
+---
+## 2026-09-30 — Transición al cambiar de compañía
+
+**Pedido del usuario:** al cambiar de compañía, una ventana emergente animada con el nombre de la compañía, que espere a que el cambio se complete antes de quitarse, que diga si hay un error de carga y que ofrezca cerrar sesión (CLAUDE.md secc. 30).
+
+- **Se quita cuando el cambio está comprobado,** no cuando llega una respuesta: la página nueva tiene que traer como `currentCompanyId` la compañía elegida.
+- **Montada al lado de la página, no en el layout:** el cambio responde con una redirección a la página anterior (o termina en el Panel), y una ventana dentro de `AppLayout` desaparecería con la página que la abrió.
+- **Los errores los interpreta la ventana:** mientras dura el cambio se intercepta el evento `invalid` de Inertia —que por defecto abre un modal con la página cruda del servidor— y el `exception` de red.
+- **La página anterior puede no existir en la otra compañía:** `back()` vuelve a la URL de antes, y un asiento de la compañía anterior da 404 en la nueva. Se distingue por la URL final de la respuesta: si no es `/company-switch`, el cambio sí se hizo y se sigue al Panel. Al probarlo apareció que esa visita nueva cancelaba la del cambio y la ventana lo tomaba como tiempo agotado; se corrigió.
+- **Datos de prueba:** para probarlo se creó una segunda compañía, «Compañía de Prueba», con «Agregar compañía» (la licencia admite tres). Hay respaldo previo en el contenedor `contapp_db`: `/tmp/bdcontapp-antes-de-compania-prueba.sql.gz`.
+- **Sin probar de punta a punta:** el 419 real. Esta versión de Laravel no lo dio al quitar la cookie del token; se probó el mismo camino con un 401 simulado.
+
+---
+## 2026-09-30 — Menú flotante en la barra colapsada
+
+**Pedido del usuario:** con la barra lateral colapsada, que al pasar el mouse por el ícono de una sección aparezca a su lado una ventana con sus subsecciones, para navegar desde ahí (CLAUDE.md secc. 29).
+
+- **Mismo contenido que el menú abierto:** nombre de la sección, categorías y pantallas, con la actual resaltada. Una sección sin hijos (Panel) muestra solo su nombre como enlace.
+- **Fuera de la barra:** va teletransportada a `<body>` con `position: fixed`, porque la barra tiene desplazamiento vertical y la recortaría.
+- **Encontrado al probar:** camino a un enlace de más abajo, el cursor cruza en diagonal los íconos vecinos, y cada uno reemplazaba la ventana. Ahora cambiar de sección espera 200 ms sobre el ícono, y llegar a la ventana cancela ese cambio. También se corrigió que, en pantallas bajas, los enlaces de Inventario (veintiuna pantallas) se aplastaran en vez de desplazarse.
+
+---
+## 2026-09-30 — Filtros debajo de los botones, barra superior sin usuario y menú por categorías
+
+**Pedido del usuario:** los filtros de las tablas debajo de los botones de exportar, guardar y crear; sacar el nombre del usuario de la barra superior; «Salir» en vez de «Salir del sistema»; y el desglose de cada sección del menú agrupado por categoría. Todo como reglas de diseño (CLAUDE.md secc. 24, 28 y 29).
+
+- **Filtros debajo:** `.view-filters` ocupa su propia fila a todo el ancho. En las 40 barras que tenían los filtros antes que los botones se movió el código, no solo el CSS: con `order` la pantalla y el recorrido del teclado habrían quedado en órdenes distintos.
+- **Barra superior:** sin nombre de usuario, en el plano del cliente y en el backoffice. Con eso se va también la regla de mostrarlo desde 1280px.
+- **Menú por categorías:** cada hijo del menú declara su `group`, y el submenú muestra los subtítulos. Operación (o sus áreas) → Reportes → Catálogos → Configuración. El primer ítem de cada sección pasó a ser su pantalla de trabajo diario: colapsado, el ícono de Contabilidad ahora lleva a los registros y no a los tipos de documento. Algunos ítems cambiaron de nombre para no repetir la categoría: «Parámetros de facturación», «Parámetros de planilla», «Reportes de planilla».
+
+---
+## 2026-09-30 — Reglas de diseño para toda la aplicación (CLAUDE.md secc. 20–28)
+
+**Pedido del usuario:** quitar la barra de documento; que la barra superior sea igual en todas las vistas; filtros, buscadores y botones propios de la vista arriba de la tabla; ninguna tabla con desplazamiento lateral ni columnas de botones; campos con una sola estética; contenedores a todo el ancho; botones de guardar y eliminar deshabilitados con spinner hasta que termina la transacción; íconos centrados en el menú colapsado; todo responsivo. Todo como reglas de diseño.
+
+- **Barra superior fija, barra de la vista para lo demás:** `AppLayout` y `BackofficeLayout` perdieron el slot de acciones, así que no hay por dónde volver a meter un botón arriba. Lo propio de cada pantalla va en `.view-toolbar` (volver, filtros, acciones). `DocumentToolbar.vue` se eliminó.
+- **Tablas sin desplazamiento lateral, también los reportes:** se eligieron columnas para 720px útiles (1025px con la barra lateral) y el resto pasó a la ficha de la fila. En los reportes con columnas definidas por el servidor se ven 6 en pantalla y todas al imprimir y exportar. La antigüedad de saldos y la proyección de cobros y pagos dejaron de tener una columna por tramo: los tramos van en una rejilla de totales y el reparto de cada socio en su ficha (`AgingGroupTable.vue`).
+- **Grillas de captura:** la factura pasó de 12 columnas a 6. CAByS, unidad, IVA y ubicación pasaron al detalle de la línea, y la fila avisa si falta alguno obligatorio.
+- **Botón ocupado automático:** `busyButtons.js` marca el botón que disparó cualquier visita de Inertia que no sea GET y lo libera al terminar esa misma visita (las dos puntas de una visita comparten el mismo objeto). No hay que acordarse de hacerlo pantalla por pantalla. `window.confirm()` se reemplazó en todas partes por `confirmAction()`, cuyo modal queda abierto y bloqueado hasta que la visita termina.
+- **Maestros con pantalla propia:** tipos de documento, socios de negocio y usuarios siguen creando y editando en su pantalla, porque su formulario ya existía como página y el alta de un socio termina en sus partidas abiertas. Queda como excepción escrita en la secc. 21.
+- **Vistas de tarjetas:** en ≤ 1024px la celda de una tarjeta fluye como texto (`display: flow-root`, etiqueta flotando a la izquierda). Como flex, «código — nombre» se partía en pedazos separados.
+- **Encontrado al verificar:** el contenedor de acciones de la barra superior podía encogerse pero sus botones no, y «Salir» quedaba fuera de la pantalla: en teléfonos siempre, y a 1025px con un título largo. Ahora las acciones no se encogen, cede el título, y el nombre del usuario se muestra desde 1280px. Además, a 1025px, la flecha de la fila bajaba a otra línea cuando la cifra de la última columna era larga. Todo corregido en los estilos globales.
+- **Datos de prueba:** para verificar con tablas llenas se sembró la compañía de demostración (catálogo, tipos de documento, socios, centros de costo, asientos, inventario y producción) con los seeders `Test*`. Planillas, bancos y facturación siguen sin datos, así que esas pantallas se verificaron vacías.
+
+---
 ## 2026-09-29 — Historial en la ficha de la licencia
 
 **Pedido del usuario:** ver la bitácora desde la aplicación, en la ficha de cada licencia (la entrada anterior la dejaba solo en la base de datos).

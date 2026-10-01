@@ -2,8 +2,10 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
 import { formatMoney } from '../../../Utils/money';
-import { CheckIcon, PlusIcon } from '@lucide/vue';
+import { CheckIcon, PencilIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     settings: { type: Object, default: null },
@@ -178,26 +180,64 @@ const loadingDefaults = ref(false);
 const defaultsForm = useForm({ valid_from: `${new Date().getFullYear()}-01-01` });
 
 function loadDefaults() {
-    if (! confirm(
-        'Se va a cargar una plantilla de arranque con los componentes de carga social, la escala del impuesto, '
-        + 'los créditos familiares, las provisiones y los conceptos de uso corriente en Costa Rica.\n\n'
-        + 'Los porcentajes y montos NO son una fuente autorizada: hay que verificarlos contra el decreto '
-        + 'vigente y corregirlos aquí antes de correr la primera planilla en serio.\n\n¿Continuar?'
-    )) return;
-
-    defaultsForm.post(route('payroll-settings.load-defaults'), {
-        preserveScroll: true,
-        onSuccess: () => (loadingDefaults.value = false),
+    confirmAction({
+        title: 'Cargar plantilla de Costa Rica',
+        message: 'Se carga una plantilla de arranque con los componentes de carga social, la escala del impuesto, '
+            + 'los créditos familiares, las provisiones y los conceptos de uso corriente en Costa Rica. '
+            + 'Los porcentajes y montos NO son una fuente autorizada: hay que verificarlos contra el decreto '
+            + 'vigente y corregirlos aquí antes de correr la primera planilla en serio.',
+        confirmLabel: 'Cargar plantilla',
+        onConfirm: () => defaultsForm.post(route('payroll-settings.load-defaults'), {
+            preserveScroll: true,
+            onSuccess: () => (loadingDefaults.value = false),
+        }),
     });
 }
 
 // ── Editores genéricos ──────────────────────────────────────────────────
 //
-// Las cinco tablas se editan con el mismo patrón: un formulario en modal que
-// sirve para crear y para editar, y un borrado que el servidor rechaza si la
-// fila ya se usó en una planilla.
-
+// Las cinco tablas se editan con el mismo patrón: la fila abre su ficha en un
+// modal, y ahí mismo se edita o se elimina (CLAUDE.md secc. 20 y 21); «Crear
+// nuevo», arriba de cada tabla, abre el mismo modal con el formulario vacío.
+// El servidor rechaza el borrado de una fila que ya se usó en una planilla.
+//
+// editor = { kind, id, mode }: id null al crear; mode 'details' | 'form'.
 const editor = ref(null);
+
+const lists = {
+    contribution: () => props.contributions,
+    bracket: () => props.brackets,
+    credit: () => props.credits,
+    provision: () => props.provisions,
+    concept: () => props.concepts,
+};
+
+const editorRow = computed(() => {
+    if (! editor.value || editor.value.id === null) return null;
+    return lists[editor.value.kind]().find((r) => r.id === editor.value.id) ?? null;
+});
+
+const editorOpen = computed(() => !! editor.value && (editor.value.id === null || !! editorRow.value));
+
+const kindLabels = {
+    contribution: 'carga social',
+    bracket: 'tramo del impuesto',
+    credit: 'crédito familiar',
+    provision: 'provisión',
+    concept: 'concepto',
+};
+
+const editorTitle = computed(() => {
+    if (! editor.value) return '';
+
+    const row = editorRow.value;
+    const kind = kindLabels[editor.value.kind];
+
+    if (! row) return `Nuevo registro: ${kind}`;
+    if (editor.value.kind === 'bracket') return `Tramo ${row.bracket_number} — desde ${row.valid_from}`;
+
+    return `${row.code} — ${row.name}`;
+});
 
 const blanks = {
     contribution: {
@@ -252,11 +292,25 @@ function openEditor(kind, row = null) {
         rowForm[key] = row ? (row[key] ?? blank[key]) : blank[key];
     });
 
-    editor.value = { kind, row };
+    editor.value = { kind, id: row?.id ?? null, mode: 'form' };
+}
+
+function openDetail(kind, row) {
+    editor.value = { kind, id: row.id, mode: 'details' };
+}
+
+function startEdit() {
+    openEditor(editor.value.kind, editorRow.value);
+}
+
+function cancelEditor() {
+    if (editor.value.id === null) editor.value = null;
+    else editor.value.mode = 'details';
 }
 
 function submitRow() {
-    const { kind, row } = editor.value;
+    const { kind } = editor.value;
+    const row = editorRow.value;
 
     const transform = (data) => {
         const out = {};
@@ -266,19 +320,97 @@ function submitRow() {
         return out;
     };
 
-    const done = { onSuccess: () => (editor.value = null), preserveScroll: true };
-
     if (row) {
-        rowForm.transform(transform).put(route(`${routes[kind]}.update`, row.id), done);
+        rowForm.transform(transform).put(route(`${routes[kind]}.update`, row.id), {
+            preserveScroll: true, onSuccess: () => { editor.value.mode = 'details'; },
+        });
     } else {
-        rowForm.transform(transform).post(route(`${routes[kind]}.store`), done);
+        rowForm.transform(transform).post(route(`${routes[kind]}.store`), {
+            preserveScroll: true, onSuccess: () => (editor.value = null),
+        });
     }
 }
 
-function destroyRow(kind, row) {
-    if (! confirm('¿Eliminar esta fila de la configuración?')) return;
+function destroyRow() {
+    const { kind } = editor.value;
+    const row = editorRow.value;
 
-    router.delete(route(`${routes[kind]}.destroy`, row.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar de la configuración',
+        message: `«${editorTitle.value}» se elimina. Si ya se usó en una planilla, el servidor no lo permite: ponele fecha final.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route(`${routes[kind]}.destroy`, row.id), { preserveScroll: true }),
+    });
+}
+
+const vigencia = (row) => `${row.valid_from} → ${row.valid_to ?? 'sigue vigente'}`;
+const yesNo = (value) => (value ? 'Sí' : 'No');
+
+// Lo que la ficha muestra de cada tipo de fila: todo lo que la tabla no.
+function detailFields(kind, row) {
+    switch (kind) {
+        case 'contribution':
+            return [
+                ['Paga', row.payer === 'employee' ? 'Obrero' : 'Patronal'],
+                ['Institución', props.institutions[row.institution] ?? row.institution],
+                ['Porcentaje', `${row.percentage.toFixed(4)} %`],
+                ['Base', row.base === 'gross' ? 'Bruto' : 'Salarial'],
+                ['Tope', row.ceiling_amount ? formatMoney(row.ceiling_amount) : '—'],
+                ['Pensionado', row.exempt_for_pensioner ? 'No la cotiza' : 'La cotiza'],
+                ['Cuenta de gasto', accountLabel(row.expense_account_id)],
+                ['Cuenta de pasivo', accountLabel(row.liability_account_id)],
+                ['Vigencia', vigencia(row)],
+                ['Estado', row.status === 'active' ? 'Activa' : 'Inactiva'],
+                ['Fundamento', row.legal_basis ?? '—'],
+            ];
+        case 'bracket':
+            return [
+                ['Desde', formatMoney(row.from_amount)],
+                ['Hasta', row.to_amount ? formatMoney(row.to_amount) : 'sin techo'],
+                ['Tasa', `${row.percentage.toFixed(2)} %`],
+                ['Vigencia', vigencia(row)],
+            ];
+        case 'credit':
+            return [
+                ['Tipo', row.code === 'spouse' ? 'Cónyuge' : 'Hijo'],
+                ['Monto mensual', formatMoney(row.monthly_amount)],
+                ['Vigencia', vigencia(row)],
+            ];
+        case 'provision':
+            return [
+                ['Porcentaje', `${row.percentage.toFixed(4)} %`],
+                ['Cuenta de gasto', accountLabel(row.expense_account_id)],
+                ['Cuenta de pasivo', accountLabel(row.liability_account_id)],
+                ['Vigencia', vigencia(row)],
+                ['Estado', row.status === 'active' ? 'Activa' : 'Inactiva'],
+                ['Fundamento', row.legal_basis ?? '—'],
+            ];
+        default:
+            return [
+                ['Tipo', row.type === 'earning' ? 'Ingreso' : 'Deducción'],
+                ['Efecto', row.sign < 0 ? 'Resta del devengado' : 'Suma'],
+                ['Cálculo', { amount: 'Monto', percentage: 'Porcentaje', hours: 'Horas' }[row.calculation]],
+                ['Factor', row.factor ?? '—'],
+                ['Forma salario (cargas)', yesNo(row.affects_ccss)],
+                ['Gravable (impuesto)', yesNo(row.affects_income_tax)],
+                ['Provisiona', yesNo(row.affects_provisions)],
+                ['Asignable en fijo', yesNo(row.is_recurring)],
+                ['Cuenta', accountLabel(row.account_id)],
+                ['Estado', row.status === 'active' ? 'Activo' : 'Inactivo'],
+                ['Fundamento', row.legal_basis ?? '—'],
+            ];
+    }
+}
+
+// Las tres banderas del concepto, en una celda: son lo más consecuente del
+// módulo y por eso se quedan en la tabla.
+function conceptFlags(c) {
+    return [
+        c.affects_ccss ? 'salarial' : null,
+        c.affects_income_tax ? 'gravable' : null,
+        c.affects_provisions ? 'provisiona' : null,
+    ].filter(Boolean);
 }
 
 // ── Lo que hace visible un error de configuración ───────────────────────
@@ -344,7 +476,7 @@ const bracketWarnings = computed(() => {
 const accountLabel = (id) => {
     const found = props.accounts.find((a) => a.id === id);
 
-    return found ? `${found.code}` : '—';
+    return found ? `${found.code} — ${found.description_es}` : '—';
 };
 </script>
 
@@ -352,9 +484,11 @@ const accountLabel = (id) => {
     <Head title="Configuración de planilla" />
 
     <AppLayout title="Configuración de planilla">
-        <template #actions>
-            <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos de planilla</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos de planilla</Link>
+            </div>
+        </div>
 
         <div v-for="(message, key) in page.props.errors" :key="key" class="flash flash-error">{{ message }}</div>
 
@@ -372,10 +506,11 @@ const accountLabel = (id) => {
             </p>
         </div>
 
-        <nav class="tabs">
+        <nav class="tabs" aria-label="Secciones de la configuración">
             <button
                 v-for="([value, label]) in tabs" :key="value"
                 type="button" class="tab" :class="{ active: tab === value }"
+                :aria-pressed="tab === value"
                 @click="tab = value"
             >{{ label }}</button>
         </nav>
@@ -490,7 +625,7 @@ const accountLabel = (id) => {
                             necesita las dos cuentas.
                         </p>
 
-                        <div class="table-scroll">
+                        <div class="table-responsive capture-grid">
                             <table>
                                 <thead>
                                     <tr>
@@ -505,10 +640,10 @@ const accountLabel = (id) => {
                                 <tbody>
                                     <tr v-for="c in activeContributions" :key="c.id">
                                         <td class="num">{{ c.code }}</td>
-                                        <td class="small">{{ c.name }}</td>
-                                        <td class="small">{{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}</td>
-                                        <td class="right num">{{ c.percentage.toFixed(2) }}</td>
-                                        <td>
+                                        <td data-label="Componente" class="small">{{ c.name }}</td>
+                                        <td data-label="Paga" class="small">{{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}</td>
+                                        <td data-label="%" class="right num">{{ c.percentage.toFixed(2) }}</td>
+                                        <td data-label="Cuenta de gasto">
                                             <select
                                                 v-if="c.payer === 'employer'"
                                                 v-model="contributionRow(c.id).expense_account_id"
@@ -520,7 +655,7 @@ const accountLabel = (id) => {
                                             </select>
                                             <span v-else class="muted small">no aplica</span>
                                         </td>
-                                        <td>
+                                        <td data-label="Cuenta de pasivo">
                                             <select
                                                 v-model="contributionRow(c.id).liability_account_id"
                                                 class="inline-select"
@@ -547,7 +682,7 @@ const accountLabel = (id) => {
                             genera línea de asiento y por eso no exige cuentas.
                         </p>
 
-                        <div class="table-scroll">
+                        <div class="table-responsive capture-grid">
                             <table>
                                 <thead>
                                     <tr>
@@ -561,9 +696,9 @@ const accountLabel = (id) => {
                                 <tbody>
                                     <tr v-for="p in activeProvisions" :key="p.id" :class="{ dim: p.percentage <= 0 }">
                                         <td class="num">{{ p.code }}</td>
-                                        <td class="small">{{ p.name }}</td>
-                                        <td class="right num">{{ p.percentage.toFixed(4) }}</td>
-                                        <td>
+                                        <td data-label="Provisión" class="small">{{ p.name }}</td>
+                                        <td data-label="%" class="right num">{{ p.percentage.toFixed(4) }}</td>
+                                        <td data-label="Cuenta de gasto">
                                             <select
                                                 v-model="provisionRow(p.id).expense_account_id"
                                                 class="inline-select"
@@ -573,7 +708,7 @@ const accountLabel = (id) => {
                                                 <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
                                             </select>
                                         </td>
-                                        <td>
+                                        <td data-label="Cuenta de pasivo">
                                             <select
                                                 v-model="provisionRow(p.id).liability_account_id"
                                                 class="inline-select"
@@ -603,7 +738,7 @@ const accountLabel = (id) => {
                             terceros y no con el trabajador.
                         </p>
 
-                        <div class="table-scroll">
+                        <div class="table-responsive capture-grid">
                             <table>
                                 <thead>
                                     <tr>
@@ -616,9 +751,9 @@ const accountLabel = (id) => {
                                 <tbody>
                                     <tr v-for="c in activeConcepts" :key="c.id">
                                         <td class="num">{{ c.code }}</td>
-                                        <td class="small">{{ c.name }}</td>
-                                        <td class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
-                                        <td>
+                                        <td data-label="Concepto" class="small">{{ c.name }}</td>
+                                        <td data-label="Tipo" class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
+                                        <td data-label="Cuenta">
                                             <select v-model="conceptRow(c.id).account_id" class="inline-select">
                                                 <option value="">Heredar</option>
                                                 <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
@@ -755,7 +890,7 @@ const accountLabel = (id) => {
                     </div>
                 </div>
 
-                <div class="modal-actions">
+                <div class="form-actions">
                     <button type="submit" class="btn btn-primary" :disabled="settingsForm.processing">Guardar</button>
                 </div>
             </form>
@@ -789,54 +924,48 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ contributions.length }} componente(s)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('contribution')"><PlusIcon /> Nueva carga</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('contribution')"><PlusIcon /> Crear nuevo</button>
                 </div>
 
-                <div class="table-scroll">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
                                 <th>Paga</th>
-                                <th>Institución</th>
                                 <th class="right">%</th>
-                                <th>Base</th>
-                                <th class="right">Tope</th>
-                                <th>Gasto</th>
-                                <th>Pasivo</th>
-                                <th>Vigencia</th>
                                 <th>Estado</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="c in contributions" :key="c.id" :class="{ dim: c.status !== 'active' }">
+                            <tr
+                                v-for="c in contributions"
+                                :key="c.id"
+                                class="clickable-row"
+                                :class="{ dim: c.status !== 'active' }"
+                                tabindex="0"
+                                @click="openDetail('contribution', c)"
+                                @keydown.enter="openDetail('contribution', c)"
+                                @keydown.space.prevent="openDetail('contribution', c)"
+                            >
                                 <td class="num">{{ c.code }}</td>
-                                <td>
+                                <td data-label="Nombre">
                                     {{ c.name }}
                                     <span v-if="c.legal_basis?.includes('VERIFICAR')" class="verify" :title="c.legal_basis">sin verificar</span>
                                 </td>
-                                <td class="small">
+                                <td data-label="Paga" class="small">
                                     {{ c.payer === 'employee' ? 'Obrero' : 'Patronal' }}
                                     <span v-if="c.exempt_for_pensioner" class="badge badge-neutral sign-tag"
                                         title="Un pensionado no cotiza esta carga">sin pensionado</span>
                                 </td>
-                                <td class="muted small">{{ institutions[c.institution] ?? c.institution }}</td>
-                                <td class="right num strong">{{ c.percentage.toFixed(4) }}</td>
-                                <td class="muted small">{{ c.base === 'gross' ? 'Bruto' : 'Salarial' }}</td>
-                                <td class="right num small">{{ c.ceiling_amount ? formatMoney(c.ceiling_amount) : '—' }}</td>
-                                <td class="num small muted">{{ accountLabel(c.expense_account_id) }}</td>
-                                <td class="num small muted">{{ accountLabel(c.liability_account_id) }}</td>
-                                <td class="num small">{{ c.valid_from }} → {{ c.valid_to ?? '∞' }}</td>
-                                <td class="small">{{ c.status === 'active' ? 'Activa' : 'Inactiva' }}</td>
-                                <td class="row-actions">
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="openEditor('contribution', c)">Editar</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="destroyRow('contribution', c)">Eliminar</button>
+                                <td data-label="%" class="right num strong">{{ c.percentage.toFixed(4) }}</td>
+                                <td data-label="Estado">
+                                    <span class="badge" :class="c.status === 'active' ? 'badge-success' : 'badge-neutral'">{{ c.status === 'active' ? 'Activa' : 'Inactiva' }}</span>
                                 </td>
                             </tr>
                             <tr v-if="!contributions.length">
-                                <td colspan="12" class="muted empty-row">
+                                <td colspan="5" class="muted empty-row">
                                     Sin cargas configuradas. Sin ellas la planilla calcula el bruto y nada más.
                                 </td>
                             </tr>
@@ -863,10 +992,10 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <h3>Tramos</h3>
-                    <button type="button" class="btn btn-primary" @click="openEditor('bracket')"><PlusIcon /> Nuevo tramo</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('bracket')"><PlusIcon /> Crear nuevo</button>
                 </div>
 
-                <div class="table-scroll">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
@@ -875,26 +1004,29 @@ const accountLabel = (id) => {
                                 <th class="right">Desde</th>
                                 <th class="right">Hasta</th>
                                 <th class="right">Tasa %</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="b in brackets" :key="b.id">
+                            <tr
+                                v-for="b in brackets"
+                                :key="b.id"
+                                class="clickable-row"
+                                tabindex="0"
+                                @click="openDetail('bracket', b)"
+                                @keydown.enter="openDetail('bracket', b)"
+                                @keydown.space.prevent="openDetail('bracket', b)"
+                            >
                                 <td class="num small">{{ b.valid_from }} → {{ b.valid_to ?? '∞' }}</td>
-                                <td class="right num">{{ b.bracket_number }}</td>
-                                <td class="right num">{{ formatMoney(b.from_amount) }}</td>
-                                <td class="right num">
+                                <td data-label="Tramo" class="right num">{{ b.bracket_number }}</td>
+                                <td data-label="Desde" class="right num">{{ formatMoney(b.from_amount) }}</td>
+                                <td data-label="Hasta" class="right num">
                                     <template v-if="b.to_amount">{{ formatMoney(b.to_amount) }}</template>
                                     <span v-else class="muted small">sin techo</span>
                                 </td>
-                                <td class="right num strong">{{ b.percentage.toFixed(2) }}</td>
-                                <td class="row-actions">
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="openEditor('bracket', b)">Editar</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="destroyRow('bracket', b)">Eliminar</button>
-                                </td>
+                                <td data-label="Tasa %" class="right num strong">{{ b.percentage.toFixed(2) }}</td>
                             </tr>
                             <tr v-if="!brackets.length">
-                                <td colspan="6" class="muted empty-row">
+                                <td colspan="5" class="muted empty-row">
                                     Sin escala configurada: no se va a rebajar impuesto a nadie.
                                 </td>
                             </tr>
@@ -906,10 +1038,10 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <h3>Créditos familiares</h3>
-                    <button type="button" class="btn btn-primary" @click="openEditor('credit')"><PlusIcon /> Nuevo crédito</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('credit')"><PlusIcon /> Crear nuevo</button>
                 </div>
 
-                <div class="table-scroll">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
@@ -917,22 +1049,25 @@ const accountLabel = (id) => {
                                 <th>Código</th>
                                 <th>Nombre</th>
                                 <th class="right">Monto mensual</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="c in credits" :key="c.id">
+                            <tr
+                                v-for="c in credits"
+                                :key="c.id"
+                                class="clickable-row"
+                                tabindex="0"
+                                @click="openDetail('credit', c)"
+                                @keydown.enter="openDetail('credit', c)"
+                                @keydown.space.prevent="openDetail('credit', c)"
+                            >
                                 <td class="num small">{{ c.valid_from }} → {{ c.valid_to ?? '∞' }}</td>
-                                <td class="num">{{ c.code === 'spouse' ? 'cónyuge' : 'hijo' }}</td>
-                                <td>{{ c.name }}</td>
-                                <td class="right num strong">{{ formatMoney(c.monthly_amount) }}</td>
-                                <td class="row-actions">
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="openEditor('credit', c)">Editar</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="destroyRow('credit', c)">Eliminar</button>
-                                </td>
+                                <td data-label="Código" class="num">{{ c.code === 'spouse' ? 'cónyuge' : 'hijo' }}</td>
+                                <td data-label="Nombre">{{ c.name }}</td>
+                                <td data-label="Monto mensual" class="right num strong">{{ formatMoney(c.monthly_amount) }}</td>
                             </tr>
                             <tr v-if="!credits.length">
-                                <td colspan="5" class="muted empty-row">Sin créditos configurados.</td>
+                                <td colspan="4" class="muted empty-row">Sin créditos configurados.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -951,39 +1086,37 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ provisions.length }} provisión(es)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('provision')"><PlusIcon /> Nueva provisión</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('provision')"><PlusIcon /> Crear nuevo</button>
                 </div>
 
-                <div class="table-scroll">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
                                 <th class="right">%</th>
-                                <th>Gasto</th>
-                                <th>Pasivo</th>
                                 <th>Vigencia</th>
-                                <th>Fundamento</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="p in provisions" :key="p.id" :class="{ dim: p.status !== 'active' || p.percentage === 0 }">
+                            <tr
+                                v-for="p in provisions"
+                                :key="p.id"
+                                class="clickable-row"
+                                :class="{ dim: p.status !== 'active' || p.percentage === 0 }"
+                                tabindex="0"
+                                @click="openDetail('provision', p)"
+                                @keydown.enter="openDetail('provision', p)"
+                                @keydown.space.prevent="openDetail('provision', p)"
+                            >
                                 <td class="num">{{ p.code }}</td>
-                                <td>{{ p.name }}</td>
-                                <td class="right num strong">{{ p.percentage.toFixed(4) }}</td>
-                                <td class="num small muted">{{ accountLabel(p.expense_account_id) }}</td>
-                                <td class="num small muted">{{ accountLabel(p.liability_account_id) }}</td>
-                                <td class="num small">{{ p.valid_from }} → {{ p.valid_to ?? '∞' }}</td>
-                                <td class="muted small">{{ p.legal_basis ?? '—' }}</td>
-                                <td class="row-actions">
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="openEditor('provision', p)">Editar</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="destroyRow('provision', p)">Eliminar</button>
-                                </td>
+                                <td data-label="Nombre">{{ p.name }}</td>
+                                <td data-label="%" class="right num strong">{{ p.percentage.toFixed(4) }}</td>
+                                <td data-label="Vigencia" class="num small">{{ p.valid_from }} → {{ p.valid_to ?? '∞' }}</td>
                             </tr>
                             <tr v-if="!provisions.length">
-                                <td colspan="8" class="muted empty-row">Sin provisiones configuradas.</td>
+                                <td colspan="4" class="muted empty-row">Sin provisiones configuradas.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1010,50 +1143,48 @@ const accountLabel = (id) => {
             <div class="card">
                 <div class="card-header">
                     <span class="muted">{{ concepts.length }} concepto(s)</span>
-                    <button type="button" class="btn btn-primary" @click="openEditor('concept')"><PlusIcon /> Nuevo concepto</button>
+                    <button type="button" class="btn btn-primary" @click="openEditor('concept')"><PlusIcon /> Crear nuevo</button>
                 </div>
 
-                <div class="table-scroll">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
                                 <th>Tipo</th>
-                                <th>Cálculo</th>
-                                <th class="right">Factor</th>
-                                <th class="center">Salarial</th>
-                                <th class="center">Gravable</th>
-                                <th class="center">Provisiona</th>
-                                <th>Cuenta</th>
+                                <!-- Las tres banderas se quedan en la tabla: son lo más consecuente del módulo. -->
+                                <th>Banderas</th>
                                 <th>Estado</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="c in concepts" :key="c.id" :class="{ dim: c.status !== 'active' }">
+                            <tr
+                                v-for="c in concepts"
+                                :key="c.id"
+                                class="clickable-row"
+                                :class="{ dim: c.status !== 'active' }"
+                                tabindex="0"
+                                @click="openDetail('concept', c)"
+                                @keydown.enter="openDetail('concept', c)"
+                                @keydown.space.prevent="openDetail('concept', c)"
+                            >
                                 <td class="num">{{ c.code }}</td>
-                                <td>
+                                <td data-label="Nombre">
                                     {{ c.name }}
                                     <span v-if="c.sign < 0" class="badge badge-warning sign-tag">resta del devengado</span>
                                 </td>
-                                <td class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
-                                <td class="muted small">
-                                    {{ { amount: 'Monto', percentage: 'Porcentaje', hours: 'Horas' }[c.calculation] }}
+                                <td data-label="Tipo" class="small">{{ c.type === 'earning' ? 'Ingreso' : 'Deducción' }}</td>
+                                <td data-label="Banderas" class="small">
+                                    <span v-for="flag in conceptFlags(c)" :key="flag" class="flag"><CheckIcon aria-hidden="true" /> {{ flag }}</span>
+                                    <span v-if="!conceptFlags(c).length" class="muted">ninguna</span>
                                 </td>
-                                <td class="right num small">{{ c.factor ?? '—' }}</td>
-                                <td class="center"><CheckIcon v-if="c.affects_ccss" aria-label="Sí" role="img" /><template v-else>·</template></td>
-                                <td class="center"><CheckIcon v-if="c.affects_income_tax" aria-label="Sí" role="img" /><template v-else>·</template></td>
-                                <td class="center"><CheckIcon v-if="c.affects_provisions" aria-label="Sí" role="img" /><template v-else>·</template></td>
-                                <td class="num small muted">{{ accountLabel(c.account_id) }}</td>
-                                <td class="small">{{ c.status === 'active' ? 'Activo' : 'Inactivo' }}</td>
-                                <td class="row-actions">
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="openEditor('concept', c)">Editar</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" @click="destroyRow('concept', c)">Eliminar</button>
+                                <td data-label="Estado">
+                                    <span class="badge" :class="c.status === 'active' ? 'badge-success' : 'badge-neutral'">{{ c.status === 'active' ? 'Activo' : 'Inactivo' }}</span>
                                 </td>
                             </tr>
                             <tr v-if="!concepts.length">
-                                <td colspan="11" class="muted empty-row">Sin conceptos configurados.</td>
+                                <td colspan="5" class="muted empty-row">Sin conceptos configurados.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1062,10 +1193,15 @@ const accountLabel = (id) => {
         </template>
 
         <!-- ── El editor ───────────────────────────────────────────── -->
-        <div v-if="editor" class="modal-backdrop" @click.self="editor = null">
-            <form class="modal card" @submit.prevent="submitRow">
-                <h2>{{ editor.row ? 'Editar' : 'Nuevo registro' }}</h2>
+        <DetailModal :open="editorOpen" :wide="editor?.mode === 'form'" :title="editorTitle" @close="editor = null">
+            <dl v-if="editorRow && editor.mode === 'details'" class="detail-list">
+                <div v-for="[label, value] in detailFields(editor.kind, editorRow)" :key="label">
+                    <dt>{{ label }}</dt>
+                    <dd>{{ value }}</dd>
+                </div>
+            </dl>
 
+            <form v-if="editor && editor.mode === 'form'" id="settings-row-form" @submit.prevent="submitRow">
                 <template v-if="editor.kind === 'contribution'">
                     <div class="field-row">
                         <div class="field">
@@ -1362,12 +1498,21 @@ const accountLabel = (id) => {
                     </div>
                 </template>
 
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="editor = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="rowForm.processing">Guardar</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="editorRow && editor.mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroyRow">Eliminar</button>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="editorOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelEditor">Cancelar</button>
+                    <button type="submit" form="settings-row-form" class="btn btn-primary" :disabled="rowForm.processing">
+                        {{ editor.id === null ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -1380,7 +1525,7 @@ const accountLabel = (id) => {
     background: var(--color-surface-alt);
 }
 
-.warning-box.subtle { border-left-color: #b45309; }
+.warning-box.subtle { border-left-color: var(--color-warning); }
 .warning-box h2 { margin: 0 0 0.4rem; font-size: 0.88rem; }
 .warning-box p { margin: 0 0 0.4rem; font-size: 0.82rem; color: var(--color-text-muted); }
 .warning-box p:last-child { margin-bottom: 0; }
@@ -1395,10 +1540,12 @@ const accountLabel = (id) => {
 }
 
 .tab {
+    min-height: 2.25rem;
     padding: 0.5rem 0.9rem;
     border: none;
     background: none;
     color: var(--color-text-muted);
+    font: inherit;
     font-size: 0.84rem;
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -1413,12 +1560,12 @@ const accountLabel = (id) => {
 .settings-card h3, .load-card h3 { margin: 0 0 0.3rem; font-size: 0.9rem; }
 .settings-card h3:not(:first-child) { margin-top: 1.25rem; }
 
-.danger-hint { color: #a04000; }
+.danger-hint { color: var(--color-warning); }
 
 .load-row { display: flex; gap: 0.8rem; align-items: flex-end; flex-wrap: wrap; }
 .load-row .field { margin-bottom: 0; }
 
-.stat-row { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
 
 .stat {
     display: flex;
@@ -1427,7 +1574,6 @@ const accountLabel = (id) => {
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-surface);
-    min-width: 12rem;
 }
 
 .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
@@ -1444,8 +1590,8 @@ td.strong { font-weight: 600; }
     font-size: 0.6rem;
     padding: 0.05rem 0.3rem;
     border-radius: 3px;
-    background: #fdf0ea;
-    color: #a04000;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
     font-weight: 600;
     cursor: help;
 }
@@ -1460,7 +1606,7 @@ td.strong { font-weight: 600; }
 
 .determination-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
     gap: 0.9rem;
     padding: 0 1.1rem 1.1rem;
 }
@@ -1473,8 +1619,8 @@ td.strong { font-weight: 600; }
     letter-spacing: 0.04em;
     padding: 0.05rem 0.3rem;
     border-radius: 3px;
-    background: #fdf0ea;
-    color: #a04000;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
 }
 
 /* Los select dentro de la tabla: angostos por defecto para que la tabla no
@@ -1482,26 +1628,18 @@ td.strong { font-weight: 600; }
    de la cuenta. */
 .inline-select {
     width: 100%;
-    max-width: 22rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.25rem 0.4rem;
-    font-size: 0.78rem;
-    color: var(--color-text);
-}
-
-.inline-select:focus {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 1px;
+    min-width: 0;
 }
 
 /* Una cuenta que falta y que hace falta: se ve sin tener que leer la lista
    de arriba. */
 .inline-select.unset {
-    border-color: #d08a55;
-    background: #fdf6f1;
+    border-color: var(--color-warning);
+    background-color: var(--color-warning-soft);
 }
+
+.flag { display: inline-flex; align-items: center; gap: 0.15rem; margin-right: 0.5rem; white-space: nowrap; }
+.flag svg { width: 0.85rem; height: 0.85rem; color: var(--color-success); }
 
 .save-bar {
     display: flex;

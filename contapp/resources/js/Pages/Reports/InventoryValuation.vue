@@ -5,6 +5,8 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import SaveReportButton from '../../Components/SaveReportButton.vue';
 import { wrapDate } from '../../Utils/reportParameters';
 import { formatMoney } from '../../Utils/money';
+import { DownloadIcon, ScrollTextIcon } from '@lucide/vue';
+import DetailModal from '../../Components/DetailModal.vue';
 
 const props = defineProps({
     filters: { type: Object, required: true },
@@ -52,31 +54,49 @@ function quantity(value) {
 function isResidual(row) {
     return Number(row.quantity) === 0 && Number(row.value_local) !== 0;
 }
+
+// Ficha de la fila (CLAUDE.md secc. 20): grupo, unidad y valor en dólares, y
+// el enlace al kardex del artículo.
+const selectedKey = ref(null);
+const selectedRow = computed(() => props.result.rows.find((r) => `${r.item_id}-${r.warehouse_id}` === selectedKey.value) ?? null);
 </script>
 
 <template>
     <Head title="Existencias valorizadas" />
 
     <AppLayout title="Existencias valorizadas">
-        <template #actions>
-            <input v-model="asOf" type="date" class="date-input">
-            <select v-model="warehouseId" class="date-input">
-                <option value="">Todos los almacenes</option>
-                <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
-            </select>
-            <select v-model="itemGroupId" class="date-input">
-                <option value="">Todos los grupos</option>
-                <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
-            </select>
-            <label class="hide-zero">
-                <input v-model="hideZero" type="checkbox">
-                Ocultar existencias en cero
-            </label>
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-            <a :href="exportUrl('reports.inventory-valuation.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reports.inventory-valuation.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <SaveReportButton report-code="inventory-valuation" :parameters="saveParameters" />
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.inventory-valuation.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.inventory-valuation.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="inventory-valuation" :parameters="saveParameters" />
+            </div>
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Al</span>
+                    <input v-model="asOf" type="date">
+                </label>
+                <label class="filter-field">
+                    <span>Almacén</span>
+                    <select v-model="warehouseId">
+                        <option value="">Todos los almacenes</option>
+                        <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
+                    </select>
+                </label>
+                <label class="filter-field">
+                    <span>Grupo</span>
+                    <select v-model="itemGroupId">
+                        <option value="">Todos los grupos</option>
+                        <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
+                    </select>
+                </label>
+                <label class="check">
+                    <input v-model="hideZero" type="checkbox">
+                    Ocultar existencias en cero
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+        </div>
 
         <p class="hint">
             Valor reconstruido de los movimientos del kardex hasta el corte, no del costo promedio de hoy: a una
@@ -85,58 +105,102 @@ function isResidual(row) {
         </p>
 
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Artículo</th>
-                        <th>Descripción</th>
-                        <th>Grupo</th>
-                        <th>Almacén</th>
-                        <th>Unidad</th>
-                        <th class="num">Existencia</th>
-                        <th class="num">Costo unitario</th>
-                        <th class="num">Valor local</th>
-                        <th class="num">Valor USD</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="row in result.rows" :key="`${row.item_id}-${row.warehouse_id}`" :class="{ residual: isResidual(row) }">
-                        <td>
-                            <Link :href="route('items.kardex', row.item_id)" class="code-link">{{ row.item_code }}</Link>
-                        </td>
-                        <td>{{ row.item_name }}</td>
-                        <td>{{ row.item_group ?? '—' }}</td>
-                        <td>{{ row.warehouse_code }}</td>
-                        <td>{{ row.uom ?? '—' }}</td>
-                        <td class="num">{{ quantity(row.quantity) }}</td>
-                        <td class="num">{{ formatMoney(row.unit_cost_local) }}</td>
-                        <td class="num">{{ formatMoney(row.value_local) }}</td>
-                        <td class="num">{{ formatMoney(row.value_foreign) }}</td>
-                    </tr>
-                    <tr v-if="result.rows.length === 0">
-                        <td colspan="9" class="empty">Sin existencias al {{ result.as_of }}.</td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="7" class="total-label">Total al {{ result.as_of }}</td>
-                        <td class="num total-value">{{ formatMoney(result.total_value_local) }}</td>
-                        <td class="num total-value">{{ formatMoney(result.total_value_foreign) }}</td>
-                    </tr>
-                </tfoot>
-            </table>
+            <div class="table-responsive table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Almacén</th>
+                            <th class="num">Existencia</th>
+                            <th class="num">Costo unitario</th>
+                            <th class="num">Valor local</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="row in result.rows"
+                            :key="`${row.item_id}-${row.warehouse_id}`"
+                            class="clickable-row"
+                            :class="{ residual: isResidual(row) }"
+                            tabindex="0"
+                            @click="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                            @keydown.enter="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                            @keydown.space.prevent="selectedKey = `${row.item_id}-${row.warehouse_id}`"
+                        >
+                            <td><strong class="code">{{ row.item_code }}</strong> — {{ row.item_name }}</td>
+                            <td data-label="Almacén">{{ row.warehouse_code }}</td>
+                            <td data-label="Existencia" class="num">{{ quantity(row.quantity) }}</td>
+                            <td data-label="Costo unitario" class="num">{{ formatMoney(row.unit_cost_local) }}</td>
+                            <td data-label="Valor local" class="num">{{ formatMoney(row.value_local) }}</td>
+                        </tr>
+                        <tr v-if="result.rows.length === 0">
+                            <td colspan="5" class="muted empty-row">Sin existencias al {{ result.as_of }}.</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" class="total-label">Total al {{ result.as_of }}</td>
+                            <td data-label="Valor local" class="num total-value">{{ formatMoney(result.total_value_local) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
+
+        <p class="hint total-usd">Total en USD al {{ result.as_of }}: <strong>{{ formatMoney(result.total_value_foreign) }}</strong></p>
+
+        <DetailModal :open="!!selectedRow" :title="selectedRow ? `${selectedRow.item_code} — ${selectedRow.item_name}` : ''" @close="selectedKey = null">
+            <dl v-if="selectedRow" class="detail-list">
+                <div>
+                    <dt>Grupo</dt>
+                    <dd>{{ selectedRow.item_group ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Almacén</dt>
+                    <dd>{{ selectedRow.warehouse_code }}</dd>
+                </div>
+                <div>
+                    <dt>Existencia</dt>
+                    <dd>{{ quantity(selectedRow.quantity) }} {{ selectedRow.uom ?? '' }}</dd>
+                </div>
+                <div>
+                    <dt>Costo unitario</dt>
+                    <dd>{{ formatMoney(selectedRow.unit_cost_local) }}</dd>
+                </div>
+                <div>
+                    <dt>Valor local</dt>
+                    <dd>{{ formatMoney(selectedRow.value_local) }}</dd>
+                </div>
+                <div>
+                    <dt>Valor USD</dt>
+                    <dd>{{ formatMoney(selectedRow.value_foreign) }}</dd>
+                </div>
+            </dl>
+            <p v-if="selectedRow && isResidual(selectedRow)" class="flash flash-warning residual-note">
+                Existencia en cero con valor: el promedio dejó un residuo sin mercancía que lo respalde. Hay que investigarlo.
+            </p>
+
+            <template #actions>
+                <Link v-if="selectedRow" :href="route('items.kardex', selectedRow.item_id)" class="btn btn-primary"><ScrollTextIcon /> Ver kardex</Link>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.date-input { margin-right: 0.4rem; }
-.hide-zero { display: inline-flex; gap: 0.35rem; align-items: center; font-size: 0.85rem; margin-right: 0.4rem; }
-.num { text-align: right; }
-.empty { text-align: center; font-style: italic; color: #666; padding: 1rem; }
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; }
 .total-label { text-align: right; font-weight: 600; }
 .total-value { font-weight: 700; }
-.code-link { font-variant-numeric: tabular-nums; }
+.total-usd { margin: 0.6rem 0 0; text-align: right; }
+.residual-note { margin: 0.9rem 0 0; }
 /* Existencia en cero con valor residual: hay que investigarla. */
-.residual { background: #fff6e5; }
+.residual td { background: var(--color-warning-soft); }
+
+@media screen and (max-width: 1024px) {
+    .residual td { background: none; }
+    .table-responsive tbody tr.residual { background: var(--color-warning-soft); }
+    .total-label { text-align: left; }
+    .total-usd { text-align: left; }
+}
 </style>

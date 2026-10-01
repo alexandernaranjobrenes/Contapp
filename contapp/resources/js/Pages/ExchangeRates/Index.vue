@@ -91,6 +91,9 @@ const currencyLabel = computed(() => props.foreignCurrency ? `${props.foreignCur
 
     <AppLayout title="Tipos de cambio">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
             <form class="view-filters" @submit.prevent="sync">
                 <label class="filter-field">
                     <span>Fecha a sincronizar</span>
@@ -100,10 +103,6 @@ const currencyLabel = computed(() => props.foreignCurrency ? `${props.foreignCur
                     <RefreshCwIcon /> {{ syncForm.processing ? 'Consultando...' : 'Sincronizar con BCCR' }}
                 </button>
             </form>
-
-            <div class="view-actions">
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
-            </div>
         </div>
 
         <div v-if="!bccrConfigured" class="notice card">

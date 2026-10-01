@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive } from 'vue';
+import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -64,9 +65,9 @@ function submit() {
     <Head title="Proceso de costeo" />
 
     <AppLayout title="Proceso de costeo de importaciones">
-        <template #actions>
-            <Link :href="route('import-costs.index')" class="btn btn-ghost">Ver rubros</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('import-costs.index')" class="btn btn-ghost"><ArrowLeftIcon /> Rubros</Link>
+        </div>
 
         <div v-if="page.props.errors?.import_cost" class="flash flash-error">{{ page.props.errors.import_cost }}</div>
 
@@ -77,10 +78,10 @@ function submit() {
         </p>
 
         <form class="card" @submit.prevent="submit">
-            <div class="grid-3">
+            <div class="form-grid">
                 <div class="field">
-                    <label>Importación que recibe el costo</label>
-                    <select v-model="form.inventory_document_id" required>
+                    <label for="alloc-receipt">Importación que recibe el costo</label>
+                    <select id="alloc-receipt" v-model="form.inventory_document_id" required>
                         <option v-for="r in receipts" :key="r.id" :value="r.id">
                             #{{ r.id }} · {{ r.posting_date }} · {{ r.supplier }} ({{ money(r.total_local) }})
                         </option>
@@ -88,51 +89,56 @@ function submit() {
                     <span v-if="form.errors.inventory_document_id" class="error">{{ form.errors.inventory_document_id }}</span>
                 </div>
                 <div class="field">
-                    <label>Tipo de documento</label>
-                    <select v-model="form.document_type_id" required>
+                    <label for="alloc-doc-type">Tipo de documento</label>
+                    <select id="alloc-doc-type" v-model="form.document_type_id" required>
                         <option v-for="t in documentTypes" :key="t.id" :value="t.id">{{ t.code }} — {{ t.name }}</option>
                     </select>
                 </div>
                 <div class="field">
-                    <label>Fecha de contabilización</label>
-                    <input v-model="form.posting_date" type="date" required>
+                    <label for="alloc-date">Fecha de contabilización</label>
+                    <input id="alloc-date" v-model="form.posting_date" type="date" required>
                 </div>
             </div>
 
-            <div class="table-scroll">
+            <!-- Grilla de selección: la casilla elige el rubro y el monto a
+                 cargar se ajusta en la fila (CLAUDE.md secc. 20, excepción). -->
+            <div class="table-responsive capture-grid alloc-table">
                 <table>
                     <thead>
                         <tr>
-                            <th></th>
                             <th>Rubro</th>
                             <th>Proveedor</th>
-                            <th>Fecha</th>
-                            <th class="right">Monto</th>
-                            <th class="right">Por asignar</th>
-                            <th class="right">A cargar ahora</th>
+                            <th class="num">Por asignar</th>
+                            <th class="num">A cargar ahora</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="r in pending" :key="r.id" :class="{ chosen: selection[r.id].checked }">
-                            <td><input v-model="selection[r.id].checked" type="checkbox"></td>
-                            <td>{{ r.concept_label }}</td>
-                            <td>{{ r.supplier }}</td>
-                            <td class="num">{{ r.posting_date }}</td>
-                            <td class="num right muted">{{ money(r.amount) }}</td>
-                            <td class="num right">{{ money(r.pending_amount) }}</td>
-                            <td class="right">
+                            <td>
+                                <label class="pick-cell">
+                                    <input v-model="selection[r.id].checked" type="checkbox">
+                                    <span>
+                                        {{ r.concept_label }}
+                                        <span class="breakdown">{{ r.posting_date }} · monto {{ money(r.amount) }}</span>
+                                    </span>
+                                </label>
+                            </td>
+                            <td data-label="Proveedor">{{ r.supplier }}</td>
+                            <td data-label="Por asignar" class="num">{{ money(r.pending_amount) }}</td>
+                            <td data-label="A cargar ahora" class="num">
                                 <input
                                     v-model="selection[r.id].amount"
                                     type="number" step="0.01" min="0" class="cell-input"
                                     :disabled="!selection[r.id].checked"
+                                    aria-label="Monto a cargar ahora"
                                 >
-                                <span v-if="selection[r.id].checked && exceeds(r)" class="error">
+                                <span v-if="selection[r.id].checked && exceeds(r)" class="error-text">
                                     Solo quedan {{ money(r.pending_amount) }}.
                                 </span>
                             </td>
                         </tr>
                         <tr v-if="!pending.length">
-                            <td colspan="7" class="muted empty-row">
+                            <td colspan="4" class="muted empty-row">
                                 No hay rubros pendientes de asignar: toda la nacionalización acumulada ya entró al costo.
                             </td>
                         </tr>
@@ -141,16 +147,16 @@ function submit() {
             </div>
 
             <div class="field">
-                <label>Descripción (opcional)</label>
-                <input v-model="form.description" type="text" maxlength="255">
+                <label for="alloc-description">Descripción (opcional)</label>
+                <input id="alloc-description" v-model="form.description" type="text" maxlength="255">
             </div>
 
             <div class="totals">
-                <div><span class="muted small">Rubros seleccionados</span><strong class="num">{{ chosen.length }}</strong></div>
-                <div><span class="muted small">Costo a cargar</span><strong class="num total">{{ money(total) }}</strong></div>
+                <div><span class="muted small">Rubros seleccionados</span><strong class="num-value">{{ chosen.length }}</strong></div>
+                <div><span class="muted small">Costo a cargar</span><strong class="num-value total">{{ money(total) }}</strong></div>
                 <div v-if="selectedReceipt">
                     <span class="muted small">Valor de la importación</span>
-                    <strong class="num">{{ money(selectedReceipt.total_local) }}</strong>
+                    <strong class="num-value">{{ money(selectedReceipt.total_local) }}</strong>
                 </div>
             </div>
 
@@ -159,10 +165,10 @@ function submit() {
                 automáticamente, en la proporción que corresponda.
             </p>
 
-            <div class="actions">
+            <div class="form-actions">
                 <Link :href="route('import-costs.index')" class="btn btn-ghost">Cancelar</Link>
                 <button type="submit" class="btn btn-primary" :disabled="invalid || form.processing">
-                    Asignar al costo
+                    <CheckIcon /> Asignar al costo
                 </button>
             </div>
         </form>
@@ -170,33 +176,24 @@ function submit() {
 </template>
 
 <style scoped>
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
 .card { padding: 1rem 1.25rem; }
 
-.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-.error { color: var(--color-danger, #b91c1c); font-size: 0.76rem; }
-
-.table-scroll { overflow-x: auto; margin: 0 -1.25rem 0.75rem; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.chosen { background: var(--color-surface-muted, rgb(0 0 0 / 3%)); }
+.alloc-table { margin: 0 0 0.75rem; }
+table { font-size: 0.85rem; }
+.pick-cell { display: inline-flex; align-items: flex-start; gap: 0.5rem; }
+.pick-cell input { margin-top: 0.2rem; }
+.breakdown { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; }
+.chosen td { background: var(--color-primary-soft); }
 .cell-input { width: 8rem; text-align: right; }
+.num-value { font-variant-numeric: tabular-nums; }
 
-.totals { display: flex; gap: 1.75rem; padding: 0.85rem 0; border-top: 1px solid var(--color-border); }
+.totals { display: flex; flex-wrap: wrap; gap: 0.75rem 1.75rem; padding: 0.85rem 0; border-top: 1px solid var(--color-border); }
 .totals > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .total { font-size: 1.05rem; }
 
-.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-@media (max-width: 860px) { .grid-3 { grid-template-columns: 1fr; } }
+@media screen and (max-width: 1024px) {
+    .chosen td { background: none; }
+    .table-responsive tbody tr.chosen { background: var(--color-primary-soft); }
+    .cell-input { width: auto; }
+}
 </style>

@@ -1,9 +1,9 @@
 <script setup>
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import ConfirmModal from '../../../Components/ConfirmModal.vue';
-import { ArrowRightIcon } from '@lucide/vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { ArrowLeftIcon, ArrowRightIcon } from '@lucide/vue';
 
 const props = defineProps({
     order: { type: Object, required: true },
@@ -24,14 +24,13 @@ function quantity(value) {
 const pending = computed(() => props.lines.reduce((sum, line) => sum + Number(line.pending), 0));
 const isOpen = computed(() => props.order.status === 'open');
 
-const confirmingCancel = ref(false);
-const cancelling = ref(false);
-
-function submitCancel() {
-    cancelling.value = true;
-
-    router.post(route('sales-orders.cancel', props.order.id), {}, {
-        onFinish: () => { cancelling.value = false; confirmingCancel.value = false; },
+function cancelOrder() {
+    confirmAction({
+        title: 'Cancelar la orden de pedido',
+        message: 'La mercancía que sigue apartada volverá a quedar disponible para otros clientes. Lo ya facturado no se toca: esa mercancía salió y tiene su comprobante. El pedido queda marcado como cancelado.',
+        confirmLabel: 'Cancelar el pedido',
+        danger: true,
+        onConfirm: () => router.post(route('sales-orders.cancel', props.order.id)),
     });
 }
 
@@ -46,14 +45,15 @@ const badgeClass = {
     <Head :title="`Pedido ${order.number}`" />
 
     <AppLayout :title="`Pedido ${order.number}`">
-        <template #actions>
-            <button v-if="isOpen" type="button" class="btn btn-ghost" @click="confirmingCancel = true">
-                Cancelar pedido
-            </button>
-            <Link v-if="isOpen" :href="route('sales-documents.create', { order: order.id })" class="btn btn-primary">
-                Copiar a <ArrowRightIcon /> Factura de venta
-            </Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('sales-orders.index')" class="btn btn-ghost"><ArrowLeftIcon /> Órdenes de pedido</Link>
+            <div v-if="isOpen" class="view-actions">
+                <button type="button" class="btn btn-ghost btn-danger-text" @click="cancelOrder">Cancelar pedido</button>
+                <Link :href="route('sales-documents.create', { order: order.id })" class="btn btn-primary">
+                    Copiar a <ArrowRightIcon /> Factura de venta
+                </Link>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.order" class="flash flash-error">{{ page.props.errors.order }}</div>
 
@@ -85,28 +85,27 @@ const badgeClass = {
         </p>
 
         <div class="card">
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th>
                             <th>Artículo</th>
-                            <th>Bodega</th>
-                            <th class="right">Pedido</th>
-                            <th class="right">Facturado</th>
-                            <th class="right">Apartado</th>
-                            <th class="right">Precio pactado</th>
+                            <th class="num">Pedido</th>
+                            <th class="num">Facturado</th>
+                            <th class="num">Apartado</th>
+                            <th class="num">Precio pactado</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="line in lines" :key="line.id">
-                            <td class="num">{{ line.line_number }}</td>
-                            <td>{{ line.item }}</td>
-                            <td class="num">{{ line.warehouse_code }}</td>
-                            <td class="num right">{{ quantity(line.quantity) }}</td>
-                            <td class="num right">{{ quantity(line.quantity_invoiced) }}</td>
-                            <td class="num right">{{ isOpen ? quantity(line.pending) : '—' }}</td>
-                            <td class="num right">{{ money(line.unit_price) }}</td>
+                            <td>
+                                <span class="muted num">{{ line.line_number }}.</span> {{ line.item }}
+                                <span class="muted small block">Bodega {{ line.warehouse_code }}</span>
+                            </td>
+                            <td data-label="Pedido" class="num">{{ quantity(line.quantity) }}</td>
+                            <td data-label="Facturado" class="num">{{ quantity(line.quantity_invoiced) }}</td>
+                            <td data-label="Apartado" class="num">{{ isOpen ? quantity(line.pending) : '—' }}</td>
+                            <td data-label="Precio pactado" class="num">{{ money(line.unit_price) }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -115,13 +114,13 @@ const badgeClass = {
 
         <div class="card">
             <div class="card-header"><strong>Facturas emitidas contra este pedido</strong></div>
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Consecutivo</th>
                             <th>Fecha</th>
-                            <th class="right">Total</th>
+                            <th class="num">Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -131,8 +130,8 @@ const badgeClass = {
                                     {{ invoice.consecutive }}
                                 </Link>
                             </td>
-                            <td class="num">{{ invoice.posting_date }}</td>
-                            <td class="num right">{{ money(invoice.total) }}</td>
+                            <td data-label="Fecha" class="num">{{ invoice.posting_date }}</td>
+                            <td data-label="Total" class="num">{{ money(invoice.total) }}</td>
                         </tr>
                         <tr v-if="!invoices.length">
                             <td colspan="3" class="muted empty-row">Todavía no se ha facturado nada de este pedido.</td>
@@ -141,38 +140,18 @@ const badgeClass = {
                 </table>
             </div>
         </div>
-
-        <ConfirmModal
-            :open="confirmingCancel"
-            title="Cancelar la orden de pedido"
-            message="La mercancía que sigue apartada volverá a quedar disponible para otros clientes. Lo ya facturado no se toca: esa mercancía salió y tiene su comprobante. El pedido queda marcado como cancelado."
-            confirm-label="Cancelar el pedido"
-            danger
-            :processing="cancelling"
-            @confirm="submitCancel"
-            @cancel="confirmingCancel = false"
-        />
     </AppLayout>
 </template>
 
 <style scoped>
-.summary { display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+.summary { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
 .summary > div { display: flex; flex-direction: column; gap: 0.15rem; }
 
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
 .card-header { padding: 0.75rem 1.25rem; }
 .card + .card { margin-top: 0.75rem; }
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
+table { font-size: 0.85rem; }
 .num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.25rem; }
+.block { display: block; }
 .link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
 .link:hover { text-decoration: underline; }
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
 </style>

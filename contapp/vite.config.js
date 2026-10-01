@@ -8,10 +8,16 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.scss', 'resources/js/app.js'],
             refresh: true,
+            // Una tipografía por tema de compañía (CLAUDE.md secc. 31).
+            // Solo se precarga la del tema predeterminado; las demás las baja
+            // el navegador cuando una página las usa (@font-face no descarga
+            // una fuente que ningún texto pide).
             fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
-                }),
+                bunny('Instrument Sans', { weights: [400, 500, 600, 700] }),
+                ...[
+                    'Inter', 'Manrope', 'Plus Jakarta Sans', 'DM Sans', 'Outfit',
+                    'IBM Plex Sans', 'Work Sans', 'Nunito Sans', 'Sora',
+                ].map((family) => bunny(family, { weights: [400, 500, 600, 700], preload: false })),
             ],
         }),
         vue({

@@ -1,8 +1,9 @@
 <script setup>
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import { PlusIcon, SlidersHorizontalIcon, XIcon } from '@lucide/vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { ArrowLeftIcon, PlusIcon, SlidersHorizontalIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     catalogs: { type: Object, required: true },
@@ -257,6 +258,29 @@ function addTax(line) {
     line.taxes.push({ tax_code: '01', iva_rate_code: '08' });
 }
 
+// La tabla de líneas muestra lo que se digita en cada una (artículo,
+// descripción, bodega, cantidad y precio) para caber sin desplazarse de lado
+// (CLAUDE.md secc. 20); CAByS, ubicación, unidad e IVA viven en el detalle de
+// la línea. Lo que falte ahí se avisa en la fila, para que no se pierda.
+const hasBins = computed(() => props.warehouses.some((w) => w.uses_bins));
+
+function lineMissing(line) {
+    const missing = [];
+    if (! line.cabys_code) missing.push('CAByS');
+    if (usesBins(line.warehouse_id) && ! line.warehouse_bin_id) missing.push('ubicación');
+    return missing;
+}
+
+function lineMeta(line) {
+    const rate = props.catalogs.ivaRates[line.taxes[0]?.iva_rate_code];
+
+    return [
+        line.cabys_code ? `CAByS ${line.cabys_code}` : null,
+        rate ? `IVA ${rate.percentage}%` : null,
+        line.unit_code,
+    ].filter(Boolean).join(' · ');
+}
+
 // --- Panel 6: totales ---
 
 const totals = computed(() => {
@@ -398,6 +422,10 @@ function submit() {
     <Head title="Nueva factura electrónica" />
 
     <AppLayout title="Nueva factura electrónica">
+        <div class="view-toolbar">
+            <Link :href="route('sales-documents.index')" class="btn btn-ghost"><ArrowLeftIcon /> Comprobantes</Link>
+        </div>
+
         <div v-if="page.props.errors?.billing" class="flash flash-error">{{ page.props.errors.billing }}</div>
 
         <p v-if="!hacienda.signer_configured" class="flash flash-warning">
@@ -411,7 +439,7 @@ function submit() {
             <section class="card panel">
                 <h2>1 · Encabezado y partes</h2>
 
-                <div class="grid-4">
+                <div class="form-grid">
                     <div class="field">
                         <label>Tipo de comprobante</label>
                         <select v-model="form.fiscal_document_type">
@@ -436,9 +464,6 @@ function submit() {
                         <label>Terminal</label>
                         <input v-model="form.terminal" type="text" maxlength="5" required>
                     </div>
-                </div>
-
-                <div class="grid-4">
                     <div class="field">
                         <label>Actividad económica del emisor</label>
                         <select v-model="form.emitter_activity_code" required>
@@ -473,7 +498,7 @@ function submit() {
             <section class="card panel">
                 <h2>2 · Términos financieros y comerciales</h2>
 
-                <div class="grid-4">
+                <div class="form-grid">
                     <div class="field">
                         <label>Moneda</label>
                         <select v-model="form.currency_id" required>
@@ -497,9 +522,6 @@ function submit() {
                         <input v-model="form.credit_term_days" type="number" min="1" :disabled="!isCredit" :required="isCredit">
                         <span v-if="form.errors.credit_term_days" class="error">{{ form.errors.credit_term_days }}</span>
                     </div>
-                </div>
-
-                <div class="grid-4">
                     <div class="field">
                         <label>Fecha de emisión</label>
                         <input v-model="form.document_date" type="date" required>
@@ -526,73 +548,64 @@ function submit() {
                 </p>
                 <p v-else-if="priceNotice" class="price-source warn">{{ priceNotice }}</p>
 
-                <div class="table-scroll">
+                <div class="table-responsive capture-grid lines-grid">
                     <table>
                         <thead>
                             <tr>
-                                <th>#</th>
                                 <th>Artículo</th>
-                                <th>CAByS</th>
                                 <th>Descripción</th>
                                 <th>Bodega</th>
-                                <th v-if="warehouses.some((w) => w.uses_bins)">Ubic.</th>
-                                <th class="right">Cant.</th>
-                                <th>U/M</th>
-                                <th class="right">Precio</th>
-                                <th>IVA</th>
-                                <th class="right">Subtotal</th>
-                                <th></th>
+                                <th class="num">Cant.</th>
+                                <th class="num">Precio</th>
+                                <th class="num">Subtotal</th>
+                                <th><span class="sr-only">Acciones de la línea</span></th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="(line, index) in form.lines" :key="index">
-                                <td class="num">{{ index + 1 }}</td>
-                                <td>
-                                    <select v-model="line.item_id" @change="onItemSelected(line)">
+                                <td class="item-cell">
+                                    <select v-model="line.item_id" :aria-label="`Artículo de la línea ${index + 1}`" @change="onItemSelected(line)">
                                         <option value="">— Libre —</option>
                                         <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }}</option>
                                     </select>
                                 </td>
-                                <td><input v-model="line.cabys_code" type="text" maxlength="13" required class="cabys"></td>
-                                <td><input v-model="line.description" type="text" maxlength="200" required></td>
-                                <td>
-                                    <select v-model="line.warehouse_id" :disabled="line.is_service" @change="line.warehouse_bin_id = ''">
+                                <td data-label="Descripción" class="desc-cell">
+                                    <input v-model="line.description" type="text" maxlength="200" required :aria-label="`Descripción de la línea ${index + 1}`">
+                                    <span class="line-meta muted small">
+                                        {{ lineMeta(line) }}
+                                        <span v-if="lineMissing(line).length" class="line-missing">Falta {{ lineMissing(line).join(' y ') }}: abrí el detalle de la línea.</span>
+                                    </span>
+                                </td>
+                                <td data-label="Bodega" class="warehouse-cell">
+                                    <select v-model="line.warehouse_id" :disabled="line.is_service" :aria-label="`Bodega de la línea ${index + 1}`" @change="line.warehouse_bin_id = ''">
                                         <option value="">—</option>
                                         <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
                                     </select>
                                 </td>
-                                <td v-if="warehouses.some((w) => w.uses_bins)">
-                                    <select v-if="usesBins(line.warehouse_id)" v-model="line.warehouse_bin_id" required>
-                                        <option value="" disabled>—</option>
-                                        <option v-for="b in binsOf(line.warehouse_id)" :key="b.id" :value="b.id">{{ b.code }}</option>
-                                    </select>
-                                    <span v-else class="muted small">—</span>
+                                <td data-label="Cantidad" class="qty-cell">
+                                    <input v-model="line.quantity" type="number" step="0.001" min="0.001" required class="right" :aria-label="`Cantidad de la línea ${index + 1}`">
                                 </td>
-                                <td><input v-model="line.quantity" type="number" step="0.001" min="0.001" required class="right qty"></td>
-                                <td>
-                                    <select v-model="line.unit_code">
-                                        <option v-for="(label, code) in catalogs.units" :key="code" :value="code">{{ code }}</option>
-                                    </select>
+                                <td data-label="Precio" class="price-cell">
+                                    <input v-model="line.unit_price" type="number" step="0.00001" min="0" required class="right" :aria-label="`Precio de la línea ${index + 1}`">
                                 </td>
-                                <td><input v-model="line.unit_price" type="number" step="0.00001" min="0" required class="right"></td>
-                                <td>
-                                    <select v-model="line.taxes[0].iva_rate_code">
-                                        <option v-for="(rate, code) in catalogs.ivaRates" :key="code" :value="code">
-                                            {{ code }} ({{ rate.percentage }}%)
-                                        </option>
-                                    </select>
-                                </td>
-                                <td class="num right">{{ money(lineSubtotal(line)) }}</td>
-                                <td class="actions-cell">
-                                    <button type="button" class="btn btn-ghost" title="Descuentos, exoneración, VIN" aria-label="Descuentos, exoneración, VIN" @click="openAdvanced(index)"><SlidersHorizontalIcon /></button>
-                                    <button type="button" class="btn btn-ghost" :disabled="form.lines.length === 1" aria-label="Quitar línea" @click="form.lines.splice(index, 1)"><XIcon /></button>
+                                <td data-label="Subtotal" class="num">{{ money(lineSubtotal(line)) }}</td>
+                                <td data-label="" class="actions-cell">
+                                    <button
+                                        type="button"
+                                        class="btn btn-ghost"
+                                        :class="{ 'needs-attention': lineMissing(line).length }"
+                                        title="Detalle de la línea: CAByS, unidad, IVA, descuentos, exoneración, VIN"
+                                        :aria-label="`Detalle de la línea ${index + 1}`"
+                                        @click="openAdvanced(index)"
+                                    ><SlidersHorizontalIcon /></button>
+                                    <button type="button" class="btn btn-ghost" :disabled="form.lines.length === 1" :aria-label="`Quitar la línea ${index + 1}`" @click="form.lines.splice(index, 1)"><XIcon /></button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <button type="button" class="btn btn-ghost" @click="form.lines.push(blankLine())"><PlusIcon /> Agregar línea</button>
+                <button type="button" class="btn btn-ghost add-line" @click="form.lines.push(blankLine())"><PlusIcon /> Agregar línea</button>
             </section>
 
             <!-- PANEL 5 -->
@@ -604,7 +617,7 @@ function submit() {
                     exige indicar qué documento corrige o anula.
                 </p>
 
-                <div v-for="(reference, index) in form.references" :key="index" class="grid-4">
+                <div v-for="(reference, index) in form.references" :key="index" class="form-grid">
                     <div class="field">
                         <label>Tipo de documento</label>
                         <select v-model="reference.document_type">
@@ -669,13 +682,13 @@ function submit() {
 
                 <template v-else>
                     <div v-for="(payment, index) in form.payments" :key="index" class="payment-row">
-                        <select v-model="payment.method_code">
+                        <select v-model="payment.method_code" :aria-label="`Medio de pago ${index + 1}`">
                             <option v-for="(label, code) in catalogs.paymentMethods" :key="code" :value="code">
                                 {{ code }} — {{ label }}
                             </option>
                         </select>
-                        <input v-model="payment.amount" type="number" step="0.01" min="0" class="right">
-                        <button type="button" class="btn btn-ghost" @click="form.payments.splice(index, 1)">Quitar</button>
+                        <input v-model="payment.amount" type="number" step="0.01" min="0" class="right" :aria-label="`Monto del medio de pago ${index + 1}`">
+                        <button type="button" class="btn btn-ghost" :aria-label="`Quitar el medio de pago ${index + 1}`" @click="form.payments.splice(index, 1)"><XIcon /></button>
                     </div>
 
                     <div class="payment-actions">
@@ -727,10 +740,8 @@ function submit() {
         </form>
 
         <!-- Autorización de un cambio de precio, en el momento -->
-        <div v-if="authorizing" class="modal-backdrop" @click.self="authorizing = false">
-            <form class="modal-card card auth-modal" @submit.prevent="submitWithAuthorization">
-                <h2>Autorización de cambio de precio</h2>
-
+        <DetailModal :open="authorizing" title="Autorización de cambio de precio" @close="authorizing = false">
+            <form id="price-auth-form" @submit.prevent="submitWithAuthorization">
                 <p class="muted small">
                     Esta factura se aparta de la lista de precios en
                     <strong>{{ deviations.length }}</strong> línea(s). Para emitirla hace falta que la libere
@@ -769,23 +780,55 @@ function submit() {
                     <label>Motivo (opcional)</label>
                     <input v-model="form.price_override_reason" type="text" maxlength="255" placeholder="Cierre de mes, liquidación...">
                 </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">
-                        Autorizar y emitir
-                    </button>
-                    <button type="button" class="btn btn-ghost" @click="authorizing = false">Cancelar</button>
-                </div>
             </form>
-        </div>
 
-        <!-- PANEL 4: sub-panel flotante por línea -->
-        <div v-if="advancedLine !== null" class="modal-backdrop" @click.self="advancedLine = null">
-            <div class="modal-card card">
-                <h2>4 · Configuración avanzada — línea {{ advancedLine + 1 }}</h2>
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="authorizing = false">Cancelar</button>
+                <button type="submit" form="price-auth-form" class="btn btn-primary" :disabled="form.processing">
+                    Autorizar y emitir
+                </button>
+            </template>
+        </DetailModal>
+
+        <!-- PANEL 4: detalle de la línea -->
+        <DetailModal
+            :open="advancedLine !== null"
+            wide
+            :title="advancedLine !== null ? `4 · Detalle de la línea ${advancedLine + 1}` : ''"
+            @close="advancedLine = null"
+        >
+            <div v-if="advancedLine !== null" class="advanced">
+                <h3>Datos fiscales</h3>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="adv-cabys">CAByS</label>
+                        <input id="adv-cabys" v-model="form.lines[advancedLine].cabys_code" type="text" maxlength="13" required class="cabys">
+                    </div>
+                    <div class="field">
+                        <label for="adv-unit">Unidad de medida</label>
+                        <select id="adv-unit" v-model="form.lines[advancedLine].unit_code">
+                            <option v-for="(label, code) in catalogs.units" :key="code" :value="code">{{ code }} — {{ label }}</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="adv-iva">Tarifa de IVA</label>
+                        <select id="adv-iva" v-model="form.lines[advancedLine].taxes[0].iva_rate_code">
+                            <option v-for="(rate, code) in catalogs.ivaRates" :key="code" :value="code">
+                                {{ code }} — {{ rate.label }}
+                            </option>
+                        </select>
+                    </div>
+                    <div v-if="hasBins && usesBins(form.lines[advancedLine].warehouse_id)" class="field">
+                        <label for="adv-bin">Ubicación en la bodega</label>
+                        <select id="adv-bin" v-model="form.lines[advancedLine].warehouse_bin_id" required>
+                            <option value="" disabled>—</option>
+                            <option v-for="b in binsOf(form.lines[advancedLine].warehouse_id)" :key="b.id" :value="b.id">{{ b.code }}</option>
+                        </select>
+                    </div>
+                </div>
 
                 <h3>Descuento</h3>
-                <div class="grid-2">
+                <div class="form-grid">
                     <div class="field">
                         <label>Código</label>
                         <select v-model="form.lines[advancedLine].discount_code">
@@ -809,7 +852,7 @@ function submit() {
                 <h3>Impuestos y exoneración</h3>
 
                 <div v-for="(tax, taxIndex) in form.lines[advancedLine].taxes" :key="taxIndex" class="tax-block">
-                    <div class="grid-2">
+                    <div class="form-grid">
                         <div class="field">
                             <label>Tipo de impuesto</label>
                             <select v-model="tax.tax_code">
@@ -826,9 +869,6 @@ function submit() {
                                 </option>
                             </select>
                         </div>
-                    </div>
-
-                    <div class="grid-2">
                         <div class="field">
                             <label>Tipo de documento de exoneración</label>
                             <select v-model="tax.exoneration_document_type">
@@ -844,7 +884,7 @@ function submit() {
                         </div>
                     </div>
 
-                    <div v-if="tax.exoneration_document_type" class="grid-4">
+                    <div v-if="tax.exoneration_document_type" class="form-grid">
                         <div class="field">
                             <label>Artículo</label>
                             <input v-model="tax.exoneration_article" type="text" maxlength="10">
@@ -876,12 +916,12 @@ function submit() {
                     <label>Número de VIN o serie (vehículos, aeronaves, embarcaciones)</label>
                     <input v-model="form.lines[advancedLine].vin_or_serial" type="text" maxlength="17">
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-primary" @click="advancedLine = null">Listo</button>
-                </div>
             </div>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-primary" @click="advancedLine = null">Listo</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -890,43 +930,39 @@ function submit() {
 .panel h2 { font-size: 0.92rem; margin: 0 0 0.9rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); }
 .panel h3 { font-size: 0.82rem; margin: 1rem 0 0.5rem; color: var(--color-text-muted); }
 
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.flash-warning { background: var(--color-warning-soft); color: var(--color-warning); }
-
-.hint { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 1rem; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-.span-2 { grid-column: span 2; }
-
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.7rem; }
-.field label { font-size: 0.76rem; color: var(--color-text-muted); }
-
-.field input, .field select, td input, td select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.42rem 0.55rem;
-    font-size: 0.84rem;
-    color: var(--color-text);
+/* Un campo de dos columnas, solo donde la rejilla tiene al menos dos. */
+@media (min-width: 641px) {
+    .span-2 { grid-column: span 2; }
 }
 
 .field input:disabled, td input:disabled, td select:disabled { opacity: 0.45; }
 
-.table-scroll { overflow-x: auto; margin-bottom: 0.6rem; }
-table { font-size: 0.82rem; width: 100%; }
-th, td { text-align: left; padding: 0.35rem 0.4rem; border-top: 1px solid var(--color-border); }
-th.right, td.right, td input.right { text-align: right; }
-td .cabys { font-variant-numeric: tabular-nums; }
-td .qty { max-width: 90px; }
+table { font-size: 0.82rem; }
+th, td { padding: 0.35rem 0.4rem; }
+.right, td input.right { text-align: right; }
+.cabys { font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.actions-cell { display: flex; gap: 0.2rem; }
 
-.totals-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 1.5rem; align-items: start; }
+.lines-grid { margin-bottom: 0.6rem; }
+.lines-grid td { vertical-align: top; }
+.item-cell { width: 7.5rem; }
+.warehouse-cell { width: 5.5rem; }
+.qty-cell { width: 5.5rem; }
+.price-cell { width: 7.5rem; }
+.item-cell select, .warehouse-cell select, .qty-cell input, .price-cell input, .desc-cell input { width: 100%; }
+.line-meta { display: block; margin-top: 0.2rem; }
+.line-missing { display: block; color: var(--color-danger); font-weight: 600; }
+.actions-cell { display: flex; gap: 0.2rem; white-space: nowrap; }
+.needs-attention { color: var(--color-danger); box-shadow: inset 0 0 0 1px var(--color-danger); }
+.add-line { margin-top: 0.25rem; }
+
+.advanced h3:first-child { margin-top: 0; }
+
+@media screen and (max-width: 1024px) {
+    .item-cell, .warehouse-cell, .qty-cell, .price-cell { width: auto; }
+}
+
+.totals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1.5rem; align-items: start; }
 .totals-column > div { display: flex; justify-content: space-between; gap: 1.5rem; font-size: 0.83rem; padding: 0.15rem 0; }
 .totals-column span { color: var(--color-text-muted); }
 .totals-column.grand {
@@ -936,39 +972,29 @@ td .qty { max-width: 90px; }
 .totals-column.grand span { font-size: 0.74rem; letter-spacing: 0.04em; }
 .totals-column.grand strong { font-size: 1.3rem; }
 
-.payment-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 0.6rem; margin-bottom: 0.5rem; }
-.payment-row select, .payment-row input {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm); padding: 0.42rem 0.55rem; font-size: 0.84rem; color: var(--color-text);
+.payment-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 0.6rem; margin-bottom: 0.5rem; }
+.payment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; }
+
+@media (max-width: 640px) {
+    .payment-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .payment-row select { grid-column: 1 / -1; }
 }
-.payment-actions { display: flex; align-items: center; gap: 1rem; }
 .mismatch { color: var(--color-danger); font-size: 0.8rem; font-weight: 600; }
 
 .emit { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
 .btn-emit { width: 100%; padding: 0.8rem; font-size: 0.92rem; }
 
-.error { color: var(--color-danger); font-size: 0.75rem; }
-
-.modal-backdrop {
-    position: fixed; inset: 0; background: rgba(11, 31, 58, 0.45);
-    display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem;
-}
-
-.modal-card { width: 720px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.5rem; }
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+.advanced h3 { font-size: 0.82rem; margin: 1rem 0 0.5rem; color: var(--color-text-muted); }
 .tax-block { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 0.6rem; }
-.modal-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
 .price-source { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.5rem; }
-.price-source.warn { color: #a04000; }
+.price-source.warn { color: var(--color-warning); }
 
 .price-warning {
     margin-top: 1rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm);
-    background: #fdf0ea; color: #a04000; font-size: 0.82rem;
+    background: var(--color-warning-soft); color: var(--color-warning); font-size: 0.82rem;
 }
 .deviation-list { margin: 0.4rem 0 0 1.1rem; padding: 0; font-size: 0.78rem; }
 .deviation-list .down { font-weight: 700; }
 .deviation-list .up { font-weight: 700; }
 .needs-auth { display: block; margin-top: 0.4rem; font-weight: 600; }
-.auth-modal { width: min(460px, 100%); }
-.auth-modal h2 { margin: 0 0 0.5rem; font-size: 1rem; }
 </style>

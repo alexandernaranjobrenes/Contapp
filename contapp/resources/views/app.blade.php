@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+{{-- El tema de la compañía activa (CLAUDE.md secc. 31) va desde el servidor,
+     para que la primera pintura ya salga con sus colores. Al navegar lo
+     actualiza app.js. --}}
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-company-theme="{{ $page['props']['companyTheme'] ?? 'marino' }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">

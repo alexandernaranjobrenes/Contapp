@@ -1,8 +1,8 @@
 <script setup>
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import { PlusIcon } from '@lucide/vue';
+import { ArrowLeftIcon, CheckIcon, PlusIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     operations: { type: Object, default: () => ({}) },
@@ -171,6 +171,10 @@ function submit() {
     <Head title="Nuevo movimiento de inventario" />
 
     <AppLayout title="Nuevo movimiento de inventario">
+        <div class="view-toolbar">
+            <Link :href="route('inventory-movements.index')" class="btn btn-ghost"><ArrowLeftIcon /> Movimientos</Link>
+        </div>
+
         <div v-if="page.props.errors?.lines" class="flash flash-error">{{ page.props.errors.lines }}</div>
 
         <p v-if="!ready" class="flash flash-warning">
@@ -179,17 +183,17 @@ function submit() {
         </p>
 
         <form class="card form-card" @submit.prevent="submit">
-            <div class="grid-4">
+            <div class="form-grid">
                 <div class="field">
-                    <label>Operación</label>
-                    <select v-model="form.operation">
+                    <label for="mov-operation">Operación</label>
+                    <select id="mov-operation" v-model="form.operation">
                         <option v-for="(label, key) in operations" :key="key" :value="key">{{ label }}</option>
                     </select>
                 </div>
 
                 <div class="field">
-                    <label>Tipo de documento</label>
-                    <select v-model="form.document_type_id" required>
+                    <label for="mov-doc-type">Tipo de documento</label>
+                    <select id="mov-doc-type" v-model="form.document_type_id" required>
                         <option value="" disabled>— Elegir —</option>
                         <option v-for="t in documentTypes" :key="t.id" :value="t.id">{{ t.code }} — {{ t.name }}</option>
                     </select>
@@ -197,21 +201,21 @@ function submit() {
                 </div>
 
                 <div class="field">
-                    <label>Fecha del documento</label>
-                    <input v-model="form.document_date" type="date" required>
+                    <label for="mov-doc-date">Fecha del documento</label>
+                    <input id="mov-doc-date" v-model="form.document_date" type="date" required>
                 </div>
 
                 <div class="field">
-                    <label>Fecha de contabilización</label>
-                    <input v-model="form.posting_date" type="date" required>
+                    <label for="mov-posting-date">Fecha de contabilización</label>
+                    <input id="mov-posting-date" v-model="form.posting_date" type="date" required>
                     <span v-if="form.errors.posting_date" class="error">{{ form.errors.posting_date }}</span>
                 </div>
             </div>
 
-            <div class="grid-2">
+            <div class="form-grid">
                 <div v-if="needsSupplier" class="field">
-                    <label>Proveedor</label>
-                    <select v-model="form.business_partner_id" required>
+                    <label for="mov-supplier">Proveedor</label>
+                    <select id="mov-supplier" v-model="form.business_partner_id" required>
                         <option value="" disabled>— Elegir —</option>
                         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.code }} — {{ s.name }}</option>
                     </select>
@@ -219,19 +223,19 @@ function submit() {
                 </div>
 
                 <div v-if="needsSupplier" class="field">
-                    <label>Orden de compra (opcional)</label>
-                    <select v-model="form.purchase_order_id">
+                    <label for="mov-po">Orden de compra (opcional)</label>
+                    <select id="mov-po" v-model="form.purchase_order_id">
                         <option value="">Sin orden previa</option>
                         <option v-for="o in ordersOfSupplier" :key="o.id" :value="o.id">{{ o.label }}</option>
                     </select>
-                    <span class="hint small">
+                    <span class="muted small">
                         Enlazarla descarga lo recibido de su pendiente. No toda compra pasa por una orden formal.
                     </span>
                 </div>
 
                 <div class="field">
-                    <label>Descripción (opcional)</label>
-                    <input v-model="form.description" type="text" maxlength="255">
+                    <label for="mov-description">Descripción (opcional)</label>
+                    <input id="mov-description" v-model="form.description" type="text" maxlength="255">
                 </div>
             </div>
 
@@ -253,33 +257,30 @@ function submit() {
                 </label>
 
                 <div v-if="form.is_import" class="import-box">
-                    <div class="grid-3">
+                    <div class="form-grid">
                         <div class="field">
-                            <label>Número de DUA</label>
-                            <input v-model="form.customs_declaration" type="text" maxlength="40" placeholder="005-2026-123456">
+                            <label for="mov-dua">Número de DUA</label>
+                            <input id="mov-dua" v-model="form.customs_declaration" type="text" maxlength="40" placeholder="005-2026-123456">
                             <span v-if="form.errors.customs_declaration" class="error">{{ form.errors.customs_declaration }}</span>
                         </div>
                         <div class="field">
-                            <label>Aduana</label>
-                            <select v-model="form.customs_office">
+                            <label for="mov-customs">Aduana</label>
+                            <select id="mov-customs" v-model="form.customs_office">
                                 <option value="">— Sin indicar —</option>
                                 <option v-for="(label, key) in customsOffices" :key="key" :value="key">{{ label }}</option>
                             </select>
                         </div>
                         <div class="field">
-                            <label>Fecha del DUA</label>
-                            <input v-model="form.customs_date" type="date">
-                        </div>
-                    </div>
-
-                    <div class="grid-2">
-                        <div class="field">
-                            <label>Documento de transporte</label>
-                            <input v-model="form.transport_document" type="text" maxlength="60" placeholder="BL, guía aérea o carta de porte">
+                            <label for="mov-customs-date">Fecha del DUA</label>
+                            <input id="mov-customs-date" v-model="form.customs_date" type="date">
                         </div>
                         <div class="field">
-                            <label>País de origen</label>
-                            <input v-model="form.origin_country" type="text" maxlength="60">
+                            <label for="mov-transport">Documento de transporte</label>
+                            <input id="mov-transport" v-model="form.transport_document" type="text" maxlength="60" placeholder="BL, guía aérea o carta de porte">
+                        </div>
+                        <div class="field">
+                            <label for="mov-origin">País de origen</label>
+                            <input id="mov-origin" v-model="form.origin_country" type="text" maxlength="60">
                         </div>
                     </div>
                 </div>
@@ -290,43 +291,59 @@ function submit() {
                 calcula el ajuste contra lo que tiene registrado. Una línea que coincide no genera movimiento.
             </p>
 
-            <div class="table-scroll">
-                <table>
+            <!-- Grilla de captura: cada línea se edita en la tabla y conserva su
+                 botón de quitar (CLAUDE.md secc. 20, excepción). Anchos fijos
+                 para lo de largo conocido: cabe en los ~720px que deja la barra
+                 lateral a 1025px; en ≤ 1024px, una tarjeta por línea. -->
+            <div class="table-responsive capture-grid lines-wrap">
+                <table class="lines-table">
+                    <colgroup>
+                        <col>
+                        <col class="col-warehouse">
+                        <col v-if="anyWarehouseUsesBins()" class="col-bin">
+                        <col v-if="anyItemTracksLots()" class="col-lot">
+                        <col class="col-qty">
+                        <col class="col-cost">
+                        <col class="col-detail">
+                        <col class="col-remove">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th>Artículo</th>
                             <th>Almacén</th>
                             <th v-if="anyWarehouseUsesBins()">Ubicación</th>
                             <th v-if="anyItemTracksLots()">Lote</th>
-                            <th class="right">{{ quantityLabel }}</th>
-                            <th class="right">Costo unitario</th>
+                            <th class="num">{{ quantityLabel }}</th>
+                            <th class="num">Costo unitario</th>
                             <th>Detalle</th>
-                            <th></th>
+                            <th><span class="sr-only">Quitar</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(line, index) in form.lines" :key="index">
                             <td>
-                                <select v-model="line.item_id" required @change="onLineContextChange(index)">
+                                <select v-model="line.item_id" required aria-label="Artículo" @change="onLineContextChange(index)">
                                     <option value="" disabled>— Elegir —</option>
                                     <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
                                 </select>
                             </td>
-                            <td>
+                            <td data-label="Almacén">
                                 <select
                                     v-model="line.warehouse_id"
                                     required
+                                    aria-label="Almacén"
                                     @change="line.warehouse_bin_id = ''; onLineContextChange(index)"
                                 >
                                     <option value="" disabled>— Elegir —</option>
                                     <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
                                 </select>
                             </td>
-                            <td v-if="anyWarehouseUsesBins()">
+                            <td v-if="anyWarehouseUsesBins()" data-label="Ubicación">
                                 <select
                                     v-if="usesBins(line.warehouse_id)"
                                     v-model="line.warehouse_bin_id"
                                     required
+                                    aria-label="Ubicación"
                                     @change="onLineContextChange(index)"
                                 >
                                     <option value="" disabled>— Elegir —</option>
@@ -334,9 +351,9 @@ function submit() {
                                 </select>
                                 <span v-else class="muted small">—</span>
                             </td>
-                            <td v-if="anyItemTracksLots()">
+                            <td v-if="anyItemTracksLots()" data-label="Lote">
                                 <template v-if="tracksLots(line.item_id)">
-                                    <select v-model="line.item_lot_id" required>
+                                    <select v-model="line.item_lot_id" required aria-label="Lote">
                                         <option value="" disabled>— Elegir —</option>
                                         <option
                                             v-for="(l, pos) in (lotOptions[index]?.lots ?? [])"
@@ -352,38 +369,39 @@ function submit() {
                                 </template>
                                 <span v-else class="muted small">—</span>
                             </td>
-                            <td>
-                                <input v-model="line.quantity" type="number" step="0.000001" min="0" required class="right">
+                            <td :data-label="quantityLabel" class="num">
+                                <input v-model="line.quantity" type="number" step="0.000001" min="0" required class="num-input" :aria-label="quantityLabel">
                             </td>
-                            <td>
+                            <td data-label="Costo unitario" class="num">
                                 <input
                                     v-if="costIsEditable"
                                     v-model="line.unit_cost_local"
-                                    type="number" step="0.000001" min="0" required class="right"
+                                    type="number" step="0.000001" min="0" required class="num-input"
+                                    aria-label="Costo unitario"
                                 >
                                 <span v-else class="muted small">
                                     {{ line.item_id ? `promedio ${avgCostOf(line.item_id)?.toFixed(2) ?? '—'}` : 'promedio' }}
                                 </span>
                             </td>
-                            <td><input v-model="line.description" type="text" maxlength="255"></td>
-                            <td>
+                            <td data-label="Detalle"><input v-model="line.description" type="text" maxlength="255" aria-label="Detalle"></td>
+                            <td class="remove-cell">
                                 <button
-                                    type="button" class="btn btn-ghost"
+                                    type="button" class="btn btn-ghost remove-btn"
                                     :disabled="form.lines.length === 1"
+                                    aria-label="Quitar línea"
+                                    title="Quitar línea"
                                     @click="removeLine(index)"
-                                >
-                                    Quitar
-                                </button>
+                                ><XIcon /></button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <div class="actions">
+            <div class="form-actions lines-actions">
                 <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Agregar línea</button>
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || !ready">
-                    Contabilizar movimiento
+                    <CheckIcon /> Contabilizar movimiento
                 </button>
             </div>
         </form>
@@ -393,20 +411,10 @@ function submit() {
 <style scoped>
 .form-card { padding: 1.25rem; }
 
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.flash-warning { background: var(--color-warning-soft); color: var(--color-warning); }
+.hint { margin: 0.25rem 0 0.75rem; }
 
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0.25rem 0 0.75rem; }
-
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 1rem; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1rem; }
-
-.check { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.25rem 0 0.75rem; }
+.check { align-items: flex-start; margin: 0.25rem 0 0.75rem; }
 .check span { display: flex; flex-direction: column; gap: 0.1rem; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
 
 /* Los datos del trámite aduanal, separados del resto del encabezado: son de
    otra naturaleza y solo aparecen cuando la entrada es importación. */
@@ -417,28 +425,23 @@ function submit() {
     margin-bottom: 0.75rem;
 }
 
-@media (max-width: 720px) { .grid-3 { grid-template-columns: 1fr; } }
+.lines-wrap { margin-top: 0.5rem; }
+.lines-table { table-layout: fixed; font-size: 0.85rem; }
+.lines-table th, .lines-table td { padding: 0.4rem 0.5rem; }
+.col-warehouse { width: 6rem; }
+.col-bin { width: 6rem; }
+.col-lot { width: 8rem; }
+.col-qty { width: 6rem; }
+.col-cost { width: 7rem; }
+.col-detail { width: 11%; }
+.col-remove { width: 2.75rem; }
+.lines-table select,
+.lines-table input { width: 100%; min-width: 0; }
+.num-input { text-align: right; }
+.remove-btn { width: 2.25rem; padding: 0; }
+.lines-actions { justify-content: space-between; margin-top: 1rem; }
 
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-
-.field input, .field select, td input, td select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
+@media screen and (max-width: 1024px) {
+    .remove-cell { justify-content: flex-end; }
 }
-
-.table-scroll { overflow-x: auto; margin-top: 0.5rem; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.4rem 0.5rem; border-top: 1px solid var(--color-border); }
-th.right, td .right { text-align: right; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.error { color: var(--color-danger); font-size: 0.76rem; }
-
-.actions { display: flex; justify-content: space-between; gap: 0.6rem; margin-top: 1rem; }
 </style>

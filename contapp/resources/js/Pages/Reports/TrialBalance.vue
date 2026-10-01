@@ -77,6 +77,11 @@ function closeLedger() {
 
     <AppLayout title="Balance de comprobación">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.trial-balance.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.trial-balance.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="trial-balance" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Desde</span>
@@ -92,12 +97,6 @@ function closeLedger() {
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.trial-balance.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.trial-balance.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="trial-balance" :parameters="saveParameters" />
-            </div>
         </div>
 
         <div class="card">

@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, watch } from 'vue';
+import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -98,6 +99,10 @@ function submit() {
     <Head title="Nota de crédito de proveedor" />
 
     <AppLayout title="Nota de crédito de proveedor">
+        <div class="view-toolbar">
+            <Link :href="route('inventory-movements.show', receipt.id)" class="btn btn-ghost"><ArrowLeftIcon /> Recepción de origen</Link>
+        </div>
+
         <div v-if="page.props.errors?.credit_note" class="flash flash-error">{{ page.props.errors.credit_note }}</div>
 
         <p v-if="!documentTypes.length" class="flash flash-warning">
@@ -124,81 +129,91 @@ function submit() {
             Si lo que acredita difiere del costo al que entró, la diferencia va a resultados.
         </p>
 
-        <form class="card" @submit.prevent="submit">
-            <div class="table-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>Artículo</th>
-                            <th>Almacén</th>
-                            <th class="right">Recibido</th>
-                            <th class="right">Ya devuelto</th>
-                            <th class="right">Devolver</th>
-                            <th class="right">Precio acreditado</th>
-                            <th class="right">Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="line in returnable" :key="line.id" :class="{ chosen: selection[line.id].checked }">
-                            <td><input v-model="selection[line.id].checked" type="checkbox"></td>
-                            <td>{{ line.item }}</td>
-                            <td class="code-cell">{{ line.warehouse_code }}</td>
-                            <td class="num right">{{ quantity(line.quantity) }}</td>
-                            <td class="num right muted">{{ quantity(line.returned) }}</td>
-                            <td class="right">
-                                <input
-                                    v-model="selection[line.id].quantity"
-                                    type="number" step="0.000001" min="0" class="cell-input"
-                                    :max="line.pending" :disabled="!selection[line.id].checked"
-                                >
-                                <span v-if="selection[line.id].checked && exceeds(line)" class="error">
-                                    Quedan {{ quantity(line.pending) }} por devolver.
-                                </span>
-                            </td>
-                            <td class="right">
-                                <input
-                                    v-model="selection[line.id].price"
-                                    type="number" step="0.01" min="0" class="cell-input"
-                                    :disabled="!selection[line.id].checked"
-                                >
-                            </td>
-                            <td class="num right">
-                                {{ selection[line.id].checked
-                                    ? money(Number(selection[line.id].quantity || 0) * Number(selection[line.id].price || 0))
-                                    : '—' }}
-                            </td>
-                        </tr>
-                        <tr v-if="!returnable.length">
-                            <td colspan="8" class="muted empty-row">
-                                Esta recepción ya fue devuelta por completo.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <form @submit.prevent="submit">
+            <!-- Grilla de selección: la casilla elige qué se devuelve y la
+                 cantidad y el precio se ajustan en la fila (CLAUDE.md secc. 20,
+                 excepción). -->
+            <div class="card">
+                <div class="table-responsive capture-grid">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Artículo</th>
+                                <th class="num">Recibido</th>
+                                <th class="num">Devolver</th>
+                                <th class="num">Precio acreditado</th>
+                                <th class="num">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="line in returnable" :key="line.id" :class="{ chosen: selection[line.id].checked }">
+                                <td>
+                                    <label class="pick-cell">
+                                        <input v-model="selection[line.id].checked" type="checkbox">
+                                        <span>
+                                            {{ line.item }}
+                                            <span class="breakdown">almacén {{ line.warehouse_code }}</span>
+                                        </span>
+                                    </label>
+                                </td>
+                                <td data-label="Recibido" class="num">
+                                    {{ quantity(line.quantity) }}
+                                    <span class="breakdown">ya devuelto {{ quantity(line.returned) }}</span>
+                                </td>
+                                <td data-label="Devolver" class="num">
+                                    <input
+                                        v-model="selection[line.id].quantity"
+                                        type="number" step="0.000001" min="0" class="cell-input"
+                                        :max="line.pending" :disabled="!selection[line.id].checked"
+                                        aria-label="Cantidad a devolver"
+                                    >
+                                    <span v-if="selection[line.id].checked && exceeds(line)" class="error-text">
+                                        Quedan {{ quantity(line.pending) }} por devolver.
+                                    </span>
+                                </td>
+                                <td data-label="Precio acreditado" class="num">
+                                    <input
+                                        v-model="selection[line.id].price"
+                                        type="number" step="0.01" min="0" class="cell-input"
+                                        :disabled="!selection[line.id].checked"
+                                        aria-label="Precio acreditado"
+                                    >
+                                </td>
+                                <td data-label="Subtotal" class="num">
+                                    {{ selection[line.id].checked
+                                        ? money(Number(selection[line.id].quantity || 0) * Number(selection[line.id].price || 0))
+                                        : '—' }}
+                                </td>
+                            </tr>
+                            <tr v-if="!returnable.length">
+                                <td colspan="5" class="muted empty-row">
+                                    Esta recepción ya fue devuelta por completo.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <span v-if="form.errors.lines" class="error">{{ form.errors.lines }}</span>
+            <span v-if="form.errors.lines" class="error-text">{{ form.errors.lines }}</span>
 
-            <div class="grid-2">
+            <div class="card form-card">
+            <div class="form-grid">
                 <div class="field">
-                    <label>Tipo de documento</label>
-                    <select v-model="form.document_type_id" required>
+                    <label for="scn-doc-type">Tipo de documento</label>
+                    <select id="scn-doc-type" v-model="form.document_type_id" required>
                         <option v-for="t in documentTypes" :key="t.id" :value="t.id">{{ t.code }} — {{ t.name }}</option>
                     </select>
                     <span v-if="form.errors.document_type_id" class="error">{{ form.errors.document_type_id }}</span>
                 </div>
                 <div class="field">
-                    <label>Fecha de contabilización</label>
-                    <input v-model="form.posting_date" type="date" required>
+                    <label for="scn-date">Fecha de contabilización</label>
+                    <input id="scn-date" v-model="form.posting_date" type="date" required>
                     <span v-if="form.errors.posting_date" class="error">{{ form.errors.posting_date }}</span>
                 </div>
-            </div>
-
-            <div class="grid-2">
                 <div class="field">
-                    <label>Cuenta de IVA (opcional)</label>
-                    <select v-model="form.tax_account_id">
+                    <label for="scn-tax-account">Cuenta de IVA (opcional)</label>
+                    <select id="scn-tax-account" v-model="form.tax_account_id">
                         <option value="">— Sin IVA —</option>
                         <option v-for="a in taxAccounts" :key="a.id" :value="a.id">
                             {{ a.label }} ({{ a.percentage }}%)
@@ -207,37 +222,34 @@ function submit() {
                     <span v-if="form.errors.tax_account_id" class="error">{{ form.errors.tax_account_id }}</span>
                 </div>
                 <div class="field">
-                    <label>IVA devuelto</label>
-                    <input v-model="form.tax_amount" type="number" step="0.01" min="0" :disabled="!form.tax_account_id">
+                    <label for="scn-tax">IVA devuelto</label>
+                    <input id="scn-tax" v-model="form.tax_amount" type="number" step="0.01" min="0" :disabled="!form.tax_account_id">
                     <span v-if="form.errors.tax_amount" class="error">{{ form.errors.tax_amount }}</span>
+                </div>
+                <div class="field span-full">
+                    <label for="scn-description">Descripción (opcional)</label>
+                    <input id="scn-description" v-model="form.description" type="text" maxlength="255">
                 </div>
             </div>
 
-            <div class="field">
-                <label>Descripción (opcional)</label>
-                <input v-model="form.description" type="text" maxlength="255">
-            </div>
-
             <div class="totals">
-                <div><span class="muted small">Neto acreditado</span><strong class="num">{{ money(net) }}</strong></div>
-                <div><span class="muted small">IVA</span><strong class="num">{{ money(form.tax_amount || 0) }}</strong></div>
-                <div><span class="muted small">Total de la nota</span><strong class="num total">{{ money(total) }}</strong></div>
+                <div><span class="muted small">Neto acreditado</span><strong class="num-value">{{ money(net) }}</strong></div>
+                <div><span class="muted small">IVA</span><strong class="num-value">{{ money(form.tax_amount || 0) }}</strong></div>
+                <div><span class="muted small">Total de la nota</span><strong class="num-value total">{{ money(total) }}</strong></div>
             </div>
 
-            <div class="actions">
+            <div class="form-actions">
                 <Link :href="route('inventory-movements.show', receipt.id)" class="btn btn-ghost">Cancelar</Link>
                 <button type="submit" class="btn btn-primary" :disabled="invalid || form.processing || !documentTypes.length">
-                    Emitir nota de crédito
+                    <CheckIcon /> Emitir nota de crédito
                 </button>
+            </div>
             </div>
         </form>
     </AppLayout>
 </template>
 
 <style scoped>
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.flash-warning { background: var(--color-warning-soft); color: var(--color-warning); }
 .summary {
     display: flex;
     flex-wrap: wrap;
@@ -248,41 +260,32 @@ function submit() {
 
 .summary > div { display: flex; flex-direction: column; gap: 0.15rem; }
 
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-
-.card { padding: 1rem 1.25rem; }
-.table-scroll { overflow-x: auto; margin: 0 -1.25rem 1rem; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.code-cell, .num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.chosen { background: var(--color-surface-muted, rgb(0 0 0 / 3%)); }
+table { font-size: 0.85rem; }
+.pick-cell { display: inline-flex; align-items: flex-start; gap: 0.5rem; }
+.pick-cell input { margin-top: 0.2rem; }
+.breakdown { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; }
+.chosen td { background: var(--color-primary-soft); }
 .cell-input { width: 8rem; text-align: right; }
-
-.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-.error { color: var(--color-danger, #b91c1c); font-size: 0.76rem; }
+.form-card { margin-top: 0.9rem; padding: 1rem 1.25rem; }
+.num-value { font-variant-numeric: tabular-nums; }
 
 .totals {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.75rem;
+    gap: 0.75rem 1.75rem;
     padding: 0.85rem 0;
     border-top: 1px solid var(--color-border);
 }
 
 .totals > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .total { font-size: 1.05rem; }
-
-.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
 .link:hover { text-decoration: underline; }
 
-@media (max-width: 640px) {
-    .grid-2 { grid-template-columns: 1fr; }
+@media screen and (max-width: 1024px) {
+    .chosen td { background: none; }
+    .table-responsive tbody tr.chosen { background: var(--color-primary-soft); }
+    .cell-input { width: auto; }
+    .breakdown { display: inline; margin-left: 0.4rem; }
 }
 </style>

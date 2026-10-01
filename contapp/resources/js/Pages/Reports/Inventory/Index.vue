@@ -12,9 +12,11 @@ defineProps({
     <Head title="Reportes de inventario" />
 
     <AppLayout title="Reportes de inventario">
-        <template #actions>
-            <Link :href="route('items.index')" class="btn btn-ghost">Artículos</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('items.index')" class="btn btn-ghost">Artículos</Link>
+            </div>
+        </div>
 
         <p class="hint">
             Todos se consultan en pantalla con sus filtros y se pueden exportar a Excel, a PDF o imprimir.
@@ -62,7 +64,7 @@ defineProps({
 </template>
 
 <style scoped>
-.hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1.25rem; max-width: 80ch; }
+.hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1.25rem; }
 .small { font-size: 0.78rem; margin-bottom: 0.75rem; }
 
 .group { margin-bottom: 1.75rem; }
@@ -71,7 +73,7 @@ defineProps({
     color: var(--color-text-muted); margin: 0 0 0.6rem;
 }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 0.75rem; }
 
 .report-card {
     display: flex; flex-direction: column; gap: 0.3rem;

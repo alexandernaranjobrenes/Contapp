@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\AgingController;
+use App\Http\Controllers\CompanyAppearanceController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\LicenseActivationController;
 use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
@@ -718,6 +719,13 @@ Route::middleware('auth')->group(function () {
         Route::post('period-close/periods/{period}/close', [PeriodCloseController::class, 'close'])->name('period-close.close');
         Route::post('period-close/periods/{period}/reopen', [PeriodCloseController::class, 'reopen'])->name('period-close.reopen');
         Route::post('period-close/years/{fiscalYear}/close', [PeriodCloseController::class, 'closeYear'])->name('period-close.close-year');
+    });
+
+    // Apariencia de la compañía (CLAUDE.md secc. 31): Superusuario y
+    // Administradores.
+    Route::middleware('can-manage-company')->group(function () {
+        Route::get('appearance', [CompanyAppearanceController::class, 'edit'])->name('appearance.edit');
+        Route::put('appearance', [CompanyAppearanceController::class, 'update'])->name('appearance.update');
     });
 
     Route::middleware('can-manage-users')->group(function () {

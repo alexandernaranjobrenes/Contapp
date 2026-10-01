@@ -1,5 +1,6 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { ArrowLeftIcon, SaveIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -43,10 +44,12 @@ function submit() {
     <Head :title="'Niveles de reorden — ' + item.code" />
 
     <AppLayout :title="'Niveles de reorden — ' + item.code + ' ' + item.name">
-        <template #actions>
-            <Link :href="route('reorder.index')" class="btn btn-ghost">Sugerencia de compra</Link>
-            <Link :href="route('items.index')" class="btn btn-ghost">Volver a artículos</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('items.index')" class="btn btn-ghost"><ArrowLeftIcon /> Artículos</Link>
+            <div class="view-actions">
+                <Link :href="route('reorder.index')" class="btn btn-ghost">Sugerencia de compra</Link>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.levels" class="flash flash-error">{{ page.props.errors.levels }}</div>
 
@@ -69,55 +72,63 @@ function submit() {
             <li><strong>Un número</strong> → sobrescribe el de la ficha solo en este almacén.</li>
         </ul>
 
-        <form class="card" @submit.prevent="submit">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Almacén</th>
-                        <th class="num">Existencia</th>
-                        <th class="num">Apartado</th>
-                        <th class="num">En camino</th>
-                        <th class="num">Disponible</th>
-                        <th class="num">Mínimo</th>
-                        <th class="num">Máximo</th>
-                        <th class="num">Mínimo efectivo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="(row, index) in rows" :key="row.warehouse_id">
-                        <td><strong class="num">{{ row.warehouse_code }}</strong> — {{ row.warehouse_name }}</td>
-                        <td class="num">{{ quantity(row.on_hand) }}</td>
-                        <td class="num muted">{{ quantity(row.reserved) }}</td>
-                        <td class="num muted">{{ quantity(row.ordered) }}</td>
-                        <td class="num"><strong>{{ quantity(available(row)) }}</strong></td>
-                        <td class="num">
-                            <input
-                                v-model="form.levels[index].minimum_stock"
-                                type="number" step="0.000001" min="0" class="level-input"
-                                :placeholder="'ficha: ' + quantity(item.default_minimum)"
-                            >
-                        </td>
-                        <td class="num">
-                            <input
-                                v-model="form.levels[index].maximum_stock"
-                                type="number" step="0.000001" min="0" class="level-input"
-                                :placeholder="item.default_maximum === null ? '—' : 'ficha: ' + quantity(item.default_maximum)"
-                            >
-                        </td>
-                        <td class="num">
-                            <strong>{{ quantity(row.effective_minimum) }}</strong>
-                            <span v-if="row.minimum_stock === null" class="inherited">heredado</span>
-                        </td>
-                    </tr>
-                    <tr v-if="!rows.length">
-                        <td colspan="8" class="muted empty-row">No hay almacenes activos.</td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Grilla de captura: el mínimo y el máximo se editan en la fila
+             (CLAUDE.md secc. 20, excepción). Lo apartado y lo que viene en
+             camino se leen debajo del disponible, que es lo que suman. -->
+        <form @submit.prevent="submit">
+            <div class="card">
+                <div class="table-responsive capture-grid">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Almacén</th>
+                                <th class="num">Existencia</th>
+                                <th class="num">Disponible</th>
+                                <th class="num">Mínimo</th>
+                                <th class="num">Máximo</th>
+                                <th class="num">Mínimo efectivo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, index) in rows" :key="row.warehouse_id">
+                                <td><strong class="code">{{ row.warehouse_code }}</strong> — {{ row.warehouse_name }}</td>
+                                <td data-label="Existencia" class="num">{{ quantity(row.on_hand) }}</td>
+                                <td data-label="Disponible" class="num">
+                                    <strong>{{ quantity(available(row)) }}</strong>
+                                    <span class="breakdown">apartado {{ quantity(row.reserved) }} · en camino {{ quantity(row.ordered) }}</span>
+                                </td>
+                                <td data-label="Mínimo" class="num">
+                                    <input
+                                        v-model="form.levels[index].minimum_stock"
+                                        type="number" step="0.000001" min="0" class="level-input"
+                                        :aria-label="`Mínimo en ${row.warehouse_code}`"
+                                        :placeholder="'ficha: ' + quantity(item.default_minimum)"
+                                    >
+                                </td>
+                                <td data-label="Máximo" class="num">
+                                    <input
+                                        v-model="form.levels[index].maximum_stock"
+                                        type="number" step="0.000001" min="0" class="level-input"
+                                        :aria-label="`Máximo en ${row.warehouse_code}`"
+                                        :placeholder="item.default_maximum === null ? '—' : 'ficha: ' + quantity(item.default_maximum)"
+                                    >
+                                </td>
+                                <td data-label="Mínimo efectivo" class="num">
+                                    <strong>{{ quantity(row.effective_minimum) }}</strong>
+                                    <span v-if="row.minimum_stock === null" class="inherited">heredado</span>
+                                </td>
+                            </tr>
+                            <tr v-if="!rows.length">
+                                <td colspan="6" class="muted empty-row">No hay almacenes activos.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary" :disabled="form.processing || !rows.length">
-                    Guardar niveles
+                    <SaveIcon /> Guardar niveles
                 </button>
             </div>
         </form>
@@ -125,10 +136,16 @@ function submit() {
 </template>
 
 <style scoped>
-.num { text-align: right; }
-.level-input { width: 7rem; text-align: right; }
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; }
+.level-input { width: 7.5rem; text-align: right; }
 .rules { margin: 0 0 0.75rem 1.1rem; padding: 0; }
 .rules li { margin: 0.15rem 0; }
-.inherited { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; }
-.form-actions { padding: 0.75rem 1.1rem; }
+.inherited,
+.breakdown { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; white-space: normal; }
+
+@media screen and (max-width: 1024px) {
+    .level-input { width: auto; }
+    .breakdown { display: inline; margin-left: 0.4rem; }
+}
 </style>

@@ -141,11 +141,11 @@ function closeLedger() {
 
     <AppLayout title="Centros de costo">
         <div class="view-toolbar">
-            <div class="view-filters">
-                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar centro de costo">
-            </div>
             <div class="view-actions">
                 <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar centro de costo">
             </div>
         </div>
 

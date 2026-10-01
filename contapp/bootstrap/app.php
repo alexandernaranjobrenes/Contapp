@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'can-manage-users' => \App\Http\Middleware\EnsureCanManageUsers::class,
+            'can-manage-company' => \App\Http\Middleware\EnsureCanManageCompany::class,
             'module-access' => \App\Http\Middleware\EnsureModuleAccess::class,
         ]);
 

@@ -2,8 +2,10 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
-import { PlusIcon } from '@lucide/vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useRecordDetail } from '../../../Utils/recordDetail';
+import { ArrowRightIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     periods: { type: Array, default: () => [] },
@@ -60,11 +62,20 @@ function submit() {
     });
 }
 
-function destroy(period) {
-    if (! confirm(`¿Eliminar el período «${period.name}»?`)) return;
+function destroy() {
+    const period = selected.value;
 
-    router.delete(route('payroll-periods.destroy', period.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar período',
+        message: `El período «${period.name}» se elimina junto con sus boletas calculadas.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('payroll-periods.destroy', period.id), { preserveScroll: true }),
+    });
 }
+
+// Ficha del período (CLAUDE.md secc. 20): fechas, asiento y las acciones.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.periods);
 
 const statusClass = {
     open: 'badge-neutral',
@@ -79,12 +90,16 @@ const statusClass = {
     <Head title="Períodos de planilla" />
 
     <AppLayout title="Períodos de planilla">
-        <template #actions>
-            <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
-            <Link :href="route('payroll-settings.index')" class="btn btn-ghost">Configuración</Link>
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
+                <Link :href="route('payroll-settings.index')" class="btn btn-ghost">Configuración</Link>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <span class="muted small">{{ periods.length }} período(s)</span>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>
 
@@ -96,55 +111,35 @@ const statusClass = {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ periods.length }} período(s)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nuevo período</button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Período</th>
-                            <th>Frecuencia</th>
-                            <th>Desde</th>
-                            <th>Hasta</th>
                             <th>Pago</th>
-                            <th class="right">Boletas</th>
+                            <th class="num">Boletas</th>
                             <th>Estado</th>
-                            <th>Asiento</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="p in periods" :key="p.id">
-                            <td>
-                                <Link :href="route('payroll-periods.show', p.id)">{{ p.name }}</Link>
-                            </td>
-                            <td class="muted small">{{ p.frequency_label }}</td>
-                            <td class="num small">{{ p.start_date }}</td>
-                            <td class="num small">{{ p.end_date }}</td>
-                            <td class="num small">{{ p.payment_date }}</td>
-                            <td class="right num">{{ p.entries_count }}</td>
-                            <td>
+                        <tr
+                            v-for="p in periods"
+                            :key="p.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(p)"
+                            @keydown.enter="openDetail(p)"
+                            @keydown.space.prevent="openDetail(p)"
+                        >
+                            <td>{{ p.name }}</td>
+                            <td data-label="Pago" class="code-cell">{{ p.payment_date }}</td>
+                            <td data-label="Boletas" class="num">{{ p.entries_count }}</td>
+                            <td data-label="Estado">
                                 <span class="badge" :class="statusClass[p.status]">{{ p.status_label }}</span>
-                            </td>
-                            <td class="num small">
-                                <Link v-if="p.journal_entry_id" :href="route('journal-entries.show', p.journal_entry_id)">
-                                    #{{ p.journal_entry_id }}
-                                </Link>
-                                <span v-else class="muted">—</span>
-                            </td>
-                            <td class="row-actions">
-                                <Link :href="route('payroll-periods.show', p.id)" class="btn btn-ghost btn-sm">Abrir</Link>
-                                <button
-                                    v-if="p.status === 'open' || p.status === 'calculated'"
-                                    type="button" class="btn btn-ghost btn-sm" @click="destroy(p)"
-                                >Eliminar</button>
                             </td>
                         </tr>
                         <tr v-if="!periods.length">
-                            <td colspan="9" class="muted empty-row">
+                            <td colspan="4" class="muted empty-row">
                                 Todavía no hay períodos. Creá el primero para poder calcular una planilla.
                             </td>
                         </tr>
@@ -153,66 +148,110 @@ const statusClass = {
             </div>
         </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal card" @submit.prevent="submit">
-                <h2>Nuevo período de planilla</h2>
+        <DetailModal :open="!!selected" :title="selected?.name ?? ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="statusClass[selected.status]">{{ selected.status_label }}</span>
+            </template>
 
-                <div class="field-row">
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Frecuencia</dt>
+                    <dd>{{ selected.frequency_label }}</dd>
+                </div>
+                <div>
+                    <dt>Desde</dt>
+                    <dd>{{ selected.start_date }}</dd>
+                </div>
+                <div>
+                    <dt>Hasta</dt>
+                    <dd>{{ selected.end_date }}</dd>
+                </div>
+                <div>
+                    <dt>Fecha de pago</dt>
+                    <dd>{{ selected.payment_date }}</dd>
+                </div>
+                <div>
+                    <dt>Boletas</dt>
+                    <dd>{{ selected.entries_count }}</dd>
+                </div>
+                <div>
+                    <dt>Asiento</dt>
+                    <dd>
+                        <Link v-if="selected.journal_entry_id" :href="route('journal-entries.show', selected.journal_entry_id)">
+                            #{{ selected.journal_entry_id }}
+                        </Link>
+                        <span v-else class="muted">—</span>
+                    </dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <template v-if="selected">
+                    <button
+                        v-if="selected.status === 'open' || selected.status === 'calculated'"
+                        type="button" class="btn btn-ghost btn-danger-text" @click="destroy"
+                    >Eliminar</button>
+                    <Link :href="route('payroll-periods.show', selected.id)" class="btn btn-primary"><ArrowRightIcon /> Abrir</Link>
+                </template>
+            </template>
+        </DetailModal>
+
+        <DetailModal :open="creating" wide title="Nuevo período de planilla" @close="creating = false">
+            <form id="period-form" @submit.prevent="submit">
+                <div class="form-grid">
                     <div class="field">
-                        <label>Año</label>
-                        <input v-model="form.year" type="number" min="2000" max="2100" required>
+                        <label for="period-year">Año</label>
+                        <input id="period-year" v-model="form.year" type="number" min="2000" max="2100" required>
                     </div>
                     <div class="field">
-                        <label>Frecuencia</label>
-                        <select v-model="form.frequency" required @change="syncName">
+                        <label for="period-frequency">Frecuencia</label>
+                        <select id="period-frequency" v-model="form.frequency" required @change="syncName">
                             <option v-for="(label, value) in frequencies" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>Número</label>
-                        <input v-model="form.number" type="number" min="1" max="60" required @input="syncName">
+                        <label for="period-number">Número</label>
+                        <input id="period-number" v-model="form.number" type="number" min="1" max="60" required @input="syncName">
                         <span v-if="form.errors.number" class="error">{{ form.errors.number }}</span>
                     </div>
-                </div>
-
-                <div class="field-row">
                     <div class="field">
-                        <label>Desde</label>
-                        <input v-model="form.start_date" type="date" required @change="syncName">
+                        <label for="period-start">Desde</label>
+                        <input id="period-start" v-model="form.start_date" type="date" required @change="syncName">
                         <span v-if="form.errors.start_date" class="error">{{ form.errors.start_date }}</span>
                     </div>
                     <div class="field">
-                        <label>Hasta</label>
-                        <input v-model="form.end_date" type="date" required>
+                        <label for="period-end">Hasta</label>
+                        <input id="period-end" v-model="form.end_date" type="date" required>
                         <span v-if="form.errors.end_date" class="error">{{ form.errors.end_date }}</span>
                     </div>
                     <div class="field">
-                        <label>Fecha de pago</label>
-                        <input v-model="form.payment_date" type="date" required>
+                        <label for="period-payment">Fecha de pago</label>
+                        <input id="period-payment" v-model="form.payment_date" type="date" required>
                         <span v-if="form.errors.payment_date" class="error">{{ form.errors.payment_date }}</span>
                     </div>
                 </div>
 
-                <span class="hint small">
+                <p class="hint small">
                     La fecha de pago manda para el asiento y para el archivo del banco, y puede caer en el mes
                     siguiente al trabajado. Es también la fecha con la que se eligen las tasas vigentes.
-                </span>
+                </p>
 
                 <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="form.name" type="text" required @input="nameTouched = true">
+                    <label for="period-name">Nombre</label>
+                    <input id="period-name" v-model="form.name" type="text" required @input="nameTouched = true">
                     <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Crear</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
+                <button type="submit" form="period-form" class="btn btn-primary" :disabled="form.processing">Crear</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.error { color: var(--color-danger); font-size: 0.76rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

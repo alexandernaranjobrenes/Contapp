@@ -2,8 +2,10 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { useRecordDetail } from '../../../Utils/recordDetail';
 import { formatMoney } from '../../../Utils/money';
-import { CheckIcon, PlusIcon } from '@lucide/vue';
+import { ArrowRightIcon, CheckIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
     settlements: { type: Array, default: () => [] },
@@ -78,15 +80,33 @@ const totalNet = computed(
 );
 
 const drafts = computed(() => props.settlements.filter((s) => s.status === 'draft').length);
+
+// Ficha de la liquidación (CLAUDE.md secc. 20): el desglose y el enlace a
+// su pantalla, donde se aprueba y contabiliza.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.settlements);
+
+const statusBadge = {
+    draft: 'badge-neutral',
+    approved: 'badge-warning',
+    posted: 'badge-success',
+    voided: 'badge-danger',
+};
 </script>
 
 <template>
     <Head title="Liquidaciones laborales" />
 
     <AppLayout title="Liquidaciones laborales">
-        <template #actions>
-            <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar trabajador o causal" aria-label="Buscar liquidación">
+                <span class="muted small">{{ visible.length }} liquidación(es)</span>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>
 
@@ -116,79 +136,105 @@ const drafts = computed(() => props.settlements.filter((s) => s.status === 'draf
         </div>
 
         <div class="card">
-            <div class="card-header">
-                <input v-model="search" type="search" placeholder="Buscar trabajador o causal" class="search-input">
-                <span class="muted">{{ visible.length }} liquidación(es)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nueva liquidación</button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th>Código</th>
                             <th>Trabajador</th>
                             <th>Salida</th>
                             <th>Causal</th>
-                            <th class="right">Bruto</th>
-                            <th class="right">Cargas</th>
-                            <th class="right">Impuesto</th>
-                            <th class="right">Deducciones</th>
-                            <th class="right">Neto</th>
+                            <th class="num">Neto</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="s in visible" :key="s.id" :class="{ voided: s.status === 'voided' }">
-                            <td class="num">{{ s.employee_code }}</td>
-                            <td>
-                                <Link :href="route('labor-settlements.show', s.id)">{{ s.employee_name }}</Link>
-                            </td>
-                            <td class="num small">{{ s.termination_date }}</td>
-                            <td class="small">{{ s.reason_label }}</td>
-                            <td class="right">{{ formatMoney(s.total_gross) }}</td>
-                            <td class="right muted">{{ formatMoney(s.total_ccss) }}</td>
-                            <td class="right muted">{{ formatMoney(s.total_income_tax) }}</td>
-                            <td class="right muted">{{ formatMoney(s.total_other_deductions) }}</td>
-                            <td class="right strong">{{ formatMoney(s.total_net) }}</td>
-                            <td>
-                                <span class="badge" :class="`badge-${s.status}`">{{ s.status_label }}</span>
-                            </td>
-                            <td class="row-actions">
-                                <Link :href="route('labor-settlements.show', s.id)" class="btn btn-ghost btn-sm">Abrir</Link>
+                        <tr
+                            v-for="s in visible"
+                            :key="s.id"
+                            class="clickable-row"
+                            :class="{ voided: s.status === 'voided' }"
+                            tabindex="0"
+                            @click="openDetail(s)"
+                            @keydown.enter="openDetail(s)"
+                            @keydown.space.prevent="openDetail(s)"
+                        >
+                            <td><span class="code">{{ s.employee_code }}</span> — {{ s.employee_name }}</td>
+                            <td data-label="Salida" class="code">{{ s.termination_date }}</td>
+                            <td data-label="Causal" class="small">{{ s.reason_label }}</td>
+                            <td data-label="Neto" class="num strong">{{ formatMoney(s.total_net) }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="statusBadge[s.status]">{{ s.status_label }}</span>
                             </td>
                         </tr>
                         <tr v-if="! visible.length">
-                            <td colspan="11" class="muted center">Todavía no hay liquidaciones.</td>
+                            <td colspan="5" class="muted empty-row">Todavía no hay liquidaciones.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal card" @submit.prevent="submit">
-                <h2>Nueva liquidación</h2>
+        <DetailModal :open="!!selected" :title="selected ? `${selected.employee_code} — ${selected.employee_name}` : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="statusBadge[selected.status]">{{ selected.status_label }}</span>
+            </template>
 
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Fecha de salida</dt>
+                    <dd>{{ selected.termination_date }}</dd>
+                </div>
+                <div>
+                    <dt>Causal</dt>
+                    <dd>{{ selected.reason_label }}</dd>
+                </div>
+                <div>
+                    <dt>Bruto</dt>
+                    <dd>{{ formatMoney(selected.total_gross) }}</dd>
+                </div>
+                <div>
+                    <dt>Cargas sociales</dt>
+                    <dd>{{ formatMoney(selected.total_ccss) }}</dd>
+                </div>
+                <div>
+                    <dt>Impuesto</dt>
+                    <dd>{{ formatMoney(selected.total_income_tax) }}</dd>
+                </div>
+                <div>
+                    <dt>Otras deducciones</dt>
+                    <dd>{{ formatMoney(selected.total_other_deductions) }}</dd>
+                </div>
+                <div>
+                    <dt>Neto</dt>
+                    <dd><strong>{{ formatMoney(selected.total_net) }}</strong></dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selected" :href="route('labor-settlements.show', selected.id)" class="btn btn-primary"><ArrowRightIcon /> Abrir</Link>
+            </template>
+        </DetailModal>
+
+        <DetailModal :open="creating" title="Nueva liquidación" @close="creating = false">
+            <form id="settlement-form" @submit.prevent="submit">
                 <div class="field">
-                    <label>Trabajador</label>
-                    <select v-model="form.employee_id" required>
+                    <label for="settle-employee">Trabajador</label>
+                    <select id="settle-employee" v-model="form.employee_id" required>
                         <option value="">Elegí</option>
                         <option v-for="e in employees" :key="e.id" :value="e.id">
                             {{ e.code }} — {{ e.full_name }}
                         </option>
                     </select>
-                    <span v-if="selectedEmployee" class="hint small">
+                    <span v-if="selectedEmployee" class="muted small">
                         Ingresó el {{ selectedEmployee.hire_date }}.
                     </span>
                     <span v-if="form.errors.employee_id" class="error">{{ form.errors.employee_id }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Fecha de salida</label>
-                    <input v-model="form.termination_date" type="date" required>
-                    <span class="hint small">
+                    <label for="settle-date">Fecha de salida</label>
+                    <input id="settle-date" v-model="form.termination_date" type="date" required>
+                    <span class="muted small">
                         Manda sobre todo: fija las tasas que rigen, la antigüedad y el mes con el que se
                         acumula el impuesto.
                     </span>
@@ -196,8 +242,8 @@ const drafts = computed(() => props.settlements.filter((s) => s.status === 'draf
                 </div>
 
                 <div class="field">
-                    <label>Causal</label>
-                    <select v-model="form.reason" required>
+                    <label for="settle-reason">Causal</label>
+                    <select id="settle-reason" v-model="form.reason" required>
                         <option v-for="(label, value) in reasons" :key="value" :value="value">{{ label }}</option>
                     </select>
                 </div>
@@ -218,70 +264,58 @@ const drafts = computed(() => props.settlements.filter((s) => s.status === 'draf
                 </div>
 
                 <div class="field">
-                    <label>Hechos de la salida</label>
-                    <textarea v-model="form.reason_detail" rows="3"
+                    <label for="settle-detail">Hechos de la salida</label>
+                    <textarea id="settle-detail" v-model="form.reason_detail" rows="3"
                         placeholder="Qué pasó, con fechas. Es lo que sostiene la causal si se reclama."></textarea>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">
-                        Calcular liquidación
-                    </button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
+                <button type="submit" form="settlement-form" class="btn btn-primary" :disabled="form.processing">
+                    Calcular liquidación
+                </button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.stat-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strong { font-weight: 700; }
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
 
 .stat {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
     padding: 0.6rem 0.9rem;
     display: flex;
     flex-direction: column;
     gap: 0.1rem;
-    min-width: 11rem;
 }
 
-.stat.strong { border-color: #c7d2fe; background: #eef2ff; }
-.stat-label { font-size: 0.75rem; color: #6b7280; }
+.stat.strong { border-color: var(--color-info); background: var(--color-info-soft); }
+.stat-label { font-size: 0.75rem; color: var(--color-text-muted); }
 .stat-value { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.stat-note { font-size: 0.7rem; color: #6b7280; }
+.stat-note { font-size: 0.7rem; color: var(--color-text-muted); }
 
 .entitlement-box {
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
     padding: 0.6rem 0.9rem;
-    background: #f9fafb;
+    background: var(--color-surface-alt);
     margin-bottom: 0.75rem;
 }
 
-.entitlement-title { font-size: 0.75rem; color: #6b7280; }
+.entitlement-title { font-size: 0.75rem; color: var(--color-text-muted); }
 .entitlement-box ul { list-style: none; margin: 0.35rem 0 0; padding: 0; }
 .entitlement-box li { display: flex; align-items: baseline; gap: 0.4rem; padding: 0.1rem 0; }
-.entitlement-box li.off { color: #9ca3af; }
-.mark { width: 1rem; text-align: center; font-weight: 600; }
-.entitlement-box li.off .mark { color: #d1d5db; }
+.entitlement-box li.off { color: var(--color-text-muted); }
+.mark { width: 1rem; text-align: center; font-weight: 600; color: var(--color-success); }
+.entitlement-box li.off .mark { color: var(--color-text-muted); }
 
-.badge {
-    display: inline-block;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    border: 1px solid #d1d5db;
-    white-space: nowrap;
-}
-
-.badge-draft { background: #f3f4f6; color: #374151; }
-.badge-approved { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
-.badge-posted { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
-.badge-voided { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-
-tr.voided td { text-decoration: line-through; color: #9ca3af; }
-.center { text-align: center; }
+tr.voided td { text-decoration: line-through; color: var(--color-text-muted); }
 </style>

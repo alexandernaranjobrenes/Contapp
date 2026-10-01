@@ -2,9 +2,11 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useRecordDetail } from '../../../Utils/recordDetail';
 import { formatMoney } from '../../../Utils/money';
-import { PlusIcon } from '@lucide/vue';
+import { CheckCheckIcon, CheckIcon, PlusIcon, UserIcon } from '@lucide/vue';
 
 const props = defineProps({
     actions: { type: Array, default: () => [] },
@@ -61,21 +63,36 @@ function submit() {
     });
 }
 
-function approve(action) {
-    router.post(route('personnel-actions.approve', action.id), {}, { preserveScroll: true });
+function approve() {
+    router.post(route('personnel-actions.approve', selected.value.id), {}, { preserveScroll: true });
 }
 
-function apply(action) {
-    if (! confirm(`¿Aplicar esta acción a la ficha de ${action.employee_name}? Es el paso que cambia el dato.`)) return;
+function apply() {
+    const action = selected.value;
 
-    router.post(route('personnel-actions.apply', action.id), {}, { preserveScroll: true });
+    confirmAction({
+        title: 'Aplicar acción de personal',
+        message: `La acción se aplica a la ficha de ${action.employee_name}: es el paso que cambia el dato.`,
+        confirmLabel: 'Aplicar',
+        onConfirm: () => router.post(route('personnel-actions.apply', action.id), {}, { preserveScroll: true }),
+    });
 }
 
-function cancel(action) {
-    if (! confirm('¿Anular esta acción?')) return;
+function cancel() {
+    const action = selected.value;
 
-    router.post(route('personnel-actions.cancel', action.id), {}, { preserveScroll: true });
+    confirmAction({
+        title: 'Anular acción de personal',
+        message: `La acción «${action.action_label}» de ${action.employee_name} queda anulada y no se aplica.`,
+        confirmLabel: 'Anular',
+        danger: true,
+        onConfirm: () => router.post(route('personnel-actions.cancel', action.id), {}, { preserveScroll: true }),
+    });
 }
+
+// Ficha de la acción (CLAUDE.md secc. 20): el antes y el después, quién la
+// pidió y quién la aprobó, y los pasos del flujo.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.actions);
 
 const statusClass = {
     draft: 'badge-neutral',
@@ -91,11 +108,15 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
     <Head title="Acciones de personal" />
 
     <AppLayout title="Acciones de personal">
-        <template #actions>
-            <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <span class="muted small">{{ actions.length }} acción(es)</span>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.action" class="flash flash-error">{{ page.props.errors.action }}</div>
 
@@ -111,90 +132,123 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ actions.length }} acción(es)</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nueva acción</button>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Vigencia</th>
                             <th>Trabajador</th>
                             <th>Acción</th>
-                            <th class="right">Antes</th>
-                            <th class="right">Después</th>
-                            <th>Motivo</th>
-                            <th>Solicitó</th>
-                            <th>Aprobó</th>
+                            <th class="num">Después</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="a in actions" :key="a.id">
-                            <td class="num small">{{ a.effective_date }}</td>
-                            <td>
-                                <Link :href="route('employees.show', a.employee_id)">{{ a.employee_code }}</Link>
-                                <span class="muted small"> {{ a.employee_name }}</span>
-                            </td>
-                            <td class="small">{{ a.action_label }}</td>
-                            <td class="right num small muted">{{ a.previous_value ?? '—' }}</td>
-                            <td class="right num small">{{ a.new_value ?? '—' }}</td>
-                            <td class="muted small">{{ a.reason ?? '—' }}</td>
-                            <td class="muted small">{{ a.requested_by ?? '—' }}</td>
-                            <td class="muted small">{{ a.approved_by ?? '—' }}</td>
-                            <td><span class="badge" :class="statusClass[a.status]">{{ a.status_label }}</span></td>
-                            <td class="row-actions">
-                                <button v-if="a.status === 'draft'" type="button" class="btn btn-ghost btn-sm" @click="approve(a)">Aprobar</button>
-                                <button
-                                    v-if="a.status === 'approved' && a.is_due"
-                                    type="button" class="btn btn-ghost btn-sm" @click="apply(a)"
-                                >Aplicar</button>
-                                <span v-else-if="a.status === 'approved'" class="muted small" title="Rige en el futuro">en espera</span>
-                                <button
-                                    v-if="['draft', 'approved'].includes(a.status)"
-                                    type="button" class="btn btn-ghost btn-sm" @click="cancel(a)"
-                                >Anular</button>
-                            </td>
+                        <tr
+                            v-for="a in actions"
+                            :key="a.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(a)"
+                            @keydown.enter="openDetail(a)"
+                            @keydown.space.prevent="openDetail(a)"
+                        >
+                            <td class="code">{{ a.effective_date }}</td>
+                            <td data-label="Trabajador"><span class="code">{{ a.employee_code }}</span> — {{ a.employee_name }}</td>
+                            <td data-label="Acción" class="small">{{ a.action_label }}</td>
+                            <td data-label="Después" class="num small">{{ a.new_value ?? '—' }}</td>
+                            <td data-label="Estado"><span class="badge" :class="statusClass[a.status]">{{ a.status_label }}</span></td>
                         </tr>
                         <tr v-if="!actions.length">
-                            <td colspan="10" class="muted empty-row">Sin acciones registradas.</td>
+                            <td colspan="5" class="muted empty-row">Sin acciones registradas.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal card" @submit.prevent="submit">
-                <h2>Nueva acción de personal</h2>
+        <DetailModal :open="!!selected" :title="selected ? `${selected.action_label} — ${selected.employee_name}` : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="statusClass[selected.status]">{{ selected.status_label }}</span>
+            </template>
 
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Rige desde</dt>
+                    <dd>{{ selected.effective_date }}</dd>
+                </div>
+                <div>
+                    <dt>Trabajador</dt>
+                    <dd>{{ selected.employee_code }} — {{ selected.employee_name }}</dd>
+                </div>
+                <div>
+                    <dt>Antes</dt>
+                    <dd>{{ selected.previous_value ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Después</dt>
+                    <dd>{{ selected.new_value ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Motivo</dt>
+                    <dd>{{ selected.reason ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Solicitó</dt>
+                    <dd>{{ selected.requested_by ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Aprobó</dt>
+                    <dd>{{ selected.approved_by ?? '—' }}</dd>
+                </div>
+            </dl>
+            <p v-if="selected?.status === 'approved' && !selected.is_due" class="muted small modal-note">
+                Aprobada y en espera: rige en el futuro y se podrá aplicar desde su fecha de vigencia.
+            </p>
+
+            <template #actions>
+                <template v-if="selected">
+                    <button
+                        v-if="['draft', 'approved'].includes(selected.status)"
+                        type="button" class="btn btn-ghost btn-danger-text" @click="cancel"
+                    >Anular</button>
+                    <Link :href="route('employees.show', selected.employee_id)" class="btn btn-ghost"><UserIcon /> Ver trabajador</Link>
+                    <button v-if="selected.status === 'draft'" type="button" class="btn btn-primary" @click="approve"><CheckIcon /> Aprobar</button>
+                    <button
+                        v-if="selected.status === 'approved' && selected.is_due"
+                        type="button" class="btn btn-primary" @click="apply"
+                    ><CheckCheckIcon /> Aplicar</button>
+                </template>
+            </template>
+        </DetailModal>
+
+        <DetailModal :open="creating" title="Nueva acción de personal" @close="creating = false">
+            <form id="personnel-action-form" @submit.prevent="submit">
                 <div class="field">
-                    <label>Trabajador</label>
-                    <select v-model="form.employee_id" required>
+                    <label for="action-employee">Trabajador</label>
+                    <select id="action-employee" v-model="form.employee_id" required>
                         <option value="">Elegí</option>
                         <option v-for="e in employees" :key="e.id" :value="e.id">
                             {{ e.code }} — {{ e.name }}{{ e.status !== 'active' ? ` (${e.status})` : '' }}
                         </option>
                     </select>
+                    <span v-if="form.errors.employee_id" class="error">{{ form.errors.employee_id }}</span>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
-                        <label>Tipo de acción</label>
-                        <select v-model="form.action_type" required>
+                        <label for="action-type">Tipo de acción</label>
+                        <select id="action-type" v-model="form.action_type" required>
                             <option v-for="(label, value) in types" :key="value" :value="value" :disabled="value === 'hire'">
                                 {{ label }}
                             </option>
                         </select>
-                        <span class="hint small">La contratación se registra sola al crear la ficha.</span>
+                        <span class="muted small">La contratación se registra sola al crear la ficha.</span>
                     </div>
                     <div class="field">
-                        <label>Rige desde</label>
-                        <input v-model="form.effective_date" type="date" required>
-                        <span class="hint small">No es la fecha en que se digita.</span>
+                        <label for="action-date">Rige desde</label>
+                        <input id="action-date" v-model="form.effective_date" type="date" required>
+                        <span class="muted small">No es la fecha en que se digita.</span>
                         <span v-if="form.errors.effective_date" class="error">{{ form.errors.effective_date }}</span>
                     </div>
                 </div>
@@ -207,8 +261,8 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
                 </div>
 
                 <div v-if="isTermination" class="field">
-                    <label>Motivo de la salida</label>
-                    <select v-model="form.new_value" required>
+                    <label for="action-new-value">Motivo de la salida</label>
+                    <select id="action-new-value" v-model="form.new_value" required>
                         <option value="">Elegí</option>
                         <option value="renuncia">Renuncia</option>
                         <option value="despido_con_causa">Despido con responsabilidad del trabajador</option>
@@ -217,33 +271,34 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
                         <option value="mutuo_acuerdo">Mutuo acuerdo</option>
                         <option value="fallecimiento">Fallecimiento</option>
                     </select>
-                    <span class="hint small">
+                    <span class="muted small">
                         Decide si corresponden preaviso y cesantía. Aplicar esta acción da de baja al trabajador.
                     </span>
                 </div>
 
                 <div v-else-if="isCostCenter" class="field">
-                    <label>Centro de costo nuevo</label>
-                    <select v-model="form.new_value" required>
+                    <label for="action-new-value">Centro de costo nuevo</label>
+                    <select id="action-new-value" v-model="form.new_value" required>
                         <option value="">Elegí</option>
                         <option v-for="c in costCenters" :key="c.id" :value="String(c.id)">{{ c.code }} — {{ c.name }}</option>
                     </select>
                 </div>
 
                 <div v-else-if="targetField === 'journey_type'" class="field">
-                    <label>Jornada nueva</label>
-                    <select v-model="form.new_value" required>
+                    <label for="action-new-value">Jornada nueva</label>
+                    <select id="action-new-value" v-model="form.new_value" required>
                         <option value="">Elegí</option>
                         <option value="diurna">Diurna (8 h ordinarias)</option>
                         <option value="mixta">Mixta (7 h ordinarias)</option>
                         <option value="nocturna">Nocturna (6 h ordinarias)</option>
                     </select>
-                    <span class="hint small">Cambia a partir de qué hora una hora es extra.</span>
+                    <span class="muted small">Cambia a partir de qué hora una hora es extra.</span>
                 </div>
 
                 <div v-else-if="targetField" class="field">
-                    <label>{{ targetField === 'base_salary' ? 'Salario nuevo' : 'Puesto nuevo' }}</label>
+                    <label for="action-new-value">{{ targetField === 'base_salary' ? 'Salario nuevo' : 'Puesto nuevo' }}</label>
                     <input
+                        id="action-new-value"
                         v-model="form.new_value"
                         :type="targetField === 'base_salary' ? 'number' : 'text'"
                         :step="targetField === 'base_salary' ? '0.01' : undefined"
@@ -253,23 +308,28 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
                 </div>
 
                 <div class="field">
-                    <label>Motivo</label>
-                    <textarea v-model="form.reason" rows="2" placeholder="Por qué se toma esta decisión"></textarea>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Registrar en borrador</button>
+                    <label for="action-reason">Motivo</label>
+                    <textarea id="action-reason" v-model="form.reason" rows="2" placeholder="Por qué se toma esta decisión"></textarea>
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
+                <button type="submit" form="personnel-action-form" class="btn btn-primary" :disabled="form.processing">Registrar en borrador</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.modal-note { margin: 0.75rem 0 0; }
+
 .current-box {
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     gap: 0.6rem;
     padding: 0.5rem 0.75rem;
     margin-bottom: 0.7rem;
@@ -278,5 +338,4 @@ const pending = computed(() => props.actions.filter((a) => ['draft', 'approved']
 }
 
 .current-box strong { font-variant-numeric: tabular-nums; }
-.error { color: var(--color-danger); font-size: 0.76rem; }
 </style>

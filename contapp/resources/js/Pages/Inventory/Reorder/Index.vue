@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { DownloadIcon, ShoppingCartIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -102,19 +103,23 @@ function severity(s) {
     <Head title="Sugerencia de compra" />
 
     <AppLayout title="Sugerencia de compra">
-        <template #actions>
-            <select v-model="warehouseId" class="search-input" @change="applyFilters">
-                <option value="">Todos los almacenes</option>
-                <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
-            </select>
-            <select v-model="itemGroupId" class="search-input" @change="applyFilters">
-                <option value="">Todos los grupos</option>
-                <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
-            </select>
-            <a :href="exportUrl('reorder.export')" class="btn btn-ghost">Exportar XLSX</a>
-            <a :href="exportUrl('reorder.export-pdf')" class="btn btn-ghost">Exportar PDF</a>
-            <Link :href="route('purchase-orders.index')" class="btn btn-ghost">Órdenes de compra</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reorder.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reorder.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <Link :href="route('purchase-orders.index')" class="btn btn-ghost">Órdenes de compra</Link>
+            </div>
+            <div class="view-filters">
+                <select v-model="warehouseId" aria-label="Almacén" @change="applyFilters">
+                    <option value="">Todos los almacenes</option>
+                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }} — {{ w.name }}</option>
+                </select>
+                <select v-model="itemGroupId" aria-label="Grupo" @change="applyFilters">
+                    <option value="">Todos los grupos</option>
+                    <option v-for="g in itemGroups" :key="g.id" :value="g.id">{{ g.code }} — {{ g.name }}</option>
+                </select>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.lines" class="flash flash-error">{{ page.props.errors.lines }}</div>
 
@@ -125,25 +130,24 @@ function severity(s) {
             nuevo algo que ya se pidió. Solo aparecen artículos con mínimo configurado.
         </p>
 
-        <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ suggestions.length }} artículo(s) bajo mínimo</span>
-                <span class="muted">Costo estimado total: <strong>{{ money(estimatedTotal) }}</strong></span>
-            </div>
+        <div class="list-summary">
+            <span class="muted">{{ suggestions.length }} artículo(s) bajo mínimo</span>
+            <span class="muted">Costo estimado total: <strong>{{ money(estimatedTotal) }}</strong></span>
+        </div>
 
-            <div class="table-scroll">
+        <!-- Grilla de selección: la casilla elige qué va a la orden y la
+             cantidad se ajusta en la fila (CLAUDE.md secc. 20, excepción).
+             Lo apartado y lo que viene en camino se leen debajo del
+             disponible, que es lo que suman. -->
+        <div class="card">
+            <div class="table-responsive capture-grid">
                 <table>
                     <thead>
                         <tr>
-                            <th></th>
                             <th>Artículo</th>
                             <th>Almacén</th>
-                            <th class="num">Existencia</th>
-                            <th class="num">Apartado</th>
-                            <th class="num">En camino</th>
                             <th class="num">Disponible</th>
-                            <th class="num">Mínimo</th>
-                            <th class="num">Máximo</th>
+                            <th class="num">Mín. / máx.</th>
                             <th class="num">Sugerido</th>
                             <th class="num">Costo est.</th>
                         </tr>
@@ -151,37 +155,41 @@ function severity(s) {
                     <tbody>
                         <tr v-for="s in suggestions" :key="keyOf(s)" :class="severity(s)">
                             <td>
-                                <input
-                                    type="checkbox"
-                                    :checked="!!selected[keyOf(s)]"
-                                    :disabled="!s.is_purchase_item"
-                                    :title="s.is_purchase_item ? '' : 'Este artículo no está marcado como comprable'"
-                                    @change="toggle(s)"
-                                >
+                                <label class="pick-cell">
+                                    <input
+                                        type="checkbox"
+                                        :checked="!!selected[keyOf(s)]"
+                                        :disabled="!s.is_purchase_item"
+                                        :title="s.is_purchase_item ? '' : 'Este artículo no está marcado como comprable'"
+                                        @change="toggle(s)"
+                                    >
+                                    <span>
+                                        <Link :href="route('reorder.levels', s.item_id)" class="link">{{ s.item_code }}</Link>
+                                        — {{ s.item_name }}
+                                    </span>
+                                </label>
                             </td>
-                            <td>
-                                <Link :href="route('reorder.levels', s.item_id)" class="link">{{ s.item_code }}</Link>
-                                — {{ s.item_name }}
+                            <td data-label="Almacén">{{ s.warehouse_code }}</td>
+                            <td data-label="Disponible" class="num">
+                                <strong>{{ quantity(s.available) }}</strong>
+                                <span class="breakdown">existencia {{ quantity(s.on_hand) }} · apartado {{ quantity(s.reserved) }} · en camino {{ quantity(s.ordered) }}</span>
                             </td>
-                            <td>{{ s.warehouse_code }}</td>
-                            <td class="num">{{ quantity(s.on_hand) }}</td>
-                            <td class="num muted">{{ quantity(s.reserved) }}</td>
-                            <td class="num muted">{{ quantity(s.ordered) }}</td>
-                            <td class="num"><strong>{{ quantity(s.available) }}</strong></td>
-                            <td class="num muted">{{ quantity(s.minimum_stock) }}</td>
-                            <td class="num muted">{{ s.maximum_stock === null ? '—' : quantity(s.maximum_stock) }}</td>
-                            <td class="num">
+                            <td data-label="Mín. / máx." class="num muted">
+                                {{ quantity(s.minimum_stock) }} / {{ s.maximum_stock === null ? '—' : quantity(s.maximum_stock) }}
+                            </td>
+                            <td data-label="Sugerido" class="num">
                                 <input
                                     v-if="selected[keyOf(s)]"
                                     v-model="quantities[keyOf(s)]"
                                     type="number" step="0.000001" min="0.000001" class="qty-input"
+                                    :aria-label="`Cantidad a pedir de ${s.item_code}`"
                                 >
                                 <span v-else>{{ quantity(s.suggested_quantity) }}</span>
                             </td>
-                            <td class="num muted">{{ money(s.estimated_cost) }}</td>
+                            <td data-label="Costo est." class="num muted">{{ money(s.estimated_cost) }}</td>
                         </tr>
                         <tr v-if="!suggestions.length">
-                            <td colspan="11" class="muted empty-row">
+                            <td colspan="6" class="muted empty-row">
                                 Nada bajo mínimo. Si esperabas ver artículos acá, revisá que tengan mínimo
                                 configurado: sin mínimo no hay control de reorden.
                             </td>
@@ -194,23 +202,23 @@ function severity(s) {
         <div v-if="chosen.length" class="card order-panel">
             <h2>Crear orden de compra con {{ chosen.length }} línea(s)</h2>
 
-            <div class="grid-3">
+            <div class="form-grid">
                 <div class="field">
-                    <label>Proveedor</label>
-                    <select v-model="orderForm.business_partner_id" required>
+                    <label for="reorder-supplier">Proveedor</label>
+                    <select id="reorder-supplier" v-model="orderForm.business_partner_id" required>
                         <option value="" disabled>— Elegir —</option>
                         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.code }} — {{ s.name }}</option>
                     </select>
                 </div>
 
                 <div class="field">
-                    <label>Fecha esperada (opcional)</label>
-                    <input v-model="orderForm.expected_date" type="date">
+                    <label for="reorder-expected">Fecha esperada (opcional)</label>
+                    <input id="reorder-expected" v-model="orderForm.expected_date" type="date">
                 </div>
 
                 <div class="field">
-                    <label>Costo estimado</label>
-                    <strong class="num">{{ money(chosenTotal) }}</strong>
+                    <span class="field-label">Costo estimado</span>
+                    <strong class="estimated">{{ money(chosenTotal) }}</strong>
                 </div>
             </div>
 
@@ -219,26 +227,39 @@ function severity(s) {
                 guarda es el promedio actual y es informativo — el real lo fija la recepción.
             </p>
 
-            <button
-                type="button"
-                class="btn btn-primary"
-                :disabled="orderForm.processing || orderForm.business_partner_id === ''"
-                @click="createOrder"
-            >
-                Crear orden de compra
-            </button>
+            <div class="form-actions">
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="orderForm.processing || orderForm.business_partner_id === ''"
+                    @click="createOrder"
+                >
+                    <ShoppingCartIcon /> Crear orden de compra
+                </button>
+            </div>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-.num { text-align: right; }
+table { font-size: 0.85rem; }
+.list-summary { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 1rem; margin-bottom: 0.6rem; font-size: 0.85rem; }
+.pick-cell { display: inline-flex; align-items: flex-start; gap: 0.5rem; }
+.pick-cell input { margin-top: 0.2rem; }
+.breakdown { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; white-space: normal; }
 .qty-input { width: 7rem; text-align: right; }
-.table-scroll { overflow-x: auto; }
 .order-panel { margin-top: 1rem; padding: 1rem 1.1rem; }
 .order-panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem; }
-.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+.field-label { font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); }
+.estimated { font-variant-numeric: tabular-nums; min-height: 2.25rem; display: flex; align-items: center; }
 /* Sin nada disponible es quiebre, no riesgo de quiebre. */
-.critical { background: #fdecea; }
-.warning { background: #fdf6e3; }
+.critical td { background: var(--color-danger-soft); }
+.warning td { background: var(--color-warning-soft); }
+
+@media screen and (max-width: 1024px) {
+    .critical td, .warning td { background: none; }
+    .table-responsive tbody tr.critical { background: var(--color-danger-soft); }
+    .table-responsive tbody tr.warning { background: var(--color-warning-soft); }
+    .qty-input { width: auto; }
+}
 </style>

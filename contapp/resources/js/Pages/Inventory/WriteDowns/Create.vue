@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -69,10 +70,15 @@ function submit() {
     <Head title="Avalúo de deterioro" />
 
     <AppLayout title="Avalúo de deterioro de inventario">
-        <template #actions>
-            <input v-model="asOf" type="date" class="date-input" @change="reloadAsOf">
-            <Link :href="route('inventory-write-downs.index')" class="btn btn-ghost">Ver avalúos</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('inventory-write-downs.index')" class="btn btn-ghost"><ArrowLeftIcon /> Avalúos</Link>
+            <div class="view-filters">
+                <label class="filter-field">
+                    <span>Corte al</span>
+                    <input v-model="asOf" type="date" @change="reloadAsOf">
+                </label>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.lines" class="flash flash-error">{{ page.props.errors.lines }}</div>
 
@@ -83,89 +89,110 @@ function submit() {
             inventario ni toca el kardex. Si el VNR se recupera, un avalúo posterior reversa lo estimado (§33).
         </p>
 
-        <form class="card" @submit.prevent="submit">
-            <div class="field">
-                <label>Descripción del avalúo (opcional)</label>
-                <input v-model="form.description" type="text" maxlength="255">
+        <form @submit.prevent="submit">
+            <div class="field description-field">
+                <label for="wd-description">Descripción del avalúo (opcional)</label>
+                <input id="wd-description" v-model="form.description" type="text" maxlength="255">
             </div>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>Artículo</th>
-                        <th class="num">Existencia</th>
-                        <th class="num">Costo unitario</th>
-                        <th class="num">Costo total</th>
-                        <th class="num">Ya estimado</th>
-                        <th class="num">VNR unitario</th>
-                        <th class="num">Estimación objetivo</th>
-                        <th class="num">A contabilizar</th>
-                        <th>Motivo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="i in items" :key="i.id">
-                        <td><strong class="num">{{ i.code }}</strong> — {{ i.name }}</td>
-                        <td class="num">{{ quantity(i.quantity) }}</td>
-                        <td class="num">{{ money(i.unit_cost_local) }}</td>
-                        <td class="num">{{ money(i.cost_value_local) }}</td>
-                        <td class="num muted">{{ money(i.current_allowance) }}</td>
-                        <td class="num">
-                            <input
-                                v-model="nrv[i.id]"
-                                type="number" step="0.000001" min="0"
-                                class="nrv-input" placeholder="—"
-                            >
-                        </td>
-                        <td class="num">{{ projection(i) ? money(projection(i).target) : '—' }}</td>
-                        <td class="num">
-                            <span v-if="projection(i)" :class="projection(i).movement < 0 ? 'reversal' : 'impairment'">
-                                {{ money(projection(i).movement) }}
-                            </span>
-                            <span v-else>—</span>
-                        </td>
-                        <td>
-                            <input v-model="reasons[i.id]" type="text" maxlength="255" :disabled="!projection(i)">
-                        </td>
-                    </tr>
-                    <tr v-if="!items.length">
-                        <td colspan="9" class="muted empty-row">
-                            No hay artículos con existencia al {{ asOf }}.
-                        </td>
-                    </tr>
-                </tbody>
-                <tfoot v-if="assessed.length">
-                    <tr>
-                        <td colspan="7" class="total-label">Efecto neto en resultados</td>
-                        <td class="num total-value" :class="totalMovement < 0 ? 'reversal' : 'impairment'">
-                            {{ money(totalMovement) }}
-                        </td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
+            <!-- Grilla de captura: el VNR y el motivo se digitan en la fila
+                 (CLAUDE.md secc. 20, excepción). Existencia y costo unitario van
+                 debajo del artículo; la estimación objetivo, debajo de lo que se
+                 va a contabilizar. -->
+            <div class="card">
+                <div class="table-responsive capture-grid">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Artículo</th>
+                                <th class="num">Costo total</th>
+                                <th class="num">Ya estimado</th>
+                                <th class="num">VNR unitario</th>
+                                <th class="num">A contabilizar</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="i in items" :key="i.id">
+                                <td>
+                                    <strong class="code">{{ i.code }}</strong> — {{ i.name }}
+                                    <span class="breakdown">{{ quantity(i.quantity) }} a {{ money(i.unit_cost_local) }}</span>
+                                </td>
+                                <td data-label="Costo total" class="num">{{ money(i.cost_value_local) }}</td>
+                                <td data-label="Ya estimado" class="num muted">{{ money(i.current_allowance) }}</td>
+                                <td data-label="VNR unitario" class="num">
+                                    <input
+                                        v-model="nrv[i.id]"
+                                        type="number" step="0.000001" min="0"
+                                        class="nrv-input" placeholder="—"
+                                        :aria-label="`VNR unitario de ${i.code}`"
+                                    >
+                                </td>
+                                <td data-label="A contabilizar" class="num">
+                                    <template v-if="projection(i)">
+                                        <span :class="projection(i).movement < 0 ? 'reversal' : 'impairment'">{{ money(projection(i).movement) }}</span>
+                                        <span class="breakdown">objetivo {{ money(projection(i).target) }}</span>
+                                    </template>
+                                    <span v-else>—</span>
+                                </td>
+                                <td data-label="Motivo">
+                                    <input v-model="reasons[i.id]" class="reason-input" type="text" maxlength="255" :disabled="!projection(i)" :aria-label="`Motivo de ${i.code}`">
+                                </td>
+                            </tr>
+                            <tr v-if="!items.length">
+                                <td colspan="6" class="muted empty-row">
+                                    No hay artículos con existencia al {{ asOf }}.
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot v-if="assessed.length">
+                            <tr>
+                                <td colspan="4" class="total-label">Efecto neto en resultados</td>
+                                <td data-label="Efecto neto" class="num total-value" :class="totalMovement < 0 ? 'reversal' : 'impairment'">
+                                    {{ money(totalMovement) }}
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
 
-            <p v-if="totalMovement < 0" class="hint">
+            <p v-if="totalMovement < 0" class="hint net-hint">
                 El neto es negativo: este avalúo <strong>reversa</strong> estimación reconocida antes, lo que
                 reduce el gasto del periodo. No es un ingreso.
             </p>
 
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary" :disabled="form.processing || !assessed.length">
-                    Contabilizar avalúo
-                </button>
                 <span v-if="!assessed.length" class="muted small">Digitá al menos un VNR.</span>
+                <button type="submit" class="btn btn-primary" :disabled="form.processing || !assessed.length">
+                    <CheckIcon /> Contabilizar avalúo
+                </button>
             </div>
         </form>
     </AppLayout>
 </template>
 
 <style scoped>
-.num { text-align: right; }
-.nrv-input { width: 7rem; text-align: right; }
+table { font-size: 0.85rem; }
+th, td { padding: 0.5rem 0.6rem; }
+.code { font-variant-numeric: tabular-nums; }
+.description-field { max-width: none; }
+.breakdown { display: block; font-size: 0.7rem; color: var(--color-text-muted); font-weight: 400; }
+.nrv-input { width: 6.5rem; text-align: right; }
+/* El motivo toma lo que quede de ancho: con su tamaño natural empujaba la
+   tabla más allá de los 720px útiles a 1025px. */
+.reason-input { width: 100%; min-width: 6rem; }
 .total-label { text-align: right; font-weight: 600; }
 .total-value { font-weight: 700; }
-.impairment { color: #a02020; }
-.reversal { color: #1d7a3c; }
-.form-actions { display: flex; gap: 0.75rem; align-items: center; padding-top: 0.75rem; }
+.impairment { color: var(--color-danger); }
+.reversal { color: var(--color-success); }
+.net-hint { margin-top: 0.75rem; }
+.form-actions { align-items: center; margin-top: 0.75rem; }
+
+@media screen and (max-width: 1024px) {
+    .nrv-input { width: auto; }
+    .total-label { text-align: left; }
+    .breakdown { display: inline; margin-left: 0.4rem; }
+}
 </style>

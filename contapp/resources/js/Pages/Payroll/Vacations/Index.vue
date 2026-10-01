@@ -2,8 +2,11 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useRecordDetail } from '../../../Utils/recordDetail';
 import { formatMoney } from '../../../Utils/money';
-import { PlusIcon } from '@lucide/vue';
+import { PlusIcon, UserIcon, UsersIcon } from '@lucide/vue';
 
 const props = defineProps({
     employees: { type: Array, default: () => [] },
@@ -58,10 +61,27 @@ function submit() {
     });
 }
 
-function destroy(movement) {
-    if (! confirm('¿Eliminar este movimiento?')) return;
+// Fichas (CLAUDE.md secc. 20): la del trabajador, con su saldo y el botón
+// para registrarle un movimiento, y la del movimiento, con su detalle y
+// «Eliminar».
+const { selected: selectedEmployee, openDetail: openEmployee, closeDetail: closeEmployee } = useRecordDetail(() => props.employees);
+const { selected: selectedMovement, openDetail: openMovement, closeDetail: closeMovement } = useRecordDetail(() => props.movements);
 
-    router.delete(route('vacations.destroy', movement.id), { preserveScroll: true });
+function registerFor(employee) {
+    closeEmployee();
+    openCreate(employee.id);
+}
+
+function destroy() {
+    const movement = selectedMovement.value;
+
+    confirmAction({
+        title: 'Eliminar movimiento',
+        message: `El movimiento de ${movement.employee_name} del ${movement.movement_date} se elimina y el saldo se recalcula.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('vacations.destroy', movement.id), { preserveScroll: true }),
+    });
 }
 
 const search = ref('');
@@ -162,9 +182,22 @@ const bulkShort = computed(() => {
     <Head title="Vacaciones" />
 
     <AppLayout title="Vacaciones">
-        <template #actions>
-            <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
+                <button type="button" class="btn btn-ghost" :disabled="!selected.length" @click="openBulk()">
+                    <UsersIcon /> Movimiento masivo
+                </button>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar trabajador" aria-label="Buscar trabajador">
+                <span class="muted small">
+                    {{ visible.length }} trabajador(es)
+                    <template v-if="selected.length"> · <strong>{{ selected.length }} seleccionado(s)</strong></template>
+                </span>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.movement" class="flash flash-error">{{ page.props.errors.movement }}</div>
 
@@ -192,125 +225,180 @@ const bulkShort = computed(() => {
         </div>
 
         <div class="card">
-            <div class="card-header">
-                <input v-model="search" type="search" placeholder="Buscar trabajador" class="search-input">
-                <span class="muted">
-                    {{ visible.length }} trabajador(es)
-                    <template v-if="selected.length"> · <strong>{{ selected.length }} seleccionado(s)</strong></template>
-                </span>
-                <button type="button" class="btn btn-ghost" :disabled="!selected.length" @click="openBulk()">
-                    Movimiento masivo
-                </button>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Registrar movimiento</button>
-            </div>
-
-            <div class="table-scroll freeze-2">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th class="pick">
-                                <input type="checkbox" :checked="allVisibleSelected" @change="toggleAll">
-                            </th>
-                            <th>Código</th>
                             <th>Trabajador</th>
-                            <th>Puesto</th>
-                            <th>C. costo</th>
                             <th>Ingreso</th>
-                            <th class="right">Antigüedad</th>
-                            <th class="right">Días acumulados</th>
-                            <th class="right">Valor del día</th>
-                            <th class="right">Valor acumulado</th>
-                            <th></th>
+                            <th class="num">Días acumulados</th>
+                            <th class="num">Valor acumulado</th>
+                            <th class="pick">
+                                <input type="checkbox" :checked="allVisibleSelected" aria-label="Seleccionar todos para el movimiento masivo" @change="toggleAll">
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="e in visible" :key="e.id" :class="{ picked: selected.includes(e.id) }">
-                            <td class="pick">
-                                <input v-model="selected" type="checkbox" :value="e.id">
-                            </td>
-                            <td class="num">{{ e.code }}</td>
-                            <td><Link :href="route('employees.show', e.id)">{{ e.name }}</Link></td>
-                            <td class="muted small">{{ e.position ?? '—' }}</td>
-                            <td class="muted small">{{ e.cost_center ?? '—' }}</td>
-                            <td class="num small">{{ e.hire_date }}</td>
-                            <td class="right num small">{{ e.years_of_service }}</td>
-                            <td class="right num strong" :class="{ negative: e.balance < 0 }">{{ e.balance.toFixed(2) }}</td>
-                            <td class="right num muted">{{ formatMoney(e.daily_rate) }}</td>
-                            <td class="right num">{{ formatMoney(e.balance * parseFloat(e.daily_rate)) }}</td>
-                            <td class="row-actions">
-                                <button type="button" class="btn btn-ghost btn-sm" @click="openCreate(e.id)">Registrar</button>
+                        <tr
+                            v-for="e in visible"
+                            :key="e.id"
+                            class="clickable-row"
+                            :class="{ picked: selected.includes(e.id) }"
+                            tabindex="0"
+                            @click="openEmployee(e)"
+                            @keydown.enter.self="openEmployee(e)"
+                            @keydown.space.self.prevent="openEmployee(e)"
+                        >
+                            <td><span class="code">{{ e.code }}</span> — {{ e.name }}</td>
+                            <td data-label="Ingreso" class="code">{{ e.hire_date }}</td>
+                            <td data-label="Días acumulados" class="num strong" :class="{ negative: e.balance < 0 }">{{ e.balance.toFixed(2) }}</td>
+                            <td data-label="Valor acumulado" class="num">{{ formatMoney(e.balance * parseFloat(e.daily_rate)) }}</td>
+                            <!-- La casilla es la selección del movimiento masivo, no una acción de la fila. -->
+                            <td data-label="Seleccionar" class="pick" @click.stop>
+                                <input v-model="selected" type="checkbox" :value="e.id" :aria-label="`Seleccionar a ${e.name}`">
                             </td>
                         </tr>
                         <tr v-if="!visible.length">
-                            <td colspan="11" class="muted empty-row">Sin trabajadores.</td>
+                            <td colspan="5" class="muted empty-row">Sin trabajadores.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <section class="card">
-            <div class="card-header">
-                <h3>Últimos movimientos</h3>
-                <span class="muted small">{{ movements.length }}</span>
-            </div>
+        <h3 class="block-title">Últimos movimientos <span class="muted small">({{ movements.length }})</span></h3>
 
-            <div class="table-scroll compact">
+        <div class="card">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Fecha</th>
                             <th>Trabajador</th>
                             <th>Tipo</th>
-                            <th class="right">Días</th>
-                            <th>Rango</th>
-                            <th class="right">Monto</th>
-                            <th>Notas</th>
-                            <th></th>
+                            <th class="num">Días</th>
+                            <th class="num">Monto</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="m in movements" :key="m.id">
-                            <td class="num small">{{ m.movement_date }}</td>
-                            <td class="small">{{ m.employee_code }} — {{ m.employee_name }}</td>
-                            <td class="small">
+                        <tr
+                            v-for="m in movements"
+                            :key="m.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openMovement(m)"
+                            @keydown.enter="openMovement(m)"
+                            @keydown.space.prevent="openMovement(m)"
+                        >
+                            <td class="code">{{ m.movement_date }}</td>
+                            <td data-label="Trabajador" class="small">{{ m.employee_code }} — {{ m.employee_name }}</td>
+                            <td data-label="Tipo" class="small">
                                 {{ m.type_label }}
                                 <span v-if="m.is_automatic" class="badge badge-neutral auto">auto</span>
                             </td>
-                            <td class="right num" :class="{ negative: m.days < 0 }">{{ m.days.toFixed(4) }}</td>
-                            <td class="muted small">
-                                <template v-if="m.from_date">{{ m.from_date }} a {{ m.to_date }}</template>
-                                <template v-else>—</template>
-                            </td>
-                            <td class="right num small">{{ m.amount ? formatMoney(m.amount) : '—' }}</td>
-                            <td class="muted small">{{ m.notes ?? '—' }}</td>
-                            <td class="row-actions">
-                                <button
-                                    v-if="!m.is_automatic"
-                                    type="button" class="btn btn-ghost btn-sm" @click="destroy(m)"
-                                >Eliminar</button>
-                            </td>
+                            <td data-label="Días" class="num" :class="{ negative: m.days < 0 }">{{ m.days.toFixed(4) }}</td>
+                            <td data-label="Monto" class="num small">{{ m.amount ? formatMoney(m.amount) : '—' }}</td>
                         </tr>
                         <tr v-if="!movements.length">
-                            <td colspan="8" class="muted empty-row">Sin movimientos.</td>
+                            <td colspan="5" class="muted empty-row">Sin movimientos.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-        </section>
+        </div>
 
-        <div v-if="bulking" class="modal-backdrop" @click.self="bulking = false">
-            <form class="modal card" @submit.prevent="submitBulk">
-                <h2>Movimiento para {{ selected.length }} trabajador(es)</h2>
+        <!-- Ficha del trabajador -->
+        <DetailModal :open="!!selectedEmployee" :title="selectedEmployee ? `${selectedEmployee.code} — ${selectedEmployee.name}` : ''" @close="closeEmployee">
+            <dl v-if="selectedEmployee" class="detail-list">
+                <div>
+                    <dt>Puesto</dt>
+                    <dd>{{ selectedEmployee.position ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Centro de costo</dt>
+                    <dd>{{ selectedEmployee.cost_center ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Ingreso</dt>
+                    <dd>{{ selectedEmployee.hire_date }}</dd>
+                </div>
+                <div>
+                    <dt>Antigüedad</dt>
+                    <dd>{{ selectedEmployee.years_of_service }}</dd>
+                </div>
+                <div>
+                    <dt>Días acumulados</dt>
+                    <dd :class="{ negative: selectedEmployee.balance < 0 }">{{ selectedEmployee.balance.toFixed(2) }}</dd>
+                </div>
+                <div>
+                    <dt>Valor del día</dt>
+                    <dd>{{ formatMoney(selectedEmployee.daily_rate) }}</dd>
+                </div>
+                <div>
+                    <dt>Valor acumulado</dt>
+                    <dd>{{ formatMoney(selectedEmployee.balance * parseFloat(selectedEmployee.daily_rate)) }}</dd>
+                </div>
+            </dl>
 
+            <template #actions>
+                <template v-if="selectedEmployee">
+                    <Link :href="route('employees.show', selectedEmployee.id)" class="btn btn-ghost"><UserIcon /> Ver ficha</Link>
+                    <button type="button" class="btn btn-primary" @click="registerFor(selectedEmployee)"><PlusIcon /> Registrar movimiento</button>
+                </template>
+            </template>
+        </DetailModal>
+
+        <!-- Ficha del movimiento -->
+        <DetailModal :open="!!selectedMovement" :title="selectedMovement ? `${selectedMovement.type_label} — ${selectedMovement.employee_name}` : ''" @close="closeMovement">
+            <template #badge>
+                <span v-if="selectedMovement?.is_automatic" class="badge badge-neutral">automático</span>
+            </template>
+
+            <dl v-if="selectedMovement" class="detail-list">
+                <div>
+                    <dt>Fecha</dt>
+                    <dd>{{ selectedMovement.movement_date }}</dd>
+                </div>
+                <div>
+                    <dt>Días</dt>
+                    <dd :class="{ negative: selectedMovement.days < 0 }">{{ selectedMovement.days.toFixed(4) }}</dd>
+                </div>
+                <div>
+                    <dt>Rango</dt>
+                    <dd>{{ selectedMovement.from_date ? `${selectedMovement.from_date} a ${selectedMovement.to_date}` : '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Monto</dt>
+                    <dd>{{ selectedMovement.amount ? formatMoney(selectedMovement.amount) : '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Notas</dt>
+                    <dd>{{ selectedMovement.notes ?? '—' }}</dd>
+                </div>
+            </dl>
+            <p v-if="selectedMovement?.is_automatic" class="muted small modal-note">
+                Lo generó el cálculo de la planilla: se corrige recalculando el período, no eliminándolo.
+            </p>
+
+            <template #actions>
+                <button
+                    v-if="selectedMovement && !selectedMovement.is_automatic"
+                    type="button" class="btn btn-ghost btn-danger-text" @click="destroy"
+                >Eliminar</button>
+            </template>
+        </DetailModal>
+
+        <!-- Movimiento masivo -->
+        <DetailModal :open="bulking" :title="`Movimiento para ${selected.length} trabajador(es)`" @close="bulking = false">
+            <form id="vacation-bulk-form" @submit.prevent="submitBulk">
                 <p class="hint small">
                     El mismo movimiento para todos los seleccionados: el cierre de fin de año, los saldos
                     iniciales, una acreditación por convenio.
                 </p>
 
                 <div class="field">
-                    <label>Tipo</label>
-                    <select v-model="bulkForm.type" required>
+                    <label for="bulk-type">Tipo</label>
+                    <select id="bulk-type" v-model="bulkForm.type" required>
                         <option value="taken">Disfrute</option>
                         <option value="paid">Pago en efectivo</option>
                         <option value="adjustment">Ajuste</option>
@@ -319,23 +407,23 @@ const bulkShort = computed(() => {
 
                 <div v-if="bulkForm.type !== 'adjustment'" class="field-row">
                     <div class="field">
-                        <label>Desde</label>
-                        <input v-model="bulkForm.from_date" type="date" @change="syncBulkDays">
+                        <label for="bulk-from">Desde</label>
+                        <input id="bulk-from" v-model="bulkForm.from_date" type="date" @change="syncBulkDays">
                     </div>
                     <div class="field">
-                        <label>Hasta</label>
-                        <input v-model="bulkForm.to_date" type="date" @change="syncBulkDays">
+                        <label for="bulk-to">Hasta</label>
+                        <input id="bulk-to" v-model="bulkForm.to_date" type="date" @change="syncBulkDays">
                     </div>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
-                        <label>Fecha del movimiento</label>
-                        <input v-model="bulkForm.movement_date" type="date" required>
+                        <label for="bulk-date">Fecha del movimiento</label>
+                        <input id="bulk-date" v-model="bulkForm.movement_date" type="date" required>
                     </div>
                     <div class="field">
-                        <label>Días para cada uno</label>
-                        <input v-model="bulkForm.days" type="number" step="0.01" required>
+                        <label for="bulk-days">Días para cada uno</label>
+                        <input id="bulk-days" v-model="bulkForm.days" type="number" step="0.01" required>
                         <span v-if="bulkForm.errors.days" class="error">{{ bulkForm.errors.days }}</span>
                     </div>
                 </div>
@@ -348,66 +436,66 @@ const bulkShort = computed(() => {
                 </p>
 
                 <div class="field">
-                    <label>Notas</label>
-                    <input v-model="bulkForm.notes" type="text" maxlength="255" placeholder="Cierre de fin de año, convenio…">
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="bulking = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="bulkForm.processing">
-                        Aplicar a {{ selected.length }}
-                    </button>
+                    <label for="bulk-notes">Notas</label>
+                    <input id="bulk-notes" v-model="bulkForm.notes" type="text" maxlength="255" placeholder="Cierre de fin de año, convenio…">
                 </div>
             </form>
-        </div>
 
-        <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
-            <form class="modal card" @submit.prevent="submit">
-                <h2>Registrar movimiento de vacaciones</h2>
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="bulking = false">Cancelar</button>
+                <button type="submit" form="vacation-bulk-form" class="btn btn-primary" :disabled="bulkForm.processing">
+                    Aplicar a {{ selected.length }}
+                </button>
+            </template>
+        </DetailModal>
 
+        <!-- Registrar un movimiento -->
+        <DetailModal :open="creating" title="Registrar movimiento de vacaciones" @close="creating = false">
+            <form id="vacation-form" @submit.prevent="submit">
                 <div class="field">
-                    <label>Trabajador</label>
-                    <select v-model="form.employee_id" required>
+                    <label for="vac-employee">Trabajador</label>
+                    <select id="vac-employee" v-model="form.employee_id" required>
                         <option value="">Elegí</option>
                         <option v-for="e in employees" :key="e.id" :value="e.id">
                             {{ e.code }} — {{ e.name }} ({{ e.balance.toFixed(2) }} día[s])
                         </option>
                     </select>
+                    <span v-if="form.errors.employee_id" class="error">{{ form.errors.employee_id }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Tipo</label>
-                    <select v-model="form.type" required>
+                    <label for="vac-type">Tipo</label>
+                    <select id="vac-type" v-model="form.type" required>
                         <option value="taken">Disfrute</option>
                         <option value="paid">Pago en efectivo</option>
                         <option value="settlement">Liquidación definitiva</option>
                         <option value="adjustment">Ajuste</option>
                     </select>
-                    <span class="hint small">
+                    <span class="muted small">
                         Las acreditaciones no se digitan: las genera el cálculo de cada planilla.
                     </span>
                 </div>
 
                 <div v-if="form.type !== 'adjustment'" class="field-row">
                     <div class="field">
-                        <label>Desde</label>
-                        <input v-model="form.from_date" type="date" @change="syncDays">
+                        <label for="vac-from">Desde</label>
+                        <input id="vac-from" v-model="form.from_date" type="date" @change="syncDays">
                     </div>
                     <div class="field">
-                        <label>Hasta</label>
-                        <input v-model="form.to_date" type="date" @change="syncDays">
+                        <label for="vac-to">Hasta</label>
+                        <input id="vac-to" v-model="form.to_date" type="date" @change="syncDays">
                     </div>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
-                        <label>Fecha del movimiento</label>
-                        <input v-model="form.movement_date" type="date" required>
+                        <label for="vac-date">Fecha del movimiento</label>
+                        <input id="vac-date" v-model="form.movement_date" type="date" required>
                     </div>
                     <div class="field">
-                        <label>Días</label>
-                        <input v-model="form.days" type="number" step="0.01" required>
-                        <span class="hint small">
+                        <label for="vac-days">Días</label>
+                        <input id="vac-days" v-model="form.days" type="number" step="0.01" required>
+                        <span class="muted small">
                             {{ form.type === 'adjustment'
                                 ? 'Positivo acredita, negativo rebaja.'
                                 : 'Se guarda en negativo: rebaja el saldo.' }}
@@ -417,35 +505,34 @@ const bulkShort = computed(() => {
                 </div>
 
                 <div v-if="form.type === 'paid' || form.type === 'settlement'" class="field">
-                    <label>Monto pagado</label>
-                    <input v-model="form.amount" type="number" step="0.01" min="0">
+                    <label for="vac-amount">Monto pagado</label>
+                    <input id="vac-amount" v-model="form.amount" type="number" step="0.01" min="0">
                 </div>
 
                 <div class="field">
-                    <label>Notas</label>
-                    <input v-model="form.notes" type="text" maxlength="255">
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Registrar</button>
+                    <label for="vac-notes">Notas</label>
+                    <input id="vac-notes" v-model="form.notes" type="text" maxlength="255">
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="creating = false">Cancelar</button>
+                <button type="submit" form="vacation-form" class="btn btn-primary" :disabled="form.processing">Registrar</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.stat-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
 
 .stat {
     display: flex;
     flex-direction: column;
     padding: 0.7rem 1.1rem;
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     background: var(--color-surface);
-    min-width: 12rem;
 }
 
 .stat.strong { background: var(--color-surface-alt); }
@@ -460,16 +547,20 @@ const bulkShort = computed(() => {
 .stat-value { font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat-note { font-size: 0.68rem; color: var(--color-text-muted); }
 
-.card-header h3 { margin: 0; font-size: 0.9rem; }
-.search-input { min-width: 18rem; flex: 1; }
-.table-scroll.compact { max-height: 22rem; }
-
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.strong { font-weight: 600; }
 .negative { color: var(--color-danger); }
 .auto { margin-left: 0.3rem; font-size: 0.6rem; }
-.error { color: var(--color-danger); font-size: 0.76rem; }
+.modal-note { margin: 0.75rem 0 0; }
 
-.pick { width: 2.2rem; text-align: center; }
+.pick { width: 2.5rem; text-align: center; }
 .pick input { width: auto; margin: 0; }
-tr.picked { background: var(--color-surface-alt); }
+tr.picked td { background: var(--color-surface-alt); }
+
+@media screen and (max-width: 1024px) {
+    .pick { width: auto; text-align: left; }
+    tr.picked td { background: none; }
+    .table-responsive tbody tr.picked { background: var(--color-surface-alt); }
+}
 </style>

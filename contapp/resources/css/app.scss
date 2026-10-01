@@ -2,7 +2,9 @@
 // (secundario), con modo claro/oscuro. Sin frameworks de terceros: la app es
 // Vue + Inertia y estos tokens son consumidos directamente por los componentes .vue.
 
+@use 'sass:list';
 @use 'sass:map';
+@use 'sass:string';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Íconos de Lucide para usar desde CSS (CLAUDE.md secc. 23).
@@ -36,9 +38,235 @@ $lucide-icons: (
     @return url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#{$stroke}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E#{map.get($lucide-icons, $name)}%3C/svg%3E");
 }
 
-// Grises de --color-text-muted de cada tema, codificados para URL.
-$muted-light: '%23616a7a';
-$muted-dark: '%2397a2b8';
+/* ─────────────────────────────────────────────────────────────────────────
+ * Temas de compañía (CLAUDE.md secc. 31).
+ *
+ * Cada compañía elige uno de estos diez temas en Administración →
+ * Apariencia. Un tema define la paleta —en claro y en oscuro—, el acento
+ * (lo activo del menú, el progreso), el color de la barra lateral, la
+ * tipografía y el redondeo de las esquinas. Los colores de estado (éxito,
+ * error, advertencia) no cambian con el tema: significan lo mismo en todas
+ * las compañías.
+ *
+ * Se aplica con el atributo data-company-theme, en <html> (lo pone
+ * app.blade.php en la primera carga y app.js al navegar) o en cualquier
+ * elemento que tenga que verse con OTRO tema: la vista previa de cada tema
+ * en Apariencia, y la ventana del cambio de compañía, que ya se pinta con
+ * los colores de la compañía a la que se va.
+ *
+ * Las claves son las de App\Domains\Core\Support\CompanyTheme, que tiene
+ * los nombres y descripciones; un test verifica que las dos listas
+ * coincidan. La tipografía de cada tema se carga desde vite.config.js.
+ *
+ * Criterio de las paletas: el primario es un color profundo y sobrio (es el
+ * de los botones y la barra lateral); el acento, uno luminoso que se lee
+ * sobre la barra lateral oscura; los fondos, un neutro apenas teñido del
+ * primario. En oscuro, el primario sube a un tono medio para que los
+ * botones se distingan del fondo.
+ * ──────────────────────────────────────────────────────────────────────── */
+$company-themes: (
+    'marino': (
+        'font': "'Instrument Sans'",
+        'radius': (6px, 10px),
+        'light': (
+            'primary': '#0b1f3a', 'primary-hover': '#142b4d', 'primary-soft': '#e8edf5', 'on-primary': '#f4f6fa',
+            'accent': '#f2a05c', 'sidebar': '#0b1f3a',
+            'bg': '#f6f5f2', 'surface': '#ffffff', 'surface-alt': '#f0efe9', 'border': '#e1dfd7', 'control-border': '#cdcac0',
+            'text': '#1a2233', 'text-muted': '#616a7a',
+        ),
+        'dark': (
+            'primary': '#3a5f95', 'primary-hover': '#4a71aa', 'primary-soft': '#16233b', 'on-primary': '#eef2f8',
+            'accent': '#f2a05c', 'sidebar': '#3a5f95',
+            'bg': '#0b1220', 'surface': '#111a2e', 'surface-alt': '#16213a', 'border': '#253253', 'control-border': '#34446b',
+            'text': '#e7e9ee', 'text-muted': '#97a2b8',
+        ),
+    ),
+    'grafito': (
+        'font': "'Inter'",
+        'radius': (4px, 8px),
+        'light': (
+            'primary': '#1f2937', 'primary-hover': '#2b3646', 'primary-soft': '#eceef1', 'on-primary': '#f8fafc',
+            'accent': '#2dd4bf', 'sidebar': '#1f2937',
+            'bg': '#f5f6f7', 'surface': '#ffffff', 'surface-alt': '#eef0f2', 'border': '#dfe2e6', 'control-border': '#c9ced5',
+            'text': '#111827', 'text-muted': '#5f6b7a',
+        ),
+        'dark': (
+            'primary': '#4b5a70', 'primary-hover': '#5a6a82', 'primary-soft': '#1c2230', 'on-primary': '#f8fafc',
+            'accent': '#2dd4bf', 'sidebar': '#232b37',
+            'bg': '#0d0f12', 'surface': '#15181d', 'surface-alt': '#1b1f26', 'border': '#2a3039', 'control-border': '#3a414c',
+            'text': '#e5e7eb', 'text-muted': '#9aa3af',
+        ),
+    ),
+    'esmeralda': (
+        'font': "'Manrope'",
+        'radius': (6px, 10px),
+        'light': (
+            'primary': '#0f3d2e', 'primary-hover': '#164d3b', 'primary-soft': '#e3f0ea', 'on-primary': '#f3f8f5',
+            'accent': '#dcb862', 'sidebar': '#0f3d2e',
+            'bg': '#f5f6f2', 'surface': '#ffffff', 'surface-alt': '#eef1ea', 'border': '#dde3d9', 'control-border': '#c6cfc2',
+            'text': '#13241c', 'text-muted': '#5c6b63',
+        ),
+        'dark': (
+            'primary': '#2f7a5c', 'primary-hover': '#3a8c6b', 'primary-soft': '#0f2a20', 'on-primary': '#eef7f2',
+            'accent': '#e0bf6a', 'sidebar': '#1d5a43',
+            'bg': '#07130e', 'surface': '#0d1c16', 'surface-alt': '#12251d', 'border': '#1f3a2e', 'control-border': '#2c4d3f',
+            'text': '#e3ece7', 'text-muted': '#93a89d',
+        ),
+    ),
+    'borgona': (
+        'font': "'Plus Jakarta Sans'",
+        'radius': (6px, 12px),
+        'light': (
+            'primary': '#4a1628', 'primary-hover': '#5c1f34', 'primary-soft': '#f5e9ed', 'on-primary': '#fbf4f6',
+            'accent': '#eab08a', 'sidebar': '#4a1628',
+            'bg': '#f8f5f3', 'surface': '#ffffff', 'surface-alt': '#f2ecea', 'border': '#e5dcd9', 'control-border': '#d2c6c2',
+            'text': '#26161b', 'text-muted': '#6e5d63',
+        ),
+        'dark': (
+            'primary': '#8a3553', 'primary-hover': '#9c4262', 'primary-soft': '#2a111b', 'on-primary': '#fbeff3',
+            'accent': '#eab38c', 'sidebar': '#5e2239',
+            'bg': '#120a0d', 'surface': '#1c1015', 'surface-alt': '#24151b', 'border': '#3a2129', 'control-border': '#4d2d38',
+            'text': '#efe4e7', 'text-muted': '#b09aa2',
+        ),
+    ),
+    'petroleo': (
+        'font': "'DM Sans'",
+        'radius': (8px, 12px),
+        'light': (
+            'primary': '#0c3b4a', 'primary-hover': '#124a5c', 'primary-soft': '#e2f0f3', 'on-primary': '#f1f8fa',
+            'accent': '#4fd1c5', 'sidebar': '#0c3b4a',
+            'bg': '#f3f7f7', 'surface': '#ffffff', 'surface-alt': '#eaf1f2', 'border': '#d7e3e5', 'control-border': '#bfd0d3',
+            'text': '#0f2830', 'text-muted': '#587077',
+        ),
+        'dark': (
+            'primary': '#1f7185', 'primary-hover': '#288398', 'primary-soft': '#0b2830', 'on-primary': '#eaf7fa',
+            'accent': '#5eead4', 'sidebar': '#14505f',
+            'bg': '#061317', 'surface': '#0b1d23', 'surface-alt': '#10262d', 'border': '#1b3a43', 'control-border': '#294c56',
+            'text': '#e0edf0', 'text-muted': '#8fabb2',
+        ),
+    ),
+    'indigo': (
+        'font': "'Outfit'",
+        'radius': (8px, 14px),
+        'light': (
+            'primary': '#26215c', 'primary-hover': '#312a72', 'primary-soft': '#ecebf8', 'on-primary': '#f6f5fd',
+            'accent': '#c4b5fd', 'sidebar': '#26215c',
+            'bg': '#f6f6fa', 'surface': '#ffffff', 'surface-alt': '#efeff6', 'border': '#e0e0ec', 'control-border': '#c9c9dc',
+            'text': '#1b1a33', 'text-muted': '#62617a',
+        ),
+        'dark': (
+            'primary': '#5146b8', 'primary-hover': '#5f55c9', 'primary-soft': '#1a1740', 'on-primary': '#f3f2ff',
+            'accent': '#c4b5fd', 'sidebar': '#342d7c',
+            'bg': '#0c0b1a', 'surface': '#141327', 'surface-alt': '#1b1932', 'border': '#2c2950', 'control-border': '#3b3766',
+            'text': '#e8e7f5', 'text-muted': '#a3a1c2',
+        ),
+    ),
+    'cobalto': (
+        'font': "'IBM Plex Sans'",
+        'radius': (5px, 9px),
+        'light': (
+            'primary': '#1d3f78', 'primary-hover': '#244c8e', 'primary-soft': '#e6eefa', 'on-primary': '#f3f7fd',
+            'accent': '#7dd3fc', 'sidebar': '#16325f',
+            'bg': '#f4f6fa', 'surface': '#ffffff', 'surface-alt': '#eceff6', 'border': '#dce2ec', 'control-border': '#c3ccda',
+            'text': '#142038', 'text-muted': '#586579',
+        ),
+        'dark': (
+            'primary': '#3b73c4', 'primary-hover': '#4b83d4', 'primary-soft': '#122340', 'on-primary': '#f0f6ff',
+            'accent': '#7dd3fc', 'sidebar': '#1f4a8a',
+            'bg': '#080e18', 'surface': '#0f1726', 'surface-alt': '#141e31', 'border': '#22324d', 'control-border': '#304466',
+            'text': '#e3e9f3', 'text-muted': '#97a5bd',
+        ),
+    ),
+    'terracota': (
+        'font': "'Work Sans'",
+        'radius': (8px, 14px),
+        'light': (
+            'primary': '#3d2a1f', 'primary-hover': '#4c3527', 'primary-soft': '#f3ebe5', 'on-primary': '#faf6f2',
+            'accent': '#e8906a', 'sidebar': '#3d2a1f',
+            'bg': '#f7f3ee', 'surface': '#fffdfa', 'surface-alt': '#f1ebe3', 'border': '#e4dbd0', 'control-border': '#d2c5b7',
+            'text': '#2a1f18', 'text-muted': '#74665b',
+        ),
+        'dark': (
+            'primary': '#8a5a3c', 'primary-hover': '#9b6a4a', 'primary-soft': '#2a1d15', 'on-primary': '#fbf3ec',
+            'accent': '#ec9a6e', 'sidebar': '#5a3c29',
+            'bg': '#120d0a', 'surface': '#1b1410', 'surface-alt': '#231a15', 'border': '#3a2c23', 'control-border': '#4d3b30',
+            'text': '#eee5dc', 'text-muted': '#b3a393',
+        ),
+    ),
+    'salvia': (
+        'font': "'Nunito Sans'",
+        'radius': (8px, 14px),
+        'light': (
+            'primary': '#2f3d33', 'primary-hover': '#3a4a3f', 'primary-soft': '#e8eee9', 'on-primary': '#f5f8f5',
+            'accent': '#a8cfad', 'sidebar': '#2f3d33',
+            'bg': '#f4f5f1', 'surface': '#ffffff', 'surface-alt': '#ecefe8', 'border': '#dce1d8', 'control-border': '#c5ccbf',
+            'text': '#1d241f', 'text-muted': '#626d64',
+        ),
+        'dark': (
+            'primary': '#56705d', 'primary-hover': '#648168', 'primary-soft': '#182019', 'on-primary': '#f0f5f1',
+            'accent': '#b5d6b9', 'sidebar': '#3c4f41',
+            'bg': '#0c0f0c', 'surface': '#131813', 'surface-alt': '#192019', 'border': '#283228', 'control-border': '#374436',
+            'text': '#e4e9e4', 'text-muted': '#9cab9e',
+        ),
+    ),
+    // En oscuro, Ónix invierte el primario: los botones son dorados con texto
+    // oscuro, y la barra lateral queda negra.
+    'onix': (
+        'font': "'Sora'",
+        'radius': (3px, 6px),
+        'light': (
+            'primary': '#1a1a1a', 'primary-hover': '#2a2a2a', 'primary-soft': '#eeeeec', 'on-primary': '#fafaf8',
+            'accent': '#d4b25e', 'sidebar': '#141414',
+            'bg': '#f6f5f2', 'surface': '#ffffff', 'surface-alt': '#efeeea', 'border': '#e0ded8', 'control-border': '#cac7bf',
+            'text': '#141414', 'text-muted': '#66635c',
+        ),
+        'dark': (
+            'primary': '#c9a44c', 'primary-hover': '#d6b35d', 'primary-soft': '#2a2416', 'on-primary': '#17150f',
+            'accent': '#d9b865', 'sidebar': '#1b1a17',
+            'bg': '#0b0b0a', 'surface': '#141412', 'surface-alt': '#1b1a17', 'border': '#2c2a25', 'control-border': '#3d3a33',
+            'text': '#ece9e1', 'text-muted': '#a7a197',
+        ),
+    ),
+);
+
+$font-fallback: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+// '#616a7a' → '%23616a7a': un color dentro de un SVG en data URL.
+@function url-color($color) {
+    @return '%23' + string.slice($color, 2);
+}
+
+// Las variables de color de una paleta (claro u oscuro) de un tema.
+@mixin theme-palette($palette) {
+    --color-primary: #{map.get($palette, 'primary')};
+    --color-primary-hover: #{map.get($palette, 'primary-hover')};
+    --color-primary-soft: #{map.get($palette, 'primary-soft')};
+    --color-on-primary: #{map.get($palette, 'on-primary')};
+    --color-accent: #{map.get($palette, 'accent')};
+    --color-sidebar: #{map.get($palette, 'sidebar')};
+
+    --color-bg: #{map.get($palette, 'bg')};
+    --color-surface: #{map.get($palette, 'surface')};
+    --color-surface-alt: #{map.get($palette, 'surface-alt')};
+    --color-border: #{map.get($palette, 'border')};
+    --color-control-border: #{map.get($palette, 'control-border')};
+    --color-text: #{map.get($palette, 'text')};
+    --color-text-muted: #{map.get($palette, 'text-muted')};
+
+    // La flecha del select y la lupa del buscador son imágenes, no toman el
+    // color del texto: cada paleta pinta las suyas con su gris.
+    --control-chevron: #{lucide-icon('chevron-down', url-color(map.get($palette, 'text-muted')))};
+    --control-search: #{lucide-icon('search', url-color(map.get($palette, 'text-muted')))};
+}
+
+// Lo que no depende del modo claro u oscuro: tipografía y esquinas.
+@mixin theme-shape($theme) {
+    --font-sans: #{map.get($theme, 'font')}, #{$font-fallback};
+    --radius-sm: #{list.nth(map.get($theme, 'radius'), 1)};
+    --radius-md: #{list.nth(map.get($theme, 'radius'), 2)};
+}
+
+$default-theme: map.get($company-themes, 'marino');
 
 :root {
     @each $name, $_ in $lucide-icons {
@@ -46,18 +274,11 @@ $muted-dark: '%2397a2b8';
     }
 }
 
+// Sin tema elegido, Marino: el aspecto original de CONTAPP. Los tokens que
+// no son del tema (estados, medidas, sombras) viven solo acá.
 :root {
-    --color-primary: #0b1f3a;
-    --color-primary-hover: #142b4d;
-    --color-primary-soft: #e8edf5;
-    --color-on-primary: #f4f6fa;
-
-    --color-bg: #f6f5f2;
-    --color-surface: #ffffff;
-    --color-surface-alt: #f0efe9;
-    --color-border: #e1dfd7;
-    --color-text: #1a2233;
-    --color-text-muted: #616a7a;
+    @include theme-palette(map.get($default-theme, 'light'));
+    @include theme-shape($default-theme);
 
     --color-success: #1f7a4d;
     --color-success-soft: #e4f4ec;
@@ -68,17 +289,15 @@ $muted-dark: '%2397a2b8';
     --color-info: #3730a3;
     --color-info-soft: #eef2ff;
 
-    // Borde de los campos: un poco más marcado que el de las tarjetas, para
-    // que un campo vacío se distinga del fondo sin tener que enfocarlo.
-    --color-control-border: #cdcac0;
-    --control-chevron: #{lucide-icon('chevron-down', $muted-light)};
-    --control-search: #{lucide-icon('search', $muted-light)};
+    // El texto de la barra lateral, del menú flotante y de la ventana del
+    // cambio de compañía: siempre claro, porque en todos los temas la barra
+    // es oscura (en Ónix oscuro el primario es dorado con texto oscuro, y la
+    // barra no).
+    --color-on-sidebar: #f4f6fa;
 
     --sidebar-width: 264px;
     --sidebar-width-collapsed: 72px;
     --topbar-height: 56px;
-    --radius-sm: 6px;
-    --radius-md: 10px;
     --shadow-sm: 0 1px 2px rgba(11, 31, 58, 0.06), 0 1px 1px rgba(11, 31, 58, 0.04);
     --shadow-md: 0 4px 16px rgba(11, 31, 58, 0.10);
 
@@ -89,19 +308,7 @@ $muted-dark: '%2397a2b8';
     color-scheme: light;
 }
 
-:root[data-theme="dark"] {
-    --color-primary: #3a5f95;
-    --color-primary-hover: #4a71aa;
-    --color-primary-soft: #16233b;
-    --color-on-primary: #eef2f8;
-
-    --color-bg: #0b1220;
-    --color-surface: #111a2e;
-    --color-surface-alt: #16213a;
-    --color-border: #253253;
-    --color-text: #e7e9ee;
-    --color-text-muted: #97a2b8;
-
+@mixin dark-state-colors {
     --color-success: #4fbf87;
     --color-success-soft: #123425;
     --color-danger: #e3665d;
@@ -111,44 +318,46 @@ $muted-dark: '%2397a2b8';
     --color-info: #a5b4fc;
     --color-info-soft: #1e1b4b;
 
-    --color-control-border: #34446b;
-    --control-chevron: #{lucide-icon('chevron-down', $muted-dark)};
-    --control-search: #{lucide-icon('search', $muted-dark)};
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] {
+    @include theme-palette(map.get($default-theme, 'dark'));
+    @include dark-state-colors;
 
     --marble-texture: radial-gradient(120% 90% at 10% 0%, rgba(255, 255, 255, 0.02), transparent 55%),
         radial-gradient(100% 80% at 90% 100%, rgba(255, 255, 255, 0.015), transparent 60%);
-
-    color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --color-primary: #3a5f95;
-        --color-primary-hover: #4a71aa;
-        --color-primary-soft: #16233b;
-        --color-on-primary: #eef2f8;
+        @include theme-palette(map.get($default-theme, 'dark'));
+        @include dark-state-colors;
+    }
+}
 
-        --color-bg: #0b1220;
-        --color-surface: #111a2e;
-        --color-surface-alt: #16213a;
-        --color-border: #253253;
-        --color-text: #e7e9ee;
-        --color-text-muted: #97a2b8;
+// Cada tema, en <html> o en un elemento que tenga que verse con otro tema
+// (la vista previa de Apariencia, la ventana del cambio de compañía). La
+// forma "descendiente" del modo oscuro es para esos elementos: el modo lo
+// decide <html>, el tema lo decide el elemento.
+@each $key, $theme in $company-themes {
+    [data-company-theme="#{$key}"] {
+        @include theme-palette(map.get($theme, 'light'));
+        @include theme-shape($theme);
 
-        --color-success: #4fbf87;
-        --color-success-soft: #123425;
-        --color-danger: #e3665d;
-        --color-danger-soft: #3a1a18;
-        --color-warning: #d9a441;
-        --color-warning-soft: #382a10;
-        --color-info: #a5b4fc;
-        --color-info-soft: #1e1b4b;
+        font-family: var(--font-sans);
+    }
 
-        --color-control-border: #34446b;
-        --control-chevron: #{lucide-icon('chevron-down', $muted-dark)};
-        --control-search: #{lucide-icon('search', $muted-dark)};
+    :root[data-theme="dark"][data-company-theme="#{$key}"],
+    :root[data-theme="dark"] [data-company-theme="#{$key}"] {
+        @include theme-palette(map.get($theme, 'dark'));
+    }
 
-        color-scheme: dark;
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"])[data-company-theme="#{$key}"],
+        :root:not([data-theme="light"]) [data-company-theme="#{$key}"] {
+            @include theme-palette(map.get($theme, 'dark'));
+        }
     }
 }
 
@@ -164,9 +373,14 @@ body {
 }
 
 body {
-    background: var(--color-bg) var(--marble-texture);
+    // Color e imagen por separado: en la forma abreviada, el color solo
+    // puede ir en la última capa, y la textura tiene dos (separadas por
+    // coma). Escrito junto, el navegador descartaba la regla entera y el
+    // fondo quedaba en el color por defecto del navegador.
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
     color: var(--color-text);
-    font-family: 'Instrument Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -646,6 +860,65 @@ input[type="date"] {
     font-size: 0.76rem;
 }
 
+// Un campo con un ícono adentro (el correo y la contraseña del login). El
+// campo conserva el aspecto de todos (secc. 26): solo se le hace lugar al
+// ícono con el relleno. .reveal es el botón de mostrar u ocultar la
+// contraseña, al otro extremo.
+//
+//     <div class="input-with-icon">
+//         <MailIcon class="input-icon" :size="17" />
+//         <input type="email">
+//     </div>
+.input-with-icon {
+    position: relative;
+
+    > input {
+        width: 100%;
+        min-height: 2.75rem;
+        padding-left: 2.5rem;
+    }
+
+    > input:has(+ .reveal) {
+        padding-right: 2.75rem;
+    }
+
+    &.invalid > input {
+        border-color: var(--color-danger);
+    }
+}
+
+.input-icon {
+    position: absolute;
+    top: 50%;
+    left: 0.85rem;
+    transform: translateY(-50%);
+    color: var(--color-text-muted);
+    pointer-events: none;
+}
+
+.reveal {
+    position: absolute;
+    top: 50%;
+    right: 0.35rem;
+    transform: translateY(-50%);
+    display: inline-grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--color-surface-alt);
+        color: var(--color-text);
+    }
+}
+
 // Formulario que ocupa todo el ancho (CLAUDE.md secc. 25): los campos se
 // reparten en columnas de al menos 15rem —varias en un monitor, una en un
 // teléfono— en vez de estirarse de un borde al otro de la pantalla.
@@ -937,17 +1210,23 @@ svg.lucide {
  * La barra superior (.topbar) es la misma en todas las pantallas —título,
  * compañía, tema, sesión— y no lleva nada propio de la pantalla. Todo lo que
  * es de ESTA vista va en .view-toolbar, justo arriba de la tabla (o del
- * contenido principal, si la vista no tiene tabla):
+ * contenido principal, si la vista no tiene tabla), en dos filas:
  *
- *   .view-filters  a la izquierda: buscador, filtros, fechas de un reporte
- *                  y su botón «Consultar».
- *   .view-actions  a la derecha: «Crear nuevo», exportar, imprimir,
- *                  volver, enlaces a pantallas vecinas.
+ *   arriba         el enlace de volver, a la izquierda, y .view-actions a
+ *                  la derecha: «Crear nuevo», exportar, guardar la
+ *                  configuración, imprimir, enlaces a pantallas vecinas.
+ *   abajo          .view-filters, a todo el ancho: buscador, filtros,
+ *                  fechas de un reporte y su botón «Consultar». Quedan
+ *                  pegados a la tabla que filtran.
  *
  *   <div class="view-toolbar">
- *       <div class="view-filters">…</div>
+ *       <Link class="btn btn-ghost">…volver</Link>
  *       <div class="view-actions">…</div>
+ *       <div class="view-filters">…</div>
  *   </div>
+ *
+ * El orden del código es el mismo que el de la pantalla, para que el
+ * teclado recorra la barra en el orden en que se ve.
  *
  * Un filtro que no se explica solo (una fecha, unos cortes) va en
  * .filter-field, con su etiqueta arriba.
@@ -955,12 +1234,14 @@ svg.lucide {
 .view-toolbar {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
     gap: 0.75rem 1rem;
     margin-bottom: 0.9rem;
 }
 
+// Los filtros, en su propia fila y a todo el ancho, debajo de los botones.
 .view-filters {
+    flex: 1 1 100%;
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -1082,13 +1363,22 @@ svg.lucide {
 
     // Sin botones en la fila, algo tiene que decir que se puede abrir: en
     // una pantalla táctil no hay cursor que cambie al pasar por encima.
-    // Es el chevron-right de Lucide (ver arriba).
+    // Es el chevron-right de Lucide (ver arriba). Va en un margen reservado
+    // de la última celda y no flotando junto al texto: flotando, una cifra
+    // larga lo mandaba a una segunda línea.
+    > td:last-child {
+        position: relative;
+        padding-right: 2.25rem;
+    }
+
     > td:last-child::after {
         content: '';
-        float: right;
+        position: absolute;
+        top: 50%;
+        right: 0.75rem;
         width: 1rem;
         height: 1rem;
-        margin: 0.15rem 0 0 0.75rem;
+        margin-top: -0.5rem;
         background-color: var(--color-text-muted);
         -webkit-mask: var(--lucide-chevron-right) center / contain no-repeat;
         mask: var(--lucide-chevron-right) center / contain no-repeat;
@@ -1165,6 +1455,31 @@ svg.lucide {
             text-align: left;
         }
 
+        // Fuera de una grilla de captura la celda es texto, y se deja fluir
+        // como texto: un código en negrita seguido del nombre, o un detalle
+        // en una segunda línea, se leen juntos en vez de repartirse como
+        // piezas sueltas de un flex. La etiqueta flota a la izquierda y el
+        // valor queda a la derecha.
+        &:not(.capture-grid) tbody td {
+            display: flow-root;
+        }
+
+        &:not(.capture-grid) tbody td[data-label]::before {
+            float: left;
+            margin-right: 1rem;
+        }
+
+        // En una grilla de captura el campo sigue siendo flex, pero un texto
+        // de apoyo (el disponible, un aviso, el error) baja a su propia línea
+        // en vez de apretar el campo.
+        &.capture-grid tbody td {
+            flex-wrap: wrap;
+        }
+
+        &.capture-grid tbody td > :is(.block, .line-meta, .free, .error) {
+            flex-basis: 100%;
+        }
+
         // Una celda vacía no dice nada en la tarjeta: no ocupa una línea.
         tbody td[data-label]:empty {
             display: none;
@@ -1202,6 +1517,11 @@ svg.lucide {
 
         tbody tr.clickable-row > td:first-child {
             padding-right: 1.5rem;
+        }
+
+        tbody tr.clickable-row > td:last-child {
+            position: static;
+            padding-right: 0;
         }
 
         tbody tr.clickable-row > td:last-child::after {

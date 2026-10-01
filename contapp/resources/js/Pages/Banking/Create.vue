@@ -1,7 +1,7 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import { ArrowLeftIcon } from '@lucide/vue';
 
 const props = defineProps({
     accounts: { type: Array, default: () => [] },
@@ -24,10 +24,12 @@ function submit() {
     <Head title="Nueva cuenta bancaria" />
 
     <AppLayout title="Nueva cuenta bancaria">
-        <DocumentToolbar :new-href="route('bank-accounts.create')" can-save :saving="form.processing" @save="submit" />
+        <div class="view-toolbar">
+            <Link :href="route('bank-accounts.index')" class="btn btn-ghost"><ArrowLeftIcon /> Cuentas bancarias</Link>
+        </div>
 
         <form class="card form-card" @submit.prevent="submit">
-            <div class="grid">
+            <div class="form-grid">
                 <div class="field">
                     <label for="bank_name">Banco</label>
                     <input id="bank_name" v-model="form.bank_name" type="text" required>
@@ -40,7 +42,7 @@ function submit() {
                     <span v-if="form.errors.account_number" class="error">{{ form.errors.account_number }}</span>
                 </div>
 
-                <div class="field span-2">
+                <div class="field">
                     <label for="gl_account_id">Cuenta contable (debe ser distinta por cada cuenta bancaria)</label>
                     <select id="gl_account_id" v-model="form.gl_account_id" required>
                         <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
@@ -65,16 +67,4 @@ function submit() {
 
 <style scoped>
 .form-card { padding: 1.25rem; }
-.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 1.25rem; }
-.span-2 { grid-column: span 2; }
-select, input {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-.form-actions { margin-top: 0.5rem; }
 </style>

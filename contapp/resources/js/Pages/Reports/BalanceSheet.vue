@@ -30,6 +30,11 @@ function exportUrl(routeName) {
 
     <AppLayout title="Balance general">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.balance-sheet.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.balance-sheet.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="balance-sheet" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Al</span>
@@ -37,12 +42,6 @@ function exportUrl(routeName) {
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.balance-sheet.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.balance-sheet.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="balance-sheet" :parameters="saveParameters" />
-            </div>
         </div>
 
         <p v-if="!result.is_balanced" class="flash flash-error warning">

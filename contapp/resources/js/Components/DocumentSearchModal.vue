@@ -4,7 +4,7 @@ import { ref, watch, nextTick } from 'vue';
 
 // Modal genérico de búsqueda de asientos (backend: JournalEntryController::search,
 // GET /journal-entries-search?q=...) — reutilizado por dos pantallas: el botón
-// "buscar" del DocumentToolbar en Show.vue (saltar a otro documento) y el
+// buscador de la barra de registros en Show.vue (saltar a otro documento) y el
 // selector "cargar desde un documento existente" en Create.vue (precargarlo
 // como plantilla). El destino de lo elegido lo decide quien use este modal
 // (evento "select"), este componente solo busca y lista.

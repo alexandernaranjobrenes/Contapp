@@ -270,63 +270,162 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 > Este bloque rige la forma de las pantallas, no un módulo funcional: aplica a cualquier trabajo de interfaz, con el alcance que indica cada regla. Si una regla de UI/UX choca con un requisito funcional de este documento, gana el requisito funcional y se deja anotado en el código por qué.
 
-## 20. TABLAS DE LISTADO: POCAS COLUMNAS, SIN BOTONES, DETALLE EN UN MODAL
+## 20. TABLAS: POCAS COLUMNAS, SIN BOTONES, SIN DESPLAZARSE DE LADO
 
-**Regla:** una tabla de listado (licencias, categorías, catálogos, maestros) muestra solo las columnas estrictamente necesarias para **identificar** un registro y **decidir si abrirlo**. No lleva botones de acción en sus filas: **la fila completa es clickeable** y abre un modal con el detalle completo y todas las acciones.
+**Regla:** ninguna tabla se desplaza de lado. Una tabla muestra solo las columnas que **identifican** un registro y ayudan a **decidir si abrirlo**. No lleva columnas de botones: **la fila completa es clickeable** y abre un modal con el detalle completo y todas las acciones.
 
-- **Objetivo: que la tabla quepa sin desplazarse de lado.** Elegir las columnas para el ancho más angosto en que se muestra como tabla (1025px con la barra lateral: ~720px útiles). Por lo general alcanza con la identidad del registro más 3 a 5 datos para ubicarlo (estado, fecha clave, dueño, categoría). Notas, descripciones, cupos secundarios, fechas de auditoría y todo texto largo van al modal.
-- **Lo que este documento pide ver en un listado se queda en la tabla**, aunque la regla empuje a moverlo al modal (ej. secc. 15: el listado del backoffice muestra juntos el estado de la licencia y la próxima acción comercial). Se deja un comentario en la plantilla explicando por qué esa columna está ahí.
-- **Sin botones en la fila.** Editar, renovar, suspender, eliminar, etc. van en el pie del modal. Editar ocurre **dentro del mismo modal** (ficha → formulario → ficha), nunca en filas que se despliegan dentro de la tabla. Crear también es un modal: ver secc. 21.
-- **Acciones de corte o irreversibles** (suspender, revocar, anular) piden confirmación (`ConfirmModal`) encima de la ficha.
+- **Presupuesto de ancho:** la tabla tiene que caber en 1025px con la barra lateral abierta, unos 720px útiles. Por lo general alcanza con la identidad del registro (código y nombre en la misma celda) más 3 o 4 datos (estado, fecha clave, monto principal, dueño). Notas, descripciones largas, cuentas contables, fechas de auditoría y montos secundarios van al modal.
+- **Lo que este documento pide ver en un listado se queda en la tabla**, aunque la regla empuje a moverlo al modal (ej. secc. 15: el listado del backoffice muestra juntos el estado de la licencia y la próxima acción comercial; las tres banderas de un concepto de planilla). Se deja un comentario en la plantilla explicando por qué esa columna está ahí.
+- **Sin botones en la fila.** Editar, aprobar, anular, eliminar, abrir la pantalla del documento, descargar su XML: todo va en el pie del modal. Editar ocurre **dentro del mismo modal** (ficha → formulario → ficha), nunca en filas que se despliegan dentro de la tabla. Crear también es un modal: ver secc. 21.
+- **Acciones de corte o irreversibles** (eliminar, suspender, anular, reabrir) piden confirmación con `confirmAction()` (secc. 27).
 - **Teclado:** la fila lleva `tabindex="0"` y abre con Enter y Espacio; el modal cierra con Escape, con el fondo y con su botón de cerrar, y devuelve el foco a la fila.
-- **Responsiva:** en ≤ 1024px la tabla pasa a tarjetas; cada `<td>` lleva `data-label`, salvo el primero, que es el título de la tarjeta.
+- **Reportes también.** Las columnas de un reporte son el dato, pero igual se eligen para el ancho: el resto sale en la ficha de la fila y completo en el XLSX, el PDF y la impresión. Cuando las columnas las define el servidor (reportes de inventario y de planilla), en pantalla se ven las primeras 6 y las demás llevan `.col-extra`, oculta solo en `@media screen`. Un resumen con una cantidad variable de columnas (los tramos de una antigüedad de saldos) va como rejilla de tarjetas que crece hacia abajo, no como fila de una tabla. `.table-scroll` (encabezado fijo) sigue sirviendo en los reportes largos, siempre dentro de `.table-responsive`.
+- **Casillas de selección** (reconciliar partidas entre sí, un movimiento masivo de vacaciones) sí van en la fila: son la selección, no una acción. La celda lleva `@click.stop` para no abrir la ficha, y el botón que actúa sobre lo marcado va arriba de la tabla.
+
+**Excepción — grillas de captura** (`.table-responsive.capture-grid`): cuando editar dentro de la tabla es la tarea (líneas de un asiento, de una factura, de una toma física, la determinación de cuentas de planilla). Llevan campos en las celdas y, en cada fila, solo el botón de quitar la línea (`X` con `aria-label`) y, si hace falta, el que abre el detalle de la línea. Tampoco se desplazan de lado: lo que no cabe (CAByS, unidad, IVA, descuentos de una línea de factura) va al detalle de la línea, y si falta algo obligatorio ahí, la fila lo avisa.
 
 **Piezas ya hechas — usarlas, no reinventarlas:**
-- `resources/js/Components/DetailModal.vue`: el modal de la ficha (slots `badge`, contenido y `actions`).
-- `resources/css/app.scss`: `.table-responsive` (envuelve la tabla; tarjetas en ≤ 1024px), `.clickable-row` dentro de ella (la fila que abre la ficha, con el `chevron-right` de Lucide) y `.detail-list` (pares etiqueta/valor dentro del modal). Ojo: varias pantallas del plano operativo ya usan `.clickable-row` con estilo scoped propio y fuera de `.table-responsive`; el estilo global solo aplica dentro de esa clase.
-- Ejemplos de referencia: `resources/js/Pages/Backoffice/Licenses/Index.vue`, `LicenseCategories/Index.vue` y `TaxRates/Index.vue`.
+- `resources/js/Components/DetailModal.vue`: el modal de la ficha (slots `badge`, contenido y `actions`; prop `wide` para formularios largos, 920px).
+- `resources/js/Utils/recordDetail.js` (`useRecordDetail`): qué fila está abierta. `resources/js/Utils/crudModal.js` (`useCrudModal`): ficha, alta y edición de un catálogo en un solo modal.
+- `resources/css/app.scss`: `.table-responsive`, `.clickable-row` (con el `chevron-right` de Lucide en un margen reservado de la última celda), `.detail-list`, `.capture-grid`, `.col-extra` se define por pantalla.
+- Ejemplos: `Pages/Inventory/UnitsOfMeasure/Index.vue` (catálogo), `Pages/JournalEntries/Index.vue` (documentos), `Pages/Reports/Inventory/Show.vue` (reporte con columnas del servidor), `Pages/Billing/Sales/Create.vue` (grilla de captura con detalle de línea).
 
-**Excepciones — la regla NO aplica a:**
-- **Reportes y estados financieros** (balance de comprobación, mayor, antigüedad de saldos, comparativos): ahí las columnas son el dato. Se permite desplazarse de lado con `.table-scroll`, que fija el encabezado y la columna de identidad.
-- **Grillas de captura**, donde editar dentro de la tabla es la tarea (líneas de un asiento, de una factura, de una toma física).
-
-**Alcance hoy:** aplicada en el backoffice del Propietario. Toda tabla de listado **nueva** la sigue. Las tablas existentes del plano operativo del cliente todavía no: migrarlas es una tarea explícita que se pide, nunca un efecto colateral de otro cambio.
+**Alcance:** toda la aplicación, backoffice y plano operativo. Ya aplicada en todas las pantallas; toda tabla nueva la sigue.
 
 ## 21. ALTA DE REGISTROS: «CREAR NUEVO» ARRIBA DE LA TABLA, FORMULARIO EN UN MODAL
 
-**Regla:** en una pantalla de listado, dar de alta un registro es un botón **«Crear nuevo»** ubicado **justo arriba de la tabla**, que abre el formulario en un **modal**. La pantalla no lleva formularios de alta incrustados: muestra el botón y la tabla.
+**Regla:** dar de alta un registro es un botón **«Crear nuevo»** en la barra de la vista (secc. 24), **justo arriba de la tabla**, que abre el formulario en un **modal**. La pantalla no lleva formularios de alta incrustados: muestra el botón y la tabla.
 
-- **Arriba de la tabla, nunca en la barra superior (`.topbar`).** La barra superior es del título de la pantalla y de la sesión; el alta pertenece a la tabla que va a recibir el registro. El botón va en la fila `.list-actions`, alineado a la derecha (a lo ancho en un teléfono).
-- **Siempre «Crear nuevo»** (primario, con el ícono `Plus` de Lucide delante): el mismo texto en todas las pantallas, para que se encuentre sin leer. Lo específico lo dice el título del modal: «Emitir nueva licencia», «Nueva categoría», «Nuevo indicador de impuesto».
-- **El mismo modal de la ficha, en modo `create`** (`DetailModal`, secc. 20), con Cancelar y el botón que guarda en el pie. Si crear y editar tienen los mismos campos, comparten un solo formulario; al abrirlo se asigna cada campo, para que no le quede el rastro de lo que se escribió la vez anterior.
-- **Errores dentro del modal,** junto a cada campo. Al guardar bien, el modal se cierra y el mensaje de éxito queda a la vista en la página.
+- **Nunca en la barra superior (`.topbar`).** La barra superior es del título de la pantalla y de la sesión (secc. 24).
+- **Siempre «Crear nuevo»** (primario, con el ícono `Plus` de Lucide delante): el mismo texto en todas las pantallas, para que se encuentre sin leer. Lo específico lo dice el título del modal: «Nueva categoría», «Nuevo indicador propio». En una pantalla con varias tablas (configuración de planilla), cada tabla lleva su «Crear nuevo» en su encabezado.
+- **El mismo modal de la ficha, en modo `create`** (`DetailModal` con `useCrudModal`), con Cancelar y el botón que guarda en el pie. Si crear y editar tienen los mismos campos, comparten un solo formulario; al abrirlo se asigna cada campo, para que no le quede el rastro de lo que se escribió la vez anterior.
+- **Errores dentro del modal,** junto a cada campo. Al guardar bien, el modal se cierra (o vuelve a la ficha, si se estaba editando) y el mensaje de éxito queda a la vista en la página.
 
-**Excepción:** el alta de un documento con líneas que ya tiene su propia pantalla de captura (asiento, factura, orden): ahí «Crear nuevo», igual arriba de la tabla, lleva a esa pantalla en vez de abrir un modal. Una grilla de captura no cabe en un modal.
+**Excepciones:**
+- **Documentos con líneas** que tienen su propia pantalla de captura (asiento, factura, pedido, orden de compra, toma física): «Crear nuevo», igual arriba de la tabla, lleva a esa pantalla. Una grilla de captura no cabe en un modal.
+- **Maestros cuyo formulario ya es una pantalla propia** (tipos de documento, socios de negocio, usuarios): «Crear nuevo» y «Editar» llevan a esa pantalla.
+- **Un proceso no es un alta:** el botón conserva su verbo («Ejecutar proceso», «Crear próximo año fiscal», «Movimiento masivo»).
 
-**Piezas ya hechas:** `.list-actions` en `resources/css/app.scss` y el modo `create` de `DetailModal`. Ejemplos: `resources/js/Pages/Backoffice/Licenses/Index.vue`, `LicenseCategories/Index.vue` y `TaxRates/Index.vue`.
+## 22. CHECKLIST ANTES DE ENTREGAR UNA PANTALLA
 
-**Alcance:** toda la aplicación, backoffice y plano operativo. Hoy aplicada en el backoffice; toda pantalla de listado nueva la sigue. Las pantallas existentes del plano operativo se migran cuando se pida, no como efecto colateral de otro cambio.
-
-## 22. CHECKLIST ANTES DE ENTREGAR UNA PANTALLA DE LISTADO
-
-- [ ] ¿La tabla cabe sin desplazarse de lado a 1025px de ancho (con la barra lateral)?
-- [ ] ¿La fila completa abre la ficha, también con Enter y Espacio?
-- [ ] ¿No quedó ningún botón de acción en la fila, y cada acción está en el pie del modal?
-- [ ] ¿Las acciones de corte o irreversibles piden confirmación?
-- [ ] ¿El alta es un botón «Crear nuevo» justo arriba de la tabla —no en la barra superior— que abre el formulario en un modal, sin formularios incrustados en la página?
+- [ ] ¿La barra superior tiene solo lo de siempre y el título (secc. 24)?
+- [ ] ¿Los botones de la vista están en `.view-toolbar`, arriba de la tabla, y los filtros y el buscador en una fila debajo de ellos?
+- [ ] ¿La pantalla nueva está en el menú, dentro de la categoría que le toca (secc. 29)?
+- [ ] ¿La tabla cabe sin desplazarse de lado a 1025px con la barra lateral abierta?
+- [ ] ¿La fila completa abre la ficha, también con Enter y Espacio, sin botones en la fila?
+- [ ] ¿El alta es «Crear nuevo» arriba de la tabla, con el formulario en un modal (o su excepción de la secc. 21)?
+- [ ] ¿Las acciones de corte o irreversibles piden confirmación con `confirmAction()`?
+- [ ] ¿Los botones que guardan o eliminan viajan como visita de Inertia, para que se deshabiliten con su spinner (secc. 27)?
+- [ ] ¿Ningún contenedor tiene `max-width` y los formularios usan `.form-grid` (secc. 25)?
+- [ ] ¿Ningún campo tiene estilos propios de borde, fondo, alto o letra (secc. 26)?
 - [ ] ¿Cada `<td>`, salvo el primero, tiene `data-label` para la vista de tarjetas?
-- [ ] ¿Se verificó en teléfono (375px), tablet (768px) y escritorio?
+- [ ] ¿Se verificó a 1280, 1025, 768 y 375px, con la consola limpia, en tema claro y oscuro?
 
 ## 23. ÍCONOS: SOLO LUCIDE
 
-**Regla:** todo ícono de la aplicación sale de **Lucide** (https://lucide.dev/icons/). Nada de emojis, de caracteres Unicode usados como ícono (✕, ✓, ⚠, ›, ▾, ☰, ←, «, 🖶…) ni de SVG dibujados a mano.
+**Regla:** todo ícono de la aplicación sale de **Lucide** (https://lucide.dev/icons/). Nada de emojis, de caracteres Unicode usados como ícono (✕, ✓, ⚠, ›, ▾, ☰, ←, «, ⤓, 🖶…) ni de SVG dibujados a mano.
 
 - **En las plantillas:** componentes de `@lucide/vue` (el paquete oficial; `lucide-vue-next` quedó deprecado), importados con el sufijo `Icon`: `import { PlusIcon, XIcon } from '@lucide/vue'` → `<PlusIcon />`. El sufijo evita choques de nombre: Lucide tiene un `Link`, y Inertia también.
-- **Tamaño y trazo:** 16px y trazo 2 por defecto para toda la app (`app.provide(LUCIDE_CONTEXT, …)` en `resources/js/app.js`). `:size` solo cuando hace falta otro: 18 en el menú lateral, 17 en la barra de documento. El color sale del texto (`currentColor`).
+- **Tamaño y trazo:** 16px y trazo 2 por defecto para toda la app (`app.provide(LUCIDE_CONTEXT, …)` en `resources/js/app.js`). `:size` solo cuando hace falta otro: 18 en el menú lateral. El color sale del texto (`currentColor`).
 - **Accesibilidad:** Lucide marca el ícono como decorativo (`aria-hidden`) si no lleva etiqueta. Un botón con solo ícono lleva `aria-label`, y `title` para el tooltip. Un ícono que por sí solo dice algo —el check de «sí» en una celda— lleva `aria-label` y `role="img"`.
 - **Desde CSS** (`::before`, `::after`, donde no hay plantilla): el SVG de lucide.dev como máscara, con las variables `--lucide-*` de `resources/css/app.scss`. Un ícono nuevo se agrega a `$lucide-icons`.
-- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`. Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`.
+- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; exportar o descargar `Download`; importar o subir `Upload`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`; reabrir `RotateCcw`; contabilizar `BookOpen`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`. Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`.
 
 **No son íconos (se quedan como están):** los caracteres tipográficos dentro de un texto —la flecha entre dos valores («Básica → Profesional», «USD → CRC», un rango de fechas, «borrador → aprobada»), las comillas «», el § de una cita de norma, el × de una fórmula, la raya y el punto medio—; los gráficos de datos (el minigráfico de `LedgerPanel`); y los documentos PDF, donde una advertencia se escribe con palabras («Atención: …»).
 
 **Alcance:** toda la aplicación, backoffice y plano operativo. Ya aplicada en todas las pantallas; todo ícono nuevo la sigue.
+
+## 24. BARRA SUPERIOR IGUAL EN TODAS LAS VISTAS; TODO LO DEMÁS, EN LA BARRA DE LA VISTA
+
+**Regla:** la barra superior (`.topbar`) es la misma en todas las pantallas; lo único que cambia es el título (`.topbar-title`). Todo lo propio de una vista va en la **barra de la vista** (`.view-toolbar`), arriba de su tabla o de su contenido.
+
+- **La barra superior tiene, y solo tiene:** el botón del menú (en ≤ 1024px), el título, el selector de compañía, el cambio de tema, el rol y «Salir» (con ese texto, no «Salir del sistema»). El nombre del usuario no va. `AppLayout.vue` y `BackofficeLayout.vue` no tienen slot de acciones, a propósito: no hay por dónde meter un botón.
+- **No existe una barra de documento.** La vieja `.doc-toolbar` (buscar, nuevo, guardar, imprimir… en una tira de íconos) se eliminó: cada acción va con su nombre en la barra de la vista o en el pie de la ficha.
+- **La barra de la vista** (`.view-toolbar`) tiene dos filas. **Arriba, los botones:** el enlace de volver (`ArrowLeft`, a la izquierda, cuando la pantalla es un detalle) y `.view-actions` a la derecha, con las exportaciones, «Guardar configuración», los enlaces a pantallas vecinas, los pasos de un flujo (calcular, aprobar, contabilizar) y «Crear nuevo», que va último. **Abajo, los filtros:** `.view-filters`, a todo el ancho, con el buscador, los rangos de fecha, los demás filtros y su botón «Consultar», pegados a la tabla que filtran.
+- **El código en el mismo orden que la pantalla:** volver, `.view-actions`, `.view-filters`. No se reordena con CSS (`order`), para que el teclado recorra la barra en el orden en que se ve.
+- **Filtros con etiqueta:** cada filtro es un `label.filter-field` con su texto en un `<span>` y el campo debajo; una casilla es `label.check`. Los filtros van en un `<form>` que se envía con «Consultar» y con Enter.
+- **En un teléfono** la barra de la vista se apila: cada filtro y cada botón a lo ancho.
+
+## 25. CONTENEDORES A TODO EL ANCHO
+
+**Regla:** tarjetas, tablas, formularios y textos de ayuda ocupan todo el ancho del área de contenido. Nada de `max-width` para que un formulario «no se vea tan ancho»: lo que se hace es repartir los campos.
+
+- **Formularios en página o en modal:** `.form-grid` reparte los campos en columnas de al menos 15rem —varias en un monitor, una en un teléfono—; `.span-full` ocupa la fila entera (notas, descripciones, tablas). Dos o tres campos cortos que van juntos usan `.field-row`. Los botones del pie van en `.form-actions` (a la derecha; a lo ancho en un teléfono).
+- **Rejillas de tarjetas y de resúmenes:** `repeat(auto-fill | auto-fit, minmax(min(100%, Xrem), 1fr))`. El `min(100%, …)` es obligatorio: sin él, en un teléfono más angosto que X la tarjeta desborda.
+- **Un ancho fijo solo en un campo** cuyo contenido tiene largo conocido (un año, un monto en una grilla de captura), nunca en su contenedor.
+- **Excepciones:** las vistas de impresión que imitan una hoja (`JournalEntries/Presentation.vue`, 900px; `Payroll/Payslips/Print.vue`) y el marco de las pantallas de acceso (`AuthShell.vue`). Llevan un comentario que lo dice.
+
+## 26. CAMPOS CON LA MISMA ESTÉTICA
+
+**Regla:** todos los `input`, `select`, `textarea`, fechas, montos, buscadores y casillas se ven igual en toda la aplicación, y ese aspecto vive en un solo lugar: `resources/css/app.scss`.
+
+- **Lo que ya define el estilo global:** alto mínimo 2.25rem, borde `--color-control-border`, radio, la letra de la aplicación (`font-family: inherit`, 0.86rem), el contorno de foco, el `chevron-down` de Lucide en los `select`, la lupa en `type="search"`, `accent-color` en las casillas, el botón de los `type="file"`, y 16px en teléfonos para que iOS no amplíe la página al enfocar.
+- **Prohibido en una pantalla:** redefinir el borde, el fondo, el alto, el padding o la letra de un campo en un `<style scoped>`. Lo único permitido es el ancho (`width`, `min-width`) y la alineación del texto (`text-align: right` en un monto).
+- **Etiquetas:** cada campo de formulario lleva su `<label for>` dentro de un `.field`; un campo sin etiqueta visible (el de una grilla de captura) lleva `aria-label`. El error va debajo, en `.error`.
+- **Controles hechos a medida** (el conmutador de «tipo existente / tipo nuevo», las pestañas) usan la misma altura mínima de 2.25rem y `font: inherit`.
+
+## 27. GUARDAR Y ELIMINAR: EL BOTÓN SE DESHABILITA CON SU SPINNER HASTA QUE TERMINA
+
+**Regla:** todo botón que guarda, elimina o dispara un proceso se deshabilita y muestra un spinner desde que se presiona hasta que la transacción termina. Sin doble clic que duplique un asiento, y sin dejar dudas de si el clic se registró.
+
+- **Es automático:** `resources/js/Utils/busyButtons.js` escucha las visitas de Inertia. Toda visita que no sea GET marca el botón que la disparó —el del clic, el `submitter` del formulario, o la `label.btn` de un `input type="file"`— con `data-busy`, `aria-busy` y `aria-disabled`, y lo libera en el `finish` de esa misma visita. El spinner es el `loader-circle` de Lucide, desde CSS (`[data-busy]`).
+- **Para que funcione, la acción tiene que ser una visita de Inertia** (`router.post/put/delete` o `useForm`) disparada por un `<button>`: no `fetch` suelto ni un `<a>` que hace POST. Además se mantiene `:disabled="form.processing"` en el botón de enviar.
+- **Confirmaciones con `confirmAction()`** (`resources/js/Utils/confirm.js`), nunca `window.confirm()`: `confirmAction({ title, message, confirmLabel, danger, onConfirm: () => router.delete(…) })`. El modal de confirmación (`ConfirmHost.vue`, montado una vez en `app.js`) queda abierto con su botón ocupado y Cancelar deshabilitado hasta que la visita termina, y entonces se cierra. `danger: true` para eliminar, anular, desactivar.
+- **Dónde va cada botón:** eliminar y anular, como `btn-ghost btn-danger-text` a la izquierda del pie de la ficha; la acción principal, `btn-primary` a la derecha.
+
+## 28. RESPONSIVA: CADA PANTALLA SIRVE EN TELÉFONO, TABLET Y ESCRITORIO
+
+**Regla:** toda pantalla funciona sin desplazarse de lado a 375px (y 320px), 768px, 1025px y 1280px.
+
+- **Menú lateral:** en ≤ 1024px es un cajón que abre el botón de menú, con fondo que lo cierra, y que se cierra con Escape y al navegar. Colapsado en escritorio, los íconos van **centrados** en la barra angosta (`.is-collapsed`).
+- **Barra superior:** sus botones nunca se encogen; cuando no cabe todo, cede el título (se corta con puntos suspensivos hasta un mínimo legible). El rol se muestra desde 1025px; en ≤ 640px la compañía se angosta y «Salir» queda solo con su ícono (el texto sigue ahí para el lector de pantalla).
+- **Tablas como tarjetas:** en ≤ 1024px (solo `@media screen`, para que en papel siga siendo tabla) cada fila de `.table-responsive` es una tarjeta: la primera celda es el título y cada otra celda muestra su `data-label` a la izquierda y su valor a la derecha. La celda fluye como texto, así que «código — nombre» o un detalle en una segunda línea se leen juntos. Una celda vacía no ocupa línea. El pie de totales también es tarjeta.
+- **`.no-cards`** para la tabla que tiene que seguir siendo tabla en pantallas chicas (por ejemplo, una con muy pocas columnas cortas); **`.capture-grid`** para las grillas de captura, donde el campo ocupa lo que la etiqueta deja libre y el texto de apoyo baja a su propia línea.
+- **Modales:** en un teléfono los botones del pie van de a dos por línea y a lo ancho.
+- **Verificación:** antes de entregar, revisar la pantalla a 1280, 1025, 768 y 375px: nada se sale de la pantalla (ni la barra superior ni el contenido), ninguna tabla se desplaza de lado y la consola queda limpia.
+
+## 29. MENÚ LATERAL: CADA SECCIÓN DIVIDIDA EN CATEGORÍAS
+
+**Regla:** el submenú de cada sección (Contabilidad, Inventario, Planillas…) no es una lista plana: sus pantallas van agrupadas por categoría, con el nombre de la categoría como subtítulo.
+
+- **Las categorías, en este orden:** primero el trabajo diario —«Operación», o por área cuando la sección es grande: «Existencias», «Compras» y «Producción» en Inventario; «Personal» y «Planilla» en Planillas—; después «Reportes»; y al final «Catálogos» (maestros: cuentas, artículos, almacenes, centros de costo) y «Configuración» (parámetros y determinación de cuentas).
+- **Todo reporte va en «Reportes»,** dentro del módulo que reporta, nunca en un menú general de reportes.
+- **Cómo se declara:** en `AppLayout.vue`, cada hijo lleva `group: 'Reportes'` (o la categoría que corresponda). El submenú arma los subtítulos solo, en el orden en que aparecen; una sección con una sola categoría (Administración) no muestra subtítulo.
+- **Una pantalla nueva entra al menú en su categoría,** no al final de la lista. El nombre del menú dice lo que es («Parámetros de planilla», no «Configuración» a secas dentro de la categoría Configuración).
+- **Colapsado,** el ícono de la sección lleva a su primera pantalla (la primera de «Operación»), y al pasar el mouse por encima —o al llegar con el teclado— se abre a su lado una ventana flotante con el nombre de la sección y todas sus pantallas, con las mismas categorías, para navegar sin expandir la barra.
+  - **Mouse:** la ventana se sostiene mientras el cursor va del ícono a ella. Cruzar otros íconos en el camino no la reemplaza: cambiar de sección requiere detenerse un momento sobre el ícono. Al salir, se cierra.
+  - **Teclado:** flecha derecha (o abajo) entra a la ventana; las flechas la recorren; Escape o flecha izquierda vuelven al ícono.
+  - **Tamaño:** alineada con su ícono, sin salirse de la pantalla; si no cabe en la altura, se desplaza.
+  - **Pieza:** está en `AppLayout.vue` (`.sidebar-flyout`), teletransportada a `<body>` para que el desplazamiento de la barra no la recorte. No se usa `title` en los íconos: el tooltip nativo taparía la ventana.
+
+## 30. CAMBIO DE COMPAÑÍA: UNA TRANSICIÓN QUE NO SE PUEDE PASAR POR ALTO
+
+**Regla:** cambiar de compañía en el selector de la barra superior cubre la pantalla con una ventana que dice a qué compañía se está pasando («Cambiando a …», con la marca y un progreso animados), y no se quita hasta que el cambio queda hecho: la página nueva tiene que traer como compañía activa la elegida. Entonces confirma «Ahora estás en …» y se va. Trabajar sin darse cuenta en la compañía equivocada es el error que evita.
+
+- **Mientras carga no se puede tocar nada detrás:** la página de atrás todavía es de la compañía anterior.
+- **La ventana ya sale con el tema de la compañía a la que se va** (secc. 31): se nota el cambio antes de que termine.
+- **Un mínimo visible** (~1 s) aunque el servidor conteste antes, para que el cambio se note; sin animaciones para quien pidió movimiento reducido.
+- **Si la pantalla anterior no existe en la compañía nueva** (un asiento, un documento de la anterior), el cambio igual se completa y se sigue al Panel. Eso no se trata como un error.
+- **Errores, siempre dichos y con salida:** sin acceso a la compañía (403), sesión vencida (401/419), error del servidor, sin conexión, tiempo agotado (a los 10 s avisa que tarda y ofrece cerrar sesión; a los 30 s se cancela), o un cambio que el servidor no aplicó. La ventana pasa a una tarjeta con el motivo y sus salidas:
+  - «Volver a {compañía anterior}».
+  - «Reintentar».
+  - «Cerrar sesión». Con la sesión vencida es la única salida. Si hasta eso falla, se va directo al login.
+- **Piezas:** `resources/js/Utils/companySwitch.js` (estado y lógica) y `resources/js/Components/CompanySwitchHost.vue` (la ventana), montado al lado de la página en `app.js`, porque el cambio termina en otra página y una ventana dentro del layout desaparecería con ella. No usar `router.put(route('company-switch'))` directo: siempre `startCompanySwitch()`.
+
+## 31. TEMAS DE COMPAÑÍA: DIEZ, UNO POR COMPAÑÍA
+
+**Regla:** cada compañía tiene su tema visual, que elige su Superusuario o un Administrador en Administración → Apariencia. Hay diez: Marino (el predeterminado, el aspecto original), Grafito, Esmeralda, Borgoña, Petróleo, Índigo, Cobalto, Terracota, Salvia y Ónix. Todos siguen la estética de la aplicación: moderna, elegante y profesional.
+
+- **Qué define un tema:** la paleta —en claro y en oscuro— y la tipografía (una familia distinta por tema). También define el acento de lo activo en el menú y el progreso, el color de la barra lateral, y el redondeo de las esquinas.
+- **Qué no cambia:** los colores de estado (éxito, error, advertencia, información) significan lo mismo en todas las compañías, y el modo claro/oscuro sigue siendo del usuario (el botón de la luna).
+- **Criterio de color:** el primario es profundo y sobrio (botones y barra lateral); el acento, luminoso, se lee sobre la barra oscura; los fondos son un neutro apenas teñido del primario. En oscuro el primario sube a un tono medio. La barra lateral es oscura en todos los temas, así que su texto es siempre claro (`--color-on-sidebar`).
+- **Fondo con textura: color e imagen por separado** (`background-color` y `background-image: var(--marble-texture)`), nunca `background: var(--color-bg) var(--marble-texture)`. La textura tiene dos capas, y en la forma abreviada el color solo puede ir en la última: el navegador descarta la regla entera sin avisar.
+- **Nunca un color fijo en una pantalla:** todo sale de los tokens (`--color-primary`, `--color-accent`, `--color-sidebar`, `--color-surface`, `--color-text`, `--font-sans`, `--radius-*`…). Un hexadecimal suelto no cambiaría con el tema. Para un tono translúcido del acento, `color-mix(in srgb, var(--color-accent) 25%, transparent)`.
+- **Dónde vive cada cosa:**
+  - El catálogo (clave, nombre, descripción, tipografía): `App\Domains\Core\Support\CompanyTheme`.
+  - Las paletas: el mapa `$company-themes` de `resources/css/app.scss`.
+  - Las tipografías: `vite.config.js`. Solo se precarga la del predeterminado; las demás se descargan cuando un tema las usa.
+  - Un test verifica que las tres listas coincidan.
+- **Cómo se aplica:** con `data-company-theme` en `<html>`. Lo pone `app.blade.php` en la primera carga, para que no haya un parpadeo, y `app.js` después de cada visita, con el `companyTheme` que comparte el servidor. El mismo atributo en cualquier elemento lo pinta con otro tema: las tarjetas de Apariencia y la ventana del cambio de compañía.
+- **Apariencia:** cada tema se muestra en una miniatura de CONTAPP con sus colores y su tipografía. Tocarlo lo aplica a toda la pantalla como vista previa; «Guardar tema» lo deja para todos, con registro en la bitácora. Salir sin guardar vuelve al tema guardado.
+- **Un tema nuevo** necesita las tres piezas: el caso del enum, la paleta clara y oscura en `$company-themes`, y la tipografía en `vite.config.js`. El tope es diez.

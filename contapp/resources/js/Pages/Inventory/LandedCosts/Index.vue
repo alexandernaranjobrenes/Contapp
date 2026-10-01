@@ -1,7 +1,9 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { CheckIcon, EyeIcon, PackagePlusIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
 
 const props = defineProps({
     receipts: { type: Array, default: () => [] },
@@ -13,7 +15,21 @@ const props = defineProps({
 const page = usePage();
 const today = new Date().toISOString().slice(0, 10);
 
-const applying = ref(null);
+// Ficha de la recepción (CLAUDE.md secc. 20): «Aplicar costo» pasa el mismo
+// modal al formulario del costo.
+const selectedReceiptId = ref(null);
+const receiptMode = ref('details'); // 'details' | 'apply'
+const selectedReceipt = computed(() => props.receipts.find((r) => r.id === selectedReceiptId.value) ?? null);
+
+function openReceipt(receipt) {
+    selectedReceiptId.value = receipt.id;
+    receiptMode.value = 'details';
+}
+
+function closeReceipt() {
+    selectedReceiptId.value = null;
+    receiptMode.value = 'details';
+}
 
 const form = useForm({
     inventory_document_id: null,
@@ -30,16 +46,16 @@ function money(value) {
     return Number(value ?? 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function openApply(receipt) {
+function startApply() {
     form.clearErrors();
-    form.inventory_document_id = receipt.id;
+    form.inventory_document_id = selectedReceipt.value.id;
     form.business_partner_id = '';
     form.amount = '';
     form.document_date = today;
     form.posting_date = today;
     form.due_date = '';
     form.description = '';
-    applying.value = receipt;
+    receiptMode.value = 'apply';
 }
 
 function submit() {
@@ -49,8 +65,12 @@ function submit() {
             due_date: data.due_date === '' ? null : data.due_date,
             description: data.description === '' ? null : data.description,
         }))
-        .post(route('landed-costs.store'), { onSuccess: () => (applying.value = null) });
+        .post(route('landed-costs.store'), { onSuccess: closeReceipt });
 }
+
+// Ficha de un costo ya aplicado.
+const selectedDocumentId = ref(null);
+const selectedDocument = computed(() => props.documents.find((d) => d.id === selectedDocumentId.value) ?? null);
 </script>
 
 <template>
@@ -66,104 +86,122 @@ function submit() {
             cada línea de la recepción.
         </p>
 
-        <div class="card">
-            <div class="card-header"><span class="muted">Recepciones sobre las que aplicar un costo</span></div>
+        <h2 class="block-title">Recepciones sobre las que aplicar un costo</h2>
 
-            <div class="table-scroll">
+        <div class="card">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Fecha</th>
-                            <th>Tipo</th>
                             <th>Proveedor</th>
-                            <th class="right">Líneas</th>
-                            <th class="right">Valor recibido</th>
-                            <th></th>
+                            <th class="num">Líneas</th>
+                            <th class="num">Valor recibido</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="r in receipts" :key="r.id">
-                            <td class="num">{{ r.posting_date }}</td>
-                            <td class="code-cell">{{ r.document_type_code }}</td>
-                            <td>{{ r.supplier ?? '—' }}</td>
-                            <td class="num right">{{ r.lines_count }}</td>
-                            <td class="num right">{{ money(r.total_local) }}</td>
-                            <td>
-                                <button
-                                    type="button" class="btn btn-primary"
-                                    :disabled="!documentTypes.length || !suppliers.length"
-                                    @click="openApply(r)"
-                                >
-                                    Aplicar costo
-                                </button>
-                            </td>
+                        <tr
+                            v-for="r in receipts"
+                            :key="r.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openReceipt(r)"
+                            @keydown.enter="openReceipt(r)"
+                            @keydown.space.prevent="openReceipt(r)"
+                        >
+                            <td class="code-cell">{{ r.posting_date }}</td>
+                            <td data-label="Proveedor">{{ r.supplier ?? '—' }}</td>
+                            <td data-label="Líneas" class="num">{{ r.lines_count }}</td>
+                            <td data-label="Valor recibido" class="num">{{ money(r.total_local) }}</td>
                         </tr>
                         <tr v-if="!receipts.length">
-                            <td colspan="6" class="muted empty-row">Todavía no hay entradas de mercancía registradas.</td>
+                            <td colspan="4" class="muted empty-row">Todavía no hay entradas de mercancía registradas.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <h2 class="section-title">Costos aplicados</h2>
+        <h2 class="block-title">Costos aplicados</h2>
 
         <div class="card">
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Fecha</th>
                             <th>Proveedor</th>
-                            <th>Concepto</th>
-                            <th>Recepción</th>
-                            <th class="right">Total</th>
-                            <th class="right">Capitalizado</th>
-                            <th class="right">A resultados</th>
-                            <th>Asiento</th>
+                            <th class="num">Total</th>
+                            <th class="num">Capitalizado</th>
+                            <th class="num">A resultados</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="d in documents" :key="d.id">
-                            <td class="num">{{ d.posting_date }}</td>
-                            <td>{{ d.supplier }}</td>
-                            <td class="muted small">{{ d.description ?? '—' }}</td>
-                            <td>
-                                <Link :href="route('inventory-movements.show', d.receipt_id)" class="link">Ver entrada</Link>
-                            </td>
-                            <td class="num right">{{ money(d.amount) }}</td>
-                            <td class="num right">{{ money(d.capitalized_amount) }}</td>
-                            <td class="num right" :class="Number(d.expensed_amount) > 0 ? 'warn' : ''">
+                        <tr
+                            v-for="d in documents"
+                            :key="d.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="selectedDocumentId = d.id"
+                            @keydown.enter="selectedDocumentId = d.id"
+                            @keydown.space.prevent="selectedDocumentId = d.id"
+                        >
+                            <td class="code-cell">{{ d.posting_date }}</td>
+                            <td data-label="Proveedor">{{ d.supplier }}</td>
+                            <td data-label="Total" class="num">{{ money(d.amount) }}</td>
+                            <td data-label="Capitalizado" class="num">{{ money(d.capitalized_amount) }}</td>
+                            <td data-label="A resultados" class="num" :class="Number(d.expensed_amount) > 0 ? 'warn' : ''">
                                 {{ money(d.expensed_amount) }}
                             </td>
-                            <td class="num muted small">#{{ d.journal_document_number }}</td>
                         </tr>
                         <tr v-if="!documents.length">
-                            <td colspan="8" class="muted empty-row">Todavía no se ha aplicado ningún costo de importación.</td>
+                            <td colspan="5" class="muted empty-row">Todavía no se ha aplicado ningún costo de importación.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <div v-if="applying" class="modal-backdrop" @click.self="applying = null">
-            <form class="modal-card card" @submit.prevent="submit">
-                <h2>Aplicar costo de importación</h2>
+        <DetailModal
+            :open="!!selectedReceipt"
+            :title="selectedReceipt ? (receiptMode === 'apply' ? 'Aplicar costo de importación' : `Recepción del ${selectedReceipt.posting_date}`) : ''"
+            @close="closeReceipt"
+        >
+            <dl v-if="selectedReceipt && receiptMode === 'details'" class="detail-list">
+                <div class="full">
+                    <dt>Proveedor</dt>
+                    <dd>{{ selectedReceipt.supplier ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Tipo de documento</dt>
+                    <dd>{{ selectedReceipt.document_type_code }}</dd>
+                </div>
+                <div>
+                    <dt>Líneas</dt>
+                    <dd>{{ selectedReceipt.lines_count }}</dd>
+                </div>
+                <div>
+                    <dt>Valor recibido</dt>
+                    <dd>{{ money(selectedReceipt.total_local) }}</dd>
+                </div>
+            </dl>
+
+            <form v-if="selectedReceipt && receiptMode === 'apply'" id="landed-cost-form" @submit.prevent="submit">
                 <p class="muted small">
-                    Sobre la recepción del {{ applying.posting_date }} por {{ money(applying.total_local) }}.
+                    Sobre la recepción del {{ selectedReceipt.posting_date }} por {{ money(selectedReceipt.total_local) }}.
                 </p>
 
-                <div class="grid-2">
+                <div class="field-row">
                     <div class="field">
-                        <label>Tipo de documento</label>
-                        <select v-model="form.document_type_id" required>
+                        <label for="lc-doc-type">Tipo de documento</label>
+                        <select id="lc-doc-type" v-model="form.document_type_id" required>
                             <option v-for="t in documentTypes" :key="t.id" :value="t.id">{{ t.code }} — {{ t.name }}</option>
                         </select>
                         <span v-if="form.errors.document_type_id" class="error">{{ form.errors.document_type_id }}</span>
                     </div>
                     <div class="field">
-                        <label>Quién lo cobra</label>
-                        <select v-model="form.business_partner_id" required>
+                        <label for="lc-supplier">Quién lo cobra</label>
+                        <select id="lc-supplier" v-model="form.business_partner_id" required>
                             <option value="" disabled>— Elegir —</option>
                             <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.code }} — {{ s.name }}</option>
                         </select>
@@ -171,95 +209,92 @@ function submit() {
                     </div>
                 </div>
 
-                <div class="grid-2">
+                <div class="field-row">
                     <div class="field">
-                        <label>Monto del costo</label>
-                        <input v-model="form.amount" type="number" step="0.01" min="0.01" required>
+                        <label for="lc-amount">Monto del costo</label>
+                        <input id="lc-amount" v-model="form.amount" type="number" step="0.01" min="0.01" required>
                         <span v-if="form.errors.amount" class="error">{{ form.errors.amount }}</span>
                     </div>
                     <div class="field">
-                        <label>Vencimiento (opcional)</label>
-                        <input v-model="form.due_date" type="date">
+                        <label for="lc-due">Vencimiento (opcional)</label>
+                        <input id="lc-due" v-model="form.due_date" type="date">
                     </div>
                 </div>
 
-                <div class="grid-2">
+                <div class="field-row">
                     <div class="field">
-                        <label>Fecha del documento</label>
-                        <input v-model="form.document_date" type="date" required>
+                        <label for="lc-doc-date">Fecha del documento</label>
+                        <input id="lc-doc-date" v-model="form.document_date" type="date" required>
                     </div>
                     <div class="field">
-                        <label>Fecha de contabilización</label>
-                        <input v-model="form.posting_date" type="date" required>
+                        <label for="lc-posting">Fecha de contabilización</label>
+                        <input id="lc-posting" v-model="form.posting_date" type="date" required>
                         <span v-if="form.errors.posting_date" class="error">{{ form.errors.posting_date }}</span>
                     </div>
                 </div>
 
                 <div class="field">
-                    <label>Concepto (ej. flete marítimo, arancel)</label>
-                    <input v-model="form.description" type="text" maxlength="255">
-                </div>
-
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Aplicar</button>
-                    <button type="button" class="btn btn-ghost" @click="applying = null">Cancelar</button>
+                    <label for="lc-description">Concepto (ej. flete marítimo, arancel)</label>
+                    <input id="lc-description" v-model="form.description" type="text" maxlength="255">
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selectedReceipt && receiptMode === 'details'">
+                    <button
+                        type="button" class="btn btn-primary"
+                        :disabled="!documentTypes.length || !suppliers.length"
+                        @click="startApply"
+                    ><PackagePlusIcon /> Aplicar costo</button>
+                </template>
+                <template v-else-if="selectedReceipt">
+                    <button type="button" class="btn btn-ghost" @click="receiptMode = 'details'">Cancelar</button>
+                    <button type="submit" form="landed-cost-form" class="btn btn-primary" :disabled="form.processing"><CheckIcon /> Aplicar</button>
+                </template>
+            </template>
+        </DetailModal>
+
+        <DetailModal
+            :open="!!selectedDocument"
+            :title="selectedDocument ? `Costo del ${selectedDocument.posting_date}` : ''"
+            @close="selectedDocumentId = null"
+        >
+            <dl v-if="selectedDocument" class="detail-list">
+                <div class="full">
+                    <dt>Proveedor</dt>
+                    <dd>{{ selectedDocument.supplier }}</dd>
+                </div>
+                <div class="full">
+                    <dt>Concepto</dt>
+                    <dd>{{ selectedDocument.description ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Total</dt>
+                    <dd>{{ money(selectedDocument.amount) }}</dd>
+                </div>
+                <div>
+                    <dt>Capitalizado</dt>
+                    <dd>{{ money(selectedDocument.capitalized_amount) }}</dd>
+                </div>
+                <div>
+                    <dt>A resultados</dt>
+                    <dd :class="Number(selectedDocument.expensed_amount) > 0 ? 'warn' : ''">{{ money(selectedDocument.expensed_amount) }}</dd>
+                </div>
+                <div>
+                    <dt>Asiento</dt>
+                    <dd>#{{ selectedDocument.journal_document_number }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selectedDocument" :href="route('inventory-movements.show', selectedDocument.receipt_id)" class="btn btn-primary"><EyeIcon /> Ver entrada</Link>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.card-header { padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--color-border); }
-
-.section-title { font-size: 0.92rem; margin: 1.5rem 0 0.6rem; }
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: -0.25rem 0 1rem; }
-
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.code-cell, .num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .warn { color: var(--color-warning); font-weight: 600; }
-.empty-row { text-align: center; padding: 1.5rem; white-space: normal; }
-.link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
-.link:hover { text-decoration: underline; }
-
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(11, 31, 58, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-    padding: 1rem;
-}
-
-.modal-card { width: 620px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.5rem; }
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.25rem; }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
-
-.field { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-
-.field input, .field select {
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-}
-
-.error { color: var(--color-danger); font-size: 0.76rem; }
-.modal-actions { display: flex; gap: 0.6rem; margin-top: 0.5rem; }
 </style>

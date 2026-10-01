@@ -2,8 +2,10 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
 import { formatMoney } from '../../../Utils/money';
-import { PlusIcon } from '@lucide/vue';
+import { ArrowLeftIcon, BookOpenIcon, CheckIcon, PlusIcon, RefreshCwIcon, RotateCcwIcon, UserIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     settlement: { type: Object, required: true },
@@ -110,10 +112,21 @@ function voidIt() {
 }
 
 function destroy() {
-    if (! confirm('¿Eliminar esta liquidación en borrador? No queda rastro porque nunca se contabilizó.')) return;
-
-    router.delete(route('labor-settlements.destroy', props.settlement.id));
+    confirmAction({
+        title: 'Eliminar liquidación',
+        message: 'La liquidación en borrador se elimina. No queda rastro porque nunca se contabilizó.',
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('labor-settlements.destroy', props.settlement.id)),
+    });
 }
+
+const statusBadge = {
+    draft: 'badge-neutral',
+    approved: 'badge-warning',
+    posted: 'badge-success',
+    voided: 'badge-danger',
+};
 
 const earnings = computed(() => props.lines.filter((l) => ! l.is_deduction));
 const deductions = computed(() => props.lines.filter((l) => l.is_deduction));
@@ -126,39 +139,37 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
     <Head :title="`Liquidación — ${settlement.employee_name}`" />
 
     <AppLayout :title="`Liquidación — ${settlement.employee_name}`">
-        <template #actions>
-            <Link :href="route('labor-settlements.index')" class="btn btn-ghost">Liquidaciones</Link>
-            <Link :href="route('employees.show', settlement.employee_id)" class="btn btn-ghost">Ficha</Link>
-        </template>
-
-        <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>
-
-        <div class="head-row">
-            <div>
-                <span class="badge" :class="`badge-${settlement.status}`">{{ settlement.status_label }}</span>
-                <span class="muted small">
-                    {{ settlement.reason_label }} · salida {{ settlement.termination_date }} ·
-                    {{ settlement.years_of_service }} año(s) de servicio
-                </span>
-            </div>
-            <div class="head-actions">
+        <div class="view-toolbar">
+            <Link :href="route('labor-settlements.index')" class="btn btn-ghost"><ArrowLeftIcon /> Liquidaciones</Link>
+            <div class="view-actions">
+                <Link :href="route('employees.show', settlement.employee_id)" class="btn btn-ghost"><UserIcon /> Ficha</Link>
                 <template v-if="isDraft">
-                    <button type="button" class="btn btn-ghost" @click="recalculate">Recalcular</button>
-                    <button type="button" class="btn btn-primary" @click="approve">Aprobar</button>
-                    <button type="button" class="btn btn-ghost danger" @click="destroy">Eliminar</button>
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <button type="button" class="btn btn-ghost" @click="recalculate"><RefreshCwIcon /> Recalcular</button>
+                    <button type="button" class="btn btn-primary" @click="approve"><CheckIcon /> Aprobar</button>
                 </template>
                 <template v-else-if="isApproved">
-                    <button type="button" class="btn btn-ghost" @click="reopening = true">Devolver a borrador</button>
-                    <button type="button" class="btn btn-primary" @click="posting = true">Contabilizar</button>
+                    <button type="button" class="btn btn-ghost" @click="reopening = true"><RotateCcwIcon /> Devolver a borrador</button>
+                    <button type="button" class="btn btn-primary" @click="posting = true"><BookOpenIcon /> Contabilizar</button>
                 </template>
                 <template v-else-if="isPosted">
                     <Link v-if="settlement.journal_entry_id"
                         :href="route('journal-entries.show', settlement.journal_entry_id)" class="btn btn-ghost">
                         Asiento {{ settlement.journal_entry_number }}
                     </Link>
-                    <button type="button" class="btn btn-ghost danger" @click="voiding = true">Anular</button>
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="voiding = true">Anular</button>
                 </template>
             </div>
+        </div>
+
+        <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>
+
+        <div class="head-row">
+            <span class="badge" :class="statusBadge[settlement.status]">{{ settlement.status_label }}</span>
+            <span class="muted small">
+                {{ settlement.reason_label }} · salida {{ settlement.termination_date }} ·
+                {{ settlement.years_of_service }} año(s) de servicio
+            </span>
         </div>
 
         <!--
@@ -249,38 +260,41 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
         <section class="card">
             <div class="card-header"><h2>Detalle de la liquidación</h2></div>
 
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Extremo</th>
-                            <th>Cómo se llegó al monto</th>
-                            <th class="right">Días</th>
-                            <th class="right">Valor del día</th>
-                            <th class="right">Monto</th>
+                            <th class="num">Días</th>
+                            <th class="num">Valor del día</th>
+                            <th class="num">Monto</th>
                             <th>Cargas</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="l in earnings" :key="l.id">
-                            <td>{{ l.name }}</td>
-                            <!-- El detalle es lo que el trabajador lee y firma. -->
-                            <td class="muted small">{{ l.detail ?? '—' }}</td>
-                            <td class="right">{{ l.days ?? '—' }}</td>
-                            <td class="right">{{ l.daily_rate ? formatMoney(l.daily_rate) : '—' }}</td>
-                            <td class="right">{{ formatMoney(l.amount) }}</td>
-                            <td class="small">{{ l.subject_to_ccss ? 'sí' : 'exento' }}</td>
+                            <td>
+                                {{ l.name }}
+                                <!-- El detalle es lo que el trabajador lee y firma. -->
+                                <span class="block muted small">{{ l.detail ?? '—' }}</span>
+                            </td>
+                            <td data-label="Días" class="num">{{ l.days ?? '—' }}</td>
+                            <td data-label="Valor del día" class="num">{{ l.daily_rate ? formatMoney(l.daily_rate) : '—' }}</td>
+                            <td data-label="Monto" class="num">{{ formatMoney(l.amount) }}</td>
+                            <td data-label="Cargas" class="small">{{ l.subject_to_ccss ? 'sí' : 'exento' }}</td>
                         </tr>
                         <tr v-for="l in deductions" :key="`d${l.id}`" class="deduction">
-                            <td>{{ l.name }}</td>
-                            <td class="muted small">{{ l.detail ?? '—' }}</td>
-                            <td class="right">—</td>
-                            <td class="right">—</td>
-                            <td class="right">− {{ formatMoney(l.amount) }}</td>
-                            <td class="small">—</td>
+                            <td>
+                                {{ l.name }}
+                                <span class="block muted small">{{ l.detail ?? '—' }}</span>
+                            </td>
+                            <td data-label="Días" class="num">—</td>
+                            <td data-label="Valor del día" class="num">—</td>
+                            <td data-label="Monto" class="num">− {{ formatMoney(l.amount) }}</td>
+                            <td data-label="Cargas" class="small">—</td>
                         </tr>
                         <tr v-if="! lines.length">
-                            <td colspan="6" class="muted center">Sin renglones: hay que recalcular.</td>
+                            <td colspan="5" class="muted empty-row">Sin renglones: hay que recalcular.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -288,17 +302,19 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
         </section>
 
         <section v-if="isDraft" class="card">
-            <div class="card-header">
+            <div class="card-header manual-header">
                 <h2>Renglones manuales</h2>
-                <button type="button" class="btn btn-ghost btn-sm" @click="addManual('pending_salary')">
-                    <PlusIcon /> Salarios pendientes
-                </button>
-                <button type="button" class="btn btn-ghost btn-sm" @click="addManual('indemnity')">
-                    <PlusIcon /> Indemnización
-                </button>
-                <button type="button" class="btn btn-ghost btn-sm" @click="addManual('deduction')">
-                    <PlusIcon /> Deducción
-                </button>
+                <div class="manual-add">
+                    <button type="button" class="btn btn-ghost" @click="addManual('pending_salary')">
+                        <PlusIcon /> Salarios pendientes
+                    </button>
+                    <button type="button" class="btn btn-ghost" @click="addManual('indemnity')">
+                        <PlusIcon /> Indemnización
+                    </button>
+                    <button type="button" class="btn btn-ghost" @click="addManual('deduction')">
+                        <PlusIcon /> Deducción
+                    </button>
+                </div>
             </div>
 
             <p class="hint small">
@@ -308,30 +324,31 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
                 liquidación.
             </p>
 
-            <div v-if="manual.length" class="table-scroll">
+            <div v-if="manual.length" class="table-responsive capture-grid">
                 <table>
                     <thead>
                         <tr>
-                            <th>Tipo</th>
                             <th>Nombre</th>
                             <th>Detalle</th>
-                            <th class="right">Días</th>
-                            <th class="right">Valor del día</th>
-                            <th class="right">Monto</th>
-                            <th></th>
+                            <th class="num">Días</th>
+                            <th class="num">Valor del día</th>
+                            <th class="num">Monto</th>
+                            <th><span class="sr-only">Quitar</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(l, i) in manual" :key="i">
-                            <td class="small">{{ kinds[l.kind] ?? l.kind }}</td>
-                            <td><input v-model="l.name" type="text" maxlength="255" required></td>
-                            <td><input v-model="l.detail" type="text" maxlength="255"></td>
-                            <td><input v-model="l.days" type="number" step="0.0001" min="0" class="num-input"></td>
-                            <td><input v-model="l.daily_rate" type="number" step="0.01" min="0" class="num-input"></td>
-                            <td><input v-model="l.amount" type="number" step="0.01" min="0" class="num-input"></td>
-                            <td class="row-actions">
-                                <button type="button" class="btn btn-ghost btn-sm danger" @click="removeManual(i)">
-                                    Quitar
+                            <td>
+                                <span class="block muted small">{{ kinds[l.kind] ?? l.kind }}</span>
+                                <input v-model="l.name" type="text" maxlength="255" required :aria-label="`Nombre del renglón ${i + 1}`">
+                            </td>
+                            <td data-label="Detalle"><input v-model="l.detail" type="text" maxlength="255" :aria-label="`Detalle del renglón ${i + 1}`"></td>
+                            <td data-label="Días"><input v-model="l.days" type="number" step="0.0001" min="0" class="num-input" :aria-label="`Días del renglón ${i + 1}`"></td>
+                            <td data-label="Valor del día"><input v-model="l.daily_rate" type="number" step="0.01" min="0" class="num-input" :aria-label="`Valor del día del renglón ${i + 1}`"></td>
+                            <td data-label="Monto"><input v-model="l.amount" type="number" step="0.01" min="0" class="num-input" :aria-label="`Monto del renglón ${i + 1}`"></td>
+                            <td data-label="">
+                                <button type="button" class="btn btn-ghost" :aria-label="`Quitar el renglón ${i + 1}`" @click="removeManual(i)">
+                                    <XIcon />
                                 </button>
                             </td>
                         </tr>
@@ -339,33 +356,31 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
                 </table>
             </div>
 
-            <div class="field-row">
+            <div class="form-grid recalc-grid">
                 <div class="field">
-                    <label>Causal</label>
-                    <select v-model="recalcForm.reason">
+                    <label for="recalc-reason">Causal</label>
+                    <select id="recalc-reason" v-model="recalcForm.reason">
                         <option v-for="(label, value) in reasons" :key="value" :value="value">{{ label }}</option>
                     </select>
-                    <span class="hint small">Cambiarla cambia qué extremos se pagan.</span>
+                    <span class="muted small">Cambiarla cambia qué extremos se pagan.</span>
                 </div>
                 <div class="field">
-                    <label>Hechos de la salida</label>
-                    <textarea v-model="recalcForm.reason_detail" rows="2"></textarea>
+                    <label for="recalc-detail">Hechos de la salida</label>
+                    <textarea id="recalc-detail" v-model="recalcForm.reason_detail" rows="2"></textarea>
                 </div>
             </div>
 
-            <div class="modal-actions">
+            <div class="form-actions">
                 <button type="button" class="btn btn-primary" :disabled="recalcForm.processing" @click="recalculate">
-                    Recalcular
+                    <RefreshCwIcon /> Recalcular
                 </button>
             </div>
         </section>
 
         <p v-if="settlement.notes" class="hint">{{ settlement.notes }}</p>
 
-        <div v-if="posting" class="modal-backdrop" @click.self="posting = false">
-            <form class="modal card" @submit.prevent="post">
-                <h2>Contabilizar la liquidación</h2>
-
+        <DetailModal :open="posting" title="Contabilizar la liquidación" @close="posting = false">
+            <form id="settle-post-form" @submit.prevent="post">
                 <p class="hint small">
                     El asiento <strong>cancela las provisiones</strong> de aguinaldo, vacaciones y cesantía —el
                     gasto ya se reconoció mes a mes— y lleva al gasto solo el preaviso. El neto queda como
@@ -375,71 +390,67 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
                 </p>
 
                 <div class="field">
-                    <label>Fecha del asiento</label>
-                    <input v-model="postForm.posting_date" type="date">
-                    <span class="hint small">En blanco usa la fecha de salida.</span>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="posting = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="postForm.processing">Contabilizar</button>
+                    <label for="settle-post-date">Fecha del asiento</label>
+                    <input id="settle-post-date" v-model="postForm.posting_date" type="date">
+                    <span class="muted small">En blanco usa la fecha de salida.</span>
                 </div>
             </form>
-        </div>
 
-        <div v-if="reopening" class="modal-backdrop" @click.self="reopening = false">
-            <form class="modal card" @submit.prevent="reopen">
-                <h2>Devolver a borrador</h2>
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="posting = false">Cancelar</button>
+                <button type="submit" form="settle-post-form" class="btn btn-primary" :disabled="postForm.processing">Contabilizar</button>
+            </template>
+        </DetailModal>
 
+        <DetailModal :open="reopening" title="Devolver a borrador" @close="reopening = false">
+            <form id="settle-reopen-form" @submit.prevent="reopen">
                 <p class="hint small">
                     Todavía no hay asiento, así que alcanza con quitar la aprobación. Queda constancia de quién
                     la quitó y por qué.
                 </p>
 
                 <div class="field">
-                    <label>Motivo</label>
-                    <textarea v-model="reopenForm.reason" rows="3" required minlength="5"></textarea>
+                    <label for="settle-reopen-reason">Motivo</label>
+                    <textarea id="settle-reopen-reason" v-model="reopenForm.reason" rows="3" required minlength="5"></textarea>
                     <span v-if="reopenForm.errors.reason" class="error">{{ reopenForm.errors.reason }}</span>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="reopening = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="reopenForm.processing">
-                        Devolver a borrador
-                    </button>
-                </div>
             </form>
-        </div>
 
-        <div v-if="voiding" class="modal-backdrop" @click.self="voiding = false">
-            <form class="modal card" @submit.prevent="voidIt">
-                <h2>Anular la liquidación</h2>
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="reopening = false">Cancelar</button>
+                <button type="submit" form="settle-reopen-form" class="btn btn-primary" :disabled="reopenForm.processing">
+                    Devolver a borrador
+                </button>
+            </template>
+        </DetailModal>
 
+        <DetailModal :open="voiding" title="Anular la liquidación" @close="voiding = false">
+            <form id="settle-void-form" @submit.prevent="voidIt">
                 <p class="hint small">
                     No se borra: se contabiliza un <strong>asiento de reversión</strong>. Se devuelven los días
                     de vacaciones que se liquidaron y el trabajador vuelve a estar activo.
                 </p>
 
                 <div class="field">
-                    <label>Motivo</label>
-                    <textarea v-model="voidForm.reason" rows="3" required minlength="5"></textarea>
+                    <label for="settle-void-reason">Motivo</label>
+                    <textarea id="settle-void-reason" v-model="voidForm.reason" rows="3" required minlength="5"></textarea>
                     <span v-if="voidForm.errors.reason" class="error">{{ voidForm.errors.reason }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Fecha del asiento de reversión</label>
-                    <input v-model="voidForm.posting_date" type="date">
-                    <span class="hint small">En blanco usa hoy.</span>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="voiding = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary danger" :disabled="voidForm.processing">
-                        Anular
-                    </button>
+                    <label for="settle-void-date">Fecha del asiento de reversión</label>
+                    <input id="settle-void-date" v-model="voidForm.posting_date" type="date">
+                    <span class="muted small">En blanco usa hoy.</span>
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="voiding = false">Cancelar</button>
+                <button type="submit" form="settle-void-form" class="btn btn-danger" :disabled="voidForm.processing">
+                    Anular
+                </button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -448,43 +459,35 @@ const infos = computed(() => props.findings.filter((f) => f.level === 'info'));
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem 0.75rem;
     margin-bottom: 1rem;
 }
 
-.head-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; margin-bottom: 1rem; }
 
 .facts { margin: 0; }
-.facts > div { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; border-bottom: 1px solid #f3f4f6; }
-.facts dt { color: #6b7280; font-size: 0.8rem; }
-.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.facts > div { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; border-bottom: 1px solid var(--color-border); }
+.facts dt { color: var(--color-text-muted); font-size: 0.8rem; }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
 
 .totals { display: flex; flex-direction: column; }
-.total-row { display: flex; justify-content: space-between; padding: 0.3rem 0; font-variant-numeric: tabular-nums; }
-.total-row.minus { color: #6b7280; }
-.total-row.final { border-top: 2px solid #111827; margin-top: 0.3rem; padding-top: 0.5rem; font-weight: 600; font-size: 1.05rem; }
+.total-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; font-variant-numeric: tabular-nums; }
+.total-row.minus { color: var(--color-text-muted); }
+.total-row.final { border-top: 2px solid var(--color-text); margin-top: 0.3rem; padding-top: 0.5rem; font-weight: 600; font-size: 1.05rem; }
 
-tr.deduction td { color: #b91c1c; }
+table { font-size: 0.85rem; }
+.num { font-variant-numeric: tabular-nums; }
+.block { display: block; }
+tr.deduction td { color: var(--color-danger); }
 
-.num-input { width: 8rem; text-align: right; }
+.num-input { width: 6.5rem; text-align: right; }
+.capture-grid td input:not(.num-input) { width: 100%; }
 
-.badge {
-    display: inline-block;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    border: 1px solid #d1d5db;
-    margin-right: 0.5rem;
+.manual-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.manual-add { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.recalc-grid { margin-top: 0.75rem; }
+
+@media screen and (max-width: 1024px) {
+    .num-input { width: 100%; }
 }
-
-.badge-draft { background: #f3f4f6; color: #374151; }
-.badge-approved { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
-.badge-posted { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
-.badge-voided { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-
-.danger { color: #b91c1c; }
-.center { text-align: center; }
 </style>

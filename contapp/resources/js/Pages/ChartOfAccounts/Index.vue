@@ -212,9 +212,6 @@ function taxRateLabel(account) {
 
     <AppLayout title="Catálogo de cuentas">
         <div class="view-toolbar">
-            <div class="view-filters">
-                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar cuenta">
-            </div>
             <div class="view-actions">
                 <a
                     :href="route('chart-of-accounts.template')"
@@ -226,6 +223,9 @@ function taxRateLabel(account) {
                     <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
                 </label>
                 <button type="button" class="btn btn-primary" @click="openCreate"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar cuenta">
             </div>
         </div>
 

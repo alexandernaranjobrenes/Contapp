@@ -1,7 +1,10 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import { EyeIcon, PlusIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { useRecordDetail } from '../../../Utils/recordDetail';
 
 const props = defineProps({
     counts: { type: Array, default: () => [] },
@@ -19,15 +22,27 @@ const badgeClass = {
     posted: 'badge-success',
     cancelled: 'badge-neutral',
 };
+
+// Ficha de la toma (CLAUDE.md secc. 20): el resumen; la hoja de conteo y el
+// cierre están en «Ver toma».
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.counts);
 </script>
 
 <template>
     <Head title="Tomas físicas" />
 
     <AppLayout title="Tomas físicas de inventario">
-        <template #actions>
-            <Link :href="route('stock-counts.create')" class="btn btn-primary">Nueva toma física</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('stock-counts.create')" class="btn btn-primary"><PlusIcon /> Crear nuevo</Link>
+            </div>
+            <div class="view-filters">
+                <select v-model="filter" aria-label="Estado">
+                    <option value="">Todos los estados</option>
+                    <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
+                </select>
+            </div>
+        </div>
 
         <p class="hint">
             Una toma física congela la existencia teórica a una <strong>fecha de corte</strong>, se imprime para
@@ -36,61 +51,75 @@ const badgeClass = {
         </p>
 
         <div class="card">
-            <div class="card-header">
-                <span class="muted">{{ visible.length }} toma(s)</span>
-                <select v-model="filter" class="filter">
-                    <option value="">Todos los estados</option>
-                    <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
-                </select>
-            </div>
-
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Número</th>
                             <th>Corte</th>
                             <th>Almacén</th>
-                            <th>Familia</th>
-                            <th class="right">Líneas</th>
-                            <th>Modo</th>
                             <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="count in visible" :key="count.id">
-                            <td class="num">
-                                <Link :href="route('stock-counts.show', count.id)" class="link">{{ count.number }}</Link>
-                            </td>
-                            <td class="num">{{ count.cutoff_date }}</td>
-                            <td>{{ count.warehouse }}</td>
-                            <td class="muted">{{ count.item_group ?? 'Todas' }}</td>
-                            <td class="num right">{{ count.lines_count }}</td>
-                            <td class="muted small">{{ count.blind ? 'A ciegas' : 'Con existencia' }}</td>
-                            <td><span class="badge" :class="badgeClass[count.status]">{{ count.status_label }}</span></td>
+                        <tr
+                            v-for="count in visible"
+                            :key="count.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(count)"
+                            @keydown.enter="openDetail(count)"
+                            @keydown.space.prevent="openDetail(count)"
+                        >
+                            <td class="code-cell">{{ count.number }}</td>
+                            <td data-label="Corte" class="code-cell">{{ count.cutoff_date }}</td>
+                            <td data-label="Almacén">{{ count.warehouse }}</td>
+                            <td data-label="Estado"><span class="badge" :class="badgeClass[count.status]">{{ count.status_label }}</span></td>
                         </tr>
                         <tr v-if="!visible.length">
-                            <td colspan="7" class="muted empty-row">No hay tomas físicas con ese estado.</td>
+                            <td colspan="4" class="muted empty-row">No hay tomas físicas con ese estado.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <DetailModal :open="!!selected" :title="selected ? `Toma ${selected.number}` : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="badgeClass[selected.status]">{{ selected.status_label }}</span>
+            </template>
+
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Fecha de corte</dt>
+                    <dd>{{ selected.cutoff_date }}</dd>
+                </div>
+                <div>
+                    <dt>Almacén</dt>
+                    <dd>{{ selected.warehouse }}</dd>
+                </div>
+                <div>
+                    <dt>Familia</dt>
+                    <dd>{{ selected.item_group ?? 'Todas' }}</dd>
+                </div>
+                <div>
+                    <dt>Líneas</dt>
+                    <dd>{{ selected.lines_count }}</dd>
+                </div>
+                <div>
+                    <dt>Modo</dt>
+                    <dd>{{ selected.blind ? 'A ciegas' : 'Con existencia' }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selected" :href="route('stock-counts.show', selected.id)" class="btn btn-primary"><EyeIcon /> Ver toma</Link>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-.card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; }
-.filter { font-size: 0.82rem; padding: 0.3rem 0.5rem; }
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
-.link:hover { text-decoration: underline; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

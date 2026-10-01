@@ -49,6 +49,11 @@ function isOffNorm(line) {
 
     <AppLayout title="Normas de reparto">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.cost-allocation-rule.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.cost-allocation-rule.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="cost-allocation-rule" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Desde</span>
@@ -60,12 +65,6 @@ function isOffNorm(line) {
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.cost-allocation-rule.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.cost-allocation-rule.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="cost-allocation-rule" :parameters="saveParameters" />
-            </div>
         </div>
 
         <p class="hint">

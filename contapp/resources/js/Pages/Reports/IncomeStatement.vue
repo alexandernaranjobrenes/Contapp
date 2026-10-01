@@ -54,6 +54,11 @@ const sections3 = [
 
     <AppLayout title="Estado de resultados">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.income-statement.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.income-statement.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="income-statement" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Desde</span>
@@ -69,12 +74,6 @@ const sections3 = [
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.income-statement.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.income-statement.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="income-statement" :parameters="saveParameters" />
-            </div>
         </div>
 
         <!-- Estado de dos columnas: cabe como tabla hasta en un teléfono

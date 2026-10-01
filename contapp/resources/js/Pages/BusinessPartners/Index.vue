@@ -2,9 +2,10 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import DetailModal from '../../Components/DetailModal.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
-import { PlusIcon } from '@lucide/vue';
+import { useRecordDetail } from '../../Utils/recordDetail';
+import { ListChecksIcon, PencilIcon, PlusIcon, ScrollTextIcon } from '@lucide/vue';
 
 const props = defineProps({
     partners: { type: Array, default: () => [] },
@@ -26,9 +27,15 @@ const filtered = computed(() => {
     );
 });
 
+// Ficha del socio (CLAUDE.md secc. 20): los datos de contacto y las
+// acciones —editar, partidas abiertas, movimientos y saldo—.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => props.partners);
+
 const ledger = ref({ open: false, ownerId: null, ownerLabel: '' });
 
-function openLedger(partner) {
+function openLedger() {
+    const partner = selected.value;
+    closeDetail();
     ledger.value = { open: true, ownerId: partner.id, ownerLabel: `${partner.code} — ${partner.name}` };
 }
 
@@ -41,64 +48,108 @@ function closeLedger() {
     <Head title="Socios de negocio" />
 
     <AppLayout title="Socios de negocio">
-        <template #actions>
-            <input v-model="search" type="search" placeholder="Buscar código, nombre, cédula o encargado..." class="search-input">
-            <Link :href="route('business-partners.create')" class="btn btn-primary"><PlusIcon /> Nuevo socio</Link>
-        </template>
-
-        <DocumentToolbar :new-href="route('business-partners.create')" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('bp-categories.index')" class="btn btn-ghost">Categorías</Link>
+                <Link :href="route('business-partners.create')" class="btn btn-primary"><PlusIcon /> Crear nuevo</Link>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código, nombre, cédula o encargado..." aria-label="Buscar socio de negocio">
+            </div>
+        </div>
 
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>Tipo</th>
-                        <th>Categoría</th>
-                        <th>Centro de costo</th>
-                        <th>Cédula</th>
-                        <th>Encargado</th>
-                        <th>Contacto</th>
-                        <th>Desde</th>
-                        <th>Estado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="partner in filtered" :key="partner.id" class="clickable-row" title="Ver movimientos y saldo" @click="openLedger(partner)">
-                        <td class="num code-cell">{{ partner.code }}</td>
-                        <td>{{ partner.name }}</td>
-                        <td>{{ typeLabels[partner.type] ?? partner.type }}</td>
-                        <td class="muted small">{{ partner.category ? `${partner.category.code} — ${partner.category.name}` : '—' }}</td>
-                        <td class="muted small">{{ partner.cost_center ? `${partner.cost_center.code} — ${partner.cost_center.name}` : '—' }}</td>
-                        <td>{{ partner.tax_id }}</td>
-                        <td>{{ partner.contact_name }}</td>
-                        <td class="muted small">
-                            <div v-if="partner.email">{{ partner.email }}</div>
-                            <div v-if="partner.phone">{{ partner.phone }}</div>
-                        </td>
-                        <td class="num">{{ partner.partner_since }}</td>
-                        <td>
-                            <span class="badge" :class="partner.status === 'active' ? 'badge-success' : 'badge-neutral'">
-                                {{ partner.status === 'active' ? 'Activo' : 'Inactivo' }}
-                            </span>
-                        </td>
-                        <td class="actions-cell" @click.stop>
-                            <Link :href="route('business-partners.edit', partner.id)" class="btn btn-ghost">Editar</Link>
-                            <Link :href="route('business-partners.open-items', partner.id)" class="btn btn-ghost">
-                                Partidas abiertas
-                            </Link>
-                        </td>
-                    </tr>
-                    <tr v-if="!filtered.length">
-                        <td colspan="11" class="muted empty-row">
-                            {{ partners.length ? 'Ningún socio coincide con la búsqueda.' : 'Todavía no hay socios de negocio registrados.' }}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>Tipo</th>
+                            <th>Cédula</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="partner in filtered"
+                            :key="partner.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(partner)"
+                            @keydown.enter="openDetail(partner)"
+                            @keydown.space.prevent="openDetail(partner)"
+                        >
+                            <td class="code-cell">{{ partner.code }}</td>
+                            <td data-label="Nombre">{{ partner.name }}</td>
+                            <td data-label="Tipo">{{ typeLabels[partner.type] ?? partner.type }}</td>
+                            <td data-label="Cédula">{{ partner.tax_id ?? '—' }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="partner.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                                    {{ partner.status === 'active' ? 'Activo' : 'Inactivo' }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr v-if="!filtered.length">
+                            <td colspan="5" class="muted empty-row">
+                                {{ partners.length ? 'Ningún socio coincide con la búsqueda.' : 'Todavía no hay socios de negocio registrados.' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <DetailModal :open="!!selected" :title="selected ? `${selected.code} — ${selected.name}` : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="selected.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                    {{ selected.status === 'active' ? 'Activo' : 'Inactivo' }}
+                </span>
+            </template>
+
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Tipo</dt>
+                    <dd>{{ typeLabels[selected.type] ?? selected.type }}</dd>
+                </div>
+                <div>
+                    <dt>Cédula</dt>
+                    <dd>{{ selected.tax_id ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Categoría</dt>
+                    <dd>{{ selected.category ? `${selected.category.code} — ${selected.category.name}` : '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Centro de costo</dt>
+                    <dd>{{ selected.cost_center ? `${selected.cost_center.code} — ${selected.cost_center.name}` : '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Encargado</dt>
+                    <dd>{{ selected.contact_name ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Correo</dt>
+                    <dd>{{ selected.email ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Teléfono</dt>
+                    <dd>{{ selected.phone ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Socio desde</dt>
+                    <dd>{{ selected.partner_since ?? '—' }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <template v-if="selected">
+                    <button type="button" class="btn btn-ghost" @click="openLedger"><ScrollTextIcon /> Movimientos y saldo</button>
+                    <Link :href="route('business-partners.open-items', selected.id)" class="btn btn-ghost"><ListChecksIcon /> Partidas abiertas</Link>
+                    <Link :href="route('business-partners.edit', selected.id)" class="btn btn-primary"><PencilIcon /> Editar</Link>
+                </template>
+            </template>
+        </DetailModal>
 
         <LedgerPanel
             :open="ledger.open"
@@ -111,23 +162,6 @@ function closeLedger() {
 </template>
 
 <style scoped>
-.search-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.82rem;
-    width: 260px;
-}
-
 table { font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); }
-.code-cell { text-align: left; font-variant-numeric: tabular-nums; }
-.num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.empty-row { text-align: center; padding: 1.5rem; }
-.actions-cell { display: flex; gap: 0.4rem; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: var(--color-primary-soft); }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

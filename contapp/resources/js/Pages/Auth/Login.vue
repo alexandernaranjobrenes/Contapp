@@ -1,12 +1,18 @@
 <script setup>
 import { useForm, Head, Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import AuthShell from '../../Components/AuthShell.vue';
+import {
+    ArrowRightIcon, Building2Icon, EyeIcon, EyeOffIcon, LandmarkIcon, LockIcon, LogInIcon, MailIcon, ScaleIcon,
+} from '@lucide/vue';
 
 const form = useForm({
     email: '',
     password: '',
     remember: false,
 });
+
+const showPassword = ref(false);
 
 function submit() {
     form.post(route('login'), {
@@ -15,113 +21,280 @@ function submit() {
 }
 
 const highlights = [
-    'Multiempresa: una sola cuenta, todas tus compañías',
-    'Catálogo de cuentas y tipos de documento configurables',
-    'Conciliaciones bancarias y diferencial cambiario',
+    { icon: Building2Icon, title: 'Multiempresa', text: 'Una sola cuenta para todas tus compañías, cada una con su tema.' },
+    { icon: ScaleIcon, title: 'Contabilidad al día', text: 'Catálogo de cuentas, tipos de documento y cierres de período.' },
+    { icon: LandmarkIcon, title: 'Bancos y cambiario', text: 'Conciliaciones bancarias y diferencial cambiario en colones y dólares.' },
 ];
 </script>
 
 <template>
     <Head title="Iniciar sesión" />
 
-    <AuthShell subtitle="Contabilidad multiempresa para Costa Rica">
+    <AuthShell
+        subtitle="Contabilidad multiempresa para Costa Rica"
+        lead="Registrá, conciliá y reportá la contabilidad de todas tus compañías desde un solo lugar."
+    >
         <template #panel-extra>
-            <ul class="highlight-list">
-                <li v-for="item in highlights" :key="item">{{ item }}</li>
+            <ul class="highlights">
+                <li v-for="item in highlights" :key="item.title">
+                    <span class="highlight-icon"><component :is="item.icon" :size="18" /></span>
+                    <span>
+                        <strong>{{ item.title }}</strong>
+                        <span class="highlight-text">{{ item.text }}</span>
+                    </span>
+                </li>
             </ul>
+
+            <!-- Adorno: una vista de la aplicación, en vidrio esmerilado. -->
+            <div class="glass-card" aria-hidden="true">
+                <div class="glass-head">
+                    <span>Balance de comprobación</span>
+                    <span class="glass-badge">Cuadra</span>
+                </div>
+                <div class="glass-row"><span class="glass-bar" style="width: 62%"></span><span class="glass-amount">₡ 70 411 960</span></div>
+                <div class="glass-row"><span class="glass-bar" style="width: 48%"></span><span class="glass-amount">₡ 70 411 960</span></div>
+                <div class="glass-row muted"><span class="glass-bar" style="width: 34%"></span><span class="glass-amount">₡ 0,00</span></div>
+            </div>
         </template>
 
-        <h2 class="form-title">Iniciar sesión</h2>
+        <header class="form-head">
+            <h2 class="form-title">Iniciar sesión</h2>
+            <p class="form-subtitle">Ingresá con tu correo y tu contraseña.</p>
+        </header>
 
-        <form @submit.prevent="submit">
+        <form novalidate @submit.prevent="submit">
+            <!-- Las credenciales incorrectas llegan como error del correo: se
+                 dicen arriba, en una línea, sin señalar cuál de los dos falló. -->
+            <p v-if="form.errors.email" class="flash flash-error login-error" role="alert">{{ form.errors.email }}</p>
+
             <div class="field">
                 <label for="email">Correo</label>
-                <input id="email" v-model="form.email" type="email" autofocus required>
-                <span v-if="form.errors.email" class="error">{{ form.errors.email }}</span>
+                <div class="input-with-icon" :class="{ invalid: form.errors.email }">
+                    <MailIcon class="input-icon" :size="17" />
+                    <input
+                        id="email"
+                        v-model="form.email"
+                        type="email"
+                        autocomplete="username"
+                        placeholder="nombre@empresa.com"
+                        autofocus
+                        required
+                        :aria-invalid="!!form.errors.email"
+                    >
+                </div>
             </div>
 
             <div class="field">
                 <label for="password">Contraseña</label>
-                <input id="password" v-model="form.password" type="password" required>
+                <div class="input-with-icon" :class="{ invalid: form.errors.password }">
+                    <LockIcon class="input-icon" :size="17" />
+                    <input
+                        id="password"
+                        v-model="form.password"
+                        :type="showPassword ? 'text' : 'password'"
+                        autocomplete="current-password"
+                        required
+                        :aria-invalid="!!form.errors.password"
+                    >
+                    <button
+                        type="button"
+                        class="reveal"
+                        :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        :title="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        @click="showPassword = !showPassword"
+                    >
+                        <EyeOffIcon v-if="showPassword" :size="17" />
+                        <EyeIcon v-else :size="17" />
+                    </button>
+                </div>
                 <span v-if="form.errors.password" class="error">{{ form.errors.password }}</span>
             </div>
 
-            <label class="remember">
+            <label class="check remember">
                 <input v-model="form.remember" type="checkbox">
-                Recordarme
+                Mantener la sesión iniciada
             </label>
 
             <button type="submit" class="btn btn-primary login-submit" :disabled="form.processing">
-                Ingresar
+                <LogInIcon /> Ingresar
             </button>
         </form>
 
-        <p class="activate-link">
-            ¿Tenés un código de licencia? <Link :href="route('license-activation.create')">Activarlo acá</Link>
-        </p>
+        <div class="activate">
+            <span>¿Tenés un código de licencia?</span>
+            <Link :href="route('license-activation.create')" class="activate-link">Activarlo acá <ArrowRightIcon :size="15" /></Link>
+        </div>
+
+        <template #below>
+            ¿Problemas para ingresar? Pedile al administrador de tu compañía que revise tu usuario.
+        </template>
     </AuthShell>
 </template>
 
 <style scoped>
-.form-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    margin: 0 0 1.25rem;
-}
+/* ── Panel de marca ───────────────────────────────────────────────────── */
 
-.highlight-list {
+.highlights {
     list-style: none;
     padding: 0;
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    font-size: 0.88rem;
-    opacity: .9;
+    gap: 1.1rem;
 }
 
-.highlight-list li {
-    padding-left: 1.3em;
-    position: relative;
+.highlights li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
 }
 
-/* El check de Lucide como máscara (ver --lucide-check en app.scss). */
-.highlight-list li::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0.3em;
-    width: 0.95em;
-    height: 0.95em;
-    background-color: currentColor;
-    -webkit-mask: var(--lucide-check) center / contain no-repeat;
-    mask: var(--lucide-check) center / contain no-repeat;
-    opacity: .8;
+.highlight-icon {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+    color: var(--color-accent);
+}
+
+.highlights strong {
+    display: block;
+    font-weight: 700;
+}
+
+.highlight-text {
+    color: rgba(244, 246, 250, 0.68);
+}
+
+.glass-card {
+    margin-top: 2.25rem;
+    max-width: 22rem;
+    padding: 1rem 1.1rem;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 40px -18px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.glass-badge {
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    color: var(--color-accent);
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.glass-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-bar {
+    height: 0.4rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.glass-amount {
+    font-size: 0.76rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.glass-row.muted .glass-amount {
+    color: rgba(244, 246, 250, 0.55);
+}
+
+/* La tarjeta de vidrio solo donde hay aire: en pantallas bajas o angostas
+   empujaría el contenido. */
+@media (max-width: 1100px), (max-height: 760px) {
+    .glass-card { display: none; }
+}
+
+/* ── Formulario ───────────────────────────────────────────────────────── */
+
+.form-head {
+    margin-bottom: 1.5rem;
+}
+
+.form-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+.form-subtitle {
+    margin: 0.35rem 0 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+.login-error {
+    margin: 0 0 1rem;
+}
+
+.field {
+    margin-bottom: 1.1rem;
 }
 
 .remember {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.82rem;
+    margin: 0.25rem 0 1.4rem;
     color: var(--color-text-muted);
-    margin-bottom: 1.2rem;
 }
 
 .login-submit {
     width: 100%;
+    min-height: 2.9rem;
     justify-content: center;
+    font-size: 0.95rem;
+}
+
+.activate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem 0.4rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
 }
 
 .activate-link {
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
-    margin-top: 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--color-primary);
+    font-weight: 700;
+    text-decoration: none;
 }
 
-.activate-link a {
-    color: var(--color-primary);
-    font-weight: 600;
+.activate-link:hover {
+    text-decoration: underline;
 }
 </style>

@@ -67,6 +67,11 @@ const incomeSections3 = [
 
     <AppLayout title="Comparativo entre periodos">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.period-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.period-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="period-comparison" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <fieldset class="period-filter">
                     <legend>Periodo 1</legend>
@@ -92,12 +97,6 @@ const incomeSections3 = [
                 </fieldset>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.period-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.period-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="period-comparison" :parameters="saveParameters" />
-            </div>
         </div>
 
         <p class="hint">

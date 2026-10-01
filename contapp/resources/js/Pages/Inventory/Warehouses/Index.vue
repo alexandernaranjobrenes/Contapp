@@ -90,11 +90,11 @@ function destroy() {
 
     <AppLayout title="Almacenes">
         <div class="view-toolbar">
-            <div class="view-filters">
-                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar almacén">
-            </div>
             <div class="view-actions">
                 <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar almacén">
             </div>
         </div>
 

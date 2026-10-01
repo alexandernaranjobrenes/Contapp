@@ -83,8 +83,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
                 <!-- Igual en todas las pantallas (CLAUDE.md secc. 24): lo propio de
                      cada una va en su .view-toolbar, arriba de la tabla. -->
                 <div class="topbar-actions">
-                    <span v-if="page.props.propietario" class="topbar-user">{{ page.props.propietario.name }}</span>
-
                     <Link
                         v-if="page.props.propietario"
                         :href="route('backoffice.logout')"
@@ -125,8 +123,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
 }
 
 .sidebar {
-    background: var(--color-primary);
-    color: var(--color-on-primary);
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
     display: flex;
     flex-direction: column;
     padding: 0.75rem 0.6rem;
@@ -175,8 +173,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
     font-weight: 600;
 }
 
-.sidebar-link:hover { background: rgba(255, 255, 255, 0.08); color: var(--color-on-primary); }
-.sidebar-link.active { background: rgba(255, 255, 255, 0.16); color: var(--color-on-primary); }
+.sidebar-link:hover { background: rgba(255, 255, 255, 0.08); color: var(--color-on-sidebar); }
+.sidebar-link.active { background: rgba(255, 255, 255, 0.16); color: var(--color-on-sidebar); }
 .sidebar-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; flex-shrink: 0; }
 
 .backoffice-main {
@@ -233,7 +231,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
     margin-left: auto;
 }
 
-.topbar-user { font-size: 0.82rem; color: var(--color-text-muted); }
 
 .content { padding: 1.25rem; flex: 1; overflow-y: auto; overflow-x: auto; }
 
@@ -333,7 +330,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
 
 @media (max-width: 640px) {
     .topbar { padding: 0.5rem 0.75rem; }
-    .topbar-user { display: none; }
     .content { padding: 0.75rem; }
     .flash { margin: 0.75rem 0.75rem 0; }
 }

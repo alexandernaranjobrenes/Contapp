@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { Link, usePage, router } from '@inertiajs/vue3';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { startCompanySwitch } from '../Utils/companySwitch';
 import {
     BookOpenIcon, ChevronRightIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, MoonIcon,
     PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon, TagsIcon,
@@ -9,7 +10,8 @@ import {
 
 /**
  * La barra superior es la MISMA en todas las pantallas (CLAUDE.md secc. 24):
- * título, compañía, tema y sesión. Lo único que cambia es el título. Por
+ * título, compañía, tema, rol y «Salir». Lo único que cambia es el título.
+ * El nombre del usuario no va: ocupaba lugar y no decide nada. Por
  * eso este layout no tiene un slot para acciones: los botones, filtros y
  * buscadores de cada pantalla van en su .view-toolbar, arriba de la tabla.
  */
@@ -21,7 +23,10 @@ const page = usePage();
 
 // Agrupado por área en vez de una lista plana de ~18 ítems (era la queja:
 // el menú quedaba muy cargado) — mismas rutas y funciones de siempre, solo
-// organizadas bajo secciones colapsables. "module" puede ir en la sección
+// organizadas bajo secciones colapsables. Dentro de cada sección, cada hijo
+// lleva su categoría ("group") y el submenú la muestra como subtítulo
+// (CLAUDE.md secc. 29): primero el trabajo diario, después los reportes y al
+// final los catálogos y la configuración. "module" puede ir en la sección
 // (todos sus hijos comparten permiso, ej. Contabilidad) o en un hijo
 // puntual (ej. Reporte de IVA dentro de Impuestos, que no comparte permiso
 // con Indicadores de impuesto, un catálogo global sin gate propio — ver
@@ -41,33 +46,30 @@ const nav = computed(() => {
                 'reports.trial-balance.*', 'reports.income-statement.*', 'reports.balance-sheet.*', 'reports.period-comparison.*',
                 'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*'],
             children: [
-                { label: 'Tipos de documento', href: route('document-types.index'), match: ['document-types.*'] },
-                { label: 'Catálogo de cuentas', href: route('chart-of-accounts.index'), match: ['chart-of-accounts.*'] },
-                { label: 'Saldos iniciales', href: route('opening-balance.create'), match: ['opening-balance.*'] },
-                { label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
-                { label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
-                { label: 'Cierre de períodos', href: route('period-close.index'), match: ['period-close.*'] },
+                { group: 'Operación', label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
+                { group: 'Operación', label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
+                { group: 'Operación', label: 'Saldos iniciales', href: route('opening-balance.create'), match: ['opening-balance.*'] },
+                { group: 'Operación', label: 'Cierre de períodos', href: route('period-close.index'), match: ['period-close.*'] },
 
-                // Los reportes de contabilidad, adentro del módulo al que
-                // pertenecen. Van al final y no al principio porque lo diario
-                // son los registros; los estados se consultan al cerrar.
-                //
-                // Cada uno conserva su propio `module: 'reports'`: el permiso
-                // de reportería es distinto del de contabilidad, y el
+                // Cada reporte conserva su propio `module: 'reports'`: el
+                // permiso de reportería es distinto del de contabilidad, y el
                 // middleware del backend sigue exigiendo el de reportes.
-                { label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'], module: 'reports' },
-                { label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'], module: 'reports' },
-                { label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'], module: 'reports' },
-                { label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'], module: 'reports' },
-                { label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'], module: 'reports' },
-                { label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'], module: 'reports' },
+                // Guarda combinaciones de parámetros de VARIOS reportes, no
+                // solo de los contables; queda acá porque la mayoría lo son.
+                { group: 'Reportes', label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'], module: 'reports' },
                 // Exporta cuentas, centros de costo, normas de reparto,
                 // indicadores de IVA y socios: casi todo catálogo contable, y
                 // no tiene un módulo propio donde vivir.
-                { label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'], module: 'reports' },
-                // Guarda combinaciones de parámetros de VARIOS reportes, no
-                // solo de los contables; queda acá porque la mayoría lo son.
-                { label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'], module: 'reports' },
+
+                { group: 'Catálogos', label: 'Catálogo de cuentas', href: route('chart-of-accounts.index'), match: ['chart-of-accounts.*'] },
+                { group: 'Catálogos', label: 'Tipos de documento', href: route('document-types.index'), match: ['document-types.*'] },
             ],
         },
         {
@@ -75,14 +77,13 @@ const nav = computed(() => {
             match: ['cost-centers.*', 'cost-allocation-rules.*', 'exchange-rates.*', 'fx-revaluation.*',
                 'reports.cost-center.*', 'reports.cost-allocation-rule.*'],
             children: [
-                { label: 'Centros de costo', href: route('cost-centers.index'), match: ['cost-centers.*'] },
-                { label: 'Normas de reparto', href: route('cost-allocation-rules.index'), match: ['cost-allocation-rules.*'] },
-                // Los dos reportes de este módulo, junto a lo que reportan.
-                { label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'], module: 'reports' },
-                { label: 'Reporte de normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'], module: 'reports' },
-                { label: 'Tipos de cambio', href: route('exchange-rates.index'), match: ['exchange-rates.*'] },
-                { label: 'Diferencial: ejecutar', href: route('fx-revaluation.create'), match: ['fx-revaluation.create', 'fx-revaluation.preview', 'fx-revaluation.store'] },
-                { label: 'Diferencial: historial', href: route('fx-revaluation.index'), match: ['fx-revaluation.index', 'fx-revaluation.show'] },
+                { group: 'Operación', label: 'Tipos de cambio', href: route('exchange-rates.index'), match: ['exchange-rates.*'] },
+                { group: 'Operación', label: 'Diferencial: ejecutar', href: route('fx-revaluation.create'), match: ['fx-revaluation.create', 'fx-revaluation.preview', 'fx-revaluation.store'] },
+                { group: 'Operación', label: 'Diferencial: historial', href: route('fx-revaluation.index'), match: ['fx-revaluation.index', 'fx-revaluation.show'] },
+                { group: 'Reportes', label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Reporte de normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'], module: 'reports' },
+                { group: 'Catálogos', label: 'Centros de costo', href: route('cost-centers.index'), match: ['cost-centers.*'] },
+                { group: 'Catálogos', label: 'Normas de reparto', href: route('cost-allocation-rules.index'), match: ['cost-allocation-rules.*'] },
             ],
         },
         {
@@ -90,87 +91,86 @@ const nav = computed(() => {
             match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*',
                 'reports.inventory-valuation.*', 'reports.inventory-aging.*'],
             children: [
-                { label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
-                // Estos dos son de inventario y estaban en el menú general de
-                // reportes. El índice de «Reportes de inventario» ya los
-                // enlazaba: ahora también están donde se los busca.
-                { label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'], module: 'reports' },
-                { label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'], module: 'reports' },
-                { label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
-                { label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
-                { label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
-                { label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
-                { label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
-                { label: 'Sugerencia de compra', href: route('reorder.index'), match: ['reorder.*'] },
-                { label: 'Tomas físicas', href: route('stock-counts.index'), match: ['stock-counts.*'] },
-                { label: 'Deterioro (NIC 2)', href: route('inventory-write-downs.index'), match: ['inventory-write-downs.*'] },
-                { label: 'Lotes por vencer', href: route('lot-expiry.index'), match: ['lot-expiry.*'] },
-                { label: 'Facturas de proveedor', href: route('supplier-invoices.index'), match: ['supplier-invoices.*'] },
-                { label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
-                { label: 'Rubros de nacionalización', href: route('import-costs.index'), match: ['import-costs.*'] },
-                { label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
-                { label: 'Listas de materiales', href: route('bills-of-materials.index'), match: ['bills-of-materials.*'] },
-                { label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
-                { label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
-                { label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
-                { label: 'Determinación de cuentas', href: route('gl-determinations.index'), match: ['gl-determinations.*'] },
+                // Veintiún pantallas: la operación se parte por área para que
+                // cada grupo se lea de un vistazo.
+                { group: 'Existencias', label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
+                { group: 'Existencias', label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
+                { group: 'Existencias', label: 'Tomas físicas', href: route('stock-counts.index'), match: ['stock-counts.*'] },
+                { group: 'Existencias', label: 'Deterioro (NIC 2)', href: route('inventory-write-downs.index'), match: ['inventory-write-downs.*'] },
+                { group: 'Compras', label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
+                { group: 'Compras', label: 'Sugerencia de compra', href: route('reorder.index'), match: ['reorder.*'] },
+                { group: 'Compras', label: 'Facturas de proveedor', href: route('supplier-invoices.index'), match: ['supplier-invoices.*'] },
+                { group: 'Compras', label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
+                { group: 'Compras', label: 'Rubros de nacionalización', href: route('import-costs.index'), match: ['import-costs.*'] },
+                { group: 'Producción', label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
+                { group: 'Producción', label: 'Listas de materiales', href: route('bills-of-materials.index'), match: ['bills-of-materials.*'] },
+                { group: 'Reportes', label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
+                { group: 'Reportes', label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Lotes por vencer', href: route('lot-expiry.index'), match: ['lot-expiry.*'] },
+                { group: 'Catálogos', label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
+                { group: 'Catálogos', label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
+                { group: 'Catálogos', label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
+                { group: 'Catálogos', label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
+                { group: 'Catálogos', label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
+                { group: 'Configuración', label: 'Determinación de cuentas', href: route('gl-determinations.index'), match: ['gl-determinations.*'] },
             ],
         },
         {
             label: 'Facturación', icon: ReceiptIcon, module: 'billing',
             match: ['sales-documents.*', 'sales-orders.*', 'billing-settings.*', 'price-overrides.*'],
             children: [
-                { label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
-                { label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
-                { label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
-                { label: 'Cambios de precio autorizados', href: route('price-overrides.index'), match: ['price-overrides.*'] },
-                { label: 'Configuración', href: route('billing-settings.index'), match: ['billing-settings.*'] },
+                { group: 'Operación', label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
+                { group: 'Operación', label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
+                { group: 'Operación', label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
+                { group: 'Reportes', label: 'Cambios de precio autorizados', href: route('price-overrides.index'), match: ['price-overrides.*'] },
+                { group: 'Configuración', label: 'Parámetros de facturación', href: route('billing-settings.index'), match: ['billing-settings.*'] },
             ],
         },
         {
             label: 'Planillas', icon: UsersIcon, module: 'payroll',
             match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'recurring-inputs.*', 'personnel-actions.*', 'vacations.*', 'labor-settlements.*', 'payroll-reports.*', 'job-structure.*', 'payroll-settings.*'],
             children: [
-                { label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
-                { label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
-                { label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
-                { label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
-                { label: 'Liquidaciones laborales', href: route('labor-settlements.index'), match: ['labor-settlements.*'] },
-                { label: 'Reportes', href: route('payroll-reports.index'), match: ['payroll-reports.*'] },
-                { label: 'Departamentos y puestos', href: route('job-structure.index'), match: ['job-structure.*', 'departments.*', 'job-positions.*'] },
-                { label: 'Rubros fijos', href: route('recurring-inputs.index'), match: ['recurring-inputs.*'] },
-                { label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
-                { label: 'Configuración', href: route('payroll-settings.index'), match: ['payroll-settings.*'] },
+                { group: 'Personal', label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
+                { group: 'Personal', label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
+                { group: 'Personal', label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
+                { group: 'Personal', label: 'Liquidaciones laborales', href: route('labor-settlements.index'), match: ['labor-settlements.*'] },
+                { group: 'Planilla', label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
+                { group: 'Planilla', label: 'Rubros fijos', href: route('recurring-inputs.index'), match: ['recurring-inputs.*'] },
+                { group: 'Planilla', label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
+                { group: 'Reportes', label: 'Reportes de planilla', href: route('payroll-reports.index'), match: ['payroll-reports.*'] },
+                { group: 'Configuración', label: 'Departamentos y puestos', href: route('job-structure.index'), match: ['job-structure.*', 'departments.*', 'job-positions.*'] },
+                { group: 'Configuración', label: 'Parámetros de planilla', href: route('payroll-settings.index'), match: ['payroll-settings.*'] },
             ],
         },
         {
             label: 'Socios de negocio', icon: HandshakeIcon, module: 'business_partners',
             match: ['business-partners.*', 'bp-categories.*', 'reports.aging.*'],
             children: [
-                { label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
-                { label: 'Categorías de socios', href: route('bp-categories.index'), match: ['bp-categories.*'] },
+                { group: 'Operación', label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
                 // La antigüedad de saldos es de clientes y proveedores: su
                 // módulo es este, no contabilidad.
-                { label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'], module: 'reports' },
+                { group: 'Catálogos', label: 'Categorías de socios', href: route('bp-categories.index'), match: ['bp-categories.*'] },
             ],
         },
         {
             label: 'Bancos', icon: LandmarkIcon, module: 'banking',
             match: ['bank-accounts.*', 'bank-reconciliations.*', 'bank-reconciliation-report.*', 'reports.cash-flow-projection.*'],
             children: [
-                { label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
-                { label: 'Conciliaciones bancarias', href: route('bank-reconciliations.hub'), match: ['bank-reconciliations.*'] },
-                { label: 'Reporte de conciliaciones', href: route('bank-reconciliation-report.index'), match: ['bank-reconciliation-report.*'] },
+                { group: 'Operación', label: 'Conciliaciones bancarias', href: route('bank-reconciliations.hub'), match: ['bank-reconciliations.*'] },
+                { group: 'Reportes', label: 'Reporte de conciliaciones', href: route('bank-reconciliation-report.index'), match: ['bank-reconciliation-report.*'] },
                 // Qué se espera cobrar y pagar: es tesorería, no contabilidad.
-                { label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'], module: 'reports' },
+                { group: 'Reportes', label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'], module: 'reports' },
+                { group: 'Catálogos', label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
             ],
         },
         {
             label: 'Impuestos', icon: PercentIcon,
             match: ['tax-rates.*', 'tax-report.*'],
             children: [
-                { label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
-                { label: 'Reporte de IVA', href: route('tax-report.index'), match: ['tax-report.*'], module: 'tax' },
+                { group: 'Reportes', label: 'Reporte de IVA', href: route('tax-report.index'), match: ['tax-report.*'], module: 'tax' },
+                { group: 'Catálogos', label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
             ],
         },
         // Ya no hay un grupo «Reportes» de nivel superior: cada reporte vive
@@ -196,6 +196,9 @@ const nav = computed(() => {
     const adminChildren = [];
     if (page.props.auth?.user?.can_manage_users) {
         adminChildren.push({ label: 'Usuarios', href: route('users.index'), match: ['users.*'] });
+    }
+    if (page.props.auth?.user?.can_manage_company) {
+        adminChildren.push({ label: 'Apariencia', href: route('appearance.edit'), match: ['appearance.*'] });
     }
     if (page.props.auth?.user?.is_super_admin) {
         adminChildren.push({ label: 'Agregar compañía', href: route('companies.create'), match: ['companies.*'] });
@@ -254,6 +257,151 @@ function closeNavOnEscape(event) {
 
 watch(() => page.url, () => {
     navOpen.value = false;
+    closeFlyout();
+});
+
+// ── Menú flotante del modo colapsado (CLAUDE.md secc. 29) ─────────────────
+//
+// Colapsada, la barra muestra solo íconos. Al pasar el mouse por uno —o al
+// llegar a él con el teclado— se abre a su lado una ventana con el nombre de
+// la sección y sus pantallas, agrupadas por las mismas categorías del menú
+// abierto, para navegar sin tener que expandir la barra.
+//
+// Va teletransportado a <body> y con position: fixed: dentro de la barra, que
+// se desplaza (overflow-y), quedaría recortado.
+const flyout = ref(null); // { item, anchor, anchorTop, top, left }
+const flyoutEl = ref(null);
+let flyoutTimer = null;
+let switchTimer = null;
+// Al volver con Escape, el foco regresa al ícono: ese foco no reabre la ventana.
+let skipFocusOpen = false;
+
+function showFlyout(item, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const sidebarRight = anchor.closest('.sidebar')?.getBoundingClientRect().right ?? rect.right;
+
+    flyout.value = { item, anchor, anchorTop: rect.top, top: rect.top, left: sidebarRight + 6 };
+    nextTick(positionFlyout);
+}
+
+// Con el teclado se abre en el acto.
+function openFlyout(item, event) {
+    if (! compact.value) return;
+
+    if (skipFocusOpen) {
+        skipFocusOpen = false;
+        return;
+    }
+
+    clearTimeout(flyoutTimer);
+    clearTimeout(switchTimer);
+    showFlyout(item, event.currentTarget);
+}
+
+// Con el mouse, cambiar de sección espera un momento: camino a un enlace de
+// más abajo en la ventana, el cursor cruza en diagonal los íconos vecinos, y
+// sin esa espera cada uno reemplazaría la ventana que se estaba buscando.
+// Quedarse sobre el ícono sí cambia la sección; seguir de largo, no.
+function hoverSection(item, event) {
+    if (! compact.value) return;
+
+    clearTimeout(flyoutTimer);
+    clearTimeout(switchTimer);
+
+    const anchor = event.currentTarget;
+
+    if (! flyout.value || flyout.value.item.label === item.label) {
+        showFlyout(item, anchor);
+        return;
+    }
+
+    switchTimer = setTimeout(() => showFlyout(item, anchor), 200);
+}
+
+function leaveSection() {
+    clearTimeout(switchTimer);
+    scheduleCloseFlyout();
+}
+
+// Alineado con el ícono, pero sin salirse por abajo: Inventario tiene más de
+// veinte pantallas y en una pantalla baja no cabría desde el ícono hacia abajo.
+function positionFlyout() {
+    if (! flyout.value || ! flyoutEl.value) return;
+
+    const height = flyoutEl.value.offsetHeight;
+    const bottomLimit = window.innerHeight - 8;
+
+    flyout.value.top = Math.max(8, Math.min(flyout.value.anchorTop, bottomLimit - height));
+}
+
+// Se cierra con una pausa corta: es el tiempo de llevar el mouse del ícono a
+// la ventana sin que desaparezca en el camino.
+function scheduleCloseFlyout() {
+    clearTimeout(flyoutTimer);
+    flyoutTimer = setTimeout(closeFlyout, 250);
+}
+
+// Llegar a la ventana la sostiene, y cancela el cambio a la sección de un
+// ícono que se cruzó en el camino.
+function keepFlyout() {
+    clearTimeout(flyoutTimer);
+    clearTimeout(switchTimer);
+}
+
+function closeFlyout() {
+    clearTimeout(flyoutTimer);
+    clearTimeout(switchTimer);
+    flyout.value = null;
+}
+
+function flyoutLinks() {
+    return [...(flyoutEl.value?.querySelectorAll('a') ?? [])];
+}
+
+// Teclado desde el ícono: flecha derecha (o abajo) entra a la ventana; Escape
+// la cierra.
+function onSectionKeydown(event) {
+    if (! flyout.value) return;
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        flyoutLinks()[0]?.focus();
+    } else if (event.key === 'Escape') {
+        closeFlyout();
+    }
+}
+
+// Dentro de la ventana: flechas para recorrerla; Escape o flecha izquierda
+// vuelven al ícono.
+function onFlyoutKeydown(event) {
+    const links = flyoutLinks();
+    const index = links.indexOf(document.activeElement);
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        links[(index + 1) % links.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        links[(index - 1 + links.length) % links.length]?.focus();
+    } else if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const anchor = flyout.value?.anchor;
+        closeFlyout();
+        skipFocusOpen = true;
+        anchor?.focus();
+    }
+}
+
+// Si el foco sale de la ventana a otro lado que no sea su ícono, se cierra.
+function onFlyoutFocusOut(event) {
+    const next = event.relatedTarget;
+    if (next && (flyoutEl.value?.contains(next) || next === flyout.value?.anchor)) return;
+    scheduleCloseFlyout();
+}
+
+// Al expandir la barra ya no hace falta.
+watch(compact, (value) => {
+    if (! value) closeFlyout();
 });
 
 onMounted(() => {
@@ -300,8 +448,47 @@ const licenseStatus = computed(() => {
     return LICENSE_STATUS_LABELS[status] ?? { label: status, cls: 'badge' };
 });
 
+// El cambio va con su ventana de transición (CLAUDE.md secc. 30): tapa la
+// pantalla con el nombre de la compañía nueva hasta que el cambio queda hecho.
+function companyName(company) {
+    return company ? (company.trade_name || company.legal_name) : null;
+}
+
 function switchCompany(event) {
-    router.put(route('company-switch'), { company_id: event.target.value });
+    const select = event.target;
+    const to = companies.value.find((c) => String(c.id) === String(select.value));
+    const from = companies.value.find((c) => String(c.id) === String(currentCompanyId.value));
+
+    if (! to || String(to.id) === String(currentCompanyId.value)) return;
+
+    startCompanySwitch({
+        // La ventana ya se pinta con el tema de la compañía a la que se va.
+        to: { id: to.id, name: companyName(to), theme: to.theme || 'marino' },
+        from: from ? { id: from.id, name: companyName(from) } : null,
+        // Si se queda en la anterior, el selector vuelve a mostrarla: con
+        // :value de solo ida, Vue no lo corregiría solo.
+        revert: () => { select.value = String(currentCompanyId.value); },
+    });
+}
+
+// Los hijos de una sección, juntos por categoría y en el orden en que se
+// definieron. Con una sola categoría (Administración) no hay subtítulos.
+function childGroups(item) {
+    const groups = [];
+
+    for (const child of item.children) {
+        const label = child.group ?? null;
+        let group = groups.find((g) => g.label === label);
+
+        if (! group) {
+            group = { label, children: [] };
+            groups.push(group);
+        }
+
+        group.children.push(child);
+    }
+
+    return groups;
 }
 
 function isCurrent(patterns) {
@@ -325,7 +512,7 @@ function toggleGroup(item) {
 
 <template>
     <div class="app-shell" :class="{ 'is-collapsed': compact, 'nav-open': navOpen }">
-        <aside id="app-nav" class="sidebar">
+        <aside id="app-nav" class="sidebar" @scroll.passive="closeFlyout">
             <div class="sidebar-brand">
                 <span class="brand-mark">C</span>
                 <span v-if="!compact" class="brand-name">CONTAPP</span>
@@ -340,9 +527,15 @@ function toggleGroup(item) {
                         v-if="!item.children || compact"
                         :href="item.children ? item.children[0].href : item.href"
                         class="sidebar-link"
-                        :class="{ active: isCurrent(item.match) }"
-                        :title="compact ? item.label : null"
+                        :class="{ active: isCurrent(item.match), 'flyout-open': flyout?.item.label === item.label }"
                         :aria-label="compact ? item.label : null"
+                        :aria-haspopup="compact && item.children ? 'true' : null"
+                        :aria-expanded="compact && item.children ? flyout?.item.label === item.label : null"
+                        @mouseenter="hoverSection(item, $event)"
+                        @mouseleave="leaveSection"
+                        @focus="openFlyout(item, $event)"
+                        @blur="scheduleCloseFlyout"
+                        @keydown="onSectionKeydown"
                     >
                         <span class="sidebar-icon"><component :is="item.icon" :size="18" /></span>
                         <span v-if="!compact" class="sidebar-label">{{ item.label }}</span>
@@ -363,16 +556,19 @@ function toggleGroup(item) {
 
                         <div class="sidebar-subnav-wrap" :class="{ open: isGroupExpanded(item) }">
                             <div class="sidebar-subnav">
-                                <Link
-                                    v-for="child in item.children"
-                                    :key="child.label"
-                                    :href="child.href"
-                                    class="sidebar-sublink"
-                                    :class="{ active: isCurrent(child.match) }"
-                                >
-                                    <span class="sublink-node"></span>
-                                    <span class="sidebar-label">{{ child.label }}</span>
-                                </Link>
+                                <template v-for="group in childGroups(item)" :key="group.label ?? 'todo'">
+                                    <span v-if="group.label && childGroups(item).length > 1" class="sidebar-subgroup">{{ group.label }}</span>
+                                    <Link
+                                        v-for="child in group.children"
+                                        :key="child.label"
+                                        :href="child.href"
+                                        class="sidebar-sublink"
+                                        :class="{ active: isCurrent(child.match) }"
+                                    >
+                                        <span class="sublink-node"></span>
+                                        <span class="sidebar-label">{{ child.label }}</span>
+                                    </Link>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -429,7 +625,6 @@ function toggleGroup(item) {
                     </button>
 
                     <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
-                    <span v-if="user" class="topbar-user">{{ user.name }}</span>
 
                     <Link
                         v-if="user"
@@ -437,10 +632,10 @@ function toggleGroup(item) {
                         method="delete"
                         as="button"
                         class="btn btn-ghost logout-btn"
-                        title="Salir del sistema"
+                        title="Salir"
                     >
                         <LogOutIcon />
-                        <span class="logout-label">Salir del sistema</span>
+                        <span class="logout-label">Salir</span>
                     </Link>
                 </div>
             </header>
@@ -459,6 +654,45 @@ function toggleGroup(item) {
             <main class="content">
                 <slot />
             </main>
+
+            <!-- El menú flotante de la barra colapsada: fuera de la barra para
+                 que su desplazamiento no lo recorte. -->
+            <Teleport to="body">
+                <nav
+                    v-if="flyout"
+                    ref="flyoutEl"
+                    class="sidebar-flyout"
+                    :style="{ top: `${flyout.top}px`, left: `${flyout.left}px` }"
+                    :aria-label="flyout.item.label"
+                    @mouseenter="keepFlyout"
+                    @mouseleave="scheduleCloseFlyout"
+                    @focusin="keepFlyout"
+                    @focusout="onFlyoutFocusOut"
+                    @keydown="onFlyoutKeydown"
+                >
+                    <Link
+                        v-if="!flyout.item.children"
+                        :href="flyout.item.href"
+                        class="flyout-title flyout-title-link"
+                        :class="{ active: isCurrent(flyout.item.match) }"
+                    >{{ flyout.item.label }}</Link>
+
+                    <template v-else>
+                        <span class="flyout-title">{{ flyout.item.label }}</span>
+                        <template v-for="group in childGroups(flyout.item)" :key="group.label ?? 'todo'">
+                            <span v-if="group.label && childGroups(flyout.item).length > 1" class="flyout-group">{{ group.label }}</span>
+                            <Link
+                                v-for="child in group.children"
+                                :key="child.label"
+                                :href="child.href"
+                                class="flyout-link"
+                                :class="{ active: isCurrent(child.match) }"
+                                :aria-current="isCurrent(child.match) ? 'page' : null"
+                            >{{ child.label }}</Link>
+                        </template>
+                    </template>
+                </nav>
+            </Teleport>
 
             <footer v-if="page.props.license" class="app-footer">
                 <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
@@ -496,8 +730,8 @@ function toggleGroup(item) {
 }
 
 .sidebar {
-    background: var(--color-primary);
-    color: var(--color-on-primary);
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
     display: flex;
     flex-direction: column;
     padding: 0.75rem 0.6rem;
@@ -551,12 +785,12 @@ function toggleGroup(item) {
 
 .sidebar-link:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: var(--color-on-primary);
+    color: var(--color-on-sidebar);
 }
 
 .sidebar-link.active {
     background: rgba(255, 255, 255, 0.16);
-    color: var(--color-on-primary);
+    color: var(--color-on-sidebar);
 }
 
 .sidebar-icon {
@@ -626,17 +860,17 @@ function toggleGroup(item) {
 }
 
 .sidebar-group-toggle.is-open {
-    background: rgba(224, 137, 74, 0.10);
-    box-shadow: inset 3px 0 0 0 #e0894a;
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    box-shadow: inset 3px 0 0 0 var(--color-accent);
 }
 
 .sidebar-group-toggle.is-open .sidebar-icon-chip {
-    background: rgba(224, 137, 74, 0.28);
-    color: #f2a05c;
+    background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    color: var(--color-accent);
 }
 
 .sidebar-group-toggle.is-open .sidebar-label {
-    color: #f2a05c;
+    color: var(--color-accent);
 }
 
 .sidebar-chevron {
@@ -648,7 +882,7 @@ function toggleGroup(item) {
 
 .sidebar-chevron.open {
     transform: rotate(90deg);
-    color: #f2a05c;
+    color: var(--color-accent);
 }
 
 /* Truco de acordeón sin JS: animar grid-template-rows de 0fr a 1fr colapsa
@@ -708,7 +942,27 @@ function toggleGroup(item) {
 }
 
 .sidebar-sublink:hover {
-    color: var(--color-on-primary);
+    color: var(--color-on-sidebar);
+}
+
+/* El subtítulo de una categoría del submenú (Operación, Reportes,
+   Catálogos…): chico y en versalitas, para que ordene la lista sin competir
+   con los enlaces. Tapa la línea conectora con el color del menú, así se lee
+   como un corte entre grupos. */
+.sidebar-subgroup {
+    position: relative;
+    margin: 0.55rem 0 0.1rem -1.5rem;
+    padding: 0.15rem 0.6rem 0.15rem 1.5rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(244, 246, 250, 0.42);
+    background: var(--color-sidebar);
+}
+
+.sidebar-subgroup:first-child {
+    margin-top: 0.1rem;
 }
 
 .sublink-node {
@@ -722,13 +976,101 @@ function toggleGroup(item) {
 }
 
 .sidebar-sublink.active {
-    color: #f2a05c;
+    color: var(--color-accent);
     font-weight: 700;
 }
 
 .sidebar-sublink.active .sublink-node {
-    background: #f2a05c;
-    box-shadow: 0 0 0 3px rgba(242, 160, 92, 0.25);
+    background: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+/* ── Menú flotante de la barra colapsada ────────────────────────────── */
+
+/* El ícono cuya ventana está abierta se ve igual que al pasar el mouse,
+   para que se note de dónde sale la ventana. */
+.sidebar-link.flyout-open {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--color-on-sidebar);
+}
+
+.sidebar-flyout {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    min-width: 14rem;
+    max-width: 20rem;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    padding: 0.45rem;
+    border-radius: var(--radius-md, 10px);
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* Si no cabe en la altura de la ventana, se desplaza: sus enlaces no se
+   aplastan. */
+.sidebar-flyout > * {
+    flex-shrink: 0;
+}
+
+.flyout-title {
+    padding: 0.4rem 0.6rem 0.45rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--color-on-sidebar);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    margin-bottom: 0.2rem;
+}
+
+.flyout-title-link {
+    border-bottom: 0;
+    margin-bottom: 0;
+    border-radius: var(--radius-sm);
+}
+
+.flyout-title-link:hover,
+.flyout-title-link:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.flyout-group {
+    padding: 0.55rem 0.6rem 0.15rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(244, 246, 250, 0.42);
+}
+
+.flyout-link {
+    padding: 0.38rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: rgba(244, 246, 250, 0.75);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flyout-link:hover,
+.flyout-link:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--color-on-sidebar);
+    outline: none;
+}
+
+.flyout-link.active,
+.flyout-title-link.active {
+    color: var(--color-accent);
+    font-weight: 700;
 }
 
 .sidebar-collapse-btn {
@@ -784,18 +1126,15 @@ function toggleGroup(item) {
     white-space: nowrap;
 }
 
-/* Si no cabe todo, cede primero el nombre del usuario (se recorta), no el
-   título de la pantalla: el título conserva un mínimo legible. */
+/* Las acciones nunca se encogen: si el contenedor se achicara, sus botones
+   se saldrían de la pantalla (así se perdía «Salir» con un título largo).
+   Cuando no cabe todo, cede el título, que se corta con puntos suspensivos
+   hasta un mínimo legible. */
 .topbar-actions {
     display: flex;
     align-items: center;
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
     gap: 0.5rem;
-}
-
-.topbar-actions > :not(.topbar-user) {
-    flex-shrink: 0;
 }
 
 /* El aspecto es el de todos los campos (app.scss); acá solo el ancho: un
@@ -808,15 +1147,6 @@ function toggleGroup(item) {
 .topbar-icon-btn {
     width: 2.25rem;
     padding: 0;
-}
-
-.topbar-user {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-    white-space: nowrap;
 }
 
 @media (min-width: 641px) {
@@ -874,7 +1204,10 @@ function toggleGroup(item) {
 
 .badge-role {
     background: var(--color-primary-soft, rgba(0, 0, 0, 0.06));
-    color: var(--color-primary);
+    /* El primario mezclado con el texto: oscuro en el modo claro y claro en
+       el oscuro, legible en todos los temas (el primario solo, en oscuro, es
+       un tono medio sobre un fondo casi del mismo tono). */
+    color: color-mix(in srgb, var(--color-primary) 55%, var(--color-text));
     font-weight: 700;
     white-space: nowrap;
 }
@@ -971,12 +1304,6 @@ function toggleGroup(item) {
     }
 }
 
-@media (max-width: 768px) {
-    .topbar-user {
-        display: none;
-    }
-}
-
 /*
     En un teléfono la barra conserva los mismos elementos, más compactos: la
     compañía se angosta, y Salir queda con su ícono (el texto sigue ahí para
@@ -1000,6 +1327,12 @@ function toggleGroup(item) {
     .flash { margin: 0.75rem 0.75rem 0; }
     .app-footer { padding: 0.5rem 0.75rem; }
     .app-footer-meta { margin-left: 0; }
+}
+
+/* En los teléfonos más angostos (320px) la compañía se angosta un poco más
+   para que al título le quede algo legible. */
+@media (max-width: 400px) {
+    .company-select { max-width: 6.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

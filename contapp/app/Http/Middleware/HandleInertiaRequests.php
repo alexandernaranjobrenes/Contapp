@@ -6,6 +6,7 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\Module;
 use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Core\Support\CompanyTheme;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -54,7 +55,8 @@ class HandleInertiaRequests extends Middleware
         // (enmascarada) + vigencia, visible para cualquier usuario de
         // compañía — quedó señalado como pendiente desde la entrega del
         // modo de gracia (2026-08-27) hasta esta.
-        $license = $currentCompanyId ? Company::find($currentCompanyId)?->license?->loadMissing('category') : null;
+        $company = $currentCompanyId ? Company::find($currentCompanyId) : null;
+        $license = $company?->license?->loadMissing('category');
 
         // Resuelto UNA sola vez y reutilizado abajo (is_super_admin,
         // can_manage_users, role_type): este método corre en TODA request
@@ -62,6 +64,7 @@ class HandleInertiaRequests extends Middleware
         // acá importa para el rendimiento general de la app, no solo el de
         // esta pantalla.
         $isSuperAdmin = $user ? $user->isSuperAdmin($currentCompanyId) : false;
+        $roleType = ($user && $currentCompanyId && ! $isSuperAdmin) ? $user->roleTypeFor($currentCompanyId) : null;
 
         return [
             ...parent::share($request),
@@ -81,8 +84,11 @@ class HandleInertiaRequests extends Middleware
                     // Rol real (no solo 2 booleanos) para mostrar en el
                     // frontend, ver AppLayout.vue.
                     'role_type' => $currentCompanyId
-                        ? ($isSuperAdmin ? 'super_admin' : ($user->roleTypeFor($currentCompanyId) ?? 'user'))
+                        ? ($isSuperAdmin ? 'super_admin' : ($roleType ?? 'user'))
                         : null,
+                    // Administración → Apariencia (CLAUDE.md secc. 31): mismo
+                    // criterio que el middleware can-manage-company.
+                    'can_manage_company' => $currentCompanyId !== null && ($isSuperAdmin || $roleType === 'admin'),
                 ] : null,
             ],
             'propietario' => $propietario ? [
@@ -91,9 +97,12 @@ class HandleInertiaRequests extends Middleware
                 'email' => $propietario->email,
             ] : null,
             'companies' => $user
-                ? $user->companies()->wherePivot('status', 'active')->get(['companies.id', 'companies.legal_name', 'companies.trade_name'])
+                ? $user->companies()->wherePivot('status', 'active')->get(['companies.id', 'companies.legal_name', 'companies.trade_name', 'companies.theme'])
                 : [],
             'currentCompanyId' => $request->session()->get('current_company_id'),
+            // El tema visual de la compañía activa (CLAUDE.md secc. 31). Lo
+            // aplican app.blade.php en la primera carga y app.js al navegar.
+            'companyTheme' => $company ? CompanyTheme::resolve($company->theme)->value : CompanyTheme::default()->value,
             'licenseGrace' => app(CurrentCompany::class)->isInGracePeriod(),
             // Para que AppLayout.vue pueda ocultar ítems de nav sin permiso
             // en el módulo correspondiente, en vez de mostrar 18 ítems

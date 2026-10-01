@@ -32,15 +32,16 @@ function submit() {
     <Head title="Editar permisos" />
 
     <AppLayout title="Editar permisos">
-        <template #actions>
-            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Volver</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Usuarios</Link>
+        </div>
 
         <p class="user-line">Permisos de <strong>{{ targetUser.name }}</strong> ({{ targetUser.email }})</p>
 
         <div class="card form-card">
             <form @submit.prevent="submit">
                 <p class="hint">Solo podés otorgar hasta el nivel de acceso que vos mismo tenés en cada módulo.</p>
+                <div class="table-responsive capture-grid">
                 <table class="permissions-table">
                     <thead>
                         <tr><th>Módulo</th><th>Nivel de acceso</th></tr>
@@ -48,17 +49,20 @@ function submit() {
                     <tbody>
                         <tr v-for="module in modules" :key="module.id">
                             <td>{{ module.name }}</td>
-                            <td>
-                                <select v-model="form.permissions[module.id]">
+                            <td data-label="Nivel de acceso">
+                                <select v-model="form.permissions[module.id]" :aria-label="`Nivel de acceso a ${module.name}`">
                                     <option v-for="level in selectableLevels(module)" :key="level" :value="level">{{ LEVEL_LABELS[level] }}</option>
                                 </select>
                             </td>
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <p v-if="form.errors.permissions" class="error">{{ form.errors.permissions }}</p>
 
-                <button type="submit" class="btn btn-primary" :disabled="form.processing">Guardar</button>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Guardar</button>
+                </div>
             </form>
         </div>
     </AppLayout>
@@ -66,16 +70,8 @@ function submit() {
 
 <style scoped>
 .user-line { color: var(--color-text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
-.form-card { padding: 1.25rem 1.5rem; max-width: 640px; }
-.hint { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.6rem; }
-.permissions-table { width: 100%; font-size: 0.85rem; margin-bottom: 0.75rem; }
-.permissions-table th, .permissions-table td { text-align: left; padding: 0.4rem 0.2rem; border-top: 1px solid var(--color-border); }
-select {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.88rem;
-}
+.form-card { padding: 1.25rem 1.5rem; }
+.permissions-table { font-size: 0.85rem; margin-bottom: 0.75rem; }
+.permissions-table select { width: 100%; max-width: 20rem; }
 .error { color: var(--color-danger); font-size: 0.78rem; margin: 0.2rem 0 0; }
 </style>

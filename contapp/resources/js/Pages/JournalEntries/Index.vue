@@ -114,6 +114,24 @@ function onFileSelected(e) {
 
     <AppLayout title="Asientos">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('journal-entries.list-export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('journal-entries.list-export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <a
+                    :href="route('journal-entries.template')"
+                    class="btn btn-ghost"
+                    title="Plantilla de Excel para cargar un asiento completo (encabezado y líneas)"
+                ><DownloadIcon /> Descargar plantilla</a>
+                <label
+                    class="btn btn-ghost file-btn"
+                    :class="{ disabled: importForm.processing }"
+                    title="Subir la plantilla completa: el asiento queda como preliminar, para revisarlo antes de contabilizar"
+                >
+                    <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
+                    <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
+                </label>
+                <Link :href="route('journal-entries.create')" class="btn btn-primary"><PlusIcon /> Crear nuevo</Link>
+            </div>
             <form class="view-filters" @submit.prevent="applyFilters">
                 <label class="filter-field">
                     <span>N.º de documento</span>
@@ -137,25 +155,6 @@ function onFileSelected(e) {
                 <button type="submit" class="btn btn-primary">Buscar</button>
                 <button v-if="hasActiveFilters" type="button" class="btn btn-ghost" @click="clearFilters">Limpiar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('journal-entries.list-export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('journal-entries.list-export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <a
-                    :href="route('journal-entries.template')"
-                    class="btn btn-ghost"
-                    title="Plantilla de Excel para cargar un asiento completo (encabezado y líneas)"
-                ><DownloadIcon /> Descargar plantilla</a>
-                <label
-                    class="btn btn-ghost file-btn"
-                    :class="{ disabled: importForm.processing }"
-                    title="Subir la plantilla completa: el asiento queda como preliminar, para revisarlo antes de contabilizar"
-                >
-                    <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
-                    <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
-                </label>
-                <Link :href="route('journal-entries.create')" class="btn btn-primary"><PlusIcon /> Crear nuevo</Link>
-            </div>
         </div>
 
         <p v-if="importForm.errors.file" class="flash flash-error">{{ importForm.errors.file }}</p>

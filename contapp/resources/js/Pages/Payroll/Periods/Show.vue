@@ -2,8 +2,14 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useRecordDetail } from '../../../Utils/recordDetail';
 import { formatMoney } from '../../../Utils/money';
-import { ArrowLeftIcon, CircleAlertIcon, CircleXIcon, MailIcon } from '@lucide/vue';
+import {
+    ArrowLeftIcon, BookOpenIcon, CalculatorIcon, CheckIcon, CircleAlertIcon, CircleXIcon, DownloadIcon,
+    FileTextIcon, MailIcon, PlusIcon, RotateCcwIcon, UploadIcon,
+} from '@lucide/vue';
 
 const props = defineProps({
     period: { type: Object, required: true },
@@ -32,6 +38,17 @@ const selectedConcept = computed(
 
 const byHours = computed(() => selectedConcept.value?.calculation === 'hours');
 
+// Un movimiento se agrega en un modal que abre «Agregar movimiento», arriba
+// de su tabla (CLAUDE.md secc. 21). Después de guardar, el modal queda
+// abierto con el mismo trabajador y concepto: casi siempre se digitan varios
+// seguidos del mismo tipo.
+const addingInput = ref(false);
+
+function openAddInput() {
+    inputForm.clearErrors();
+    addingInput.value = true;
+}
+
 function submitInput() {
     inputForm.transform((data) => ({
         ...data,
@@ -44,8 +61,21 @@ function submitInput() {
     });
 }
 
-function removeInput(input) {
-    router.delete(route('payroll-periods.inputs.destroy', [props.period.id, input.id]), { preserveScroll: true });
+// Fichas (CLAUDE.md secc. 20): la del movimiento, con «Quitar», y la de la
+// boleta, con el desglose y el enlace al comprobante.
+const { selected: selectedInput, openDetail: openInput, closeDetail: closeInput } = useRecordDetail(() => props.inputs);
+const { selected: selectedEntry, openDetail: openEntry, closeDetail: closeEntry } = useRecordDetail(() => props.entries);
+
+function removeInput() {
+    const input = selectedInput.value;
+
+    confirmAction({
+        title: 'Quitar movimiento',
+        message: `El movimiento ${input.concept_code} de ${input.employee_code} se quita del período.`,
+        confirmLabel: 'Quitar',
+        danger: true,
+        onConfirm: () => router.delete(route('payroll-periods.inputs.destroy', [props.period.id, input.id]), { preserveScroll: true }),
+    });
 }
 
 const calculating = ref(false);
@@ -59,9 +89,12 @@ function calculate() {
 }
 
 function approve() {
-    if (! confirm('¿Aprobar esta planilla? Después de aprobarla se puede contabilizar y generar el archivo de pago.')) return;
-
-    router.post(route('payroll-periods.approve', props.period.id), {}, { preserveScroll: true });
+    confirmAction({
+        title: 'Aprobar planilla',
+        message: 'Después de aprobarla se puede contabilizar y generar el archivo de pago.',
+        confirmLabel: 'Aprobar',
+        onConfirm: () => router.post(route('payroll-periods.approve', props.period.id), {}, { preserveScroll: true }),
+    });
 }
 
 const posting = ref(false);
@@ -94,12 +127,15 @@ function emailPayslips() {
     const withoutEmail = props.entries.filter((e) => ! e.employee_email).length;
 
     const warning = withoutEmail
-        ? `\n\n${withoutEmail} trabajador(es) no tienen correo en la ficha y no lo van a recibir.`
+        ? ` ${withoutEmail} trabajador(es) no tienen correo en la ficha y no lo van a recibir.`
         : '';
 
-    if (! confirm(`¿Enviar el comprobante a los trabajadores de ${props.period.name}?${warning}`)) return;
-
-    emailForm.post(route('payroll-periods.email-payslips', props.period.id), { preserveScroll: true });
+    confirmAction({
+        title: 'Enviar comprobantes',
+        message: `El comprobante de pago se envía por correo a cada trabajador de ${props.period.name}.${warning}`,
+        confirmLabel: 'Enviar',
+        onConfirm: () => emailForm.post(route('payroll-periods.email-payslips', props.period.id), { preserveScroll: true }),
+    });
 }
 
 function openUndo(kind) {
@@ -190,19 +226,28 @@ const statusClass = {
     <Head :title="`Planilla ${period.name}`" />
 
     <AppLayout :title="`Planilla ${period.name}`">
-        <template #actions>
+        <div class="view-toolbar">
             <Link :href="route('payroll-periods.index')" class="btn btn-ghost"><ArrowLeftIcon /> Períodos</Link>
-            <a v-if="entries.length" :href="route('payroll-periods.export', period.id)" class="btn btn-ghost">⤓ Exportar XLSX</a>
-            <a v-if="canPay" :href="route('payroll-periods.bank-file', period.id)" class="btn btn-ghost">⤓ Archivo de pago</a>
-            <button
-                v-if="entries.length"
-                type="button" class="btn btn-ghost"
-                :disabled="emailForm.processing"
-                @click="emailPayslips"
-            >
-                <MailIcon /> Enviar comprobantes
-            </button>
-        </template>
+            <div class="view-actions">
+                <a v-if="entries.length" :href="route('payroll-periods.export', period.id)" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a v-if="canPay" :href="route('payroll-periods.bank-file', period.id)" class="btn btn-ghost"><DownloadIcon /> Archivo de pago</a>
+                <button
+                    v-if="entries.length"
+                    type="button" class="btn btn-ghost"
+                    :disabled="emailForm.processing"
+                    @click="emailPayslips"
+                >
+                    <MailIcon /> Enviar comprobantes
+                </button>
+                <button v-if="period.can_void" type="button" class="btn btn-ghost btn-danger-text" @click="openUndo('void')">Anular</button>
+                <button v-if="period.can_reopen" type="button" class="btn btn-ghost" @click="openUndo('reopen')"><RotateCcwIcon /> Reabrir</button>
+                <button v-if="canApprove" type="button" class="btn btn-ghost" @click="approve"><CheckIcon /> Aprobar</button>
+                <button v-if="canPost" type="button" class="btn btn-ghost" @click="posting = true"><BookOpenIcon /> Contabilizar</button>
+                <button v-if="period.is_recalculable" type="button" class="btn btn-primary" :disabled="!canCalculate || calculating" @click="calculate">
+                    <CalculatorIcon /> {{ calculating ? 'Calculando…' : (entries.length ? 'Recalcular' : 'Calcular planilla') }}
+                </button>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.payroll" class="flash flash-error">{{ page.props.errors.payroll }}</div>
 
@@ -222,16 +267,6 @@ const statusClass = {
                     :href="route('journal-entries.show', period.reversal_journal_entry_id)" class="small"
                 >Reversión #{{ period.reversal_journal_entry_id }}</Link>
             </div>
-
-            <div class="header-actions">
-                <button type="button" class="btn btn-primary" :disabled="!canCalculate || calculating" @click="calculate">
-                    {{ calculating ? 'Calculando…' : (entries.length ? 'Recalcular' : 'Calcular planilla') }}
-                </button>
-                <button type="button" class="btn btn-ghost" :disabled="!canApprove" @click="approve">Aprobar</button>
-                <button type="button" class="btn btn-ghost" :disabled="!canPost" @click="posting = true">Contabilizar</button>
-                <button v-if="period.can_reopen" type="button" class="btn btn-ghost" @click="openUndo('reopen')">Reabrir</button>
-                <button v-if="period.can_void" type="button" class="btn btn-ghost danger" @click="openUndo('void')">Anular</button>
-            </div>
         </div>
 
         <section v-if="readiness && findings.length" class="card readiness">
@@ -243,7 +278,7 @@ const statusClass = {
                 </h3>
                 <button
                     v-if="findings.length > 6"
-                    type="button" class="btn btn-ghost btn-sm"
+                    type="button" class="btn btn-ghost"
                     @click="showAllFindings = !showAllFindings"
                 >{{ showAllFindings ? 'Ver menos' : `Ver los ${findings.length}` }}</button>
             </div>
@@ -262,7 +297,7 @@ const statusClass = {
                         <strong>{{ f.title }}</strong>
                         <span class="muted small">{{ f.detail }}</span>
                     </span>
-                    <a :href="findingHref(f)" class="btn btn-ghost btn-sm">Corregir</a>
+                    <a :href="findingHref(f)" class="btn btn-ghost">Corregir</a>
                 </li>
             </ul>
         </section>
@@ -273,8 +308,8 @@ const statusClass = {
 
         <section v-if="period.is_recalculable" class="card input-card">
             <div class="card-header">
-                <h3>Movimientos del período</h3>
-                <span class="muted small">{{ inputs.length }} registrado(s)</span>
+                <h3>Movimientos del período <span class="muted small">{{ inputs.length }} registrado(s)</span></h3>
+                <button type="button" class="btn btn-primary" @click="openAddInput"><PlusIcon /> Agregar movimiento</button>
             </div>
 
             <p class="hint small">
@@ -296,10 +331,10 @@ const statusClass = {
 
                 <div class="bulk-actions">
                     <a :href="route('payroll-periods.inputs-template', period.id)" class="btn btn-ghost">
-                        ⤓ Descargar plantilla
+                        <DownloadIcon /> Descargar plantilla
                     </a>
-                    <label class="btn btn-primary file-btn" :class="{ disabled: importForm.processing }">
-                        {{ importForm.processing ? 'Cargando…' : '⤒ Subir archivo' }}
+                    <label class="btn btn-ghost file-btn" :class="{ disabled: importForm.processing }">
+                        <UploadIcon /> {{ importForm.processing ? 'Cargando…' : 'Subir archivo' }}
                         <input ref="importInput" type="file" accept=".xlsx" class="file-input"
                             :disabled="importForm.processing" @change="pickImport">
                     </label>
@@ -316,68 +351,30 @@ const statusClass = {
                 </p>
             </div>
 
-            <form class="input-form" @submit.prevent="submitInput">
-                <div class="field">
-                    <label>Trabajador</label>
-                    <select v-model="inputForm.employee_id" required>
-                        <option value="">Elegí</option>
-                        <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.code }} — {{ e.name }}</option>
-                    </select>
-                </div>
-
-                <div class="field">
-                    <label>Concepto</label>
-                    <select v-model="inputForm.payroll_concept_id" required>
-                        <option value="">Elegí</option>
-                        <option v-for="c in concepts" :key="c.id" :value="c.id">
-                            {{ c.code }} — {{ c.name }}{{ c.type === 'deduction' ? ' (rebajo)' : '' }}
-                        </option>
-                    </select>
-                </div>
-
-                <div v-if="byHours" class="field">
-                    <label>Horas</label>
-                    <input v-model="inputForm.quantity" type="number" step="0.01" min="0" required>
-                    <span class="hint small">Se paga al factor {{ selectedConcept?.factor }} sobre la hora ordinaria.</span>
-                    <span v-if="inputForm.errors.quantity" class="error">{{ inputForm.errors.quantity }}</span>
-                </div>
-
-                <div v-else class="field">
-                    <label>Monto</label>
-                    <input v-model="inputForm.amount" type="number" step="0.01" required>
-                    <span v-if="inputForm.errors.amount" class="error">{{ inputForm.errors.amount }}</span>
-                </div>
-
-                <div class="field grow">
-                    <label>Referencia</label>
-                    <input v-model="inputForm.notes" type="text" maxlength="255" placeholder="De dónde salió el dato">
-                </div>
-
-                <button type="submit" class="btn btn-primary" :disabled="inputForm.processing">Agregar</button>
-            </form>
-
-            <div v-if="inputs.length" class="table-scroll compact">
+            <div v-if="inputs.length" class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Trabajador</th>
                             <th>Concepto</th>
-                            <th class="right">Cantidad</th>
-                            <th class="right">Monto</th>
-                            <th>Referencia</th>
-                            <th></th>
+                            <th class="num">Cantidad</th>
+                            <th class="num">Monto</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="i in inputs" :key="i.id">
+                        <tr
+                            v-for="i in inputs"
+                            :key="i.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openInput(i)"
+                            @keydown.enter="openInput(i)"
+                            @keydown.space.prevent="openInput(i)"
+                        >
                             <td class="small">{{ i.employee_code }}</td>
-                            <td class="small">{{ i.concept_code }} — {{ i.concept_name }}</td>
-                            <td class="right num small">{{ i.quantity ?? '—' }}</td>
-                            <td class="right num small">{{ i.amount === null ? '—' : formatMoney(i.amount) }}</td>
-                            <td class="muted small">{{ i.notes ?? '—' }}</td>
-                            <td class="row-actions">
-                                <button type="button" class="btn btn-ghost btn-sm" @click="removeInput(i)">Quitar</button>
-                            </td>
+                            <td data-label="Concepto" class="small">{{ i.concept_code }} — {{ i.concept_name }}</td>
+                            <td data-label="Cantidad" class="num small">{{ i.quantity ?? '—' }}</td>
+                            <td data-label="Monto" class="num small">{{ i.amount === null ? '—' : formatMoney(i.amount) }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -420,43 +417,35 @@ const statusClass = {
                 <span class="muted small">{{ entries.length }} trabajador(es)</span>
             </div>
 
-            <div class="table-scroll freeze-2">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th>Código</th>
                             <th>Trabajador</th>
-                            <th>C. costo</th>
-                            <th class="right">Días</th>
-                            <th class="right">Bruto</th>
-                            <th class="right">Base CCSS</th>
-                            <th class="right">Cargas obreras</th>
-                            <th class="right">Impuesto</th>
-                            <th class="right">Otros rebajos</th>
-                            <th class="right">Neto</th>
-                            <th class="right">Costo empresa</th>
-                            <th></th>
+                            <th class="num">Días</th>
+                            <th class="num">Bruto</th>
+                            <th class="num">Neto</th>
+                            <th class="num">Costo empresa</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="e in entries" :key="e.id">
-                            <td class="num">{{ e.employee_code }}</td>
-                            <td>{{ e.employee_name }}</td>
-                            <td class="muted small">{{ e.cost_center ?? '—' }}</td>
-                            <td class="right num">{{ e.days_worked }}</td>
-                            <td class="right num">{{ formatMoney(e.total_earnings) }}</td>
-                            <td class="right num muted">{{ formatMoney(e.ccss_base) }}</td>
-                            <td class="right num">{{ formatMoney(e.total_employee_contributions) }}</td>
-                            <td class="right num">{{ formatMoney(e.income_tax) }}</td>
-                            <td class="right num">{{ formatMoney(e.total_other_deductions) }}</td>
-                            <td class="right num strong">{{ formatMoney(e.net_pay) }}</td>
-                            <td class="right num muted">{{ formatMoney(e.employer_cost) }}</td>
-                            <td class="row-actions">
-                                <Link :href="route('payslips.show', e.id)" class="btn btn-ghost btn-sm">Comprobante</Link>
-                            </td>
+                        <tr
+                            v-for="e in entries"
+                            :key="e.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openEntry(e)"
+                            @keydown.enter="openEntry(e)"
+                            @keydown.space.prevent="openEntry(e)"
+                        >
+                            <td><span class="code">{{ e.employee_code }}</span> — {{ e.employee_name }}</td>
+                            <td data-label="Días" class="num">{{ e.days_worked }}</td>
+                            <td data-label="Bruto" class="num">{{ formatMoney(e.total_earnings) }}</td>
+                            <td data-label="Neto" class="num strong">{{ formatMoney(e.net_pay) }}</td>
+                            <td data-label="Costo empresa" class="num muted">{{ formatMoney(e.employer_cost) }}</td>
                         </tr>
                         <tr v-if="!entries.length">
-                            <td colspan="12" class="muted empty-row">
+                            <td colspan="5" class="muted empty-row">
                                 Todavía no se ha calculado. Registrá los movimientos del período y presioná
                                 «Calcular planilla».
                             </td>
@@ -464,15 +453,10 @@ const statusClass = {
                     </tbody>
                     <tfoot v-if="entries.length">
                         <tr>
-                            <td colspan="4">TOTALES</td>
-                            <td class="right num">{{ formatMoney(totals.total_earnings) }}</td>
-                            <td class="right num">{{ formatMoney(totals.ccss_base) }}</td>
-                            <td class="right num">{{ formatMoney(totals.total_employee_contributions) }}</td>
-                            <td class="right num">{{ formatMoney(totals.income_tax) }}</td>
-                            <td class="right num">{{ formatMoney(totals.total_other_deductions) }}</td>
-                            <td class="right num strong">{{ formatMoney(totals.net_pay) }}</td>
-                            <td class="right num">{{ formatMoney(totals.employer_cost) }}</td>
-                            <td></td>
+                            <td colspan="2">TOTALES</td>
+                            <td data-label="Bruto" class="num">{{ formatMoney(totals.total_earnings) }}</td>
+                            <td data-label="Neto" class="num strong">{{ formatMoney(totals.net_pay) }}</td>
+                            <td data-label="Costo empresa" class="num">{{ formatMoney(totals.employer_cost) }}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -485,28 +469,27 @@ const statusClass = {
                 <span class="muted small">{{ events.length }} movimiento(s)</span>
             </div>
 
-            <div class="table-scroll compact">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Cuándo</th>
                             <th>Qué pasó</th>
-                            <th>De</th>
-                            <th>A</th>
+                            <th>Estado</th>
                             <th>Quién</th>
-                            <th>Motivo</th>
                             <th>Asiento</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="e in events" :key="e.id">
                             <td class="num small">{{ e.at }}</td>
-                            <td class="small"><strong>{{ e.event_label }}</strong></td>
-                            <td class="muted small">{{ e.from_status ?? '—' }}</td>
-                            <td class="small">{{ e.to_status }}</td>
-                            <td class="muted small">{{ e.user ?? '—' }}</td>
-                            <td class="small">{{ e.reason ?? '—' }}</td>
-                            <td class="num small">
+                            <td data-label="Qué pasó" class="small">
+                                <strong>{{ e.event_label }}</strong>
+                                <span v-if="e.reason" class="block muted">{{ e.reason }}</span>
+                            </td>
+                            <td data-label="Estado" class="small">{{ e.from_status ?? '—' }} → {{ e.to_status }}</td>
+                            <td data-label="Quién" class="muted small">{{ e.user ?? '—' }}</td>
+                            <td data-label="Asiento" class="num small">
                                 <Link v-if="e.journal_entry_id" :href="route('journal-entries.show', e.journal_entry_id)">
                                     #{{ e.journal_entry_id }}
                                 </Link>
@@ -518,10 +501,132 @@ const statusClass = {
             </div>
         </section>
 
-        <div v-if="undoing" class="modal-backdrop" @click.self="undoing = null">
-            <form class="modal card" @submit.prevent="submitUndo">
-                <h2>{{ undoing === 'void' ? 'Anular la planilla' : 'Reabrir la planilla' }}</h2>
+        <!-- Ficha de un movimiento -->
+        <DetailModal :open="!!selectedInput" :title="selectedInput ? `${selectedInput.concept_code} — ${selectedInput.employee_code}` : ''" @close="closeInput">
+            <dl v-if="selectedInput" class="detail-list">
+                <div>
+                    <dt>Concepto</dt>
+                    <dd>{{ selectedInput.concept_code }} — {{ selectedInput.concept_name }}</dd>
+                </div>
+                <div>
+                    <dt>Cantidad</dt>
+                    <dd>{{ selectedInput.quantity ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Monto</dt>
+                    <dd>{{ selectedInput.amount === null ? '—' : formatMoney(selectedInput.amount) }}</dd>
+                </div>
+                <div>
+                    <dt>Referencia</dt>
+                    <dd>{{ selectedInput.notes ?? '—' }}</dd>
+                </div>
+            </dl>
 
+            <template #actions>
+                <button v-if="selectedInput && period.is_recalculable" type="button" class="btn btn-ghost btn-danger-text" @click="removeInput">Quitar</button>
+            </template>
+        </DetailModal>
+
+        <!-- Ficha de una boleta -->
+        <DetailModal :open="!!selectedEntry" :title="selectedEntry ? `${selectedEntry.employee_code} — ${selectedEntry.employee_name}` : ''" @close="closeEntry">
+            <dl v-if="selectedEntry" class="detail-list">
+                <div>
+                    <dt>Centro de costo</dt>
+                    <dd>{{ selectedEntry.cost_center ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Días</dt>
+                    <dd>{{ selectedEntry.days_worked }}</dd>
+                </div>
+                <div>
+                    <dt>Bruto</dt>
+                    <dd>{{ formatMoney(selectedEntry.total_earnings) }}</dd>
+                </div>
+                <div>
+                    <dt>Base CCSS</dt>
+                    <dd>{{ formatMoney(selectedEntry.ccss_base) }}</dd>
+                </div>
+                <div>
+                    <dt>Cargas obreras</dt>
+                    <dd>{{ formatMoney(selectedEntry.total_employee_contributions) }}</dd>
+                </div>
+                <div>
+                    <dt>Impuesto</dt>
+                    <dd>{{ formatMoney(selectedEntry.income_tax) }}</dd>
+                </div>
+                <div>
+                    <dt>Otros rebajos</dt>
+                    <dd>{{ formatMoney(selectedEntry.total_other_deductions) }}</dd>
+                </div>
+                <div>
+                    <dt>Neto</dt>
+                    <dd><strong>{{ formatMoney(selectedEntry.net_pay) }}</strong></dd>
+                </div>
+                <div>
+                    <dt>Costo empresa</dt>
+                    <dd>{{ formatMoney(selectedEntry.employer_cost) }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selectedEntry" :href="route('payslips.show', selectedEntry.id)" class="btn btn-primary"><FileTextIcon /> Comprobante</Link>
+            </template>
+        </DetailModal>
+
+        <!-- Agregar un movimiento -->
+        <DetailModal :open="addingInput" title="Agregar movimiento del período" @close="addingInput = false">
+            <form id="period-input-form" @submit.prevent="submitInput">
+                <div class="field">
+                    <label for="input-employee">Trabajador</label>
+                    <select id="input-employee" v-model="inputForm.employee_id" required>
+                        <option value="">Elegí</option>
+                        <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.code }} — {{ e.name }}</option>
+                    </select>
+                    <span v-if="inputForm.errors.employee_id" class="error">{{ inputForm.errors.employee_id }}</span>
+                </div>
+
+                <div class="field">
+                    <label for="input-concept">Concepto</label>
+                    <select id="input-concept" v-model="inputForm.payroll_concept_id" required>
+                        <option value="">Elegí</option>
+                        <option v-for="c in concepts" :key="c.id" :value="c.id">
+                            {{ c.code }} — {{ c.name }}{{ c.type === 'deduction' ? ' (rebajo)' : '' }}
+                        </option>
+                    </select>
+                    <span v-if="inputForm.errors.payroll_concept_id" class="error">{{ inputForm.errors.payroll_concept_id }}</span>
+                </div>
+
+                <div class="field-row">
+                    <div v-if="byHours" class="field">
+                        <label for="input-quantity">Horas</label>
+                        <input id="input-quantity" v-model="inputForm.quantity" type="number" step="0.01" min="0" required>
+                        <span class="muted small">Se paga al factor {{ selectedConcept?.factor }} sobre la hora ordinaria.</span>
+                        <span v-if="inputForm.errors.quantity" class="error">{{ inputForm.errors.quantity }}</span>
+                    </div>
+
+                    <div v-else class="field">
+                        <label for="input-amount">Monto</label>
+                        <input id="input-amount" v-model="inputForm.amount" type="number" step="0.01" required>
+                        <span v-if="inputForm.errors.amount" class="error">{{ inputForm.errors.amount }}</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="input-notes">Referencia</label>
+                        <input id="input-notes" v-model="inputForm.notes" type="text" maxlength="255" placeholder="De dónde salió el dato">
+                    </div>
+                </div>
+
+                <p v-if="inputForm.recentlySuccessful" class="flash flash-success">Movimiento agregado. Podés seguir con el siguiente.</p>
+            </form>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="addingInput = false">Cerrar</button>
+                <button type="submit" form="period-input-form" class="btn btn-primary" :disabled="inputForm.processing">Agregar</button>
+            </template>
+        </DetailModal>
+
+        <DetailModal :open="!!undoing" :title="undoing === 'void' ? 'Anular la planilla' : 'Reabrir la planilla'" @close="undoing = null">
+            <form id="period-undo-form" @submit.prevent="submitUndo">
                 <template v-if="undoing === 'void'">
                     <p class="hint small">
                         Esta planilla ya está contabilizada. Anularla <strong>no la borra</strong>: se contabiliza
@@ -542,35 +647,34 @@ const statusClass = {
                 </p>
 
                 <div class="field">
-                    <label>Motivo</label>
-                    <textarea v-model="undoForm.reason" rows="3" required
+                    <label for="undo-reason">Motivo</label>
+                    <textarea id="undo-reason" v-model="undoForm.reason" rows="3" required
                         placeholder="Por qué hay que deshacer esta planilla"></textarea>
-                    <span class="hint small">Queda en la bitácora del período.</span>
+                    <span class="muted small">Queda en la bitácora del período.</span>
                     <span v-if="undoForm.errors.reason" class="error">{{ undoForm.errors.reason }}</span>
                 </div>
 
                 <div v-if="undoing === 'void'" class="field">
-                    <label>Fecha del asiento de reversión</label>
-                    <input v-model="undoForm.posting_date" type="date">
-                    <span class="hint small">
+                    <label for="undo-date">Fecha del asiento de reversión</label>
+                    <input id="undo-date" v-model="undoForm.posting_date" type="date">
+                    <span class="muted small">
                         Vacío usa la fecha del asiento original, que es lo que deja los saldos como si la
                         planilla nunca se hubiera contabilizado.
                     </span>
                 </div>
 
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="undoing = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="undoForm.processing">
-                        {{ undoing === 'void' ? 'Anular' : 'Reabrir' }}
-                    </button>
-                </div>
             </form>
-        </div>
 
-        <div v-if="posting" class="modal-backdrop" @click.self="posting = false">
-            <form class="modal card" @submit.prevent="post">
-                <h2>Contabilizar la planilla</h2>
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="undoing = null">Cancelar</button>
+                <button type="submit" form="period-undo-form" class="btn" :class="undoing === 'void' ? 'btn-danger' : 'btn-primary'" :disabled="undoForm.processing">
+                    {{ undoing === 'void' ? 'Anular' : 'Reabrir' }}
+                </button>
+            </template>
+        </DetailModal>
 
+        <DetailModal :open="posting" title="Contabilizar la planilla" @close="posting = false">
+            <form id="period-post-form" @submit.prevent="post">
                 <p class="hint small">
                     El asiento carga al gasto el <strong>salario bruto</strong> —no el neto—, abona las
                     retenciones a su pasivo y deja el neto en «planilla por pagar». El banco se toca en el
@@ -578,17 +682,17 @@ const statusClass = {
                 </p>
 
                 <div class="field">
-                    <label>Fecha de contabilización</label>
-                    <input v-model="postingDate" type="date">
-                    <span class="hint small">Vacío usa la fecha de pago del período ({{ period.payment_date }}).</span>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="posting = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Contabilizar</button>
+                    <label for="post-date">Fecha de contabilización</label>
+                    <input id="post-date" v-model="postingDate" type="date">
+                    <span class="muted small">Vacío usa la fecha de pago del período ({{ period.payment_date }}).</span>
                 </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="posting = false">Cancelar</button>
+                <button type="submit" form="period-post-form" class="btn btn-primary">Contabilizar</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -604,26 +708,18 @@ const statusClass = {
 }
 
 .header-main { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
-.header-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 .input-card { margin-bottom: 1rem; }
 .input-card h3 { margin: 0; font-size: 0.9rem; }
 .input-card .hint { padding: 0 1.1rem; }
 
-.input-form {
-    display: flex;
-    gap: 0.7rem;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    padding: 0 1.1rem 1rem;
-}
-
-.input-form .field { margin-bottom: 0; min-width: 11rem; }
-.input-form .field.grow { flex: 1; min-width: 14rem; }
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; }
+.block { display: block; }
 
 .stat-row {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
     gap: 0.75rem;
     margin-bottom: 1rem;
 }
@@ -635,8 +731,6 @@ const statusClass = {
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-surface);
-    min-width: 11rem;
-    flex: 1;
 }
 
 .stat.accent { border-color: var(--color-primary); }
@@ -652,8 +746,7 @@ const statusClass = {
 .stat-value { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat-note { font-size: 0.68rem; color: var(--color-text-muted); }
 
-.card-header h3 { margin: 0; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
-.table-scroll.compact { max-height: 18rem; }
+.card-header h3 { margin: 0; font-size: 0.9rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
 
 /* ── Verificación previa ─────────────────────────────────────────────── */
 
@@ -686,7 +779,7 @@ const statusClass = {
     background: var(--color-danger-soft);
 }
 
-.finding-list li.warning { border-left-color: #d08a55; }
+.finding-list li.warning { border-left-color: var(--color-warning); }
 
 .finding-mark {
     flex-shrink: 0;
@@ -697,7 +790,7 @@ const statusClass = {
 }
 
 .finding-list li.error .finding-mark { color: var(--color-danger); }
-.finding-list li.warning .finding-mark { color: #a04000; }
+.finding-list li.warning .finding-mark { color: var(--color-warning); }
 
 .finding-body {
     flex: 1;
@@ -711,11 +804,6 @@ td.strong { font-weight: 600; }
 tfoot td { font-weight: 600; border-top: 2px solid var(--color-border); }
 
 .error { color: var(--color-danger); font-size: 0.76rem; }
-
-/* Anular revierte un asiento contabilizado: no puede verse igual que los
-   demás botones de la barra. */
-.btn.danger { color: var(--color-danger); }
-.btn.danger:hover { background: var(--color-danger-soft); }
 
 /* ── Carga masiva ───────────────────────────────────────────────────── */
 
@@ -731,8 +819,8 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--color-border); }
     background: var(--color-surface-alt);
 }
 
-.bulk-text { display: flex; flex-direction: column; gap: 0.15rem; max-width: 46rem; }
-.bulk-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.bulk-text { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 20rem; min-width: 0; }
+.bulk-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
 .file-btn { position: relative; overflow: hidden; cursor: pointer; }
 .file-btn.disabled { opacity: 0.6; cursor: default; }

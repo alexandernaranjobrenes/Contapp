@@ -1,10 +1,12 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../Components/DocumentToolbar.vue';
+import DetailModal from '../../Components/DetailModal.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
+import { useRecordDetail } from '../../Utils/recordDetail';
 import { formatMoney } from '../../Utils/money';
+import { ArrowLeftIcon, CalendarIcon, HandCoinsIcon } from '@lucide/vue';
 
 const props = defineProps({
     partner: { type: Object, required: true },
@@ -12,7 +14,16 @@ const props = defineProps({
     paymentAccounts: { type: Array, default: () => [] },
 });
 
-const activeItemId = ref(null);
+// Ficha de la partida (CLAUDE.md secc. 20): el detalle y las dos acciones,
+// que abren su formulario dentro del mismo modal ('details' → 'payment' o
+// 'due-date' → 'details').
+const { selected, openDetail: openItemDetail, closeDetail } = useRecordDetail(() => props.openItems);
+const mode = ref('details');
+
+function openDetail(item) {
+    mode.value = 'details';
+    openItemDetail(item);
+}
 
 const form = useForm({
     payment_account_id: props.paymentAccounts[0]?.id ?? null,
@@ -20,18 +31,18 @@ const form = useForm({
     applied_date: new Date().toISOString().slice(0, 10),
 });
 
-function openPaymentForm(item) {
-    editingDueDateId.value = null;
-    activeItemId.value = item.id;
+function openPaymentForm() {
     form.reset();
+    form.clearErrors();
     form.payment_account_id = props.paymentAccounts[0]?.id ?? null;
-    form.amount = item.balance;
+    form.amount = selected.value.balance;
     form.applied_date = new Date().toISOString().slice(0, 10);
+    mode.value = 'payment';
 }
 
-function submitPayment(item) {
-    form.post(route('business-partners.open-items.apply', [props.partner.id, item.id]), {
-        onSuccess: () => { activeItemId.value = null; },
+function submitPayment() {
+    form.post(route('business-partners.open-items.apply', [props.partner.id, selected.value.id]), {
+        onSuccess: () => { mode.value = 'details'; },
     });
 }
 
@@ -40,19 +51,18 @@ function submitPayment(item) {
 // realmente leen antigüedad de saldos y proyección de cobros/pagos. Sirve
 // para arreglar un vencimiento mal tipeado a mano sin tener que reversar y
 // recontabilizar todo el asiento original.
-const editingDueDateId = ref(null);
 const dueDateForm = useForm({ due_date: '' });
 
-function openDueDateEdit(item) {
-    activeItemId.value = null;
-    editingDueDateId.value = item.id;
+function openDueDateEdit() {
     dueDateForm.reset();
-    dueDateForm.due_date = item.due_date;
+    dueDateForm.clearErrors();
+    dueDateForm.due_date = selected.value.due_date;
+    mode.value = 'due-date';
 }
 
-function submitDueDate(item) {
-    dueDateForm.put(route('business-partners.open-items.update-due-date', [props.partner.id, item.id]), {
-        onSuccess: () => { editingDueDateId.value = null; },
+function submitDueDate() {
+    dueDateForm.put(route('business-partners.open-items.update-due-date', [props.partner.id, selected.value.id]), {
+        onSuccess: () => { mode.value = 'details'; },
     });
 }
 
@@ -93,191 +103,184 @@ function submitReconcile() {
 
 const statusLabels = { open: 'Abierta', partial: 'Parcial', closed: 'Cerrada' };
 const statusBadge = { open: 'badge-warning', partial: 'badge-warning', closed: 'badge-success' };
+
+function documentLabel(item) {
+    return `${item.document_type_code}-${item.document_number}`;
+}
 </script>
 
 <template>
     <Head :title="`Partidas — ${partner.code}`" />
 
     <AppLayout :title="`Partidas abiertas — ${partner.name}`">
-        <DocumentToolbar :new-href="route('business-partners.create')" />
+        <div class="view-toolbar">
+            <Link :href="route('business-partners.index')" class="btn btn-ghost"><ArrowLeftIcon /> Socios de negocio</Link>
+            <div class="view-actions">
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="!canReconcile || reconcileForm.processing"
+                    title="Marcá con la casilla las partidas que se cancelan entre sí"
+                    @click="submitReconcile"
+                >Reconciliar entre sí</button>
+            </div>
+        </div>
 
         <div v-if="reconcileForm.errors.reconciliation" class="flash flash-error">{{ reconcileForm.errors.reconciliation }}</div>
 
+        <div v-if="selectedItems.length" class="reconcile-bar">
+            <strong>{{ selectedItems.length }} partida(s) seleccionada(s)</strong>
+            <span class="muted">Neto: {{ formatMoney(selectedNet) }}</span>
+            <span v-if="selectedItems.length >= 2 && parseFloat(selectedNet) !== 0" class="muted small">
+                El neto tiene que dar exactamente 0 para reconciliar — si queda una diferencia real, aplicá un pago
+                por esa diferencia contra la partida que quede pendiente.
+            </span>
+        </div>
+
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="check-col"></th>
-                        <th>Documento</th>
-                        <th>Vencimiento</th>
-                        <th class="num">Original</th>
-                        <th class="num">Aplicado</th>
-                        <th class="num">Saldo</th>
-                        <th>Estado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template v-for="item in openItems" :key="item.id">
+            <div class="table-responsive">
+                <table>
+                    <thead>
                         <tr>
-                            <td class="check-col">
+                            <th>Documento</th>
+                            <th>Vencimiento</th>
+                            <th class="num">Saldo</th>
+                            <th>Estado</th>
+                            <th class="check-col"><span class="sr-only">Reconciliar</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="item in openItems"
+                            :key="item.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(item)"
+                            @keydown.enter.self="openDetail(item)"
+                            @keydown.space.self.prevent="openDetail(item)"
+                        >
+                            <td>{{ documentLabel(item) }}</td>
+                            <td data-label="Vencimiento">{{ item.due_date }}</td>
+                            <td data-label="Saldo" class="num">{{ formatMoney(item.balance) }}</td>
+                            <td data-label="Estado">
+                                <span class="badge" :class="statusBadge[item.status]">{{ statusLabels[item.status] }}</span>
+                            </td>
+                            <!-- La casilla es la selección para reconciliar, no una acción de la fila. -->
+                            <td data-label="Reconciliar" class="check-col" @click.stop>
                                 <input
                                     v-if="item.status !== 'closed'"
                                     type="checkbox"
                                     :checked="selectedIds.has(item.id)"
+                                    :aria-label="`Marcar ${documentLabel(item)} para reconciliar`"
                                     title="Marcar para reconciliar internamente contra otra(s) partida(s) seleccionada(s)"
                                     @change="toggleSelected(item)"
                                 >
                             </td>
-                            <td>{{ item.document_type_code }}-{{ item.document_number }}</td>
-                            <td>{{ item.due_date }}</td>
-                            <td class="num">{{ formatMoney(item.original_amount) }}</td>
-                            <td class="num">{{ formatMoney(item.applied_amount) }}</td>
-                            <td class="num">{{ formatMoney(item.balance) }}</td>
-                            <td>
-                                <span class="badge" :class="statusBadge[item.status]">{{ statusLabels[item.status] }}</span>
-                            </td>
-                            <td class="actions-cell">
-                                <button
-                                    v-if="item.status !== 'closed'"
-                                    type="button"
-                                    class="btn btn-ghost"
-                                    @click="openPaymentForm(item)"
-                                >Aplicar pago</button>
-                                <button
-                                    v-if="item.status !== 'closed'"
-                                    type="button"
-                                    class="btn btn-ghost"
-                                    title="El asiento original no se toca — esto corrige solo el vencimiento de esta partida"
-                                    @click="openDueDateEdit(item)"
-                                >Corregir vencimiento</button>
-                            </td>
                         </tr>
-                        <tr v-if="activeItemId === item.id">
-                            <td colspan="8">
-                                <form class="payment-form" @submit.prevent="submitPayment(item)">
-                                    <div class="field">
-                                        <label>Cuenta de pago</label>
-                                        <select v-model="form.payment_account_id" required>
-                                            <option v-for="a in paymentAccounts" :key="a.id" :value="a.id">
-                                                {{ a.code }} — {{ a.description_es }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div class="field">
-                                        <label>Monto</label>
-                                        <MoneyInput v-model="form.amount" required />
-                                    </div>
-                                    <div class="field">
-                                        <label>Fecha</label>
-                                        <input v-model="form.applied_date" type="date" required>
-                                    </div>
-                                    <div class="field actions">
-                                        <button type="submit" class="btn btn-primary" :disabled="form.processing">Confirmar</button>
-                                        <button type="button" class="btn btn-ghost" @click="activeItemId = null">Cancelar</button>
-                                    </div>
-                                    <p v-if="form.errors.amount" class="error span-all">{{ form.errors.amount }}</p>
-                                </form>
-                            </td>
+                        <tr v-if="!openItems.length">
+                            <td colspan="5" class="muted empty-row">Este socio no tiene partidas registradas.</td>
                         </tr>
-                        <tr v-if="editingDueDateId === item.id">
-                            <td colspan="8">
-                                <form class="payment-form" @submit.prevent="submitDueDate(item)">
-                                    <div class="field">
-                                        <label>Nuevo vencimiento</label>
-                                        <input v-model="dueDateForm.due_date" type="date" required>
-                                    </div>
-                                    <div class="field actions">
-                                        <button type="submit" class="btn btn-primary" :disabled="dueDateForm.processing">Confirmar</button>
-                                        <button type="button" class="btn btn-ghost" @click="editingDueDateId = null">Cancelar</button>
-                                    </div>
-                                    <p class="hint span-all">
-                                        Esto corrige solo el vencimiento de esta partida — el asiento contabilizado que la
-                                        originó no se modifica. Afecta a los reportes de antigüedad de saldos y proyección
-                                        de cobros/pagos, que leen este valor.
-                                    </p>
-                                    <p v-if="dueDateForm.errors.due_date" class="error span-all">{{ dueDateForm.errors.due_date }}</p>
-                                </form>
-                            </td>
-                        </tr>
-                    </template>
-                    <tr v-if="!openItems.length">
-                        <td colspan="8" class="muted empty-row">Este socio no tiene partidas registradas.</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div v-if="selectedItems.length" class="reconcile-bar">
-                <div class="reconcile-summary">
-                    <strong>{{ selectedItems.length }} partida(s) seleccionada(s)</strong>
-                    <span class="muted">Neto: {{ formatMoney(selectedNet) }}</span>
-                </div>
-                <button type="button" class="btn btn-primary" :disabled="!canReconcile || reconcileForm.processing" @click="submitReconcile">
-                    Reconciliar entre sí
-                </button>
-                <span v-if="selectedItems.length >= 2 && parseFloat(selectedNet) !== 0" class="muted small">
-                    El neto tiene que dar exactamente 0 para reconciliar — si queda una diferencia real, aplicá un pago
-                    por esa diferencia contra la partida que quede pendiente.
-                </span>
+                    </tbody>
+                </table>
             </div>
         </div>
+
+        <DetailModal :open="!!selected" :title="selected ? documentLabel(selected) : ''" @close="closeDetail">
+            <template #badge>
+                <span v-if="selected" class="badge" :class="statusBadge[selected.status]">{{ statusLabels[selected.status] }}</span>
+            </template>
+
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Vencimiento</dt>
+                    <dd>{{ selected.due_date }}</dd>
+                </div>
+                <div>
+                    <dt>Original</dt>
+                    <dd>{{ formatMoney(selected.original_amount) }}</dd>
+                </div>
+                <div>
+                    <dt>Aplicado</dt>
+                    <dd>{{ formatMoney(selected.applied_amount) }}</dd>
+                </div>
+                <div>
+                    <dt>Saldo</dt>
+                    <dd><strong>{{ formatMoney(selected.balance) }}</strong></dd>
+                </div>
+            </dl>
+
+            <form v-if="selected && mode === 'payment'" id="open-item-payment-form" @submit.prevent="submitPayment">
+                <div class="field">
+                    <label for="payment-account">Cuenta de pago</label>
+                    <select id="payment-account" v-model="form.payment_account_id" required>
+                        <option v-for="a in paymentAccounts" :key="a.id" :value="a.id">
+                            {{ a.code }} — {{ a.description_es }}
+                        </option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="payment-amount">Monto</label>
+                        <MoneyInput id="payment-amount" v-model="form.amount" required />
+                        <span v-if="form.errors.amount" class="error">{{ form.errors.amount }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="payment-date">Fecha</label>
+                        <input id="payment-date" v-model="form.applied_date" type="date" required>
+                    </div>
+                </div>
+            </form>
+
+            <form v-if="selected && mode === 'due-date'" id="open-item-due-date-form" @submit.prevent="submitDueDate">
+                <div class="field">
+                    <label for="due-date">Nuevo vencimiento</label>
+                    <input id="due-date" v-model="dueDateForm.due_date" type="date" required>
+                    <span v-if="dueDateForm.errors.due_date" class="error">{{ dueDateForm.errors.due_date }}</span>
+                </div>
+                <p class="hint">
+                    Esto corrige solo el vencimiento de esta partida — el asiento contabilizado que la
+                    originó no se modifica. Afecta a los reportes de antigüedad de saldos y proyección
+                    de cobros/pagos, que leen este valor.
+                </p>
+            </form>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details' && selected.status !== 'closed'">
+                    <button type="button" class="btn btn-ghost" @click="openDueDateEdit"><CalendarIcon /> Corregir vencimiento</button>
+                    <button type="button" class="btn btn-primary" @click="openPaymentForm"><HandCoinsIcon /> Aplicar pago</button>
+                </template>
+                <template v-else-if="selected && mode === 'payment'">
+                    <button type="button" class="btn btn-ghost" @click="mode = 'details'">Cancelar</button>
+                    <button type="submit" form="open-item-payment-form" class="btn btn-primary" :disabled="form.processing">Confirmar pago</button>
+                </template>
+                <template v-else-if="selected && mode === 'due-date'">
+                    <button type="button" class="btn btn-ghost" @click="mode = 'details'">Cancelar</button>
+                    <button type="submit" form="open-item-due-date-form" class="btn btn-primary" :disabled="dueDateForm.processing">Guardar</button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
 table { font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); }
-.check-col { width: 2rem; }
-.muted { color: var(--color-text-muted); }
-.empty-row { text-align: center; padding: 1.5rem; }
-
-.actions-cell { display: flex; gap: 0.4rem; }
-
-.payment-form {
-    display: flex;
-    align-items: flex-end;
-    gap: 1rem;
-    background: var(--color-surface-alt);
-    padding: 0.85rem 1rem;
-    flex-wrap: wrap;
-}
-
-.payment-form .field { margin-bottom: 0; min-width: 160px; }
-.payment-form select, .payment-form input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.85rem;
-}
-.actions { flex-direction: row; gap: 0.5rem; }
-.span-all { width: 100%; }
-.hint { color: var(--color-text-muted); font-size: 0.78rem; margin: 0; }
-.small { font-size: 0.78rem; }
+.check-col { width: 2.5rem; text-align: center; }
+.hint { margin: 0; }
 
 .reconcile-bar {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.85rem 1rem;
-    border-top: 1px solid var(--color-border);
+    gap: 0.4rem 1rem;
+    padding: 0.7rem 1rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
     background: var(--color-surface-alt);
     flex-wrap: wrap;
-}
-
-.reconcile-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
     font-size: 0.85rem;
 }
 
-.flash-error {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
-    padding: 0.6rem 0.9rem;
-    border-radius: 6px;
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
+@media screen and (max-width: 1024px) {
+    .check-col { width: auto; text-align: left; }
 }
 </style>

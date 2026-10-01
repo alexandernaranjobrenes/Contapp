@@ -40,6 +40,11 @@ function exportUrl(routeName) {
 
     <AppLayout title="Comparativo de empresas">
         <div class="view-toolbar">
+            <div class="view-actions">
+                <a :href="exportUrl('reports.multi-company-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
+                <a :href="exportUrl('reports.multi-company-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
+                <SaveReportButton report-code="multi-company-comparison" :parameters="saveParameters" />
+            </div>
             <form class="view-filters" @submit.prevent="applyFilter">
                 <label class="filter-field">
                     <span>Balance al</span>
@@ -55,12 +60,6 @@ function exportUrl(routeName) {
                 </label>
                 <button type="submit" class="btn btn-primary">Consultar</button>
             </form>
-
-            <div class="view-actions">
-                <a :href="exportUrl('reports.multi-company-comparison.export')" class="btn btn-ghost"><DownloadIcon /> Exportar XLSX</a>
-                <a :href="exportUrl('reports.multi-company-comparison.export-pdf')" class="btn btn-ghost"><DownloadIcon /> Exportar PDF</a>
-                <SaveReportButton report-code="multi-company-comparison" :parameters="saveParameters" />
-            </div>
         </div>
 
         <p class="hint">

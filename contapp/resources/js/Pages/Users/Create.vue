@@ -79,16 +79,16 @@ function submitInvite() {
     <Head title="Nuevo usuario" />
 
     <AppLayout title="Nuevo usuario">
-        <template #actions>
-            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Volver</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Usuarios</Link>
+        </div>
 
         <div class="card form-card">
             <p v-if="license" class="quota">
                 Administradores: {{ license.admins_count }} de {{ license.max_admins }} · Usuarios: {{ license.users_count }} de {{ license.max_users }}
             </p>
 
-            <div class="mode-tabs">
+            <div class="mode-tabs" role="group" aria-label="Cómo dar de alta">
                 <button type="button" class="btn" :class="mode === 'create' ? 'btn-primary' : 'btn-ghost'" @click="mode = 'create'">Crear usuario nuevo</button>
                 <button type="button" class="btn" :class="mode === 'invite' ? 'btn-primary' : 'btn-ghost'" @click="mode = 'invite'">Invitar cuenta existente</button>
             </div>
@@ -98,30 +98,33 @@ function submitInvite() {
             </p>
 
             <form v-if="mode === 'create'" @submit.prevent="submit">
+                <div class="form-grid">
                 <div class="field">
-                    <label>Nombre</label>
-                    <input v-model="form.name" type="text" required>
+                    <label for="user-name">Nombre</label>
+                    <input id="user-name" v-model="form.name" type="text" required>
                     <p v-if="form.errors.name" class="error">{{ form.errors.name }}</p>
                 </div>
                 <div class="field">
-                    <label>Correo</label>
-                    <input v-model="form.email" type="email" required>
+                    <label for="user-email">Correo</label>
+                    <input id="user-email" v-model="form.email" type="email" required>
                     <p v-if="form.errors.email" class="error">{{ form.errors.email }}</p>
                 </div>
                 <div class="field">
-                    <label>Contraseña</label>
-                    <input v-model="form.password" type="password" required minlength="8">
+                    <label for="user-password">Contraseña</label>
+                    <input id="user-password" v-model="form.password" type="password" required minlength="8">
                     <p v-if="form.errors.password" class="error">{{ form.errors.password }}</p>
                 </div>
                 <div class="field">
-                    <label>Tipo de rol</label>
-                    <select v-model="form.role_type" required>
+                    <label for="user-role">Tipo de rol</label>
+                    <select id="user-role" v-model="form.role_type" required>
                         <option v-for="type in grantableRoleTypes" :key="type" :value="type">{{ ROLE_LABELS[type] }}</option>
                     </select>
+                </div>
                 </div>
 
                 <h3>Permisos por módulo</h3>
                 <p class="hint">Solo podés otorgar hasta el nivel de acceso que vos mismo tenés en cada módulo.</p>
+                <div class="table-responsive capture-grid">
                 <table class="permissions-table">
                     <thead>
                         <tr><th>Módulo</th><th>Nivel de acceso</th></tr>
@@ -129,23 +132,27 @@ function submitInvite() {
                     <tbody>
                         <tr v-for="module in modules" :key="module.id">
                             <td>{{ module.name }}</td>
-                            <td>
-                                <select v-model="form.permissions[module.id]">
+                            <td data-label="Nivel de acceso">
+                                <select v-model="form.permissions[module.id]" :aria-label="`Nivel de acceso a ${module.name}`">
                                     <option v-for="level in selectableLevels(module)" :key="level" :value="level">{{ LEVEL_LABELS[level] }}</option>
                                 </select>
                             </td>
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <p v-if="form.errors.permissions" class="error">{{ form.errors.permissions }}</p>
 
-                <button type="submit" class="btn btn-primary" :disabled="form.processing || !grantableRoleTypes.length">Crear usuario</button>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" :disabled="form.processing || !grantableRoleTypes.length">Crear usuario</button>
+                </div>
             </form>
 
             <form v-else @submit.prevent="submitInvite">
+                <div class="form-grid">
                 <div class="field">
-                    <label>Correo de la cuenta a invitar</label>
-                    <input v-model="inviteForm.email" type="email" required @blur="checkEmail">
+                    <label for="invite-email">Correo de la cuenta a invitar</label>
+                    <input id="invite-email" v-model="inviteForm.email" type="email" required @blur="checkEmail">
                     <p v-if="inviteForm.errors.email" class="error">{{ inviteForm.errors.email }}</p>
                     <p v-if="lookupLoading" class="hint">Buscando...</p>
                     <p v-else-if="lookup && lookup.exists" class="notice">
@@ -156,14 +163,16 @@ function submitInvite() {
                     </p>
                 </div>
                 <div class="field">
-                    <label>Tipo de rol</label>
-                    <select v-model="inviteForm.role_type" required>
+                    <label for="invite-role">Tipo de rol</label>
+                    <select id="invite-role" v-model="inviteForm.role_type" required>
                         <option v-for="type in grantableRoleTypes" :key="type" :value="type">{{ ROLE_LABELS[type] }}</option>
                     </select>
+                </div>
                 </div>
 
                 <h3>Permisos por módulo</h3>
                 <p class="hint">Solo podés otorgar hasta el nivel de acceso que vos mismo tenés en cada módulo.</p>
+                <div class="table-responsive capture-grid">
                 <table class="permissions-table">
                     <thead>
                         <tr><th>Módulo</th><th>Nivel de acceso</th></tr>
@@ -171,41 +180,35 @@ function submitInvite() {
                     <tbody>
                         <tr v-for="module in modules" :key="module.id">
                             <td>{{ module.name }}</td>
-                            <td>
-                                <select v-model="inviteForm.permissions[module.id]">
+                            <td data-label="Nivel de acceso">
+                                <select v-model="inviteForm.permissions[module.id]" :aria-label="`Nivel de acceso a ${module.name}`">
                                     <option v-for="level in selectableLevels(module)" :key="level" :value="level">{{ LEVEL_LABELS[level] }}</option>
                                 </select>
                             </td>
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <p v-if="inviteForm.errors.permissions" class="error">{{ inviteForm.errors.permissions }}</p>
 
-                <button type="submit" class="btn btn-primary" :disabled="inviteForm.processing || !grantableRoleTypes.length || !(lookup && lookup.exists)">
-                    Vincular cuenta
-                </button>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" :disabled="inviteForm.processing || !grantableRoleTypes.length || !(lookup && lookup.exists)">
+                        Vincular cuenta
+                    </button>
+                </div>
             </form>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
-.form-card { padding: 1.25rem 1.5rem; max-width: 640px; }
+.form-card { padding: 1.25rem 1.5rem; }
 .quota { font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-.mode-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-.field { margin-bottom: 0.9rem; display: flex; flex-direction: column; gap: 0.3rem; }
-.field label { font-size: 0.8rem; color: var(--color-text-muted); }
-input, select {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    font-size: 0.88rem;
-}
+.mode-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 h3 { font-size: 0.88rem; margin: 1.25rem 0 0.25rem; }
-.hint { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.6rem; }
+.hint { font-size: 0.78rem; margin: 0 0 0.6rem; }
 .notice { font-size: 0.78rem; color: var(--color-text); background: var(--color-warning-soft); padding: 0.5rem 0.6rem; border-radius: var(--radius-sm); margin: 0; }
-.permissions-table { width: 100%; font-size: 0.85rem; margin-bottom: 0.75rem; }
-.permissions-table th, .permissions-table td { text-align: left; padding: 0.4rem 0.2rem; border-top: 1px solid var(--color-border); }
+.permissions-table { font-size: 0.85rem; margin-bottom: 0.75rem; }
+.permissions-table select { width: 100%; max-width: 20rem; }
 .error { color: var(--color-danger); font-size: 0.78rem; margin: 0.2rem 0 0; }
 </style>

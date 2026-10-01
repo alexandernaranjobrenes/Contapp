@@ -1,7 +1,7 @@
 <script setup>
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import { PlusIcon } from '@lucide/vue';
+import { ArrowLeftIcon, CheckIcon, PlusIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     suppliers: { type: Array, default: () => [] },
@@ -63,9 +63,9 @@ function submit() {
     <Head title="Nueva orden de compra" />
 
     <AppLayout title="Nueva orden de compra">
-        <template #actions>
-            <Link :href="route('purchase-orders.index')" class="btn btn-ghost">Ver órdenes</Link>
-        </template>
+        <div class="view-toolbar">
+            <Link :href="route('purchase-orders.index')" class="btn btn-ghost"><ArrowLeftIcon /> Órdenes de compra</Link>
+        </div>
 
         <div v-if="page.props.errors?.lines" class="flash flash-error">{{ page.props.errors.lines }}</div>
 
@@ -79,10 +79,10 @@ function submit() {
         </p>
 
         <form class="card form-card" @submit.prevent="submit">
-            <div class="grid-4">
+            <div class="form-grid">
                 <div class="field">
-                    <label>Proveedor</label>
-                    <select v-model="form.business_partner_id" required>
+                    <label for="po-supplier">Proveedor</label>
+                    <select id="po-supplier" v-model="form.business_partner_id" required>
                         <option value="" disabled>— Elegir —</option>
                         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.code }} — {{ s.name }}</option>
                     </select>
@@ -90,69 +90,95 @@ function submit() {
                 </div>
 
                 <div class="field">
-                    <label>Fecha de la orden</label>
-                    <input v-model="form.order_date" type="date" required>
+                    <label for="po-date">Fecha de la orden</label>
+                    <input id="po-date" v-model="form.order_date" type="date" required>
                 </div>
 
                 <div class="field">
-                    <label>Fecha esperada (opcional)</label>
-                    <input v-model="form.expected_date" type="date">
+                    <label for="po-expected">Fecha esperada (opcional)</label>
+                    <input id="po-expected" v-model="form.expected_date" type="date">
                 </div>
 
                 <div class="field">
-                    <label>Descripción (opcional)</label>
-                    <input v-model="form.description" type="text" maxlength="255">
+                    <label for="po-description">Descripción (opcional)</label>
+                    <input id="po-description" v-model="form.description" type="text" maxlength="255">
                 </div>
             </div>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>Artículo</th>
-                        <th>Almacén destino</th>
-                        <th class="num">Cantidad</th>
-                        <th class="num">Costo pactado</th>
-                        <th>Detalle</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="(line, index) in form.lines" :key="index">
-                        <td>
-                            <select v-model="line.item_id" required @change="suggestCost(line)">
-                                <option value="" disabled>— Elegir —</option>
-                                <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select v-model="line.warehouse_id" required>
-                                <option value="" disabled>— Elegir —</option>
-                                <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
-                            </select>
-                        </td>
-                        <td>
-                            <input v-model="line.quantity" type="number" step="0.000001" min="0.000001" required class="right">
-                        </td>
-                        <td>
-                            <input v-model="line.unit_cost_local" type="number" step="0.000001" min="0" class="right">
-                        </td>
-                        <td><input v-model="line.description" type="text" maxlength="255"></td>
-                        <td>
-                            <button type="button" class="btn btn-ghost" @click="removeLine(index)">Quitar</button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <!-- Grilla de captura (CLAUDE.md secc. 20, excepción): cada línea se
+                 edita en la tabla y conserva su botón de quitar. -->
+            <div class="table-responsive capture-grid">
+                <table class="lines-table">
+                    <colgroup>
+                        <col>
+                        <col class="col-warehouse">
+                        <col class="col-qty">
+                        <col class="col-cost">
+                        <col class="col-detail">
+                        <col class="col-remove">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Almacén destino</th>
+                            <th class="num">Cantidad</th>
+                            <th class="num">Costo pactado</th>
+                            <th>Detalle</th>
+                            <th><span class="sr-only">Quitar</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(line, index) in form.lines" :key="index">
+                            <td>
+                                <select v-model="line.item_id" required aria-label="Artículo" @change="suggestCost(line)">
+                                    <option value="" disabled>— Elegir —</option>
+                                    <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
+                                </select>
+                            </td>
+                            <td data-label="Almacén destino">
+                                <select v-model="line.warehouse_id" required aria-label="Almacén destino">
+                                    <option value="" disabled>— Elegir —</option>
+                                    <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
+                                </select>
+                            </td>
+                            <td data-label="Cantidad" class="num">
+                                <input v-model="line.quantity" type="number" step="0.000001" min="0.000001" required class="num-input" aria-label="Cantidad">
+                            </td>
+                            <td data-label="Costo pactado" class="num">
+                                <input v-model="line.unit_cost_local" type="number" step="0.000001" min="0" class="num-input" aria-label="Costo pactado">
+                            </td>
+                            <td data-label="Detalle"><input v-model="line.description" type="text" maxlength="255" aria-label="Detalle"></td>
+                            <td class="remove-cell">
+                                <button type="button" class="btn btn-ghost remove-btn" :disabled="form.lines.length === 1" aria-label="Quitar línea" title="Quitar línea" @click="removeLine(index)"><XIcon /></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-            <div class="form-actions">
+            <div class="form-actions lines-actions">
                 <button type="button" class="btn btn-ghost" @click="addLine"><PlusIcon /> Agregar línea</button>
-                <button type="submit" class="btn btn-primary" :disabled="form.processing || !ready()">Crear orden</button>
+                <button type="submit" class="btn btn-primary" :disabled="form.processing || !ready()"><CheckIcon /> Crear orden</button>
             </div>
         </form>
     </AppLayout>
 </template>
 
 <style scoped>
-.num, .right { text-align: right; }
-.form-actions { display: flex; gap: 0.75rem; align-items: center; padding-top: 0.75rem; }
+.form-card { padding: 1.25rem; }
+.lines-table { table-layout: fixed; font-size: 0.85rem; }
+.lines-table th, .lines-table td { padding: 0.4rem 0.5rem; }
+.col-warehouse { width: 7.5rem; }
+.col-qty { width: 7rem; }
+.col-cost { width: 8rem; }
+.col-detail { width: 18%; }
+.col-remove { width: 2.75rem; }
+.lines-table select, .lines-table input { width: 100%; min-width: 0; }
+.num-input { text-align: right; }
+.remove-btn { width: 2.25rem; padding: 0; }
+.lines-actions { justify-content: space-between; margin-top: 1rem; }
+
+@media screen and (max-width: 1024px) {
+    .remove-cell { justify-content: flex-end; }
+}
 </style>

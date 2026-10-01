@@ -3,8 +3,9 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import ConfirmModal from '../../../Components/ConfirmModal.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
 import PurchaseCycleMap from '../../../Components/PurchaseCycleMap.vue';
-import { ChevronDownIcon } from '@lucide/vue';
+import { ArrowLeftIcon, ChevronDownIcon } from '@lucide/vue';
 
 const props = defineProps({
     document: { type: Object, required: true },
@@ -60,6 +61,10 @@ const copyTargets = computed(() => {
 
 const copyOpen = ref(false);
 
+// Ficha de una línea (CLAUDE.md secc. 20): el resto de sus cifras.
+const selectedLineId = ref(null);
+const selectedLine = computed(() => props.document.lines.find((l) => l.id === selectedLineId.value) ?? null);
+
 const page = usePage();
 
 const confirmingVoid = ref(false);
@@ -80,29 +85,32 @@ function submitVoid() {
     <Head :title="`Movimiento ${operationLabel}`" />
 
     <AppLayout :title="operationLabel">
-        <template #actions>
-            <button v-if="voidable" type="button" class="btn btn-ghost" @click="confirmingVoid = true">
-                Anular entrada
-            </button>
-
-            <div v-if="copyTargets.length" class="copy-to" @keydown.esc="copyOpen = false">
-                <button type="button" class="btn btn-primary" @click="copyOpen = ! copyOpen">
-                    Copiar a <ChevronDownIcon />
+        <div class="view-toolbar">
+            <Link :href="route('inventory-movements.index')" class="btn btn-ghost"><ArrowLeftIcon /> Movimientos</Link>
+            <div class="view-actions">
+                <button v-if="voidable" type="button" class="btn btn-ghost btn-danger-text" @click="confirmingVoid = true">
+                    Anular entrada
                 </button>
-                <div v-if="copyOpen" class="copy-backdrop" @click="copyOpen = false"></div>
-                <div v-if="copyOpen" class="copy-menu">
-                    <Link
-                        v-for="target in copyTargets"
-                        :key="target.label"
-                        :href="target.href"
-                        class="copy-option"
-                    >
-                        <strong>{{ target.label }}</strong>
-                        <span class="muted small">{{ target.hint }}</span>
-                    </Link>
+
+                <div v-if="copyTargets.length" class="copy-to" @keydown.esc="copyOpen = false">
+                    <button type="button" class="btn btn-primary" :aria-expanded="copyOpen" @click="copyOpen = ! copyOpen">
+                        Copiar a <ChevronDownIcon />
+                    </button>
+                    <div v-if="copyOpen" class="copy-backdrop" @click="copyOpen = false"></div>
+                    <div v-if="copyOpen" class="copy-menu">
+                        <Link
+                            v-for="target in copyTargets"
+                            :key="target.label"
+                            :href="target.href"
+                            class="copy-option"
+                        >
+                            <strong>{{ target.label }}</strong>
+                            <span class="muted small">{{ target.hint }}</span>
+                        </Link>
+                    </div>
                 </div>
             </div>
-        </template>
+        </div>
 
         <div v-if="page.props.errors?.credit_note" class="flash flash-error">{{ page.props.errors.credit_note }}</div>
         <div v-if="page.props.errors?.void" class="flash flash-error">{{ page.props.errors.void }}</div>
@@ -192,48 +200,90 @@ function submitVoid() {
         <p v-if="document.description" class="hint">{{ document.description }}</p>
 
         <div class="card">
-            <div class="table-scroll">
+            <div class="table-responsive table-scroll">
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th>
                             <th>Artículo</th>
                             <th>Almacén</th>
                             <th>Mov.</th>
-                            <th class="right">Cantidad</th>
-                            <th class="right">Costo unitario</th>
-                            <th class="right">Total (LC)</th>
-                            <th class="right">Total (FC)</th>
-                            <th class="right">Saldo tras el mov.</th>
+                            <th class="num">Cantidad</th>
+                            <th class="num">Total (LC)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="line in document.lines" :key="line.id">
-                            <td class="num">{{ line.line_number }}</td>
-                            <td>{{ line.item?.code }} — {{ line.item?.name }}</td>
-                            <td class="code-cell">{{ line.warehouse?.code }}</td>
-                            <td>
+                        <tr
+                            v-for="line in document.lines"
+                            :key="line.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="selectedLineId = line.id"
+                            @keydown.enter="selectedLineId = line.id"
+                            @keydown.space.prevent="selectedLineId = line.id"
+                        >
+                            <td><span class="line-number">{{ line.line_number }}.</span> {{ line.item?.code }} — {{ line.item?.name }}</td>
+                            <td data-label="Almacén" class="code-cell">{{ line.warehouse?.code }}</td>
+                            <td data-label="Mov.">
                                 <span class="badge" :class="movementOf(line)?.direction === 'in' ? 'badge-success' : 'badge-warning'">
                                     {{ movementOf(line)?.direction === 'in' ? 'Entra' : 'Sale' }}
                                 </span>
                             </td>
-                            <td class="num right">{{ quantity(line.quantity) }}</td>
-                            <td class="num right">{{ money(line.unit_cost_local) }}</td>
-                            <td class="num right">{{ money(movementOf(line)?.total_cost_local) }}</td>
-                            <td class="num right">{{ money(movementOf(line)?.total_cost_foreign) }}</td>
-                            <td class="num right muted">{{ quantity(movementOf(line)?.balance_quantity) }}</td>
+                            <td data-label="Cantidad" class="num">{{ quantity(line.quantity) }}</td>
+                            <td data-label="Total (LC)" class="num">{{ money(movementOf(line)?.total_cost_local) }}</td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="6" class="right"><strong>Total</strong></td>
-                            <td class="num right"><strong>{{ money(totalLocal) }}</strong></td>
-                            <td colspan="2"></td>
+                            <td colspan="4" class="total-label"><strong>Total</strong></td>
+                            <td data-label="Total (LC)" class="num"><strong>{{ money(totalLocal) }}</strong></td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
+
+        <DetailModal
+            :open="!!selectedLine"
+            :title="selectedLine ? `${selectedLine.item?.code} — ${selectedLine.item?.name}` : ''"
+            @close="selectedLineId = null"
+        >
+            <template #badge>
+                <span v-if="selectedLine" class="badge" :class="movementOf(selectedLine)?.direction === 'in' ? 'badge-success' : 'badge-warning'">
+                    {{ movementOf(selectedLine)?.direction === 'in' ? 'Entra' : 'Sale' }}
+                </span>
+            </template>
+
+            <dl v-if="selectedLine" class="detail-list">
+                <div>
+                    <dt>Línea</dt>
+                    <dd>{{ selectedLine.line_number }}</dd>
+                </div>
+                <div>
+                    <dt>Almacén</dt>
+                    <dd>{{ selectedLine.warehouse?.code ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Cantidad</dt>
+                    <dd>{{ quantity(selectedLine.quantity) }}</dd>
+                </div>
+                <div>
+                    <dt>Costo unitario (LC)</dt>
+                    <dd>{{ money(selectedLine.unit_cost_local) }}</dd>
+                </div>
+                <div>
+                    <dt>Total (LC)</dt>
+                    <dd>{{ money(movementOf(selectedLine)?.total_cost_local) }}</dd>
+                </div>
+                <div>
+                    <dt>Total (FC)</dt>
+                    <dd>{{ money(movementOf(selectedLine)?.total_cost_foreign) }}</dd>
+                </div>
+                <div>
+                    <dt>Saldo tras el movimiento</dt>
+                    <dd>{{ quantity(movementOf(selectedLine)?.balance_quantity) }}</dd>
+                </div>
+            </dl>
+        </DetailModal>
 
         <p class="hint">
             Cada línea dejó su huella en el kardex y en el asiento contable, que se generaron en la misma transacción.
@@ -242,29 +292,27 @@ function submitVoid() {
 </template>
 
 <style scoped>
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.flash-warning { background: var(--color-warning-soft); color: var(--color-warning); }
 .summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: 0.75rem 1.5rem;
     padding: 1rem 1.25rem;
     margin-bottom: 0.75rem;
 }
 
-.summary > div { display: flex; flex-direction: column; gap: 0.15rem; }
+.summary > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0.75rem 0 0; }
+.hint { margin: 0.75rem 0 0.75rem; }
 
-.table-scroll { overflow-x: auto; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
-.code-cell, .num { font-variant-numeric: tabular-nums; }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; }
+.line-number { color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.total-label { text-align: right; }
 .link { color: var(--color-primary); text-decoration: none; font-weight: 600; }
+
+@media screen and (max-width: 1024px) {
+    .total-label { text-align: left; }
+}
 .link:hover { text-decoration: underline; }
 
 .copy-to { position: relative; }
@@ -277,7 +325,7 @@ th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--col
     right: 0;
     top: calc(100% + 0.35rem);
     z-index: 20;
-    min-width: 17rem;
+    min-width: min(17rem, calc(100vw - 2rem));
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;

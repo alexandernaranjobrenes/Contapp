@@ -12,10 +12,12 @@ defineProps({
     <Head title="Reportes de planilla" />
 
     <AppLayout title="Reportes de planilla">
-        <template #actions>
-            <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos</Link>
-            <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
-        </template>
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos</Link>
+                <Link :href="route('employees.index')" class="btn btn-ghost">Empleados</Link>
+            </div>
+        </div>
 
         <p class="hint">
             Todos se consultan en pantalla con sus filtros y salen a <strong>Excel</strong>, a
@@ -65,7 +67,7 @@ defineProps({
 </template>
 
 <style scoped>
-.hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1.25rem; max-width: 80ch; }
+.hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1.25rem; }
 .small { font-size: 0.78rem; margin-bottom: 0.75rem; }
 
 .group { margin-bottom: 1.75rem; }
@@ -74,7 +76,7 @@ defineProps({
     color: var(--color-text-muted); margin: 0 0 0.6rem;
 }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 0.75rem; }
 
 .report-card {
     display: flex; flex-direction: column; gap: 0.3rem;
@@ -96,7 +98,7 @@ defineProps({
     font-size: 0.68rem;
     padding: 0.08rem 0.4rem;
     border-radius: 999px;
-    background: #eef2ff;
-    color: #3730a3;
+    background: var(--color-info-soft);
+    color: var(--color-info);
 }
 </style>

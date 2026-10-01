@@ -1,10 +1,12 @@
 <script setup>
-import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
-import DocumentToolbar from '../../../Components/DocumentToolbar.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { useCrudModal } from '../../../Utils/crudModal';
 import { formatMoney } from '../../../Utils/money';
-import { PlusIcon, TriangleAlertIcon } from '@lucide/vue';
+import { PencilIcon, PlusIcon, TriangleAlertIcon, UserIcon } from '@lucide/vue';
 
 const props = defineProps({
     employees: { type: Array, default: () => [] },
@@ -58,12 +60,6 @@ const blank = {
     notes: '',
 };
 
-const creating = ref(false);
-const editing = ref(null);
-const createForm = useForm({ ...blank });
-const editForm = useForm({ ...blank });
-const activeForm = computed(() => (creating.value ? createForm : editForm));
-
 const search = ref('');
 const showTerminated = ref(false);
 
@@ -79,21 +75,6 @@ const visible = computed(() => {
             .some((v) => String(v).toLowerCase().includes(needle));
     });
 });
-
-function openCreate() {
-    createForm.reset();
-    creating.value = true;
-}
-
-function openEdit(employee) {
-    editForm.clearErrors();
-
-    Object.keys(blank).forEach((key) => {
-        editForm[key] = employee[key] ?? blank[key];
-    });
-
-    editing.value = employee;
-}
 
 // Un select vacío manda '' y el validador lo tomaría como un id inválido en
 // vez de "sin asignar".
@@ -111,28 +92,39 @@ function normalize(data) {
     return out;
 }
 
-function submitCreate() {
-    createForm.transform(normalize).post(route('employees.store'), {
-        onSuccess: () => (creating.value = false), preserveScroll: true,
+// Ficha, alta y edición en un solo modal (CLAUDE.md secc. 20 y 21); la
+// ficha completa del trabajador, con su historial, es su propia pantalla.
+const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit } = useCrudModal({
+    records: () => props.employees,
+    defaults: () => ({ ...blank }),
+    toForm: (e) => Object.fromEntries(Object.keys(blank).map((key) => [key, e[key] ?? blank[key]])),
+    store: () => route('employees.store'),
+    update: (e) => route('employees.update', e.id),
+    storePayload: normalize,
+    updatePayload: normalize,
+});
+
+const modalTitle = computed(() => {
+    if (mode.value === 'create') return 'Nuevo empleado';
+    return selected.value ? `${selected.value.code} — ${selected.value.full_name}` : '';
+});
+
+function destroy() {
+    const employee = selected.value;
+
+    confirmAction({
+        title: 'Eliminar ficha',
+        message: `La ficha de ${employee.code} — ${employee.full_name} se elimina de forma definitiva.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('employees.destroy', employee.id), { preserveScroll: true }),
     });
-}
-
-function submitEdit() {
-    editForm.transform(normalize).put(route('employees.update', editing.value.id), {
-        onSuccess: () => (editing.value = null), preserveScroll: true,
-    });
-}
-
-function destroy(employee) {
-    if (! confirm(`¿Eliminar la ficha de ${employee.code} — ${employee.full_name}?`)) return;
-
-    router.delete(route('employees.destroy', employee.id), { preserveScroll: true });
 }
 
 // Los puestos del departamento elegido: ofrecer los de toda la empresa haría
 // que en una lista de cien puestos nadie encuentre el suyo.
 const positionsForDepartment = computed(() => {
-    const departmentId = Number(activeForm.value.department_id);
+    const departmentId = Number(form.department_id);
 
     if (! departmentId) return props.positionOptions;
 
@@ -143,23 +135,23 @@ const positionsForDepartment = computed(() => {
 // acordarse de ponérselo a cada ficha. Solo si todavía no hay uno puesto:
 // pisarlo cambiaría a dónde va el gasto de alguien sin avisar.
 function applyDepartmentDefaults() {
-    const department = props.departmentOptions.find((d) => d.id === Number(activeForm.value.department_id));
+    const department = props.departmentOptions.find((d) => d.id === Number(form.department_id));
 
-    if (department?.cost_center_id && ! activeForm.value.cost_center_id) {
-        activeForm.value.cost_center_id = department.cost_center_id;
+    if (department?.cost_center_id && ! form.cost_center_id) {
+        form.cost_center_id = department.cost_center_id;
     }
 
     // Si el puesto elegido ya no pertenece al departamento nuevo, se suelta.
-    const stillValid = positionsForDepartment.value.some((p) => p.id === Number(activeForm.value.job_position_id));
+    const stillValid = positionsForDepartment.value.some((p) => p.id === Number(form.job_position_id));
 
-    if (! stillValid) activeForm.value.job_position_id = '';
+    if (! stillValid) form.job_position_id = '';
 }
 
 // Un salario fuera del rango del puesto no bloquea nada: avisa. Un cero de
 // más en un aumento no lo detecta nadie leyendo la ficha.
 const salaryOutOfRange = computed(() => {
-    const position = props.positionOptions.find((p) => p.id === Number(activeForm.value.job_position_id));
-    const salary = parseFloat(activeForm.value.base_salary);
+    const position = props.positionOptions.find((p) => p.id === Number(form.job_position_id));
+    const salary = parseFloat(form.base_salary);
 
     if (! position || ! salary) return null;
 
@@ -185,12 +177,21 @@ const monthlyBase = computed(() => props.employees
     <Head title="Empleados" />
 
     <AppLayout title="Empleados">
-        <template #actions>
-            <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos de planilla</Link>
-            <Link :href="route('payroll-settings.index')" class="btn btn-ghost">Configuración</Link>
-        </template>
-
-        <DocumentToolbar can-create @new="openCreate()" />
+        <div class="view-toolbar">
+            <div class="view-actions">
+                <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos de planilla</Link>
+                <Link :href="route('payroll-settings.index')" class="btn btn-ghost">Configuración</Link>
+                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+            </div>
+            <div class="view-filters">
+                <input v-model="search" type="search" placeholder="Buscar por código, nombre, cédula o puesto" aria-label="Buscar empleado">
+                <label class="check">
+                    <input v-model="showTerminated" type="checkbox">
+                    Mostrar dados de baja
+                </label>
+                <span class="muted small">{{ visible.length }} de {{ employees.length }}</span>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.employee" class="flash flash-error">{{ page.props.errors.employee }}</div>
 
@@ -214,47 +215,30 @@ const monthlyBase = computed(() => props.employees
         </div>
 
         <div class="card">
-            <div class="card-header">
-                <input v-model="search" type="search" placeholder="Buscar por código, nombre, cédula o puesto" class="search-input">
-                <label class="check inline">
-                    <input v-model="showTerminated" type="checkbox">
-                    Mostrar dados de baja
-                </label>
-                <span class="muted">{{ visible.length }} de {{ employees.length }}</span>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Nuevo empleado</button>
-            </div>
-
-            <div class="table-scroll freeze-2">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>Identificación</th>
+                            <th>Empleado</th>
                             <th>Puesto</th>
-                            <th>Centro de costo</th>
-                            <th>Ingreso</th>
-                            <th>Jornada</th>
-                            <th class="right">Salario base</th>
+                            <th class="num">Salario base</th>
                             <th>Pago</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="e in visible" :key="e.id">
-                            <td class="num">{{ e.code }}</td>
-                            <td>
-                                <Link :href="route('employees.show', e.id)">{{ e.full_name }}</Link>
-                            </td>
-                            <td class="num small">{{ e.identification_number }}</td>
-                            <td>{{ e.position ?? '—' }}</td>
-                            <td class="muted small">{{ e.cost_center ?? '—' }}</td>
-                            <td class="num small">{{ e.hire_date }}</td>
-                            <td class="muted small">
-                                {{ options.journeyTypes[e.journey_type] ?? e.journey_type }}
-                            </td>
-                            <td class="right">
+                        <tr
+                            v-for="e in visible"
+                            :key="e.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(e)"
+                            @keydown.enter="openDetail(e)"
+                            @keydown.space.prevent="openDetail(e)"
+                        >
+                            <td><span class="code">{{ e.code }}</span> — {{ e.full_name }}</td>
+                            <td data-label="Puesto">{{ e.position ?? '—' }}</td>
+                            <td data-label="Salario base" class="num">
                                 {{ formatMoney(e.base_salary) }}
                                 <!--
                                     El día y la hora derivados, en letra chica bajo el
@@ -266,19 +250,16 @@ const monthlyBase = computed(() => props.employees
                                     día {{ formatMoney(e.day_rate) }} · hora {{ formatMoney(e.hour_rate) }}
                                 </span>
                             </td>
-                            <td class="muted small">
+                            <td data-label="Pago" class="muted small">
                                 {{ options.paymentMethods[e.payment_method] }}
-                                <span v-if="e.payment_method === 'transferencia' && ! e.bank_account" class="warn-dot" title="Sin cuenta bancaria: no va a entrar al archivo de pago"><TriangleAlertIcon /></span>
+                                <span v-if="e.payment_method === 'transferencia' && ! e.bank_account" class="warn-dot" title="Sin cuenta bancaria: no va a entrar al archivo de pago"><TriangleAlertIcon aria-label="Sin cuenta bancaria" role="img" /></span>
                             </td>
-                            <td>{{ options.statuses[e.status] ?? e.status }}</td>
-                            <td class="row-actions">
-                                <Link :href="route('employees.show', e.id)" class="btn btn-ghost btn-sm">Ficha</Link>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="openEdit(e)">Editar</button>
-                                <button type="button" class="btn btn-ghost btn-sm" @click="destroy(e)">Eliminar</button>
+                            <td data-label="Estado">
+                                <span class="badge" :class="e.status === 'active' ? 'badge-success' : 'badge-neutral'">{{ options.statuses[e.status] ?? e.status }}</span>
                             </td>
                         </tr>
                         <tr v-if="!visible.length">
-                            <td colspan="11" class="muted empty-row">
+                            <td colspan="5" class="muted empty-row">
                                 {{ employees.length ? 'Ningún empleado coincide con la búsqueda.' : 'Todavía no hay empleados registrados.' }}
                             </td>
                         </tr>
@@ -287,63 +268,110 @@ const monthlyBase = computed(() => props.employees
             </div>
         </div>
 
-        <div v-if="creating || editing" class="modal-backdrop" @click.self="creating = false; editing = null">
-            <form class="modal modal-wide card" @submit.prevent="creating ? submitCreate() : submitEdit()">
-                <h2>{{ creating ? 'Nuevo empleado' : `Editar ${editing.code} — ${editing.full_name}` }}</h2>
+        <DetailModal :open="modalOpen" wide :title="modalTitle" @close="close">
+            <template #badge>
+                <span v-if="selected && mode !== 'create'" class="badge" :class="selected.status === 'active' ? 'badge-success' : 'badge-neutral'">
+                    {{ options.statuses[selected.status] ?? selected.status }}
+                </span>
+            </template>
 
-                <h3 class="section-title">Identidad</h3>
+            <dl v-if="selected && mode === 'details'" class="detail-list">
+                <div>
+                    <dt>Identificación</dt>
+                    <dd>{{ selected.identification_number }}</dd>
+                </div>
+                <div>
+                    <dt>Puesto</dt>
+                    <dd>{{ selected.position ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Departamento</dt>
+                    <dd>{{ selected.department ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Centro de costo</dt>
+                    <dd>{{ selected.cost_center ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Ingreso</dt>
+                    <dd>{{ selected.hire_date }}</dd>
+                </div>
+                <div>
+                    <dt>Jornada</dt>
+                    <dd>{{ options.journeyTypes[selected.journey_type] ?? selected.journey_type }}</dd>
+                </div>
+                <div>
+                    <dt>Salario base</dt>
+                    <dd>
+                        {{ formatMoney(selected.base_salary) }}
+                        <span class="muted small">(día {{ formatMoney(selected.day_rate) }} · hora {{ formatMoney(selected.hour_rate) }})</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>Forma de pago</dt>
+                    <dd>
+                        {{ options.paymentMethods[selected.payment_method] }}
+                        <span v-if="selected.payment_method === 'transferencia' && ! selected.bank_account" class="warn-text">
+                            — sin cuenta bancaria: no va a entrar al archivo de pago
+                        </span>
+                    </dd>
+                </div>
+            </dl>
+
+            <form v-if="mode === 'create' || (selected && mode === 'edit')" id="employee-form" @submit.prevent="submit">
+                <h3 class="section-title">Identidad</h3>                <h3 class="section-title">Identidad</h3>
 
                 <div class="field-row">
                     <div class="field">
                         <label>Código</label>
-                        <input v-model="activeForm.code" type="text" maxlength="20" required>
-                        <span v-if="activeForm.errors.code" class="error">{{ activeForm.errors.code }}</span>
+                        <input v-model="form.code" type="text" maxlength="20" required>
+                        <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">
                         <label>Tipo de identificación</label>
-                        <select v-model="activeForm.identification_type" required>
+                        <select v-model="form.identification_type" required>
                             <option v-for="(label, value) in options.identificationTypes" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
                     <div class="field">
                         <label>Número</label>
-                        <input v-model="activeForm.identification_number" type="text" maxlength="30" required>
-                        <span v-if="activeForm.errors.identification_number" class="error">{{ activeForm.errors.identification_number }}</span>
+                        <input v-model="form.identification_number" type="text" maxlength="30" required>
+                        <span v-if="form.errors.identification_number" class="error">{{ form.errors.identification_number }}</span>
                     </div>
                     <div class="field">
                         <label>Asegurado CCSS</label>
-                        <input v-model="activeForm.ccss_number" type="text" maxlength="30">
-                        <span class="hint small">Obligatorio en la planilla de la Caja.</span>
+                        <input v-model="form.ccss_number" type="text" maxlength="30">
+                        <span class="muted small">Obligatorio en la planilla de la Caja.</span>
                     </div>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
                         <label>Nombre</label>
-                        <input v-model="activeForm.first_name" type="text" required>
+                        <input v-model="form.first_name" type="text" required>
                     </div>
                     <div class="field">
                         <label>Primer apellido</label>
-                        <input v-model="activeForm.last_name1" type="text" required>
+                        <input v-model="form.last_name1" type="text" required>
                     </div>
                     <div class="field">
                         <label>Segundo apellido</label>
-                        <input v-model="activeForm.last_name2" type="text">
+                        <input v-model="form.last_name2" type="text">
                     </div>
                 </div>
 
                 <div class="field-row">
                     <div class="field">
                         <label>Fecha de nacimiento</label>
-                        <input v-model="activeForm.birth_date" type="date">
+                        <input v-model="form.birth_date" type="date">
                     </div>
                     <div class="field">
                         <label>Correo</label>
-                        <input v-model="activeForm.email" type="email">
+                        <input v-model="form.email" type="email">
                     </div>
                     <div class="field">
                         <label>Teléfono</label>
-                        <input v-model="activeForm.phone" type="text" maxlength="30">
+                        <input v-model="form.phone" type="text" maxlength="30">
                     </div>
                 </div>
 
@@ -352,13 +380,13 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Fecha de ingreso</label>
-                        <input v-model="activeForm.hire_date" type="date" required>
-                        <span class="hint small">De acá dependen antigüedad, vacaciones y cesantía.</span>
-                        <span v-if="activeForm.errors.hire_date" class="error">{{ activeForm.errors.hire_date }}</span>
+                        <input v-model="form.hire_date" type="date" required>
+                        <span class="muted small">De acá dependen antigüedad, vacaciones y cesantía.</span>
+                        <span v-if="form.errors.hire_date" class="error">{{ form.errors.hire_date }}</span>
                     </div>
                     <div class="field">
                         <label>Departamento</label>
-                        <select v-model="activeForm.department_id" @change="applyDepartmentDefaults">
+                        <select v-model="form.department_id" @change="applyDepartmentDefaults">
                             <option value="">Sin departamento</option>
                             <option v-for="d in departmentOptions" :key="d.id" :value="d.id">{{ d.code }} — {{ d.name }}</option>
                         </select>
@@ -368,11 +396,11 @@ const monthlyBase = computed(() => props.employees
                     </div>
                     <div class="field">
                         <label>Puesto</label>
-                        <select v-model="activeForm.job_position_id">
+                        <select v-model="form.job_position_id">
                             <option value="">Sin puesto</option>
                             <option v-for="p in positionsForDepartment" :key="p.id" :value="p.id">{{ p.code }} — {{ p.name }}</option>
                         </select>
-                        <span class="hint small">El código de ocupación de la CCSS sale del puesto.</span>
+                        <span class="muted small">El código de ocupación de la CCSS sale del puesto.</span>
                     </div>
                 </div>
 
@@ -384,25 +412,25 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Centro de costo</label>
-                        <select v-model="activeForm.cost_center_id">
+                        <select v-model="form.cost_center_id">
                             <option value="">Sin centro de costo</option>
                             <option v-for="c in costCenters" :key="c.id" :value="c.id">{{ c.code }} — {{ c.name }}</option>
                         </select>
-                        <span class="hint small">Lleva su gasto al área que lo consume, sin repartirlo a mano.</span>
+                        <span class="muted small">Lleva su gasto al área que lo consume, sin repartirlo a mano.</span>
                     </div>
                     <div class="field">
                         <label>Cuenta de gasto (opcional)</label>
-                        <select v-model="activeForm.salary_expense_account_id">
+                        <select v-model="form.salary_expense_account_id">
                             <option value="">Heredar de la configuración de planilla</option>
                             <option v-for="a in expenseAccounts" :key="a.id" :value="a.id">{{ a.code }} — {{ a.description_es }}</option>
                         </select>
-                        <span class="hint small">
+                        <span class="muted small">
                             Para separar mano de obra directa de gasto administrativo. Vacío hereda.
                         </span>
                     </div>
                     <div class="field">
                         <label>Tipo de contrato</label>
-                        <select v-model="activeForm.contract_type" required>
+                        <select v-model="form.contract_type" required>
                             <option v-for="(label, value) in options.contractTypes" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
@@ -411,14 +439,14 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Jornada</label>
-                        <select v-model="activeForm.journey_type" required>
+                        <select v-model="form.journey_type" required>
                             <option v-for="(label, value) in options.journeyTypes" :key="value" :value="value">{{ label }}</option>
                         </select>
-                        <span class="hint small">Fija el umbral a partir del cual una hora es extra.</span>
+                        <span class="muted small">Fija el umbral a partir del cual una hora es extra.</span>
                     </div>
                     <div class="field">
                         <label>Horas semanales</label>
-                        <input v-model="activeForm.weekly_hours" type="number" step="0.01" min="0.01" max="168" required>
+                        <input v-model="form.weekly_hours" type="number" step="0.01" min="0.01" max="168" required>
                     </div>
                 </div>
 
@@ -427,50 +455,50 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Tipo de salario</label>
-                        <select v-model="activeForm.salary_type" required>
+                        <select v-model="form.salary_type" required>
                             <option v-for="(label, value) in options.salaryTypes" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
                     <div class="field">
                         <label>Salario base</label>
-                        <input v-model="activeForm.base_salary" type="number" step="0.01" min="0" required>
-                        <span class="hint small">En la unidad del tipo de salario elegido.</span>
-                        <span v-if="activeForm.errors.base_salary" class="error">{{ activeForm.errors.base_salary }}</span>
+                        <input v-model="form.base_salary" type="number" step="0.01" min="0" required>
+                        <span class="muted small">En la unidad del tipo de salario elegido.</span>
+                        <span v-if="form.errors.base_salary" class="error">{{ form.errors.base_salary }}</span>
                     </div>
                     <!--
                         El divisor del día solo existe para el salario semanal:
                         en las demás modalidades lo fija la ley (30 el mes, 15
                         la quincena) y preguntarlo sería ofrecer un error.
                     -->
-                    <div v-if="activeForm.salary_type === 'semanal'" class="field">
+                    <div v-if="form.salary_type === 'semanal'" class="field">
                         <label>Divisor del día</label>
-                        <select v-model.number="activeForm.weekly_salary_divisor" required>
+                        <select v-model.number="form.weekly_salary_divisor" required>
                             <option :value="6">6 — la semana paga los días laborados</option>
                             <option :value="7">7 — la semana incluye el descanso</option>
                         </select>
-                        <span class="hint small">
+                        <span class="muted small">
                             Entre 6 y 7 hay un 16% de diferencia en el valor del día, y es el
                             número que multiplica los días de vacaciones, aguinaldo y liquidación.
                         </span>
-                        <span v-if="activeForm.errors.weekly_salary_divisor" class="error">{{ activeForm.errors.weekly_salary_divisor }}</span>
+                        <span v-if="form.errors.weekly_salary_divisor" class="error">{{ form.errors.weekly_salary_divisor }}</span>
                     </div>
                     <div class="field">
                         <label>Forma de pago</label>
-                        <select v-model="activeForm.payment_method" required>
+                        <select v-model="form.payment_method" required>
                             <option v-for="(label, value) in options.paymentMethods" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
                 </div>
 
-                <div v-if="activeForm.payment_method === 'transferencia'" class="field-row">
+                <div v-if="form.payment_method === 'transferencia'" class="field-row">
                     <div class="field">
                         <label>Banco</label>
-                        <input v-model="activeForm.bank_name" type="text">
+                        <input v-model="form.bank_name" type="text">
                     </div>
                     <div class="field">
                         <label>Cuenta IBAN</label>
-                        <input v-model="activeForm.bank_account" type="text" maxlength="34">
-                        <span class="hint small">Sin esto no entra al archivo de pago y hay que transferirle a mano.</span>
+                        <input v-model="form.bank_account" type="text" maxlength="34">
+                        <span class="muted small">Sin esto no entra al archivo de pago y hay que transferirle a mano.</span>
                     </div>
                 </div>
 
@@ -479,27 +507,27 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Hijos con crédito</label>
-                        <input v-model="activeForm.children_credit_count" type="number" min="0" max="30">
+                        <input v-model="form.children_credit_count" type="number" min="0" max="30">
                     </div>
                     <div class="field">
                         <label class="check">
-                            <input v-model="activeForm.has_spouse_credit" type="checkbox">
+                            <input v-model="form.has_spouse_credit" type="checkbox">
                             Crédito por cónyuge
                         </label>
-                        <span class="hint small">Los créditos se restan del impuesto, no de la base.</span>
+                        <span class="muted small">Los créditos se restan del impuesto, no de la base.</span>
                     </div>
                 </div>
 
                 <label class="check">
-                    <input v-model="activeForm.is_income_tax_exempt" type="checkbox">
+                    <input v-model="form.is_income_tax_exempt" type="checkbox">
                     No aplicar impuesto al salario
                 </label>
 
                 <label class="check">
-                    <input v-model="activeForm.is_pensioner" type="checkbox">
+                    <input v-model="form.is_pensioner" type="checkbox">
                     Pensionado
                 </label>
-                <span class="hint small">
+                <span class="muted small">
                     Un pensionado <strong>sí cotiza</strong> Enfermedad y Maternidad y Banco Popular —el 6,50%—
                     pero no IVM, ni él ni el patrono, porque ya está pensionado por ese régimen. No es lo mismo
                     que la exención total de abajo: usar esa le quitaría también el 6,50% que sí debe, y la
@@ -507,10 +535,10 @@ const monthlyBase = computed(() => props.employees
                 </span>
 
                 <label class="check">
-                    <input v-model="activeForm.is_ccss_exempt" type="checkbox">
+                    <input v-model="form.is_ccss_exempt" type="checkbox">
                     No cotiza NINGUNA carga social por esta planilla
                 </label>
-                <span class="hint small">
+                <span class="muted small">
                     Las tres son excepciones y tienen que poder sustentarse. Marcarlas por error deja de rebajar
                     lo que la ley manda rebajar.
                 </span>
@@ -520,43 +548,53 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Estado</label>
-                        <select v-model="activeForm.status" required>
+                        <select v-model="form.status" required>
                             <option v-for="(label, value) in options.statuses" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
-                    <div v-if="activeForm.status === 'terminated'" class="field">
+                    <div v-if="form.status === 'terminated'" class="field">
                         <label>Fecha de salida</label>
-                        <input v-model="activeForm.termination_date" type="date">
-                        <span v-if="activeForm.errors.termination_date" class="error">{{ activeForm.errors.termination_date }}</span>
+                        <input v-model="form.termination_date" type="date">
+                        <span v-if="form.errors.termination_date" class="error">{{ form.errors.termination_date }}</span>
                     </div>
-                    <div v-if="activeForm.status === 'terminated'" class="field">
+                    <div v-if="form.status === 'terminated'" class="field">
                         <label>Motivo</label>
-                        <select v-model="activeForm.termination_reason">
+                        <select v-model="form.termination_reason">
                             <option value="">Sin indicar</option>
                             <option v-for="(label, value) in options.terminationReasons" :key="value" :value="value">{{ label }}</option>
                         </select>
-                        <span class="hint small">Decide si corresponden preaviso y cesantía.</span>
+                        <span class="muted small">Decide si corresponden preaviso y cesantía.</span>
                     </div>
                 </div>
 
                 <div class="field">
                     <label>Notas</label>
-                    <textarea v-model="activeForm.notes" rows="2"></textarea>
+                    <textarea v-model="form.notes" rows="2"></textarea>
                 </div>
 
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="creating = false; editing = null">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="activeForm.processing">Guardar</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <template v-if="selected && mode === 'details'">
+                    <button type="button" class="btn btn-ghost btn-danger-text" @click="destroy">Eliminar</button>
+                    <Link :href="route('employees.show', selected.id)" class="btn btn-ghost"><UserIcon /> Ver ficha completa</Link>
+                    <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
+                </template>
+                <template v-else-if="modalOpen">
+                    <button type="button" class="btn btn-ghost" @click="cancelForm">Cancelar</button>
+                    <button type="submit" form="employee-form" class="btn btn-primary" :disabled="form.processing">
+                        {{ mode === 'create' ? 'Crear' : 'Guardar' }}
+                    </button>
+                </template>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
 .stat-row {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
     gap: 1rem;
     margin-bottom: 1rem;
 }
@@ -568,7 +606,6 @@ const monthlyBase = computed(() => props.employees
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-surface);
-    min-width: 12rem;
 }
 
 .stat-label {
@@ -589,20 +626,15 @@ const monthlyBase = computed(() => props.employees
     color: var(--color-text-muted);
 }
 
-.search-input {
-    min-width: 20rem;
-    flex: 1;
-}
-
-.check.inline {
-    margin: 0;
-    white-space: nowrap;
-}
+table { font-size: 0.85rem; }
+.code { font-variant-numeric: tabular-nums; }
 
 .warn-dot {
-    color: #b45309;
+    color: var(--color-warning);
     cursor: help;
 }
+
+.warn-text { color: var(--color-warning); font-size: 0.8rem; }
 
 .rate-hint {
     display: block;

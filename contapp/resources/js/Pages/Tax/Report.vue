@@ -27,36 +27,45 @@ const rows = [
     <Head title="Reporte de IVA" />
 
     <AppLayout title="Reporte de IVA">
-        <template #actions>
-            <input v-model="from" type="date" class="date-input">
-            <span class="to-label">a</span>
-            <input v-model="to" type="date" class="date-input">
-            <button type="button" class="btn btn-primary" @click="applyFilter">Consultar</button>
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilter">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="from" type="date">
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="to" type="date">
+                </label>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </form>
+        </div>
 
         <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Clasificación</th>
-                        <th class="num">Base gravable</th>
-                        <th class="num">Impuesto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="row in rows" :key="row.key">
-                        <td>{{ row.label }}</td>
-                        <td class="num">{{ summary[row.key]?.base ?? '0.00' }}</td>
-                        <td class="num">{{ summary[row.key]?.tax ?? '0.00' }}</td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="2" class="total-label">Neto a pagar (Devengado − Soportado)</td>
-                        <td class="num total-value">{{ summary.neto_a_pagar }}</td>
-                    </tr>
-                </tfoot>
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Clasificación</th>
+                            <th class="num">Base gravable</th>
+                            <th class="num">Impuesto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="row in rows" :key="row.key">
+                            <td>{{ row.label }}</td>
+                            <td data-label="Base gravable" class="num">{{ summary[row.key]?.base ?? '0.00' }}</td>
+                            <td data-label="Impuesto" class="num">{{ summary[row.key]?.tax ?? '0.00' }}</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" class="total-label">Neto a pagar (Devengado − Soportado)</td>
+                            <td data-label="Neto a pagar" class="num total-value">{{ summary.neto_a_pagar }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
 
         <p class="hint">
@@ -68,18 +77,11 @@ const rows = [
 
 <style scoped>
 table { font-size: 0.85rem; }
-th, td { text-align: left; padding: 0.6rem 1.1rem; border-top: 1px solid var(--color-border); }
 .total-label { text-align: right; font-weight: 700; }
 .total-value { font-weight: 800; color: var(--color-primary); }
+.hint { margin-top: 1rem; }
 
-.date-input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.55rem;
-    font-size: 0.82rem;
+@media screen and (max-width: 1024px) {
+    .total-label { text-align: left; }
 }
-.to-label { color: var(--color-text-muted); font-size: 0.82rem; }
-
-.hint { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 1rem; max-width: 640px; }
 </style>

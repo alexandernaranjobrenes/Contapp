@@ -2,8 +2,10 @@
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { confirmAction } from '../../../Utils/confirm';
 import { formatMoney } from '../../../Utils/money';
-import { ArrowLeftIcon, PlusIcon } from '@lucide/vue';
+import { ArrowLeftIcon, PlusIcon, UploadIcon } from '@lucide/vue';
 
 const props = defineProps({
     employee: { type: Object, required: true },
@@ -79,9 +81,13 @@ function submitNote() {
 }
 
 function destroyNote(note) {
-    if (! confirm('¿Eliminar esta anotación?')) return;
-
-    router.delete(route('employee-notes.destroy', [props.employee.id, note.id]), { preserveScroll: true });
+    confirmAction({
+        title: 'Eliminar anotación',
+        message: `La anotación «${note.title}» se elimina de la bitácora.`,
+        confirmLabel: 'Eliminar',
+        danger: true,
+        onConfirm: () => router.delete(route('employee-notes.destroy', [props.employee.id, note.id]), { preserveScroll: true }),
+    });
 }
 
 const noteClass = {
@@ -95,10 +101,12 @@ const noteClass = {
     <Head :title="`${employee.code} — ${employee.full_name}`" />
 
     <AppLayout :title="employee.full_name">
-        <template #actions>
+        <div class="view-toolbar">
             <Link :href="route('employees.index')" class="btn btn-ghost"><ArrowLeftIcon /> Empleados</Link>
-            <Link :href="route('personnel-actions.index')" class="btn btn-ghost">Acciones de personal</Link>
-        </template>
+            <div class="view-actions">
+                <Link :href="route('personnel-actions.index')" class="btn btn-ghost">Acciones de personal</Link>
+            </div>
+        </div>
 
         <div v-if="page.props.errors?.employee" class="flash flash-error">{{ page.props.errors.employee }}</div>
 
@@ -107,8 +115,8 @@ const noteClass = {
                 <img v-if="employee.photo_url" :src="employee.photo_url" class="photo" alt="">
                 <div v-else class="photo photo-empty">{{ employee.first_name?.[0] }}{{ employee.last_name1?.[0] }}</div>
 
-                <label class="btn btn-ghost btn-sm file-btn">
-                    {{ employee.photo_url ? 'Cambiar foto' : 'Subir foto' }}
+                <label class="btn btn-ghost file-btn">
+                    <UploadIcon /> {{ employee.photo_url ? 'Cambiar foto' : 'Subir foto' }}
                     <input ref="photoInput" type="file" accept="image/*" class="file-input" @change="pickPhoto">
                 </label>
                 <span v-if="photoForm.errors.photo" class="error">{{ photoForm.errors.photo }}</span>
@@ -171,7 +179,7 @@ const noteClass = {
             <section class="card">
                 <div class="card-header">
                     <h3>Vacaciones</h3>
-                    <Link :href="route('vacations.index')" class="btn btn-ghost btn-sm">Registrar movimiento</Link>
+                    <Link :href="route('vacations.index')" class="btn btn-ghost">Registrar movimiento</Link>
                 </div>
 
                 <div class="balance-block">
@@ -190,22 +198,22 @@ const noteClass = {
                     rastrear hasta el período que lo acreditó.
                 </p>
 
-                <div class="table-scroll compact">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>Fecha</th>
                                 <th>Tipo</th>
-                                <th class="right">Días</th>
+                                <th class="num">Días</th>
                                 <th>Detalle</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="m in vacationMovements" :key="m.id">
                                 <td class="num small">{{ m.movement_date }}</td>
-                                <td class="small">{{ m.type_label }}</td>
-                                <td class="right num" :class="{ negative: m.days < 0 }">{{ m.days.toFixed(4) }}</td>
-                                <td class="muted small">
+                                <td data-label="Tipo" class="small">{{ m.type_label }}</td>
+                                <td data-label="Días" class="num" :class="{ negative: m.days < 0 }">{{ m.days.toFixed(4) }}</td>
+                                <td data-label="Detalle" class="muted small">
                                     <template v-if="m.from_date">{{ m.from_date }} a {{ m.to_date }}</template>
                                     <template v-else>{{ m.notes ?? '—' }}</template>
                                 </td>
@@ -223,37 +231,37 @@ const noteClass = {
             <section class="card">
                 <div class="card-header">
                     <h3>Deducciones y préstamos</h3>
-                    <Link :href="route('employee-deductions.index')" class="btn btn-ghost btn-sm">Administrar</Link>
+                    <Link :href="route('employee-deductions.index')" class="btn btn-ghost">Administrar</Link>
                 </div>
 
                 <p v-if="liveDeductions.length" class="hint small">
                     Se rebajan solas en cada planilla, en orden de prioridad, sin dejar el neto en negativo.
                 </p>
 
-                <div class="table-scroll compact">
+                <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>Tipo</th>
                                 <th>Descripción</th>
-                                <th class="right">Cuota</th>
-                                <th class="right">Saldo</th>
+                                <th class="num">Cuota</th>
+                                <th class="num">Saldo</th>
                                 <th>Estado</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="d in deductions" :key="d.id">
                                 <td class="small">{{ d.type_label }}</td>
-                                <td class="small">{{ d.description }}</td>
-                                <td class="right num small">
+                                <td data-label="Descripción" class="small">{{ d.description }}</td>
+                                <td data-label="Cuota" class="num small">
                                     <template v-if="d.calculation === 'percentage'">{{ d.installment_percentage }}%</template>
                                     <template v-else>{{ formatMoney(d.installment_amount) }}</template>
                                 </td>
-                                <td class="right num">
+                                <td data-label="Saldo" class="num">
                                     <template v-if="d.balance !== null">{{ formatMoney(d.balance) }}</template>
                                     <span v-else class="muted small">indefinida</span>
                                 </td>
-                                <td class="small">{{ d.status }}</td>
+                                <td data-label="Estado" class="small">{{ d.status }}</td>
                             </tr>
                             <tr v-if="!deductions.length">
                                 <td colspan="5" class="muted empty-row">Sin obligaciones registradas.</td>
@@ -267,7 +275,7 @@ const noteClass = {
         <section class="card">
             <div class="card-header">
                 <h3>Bitácora</h3>
-                <button type="button" class="btn btn-primary btn-sm" @click="noting = true"><PlusIcon /> Anotar</button>
+                <button type="button" class="btn btn-primary" @click="noting = true"><PlusIcon /> Anotar</button>
             </div>
 
             <div v-if="page.props.errors?.note" class="flash flash-error note-error">{{ page.props.errors.note }}</div>
@@ -286,7 +294,7 @@ const noteClass = {
                         <span v-if="n.is_confidential" class="badge badge-warning">confidencial</span>
                         <strong class="note-title">{{ n.title }}</strong>
                         <span class="spacer" />
-                        <button v-if="n.can_delete" type="button" class="btn btn-ghost btn-sm" @click="destroyNote(n)">
+                        <button v-if="n.can_delete" type="button" class="btn btn-ghost" @click="destroyNote(n)">
                             Eliminar
                         </button>
                     </div>
@@ -301,7 +309,7 @@ const noteClass = {
         <section class="card">
             <div class="card-header">
                 <h3>Historial laboral</h3>
-                <Link :href="route('personnel-actions.index')" class="btn btn-ghost btn-sm">Nueva acción</Link>
+                <Link :href="route('personnel-actions.index')" class="btn btn-ghost">Nueva acción</Link>
             </div>
 
             <p class="hint small">
@@ -309,7 +317,7 @@ const noteClass = {
                 explicar, meses después, desde cuándo rige un aumento y quién lo autorizó.
             </p>
 
-            <div class="table-scroll compact">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
@@ -317,54 +325,53 @@ const noteClass = {
                             <th>Acción</th>
                             <th>Antes</th>
                             <th>Después</th>
-                            <th>Motivo</th>
                             <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="a in personnelActions" :key="a.id">
                             <td class="num small">{{ a.effective_date }}</td>
-                            <td class="small">{{ a.action_label }}</td>
-                            <td class="num small muted">{{ a.previous_value ?? '—' }}</td>
-                            <td class="num small">{{ a.new_value ?? '—' }}</td>
-                            <td class="muted small">{{ a.reason ?? '—' }}</td>
-                            <td class="small">{{ a.status_label }}</td>
+                            <td data-label="Acción" class="small">
+                                {{ a.action_label }}
+                                <span v-if="a.reason" class="block muted">{{ a.reason }}</span>
+                            </td>
+                            <td data-label="Antes" class="num small muted">{{ a.previous_value ?? '—' }}</td>
+                            <td data-label="Después" class="num small">{{ a.new_value ?? '—' }}</td>
+                            <td data-label="Estado" class="small">{{ a.status_label }}</td>
                         </tr>
                         <tr v-if="!personnelActions.length">
-                            <td colspan="6" class="muted empty-row">Sin acciones registradas.</td>
+                            <td colspan="5" class="muted empty-row">Sin acciones registradas.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </section>
-        <div v-if="noting" class="modal-backdrop" @click.self="noting = false">
-            <form class="modal card" @submit.prevent="submitNote">
-                <h2>Anotar en la bitácora</h2>
-
+        <DetailModal :open="noting" title="Anotar en la bitácora" @close="noting = false">
+            <form id="note-form" @submit.prevent="submitNote">
                 <div class="field-row">
                     <div class="field">
-                        <label>Fecha del hecho</label>
-                        <input v-model="noteForm.happened_on" type="date" required>
-                        <span class="hint small">Cuándo pasó, no cuándo lo estás anotando.</span>
+                        <label for="note-date">Fecha del hecho</label>
+                        <input id="note-date" v-model="noteForm.happened_on" type="date" required>
+                        <span class="muted small">Cuándo pasó, no cuándo lo estás anotando.</span>
                         <span v-if="noteForm.errors.happened_on" class="error">{{ noteForm.errors.happened_on }}</span>
                     </div>
                     <div class="field">
-                        <label>Tipo</label>
-                        <select v-model="noteForm.category" required>
+                        <label for="note-category">Tipo</label>
+                        <select id="note-category" v-model="noteForm.category" required>
                             <option v-for="(label, value) in noteCategories" :key="value" :value="value">{{ label }}</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="field">
-                    <label>Título</label>
-                    <input v-model="noteForm.title" type="text" maxlength="255" required>
+                    <label for="note-title">Título</label>
+                    <input id="note-title" v-model="noteForm.title" type="text" maxlength="255" required>
                     <span v-if="noteForm.errors.title" class="error">{{ noteForm.errors.title }}</span>
                 </div>
 
                 <div class="field">
-                    <label>Detalle</label>
-                    <textarea v-model="noteForm.body" rows="5" required
+                    <label for="note-body">Detalle</label>
+                    <textarea id="note-body" v-model="noteForm.body" rows="5" required
                         placeholder="Qué pasó, con los hechos concretos"></textarea>
                     <span v-if="noteForm.errors.body" class="error">{{ noteForm.errors.body }}</span>
                 </div>
@@ -374,12 +381,13 @@ const noteClass = {
                     Confidencial
                 </label>
 
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" @click="noting = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="noteForm.processing">Anotar</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="noting = false">Cancelar</button>
+                <button type="submit" form="note-form" class="btn btn-primary" :disabled="noteForm.processing">Anotar</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -426,7 +434,7 @@ const noteClass = {
 
 .facts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
     gap: 0.6rem 1rem;
     margin: 0;
 }
@@ -460,7 +468,7 @@ const noteClass = {
 
 .grid-2 {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
     gap: 1rem;
     margin-bottom: 1rem;
 }
@@ -483,7 +491,7 @@ const noteClass = {
 
 .profile .hint, .card > .hint { padding: 0 1.1rem; }
 
-.table-scroll.compact { max-height: 22rem; }
+.block { display: block; }
 
 .negative { color: var(--color-danger); }
 
@@ -511,7 +519,7 @@ const noteClass = {
 
 /* Una llamada de atención y un reconocimiento no se leen igual de rápido si
    se ven iguales. */
-.note-list li.is-warning { border-left-color: #d08a55; }
+.note-list li.is-warning { border-left-color: var(--color-warning); }
 .note-list li.is-good { border-left-color: var(--color-success); }
 
 .note-head {

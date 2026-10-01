@@ -1,34 +1,72 @@
 <script setup>
+import { computed } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+
+/**
+ * El marco de las pantallas de acceso: login, activación de licencia y login
+ * del backoffice.
+ *
+ * En escritorio, dos mitades: la marca a la izquierda —fondo profundo con
+ * una retícula de libro contable y un brillo del color de acento— y el
+ * formulario a la derecha, en una tarjeta. En un teléfono la marca se vuelve
+ * un encabezado compacto y la tarjeta se monta un poco sobre él.
+ *
+ * No hay compañía todavía, así que usa el tema predeterminado (Marino).
+ */
 defineProps({
     // Plano operativo (Superusuario/Administrador/Usuario) vs. backoffice
     // del Propietario — visualmente distintos a propósito (CLAUDE.md secc.
     // 11: nunca deben confundirse, son dos puertas de entrada distintas).
     dark: { type: Boolean, default: false },
+    // El titular grande del panel de marca.
     subtitle: { type: String, default: '' },
+    // Un párrafo corto debajo del titular.
+    lead: { type: String, default: '' },
     // Activate.vue trae más campos (compañía + usuario en un solo formulario)
     // que un login de 2 campos — necesita más ancho para su grilla de 2 columnas.
     wide: { type: Boolean, default: false },
 });
+
+const page = usePage();
+const year = new Date().getFullYear();
+const flash = computed(() => page.props.flash ?? {});
 </script>
 
 <template>
     <div class="auth-shell" :class="{ 'is-dark': dark, 'is-wide': wide }">
-        <div class="auth-panel">
+        <aside class="auth-panel">
             <div class="auth-brand">
                 <span class="brand-mark">C</span>
                 <span class="brand-name">CONTAPP</span>
             </div>
-            <p class="auth-panel-subtitle">{{ subtitle }}</p>
-            <div class="auth-panel-extra">
-                <slot name="panel-extra" />
-            </div>
-        </div>
 
-        <div class="auth-form-side">
+            <div class="auth-panel-body">
+                <h1 class="auth-headline">{{ subtitle }}</h1>
+                <p v-if="lead" class="auth-lead">{{ lead }}</p>
+
+                <div class="auth-panel-extra">
+                    <slot name="panel-extra" />
+                </div>
+            </div>
+
+            <p class="auth-panel-footer">
+                © {{ year }} CONTAPP · Hecho por
+                <a href="https://ncodedigital.com" target="_blank" rel="noopener">NcodeDigital</a>
+            </p>
+        </aside>
+
+        <main class="auth-form-side">
             <div class="auth-card card">
+                <p v-if="flash.success" class="flash flash-success auth-flash" role="status">{{ flash.success }}</p>
+                <p v-if="flash.error" class="flash flash-error auth-flash" role="alert">{{ flash.error }}</p>
+
                 <slot />
             </div>
-        </div>
+
+            <div v-if="$slots.below" class="auth-below">
+                <slot name="below" />
+            </div>
+        </main>
     </div>
 </template>
 
@@ -37,23 +75,51 @@ defineProps({
     min-height: 100vh;
     min-height: 100dvh;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
 }
 
+/* ── Panel de marca ───────────────────────────────────────────────────── */
+
 .auth-panel {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding: 3rem 3rem;
-    background: var(--color-primary) var(--marble-texture);
-    color: var(--color-on-primary);
+    gap: 2rem;
+    padding: 2.5rem clamp(2rem, 5vw, 4.5rem);
+    overflow: hidden;
+    color: var(--color-on-sidebar);
+    background-color: var(--color-sidebar);
+    background-image:
+        radial-gradient(38rem 28rem at 12% 8%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 60%),
+        radial-gradient(30rem 24rem at 95% 100%, rgba(255, 255, 255, 0.07), transparent 60%),
+        linear-gradient(165deg, transparent 40%, rgba(0, 0, 0, 0.28));
+}
+
+/* La retícula de un libro contable, desvanecida hacia los bordes. */
+.auth-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 35% 45%, #000 20%, transparent 75%);
+    mask-image: radial-gradient(ellipse 80% 70% at 35% 45%, #000 20%, transparent 75%);
 }
 
 .auth-shell.is-dark .auth-panel {
-    /* Deliberadamente distinto al azul marino de marca (var(--color-primary)):
-       esta puerta es exclusiva del fabricante de CONTAPP, nunca de un
-       cliente, así que no debe poder confundirse con el plano operativo. */
-    background: #14171c;
+    /* Deliberadamente distinto al de la marca: esta puerta es exclusiva del
+       fabricante de CONTAPP, nunca de un cliente, así que no debe poder
+       confundirse con el plano operativo. Grafito con acento ámbar. */
+    background-color: #14171c;
+    background-image:
+        radial-gradient(38rem 28rem at 12% 8%, rgba(240, 180, 41, 0.14), transparent 60%),
+        linear-gradient(165deg, transparent 40%, rgba(0, 0, 0, 0.35));
     color: #eef0f3;
 }
 
@@ -61,90 +127,181 @@ defineProps({
     display: flex;
     align-items: center;
     gap: 0.7rem;
-    margin-bottom: 1rem;
 }
 
 .brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
     font-weight: 800;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
 }
 
 .brand-name {
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 800;
-    letter-spacing: .02em;
+    letter-spacing: 0.04em;
 }
 
-.auth-panel-subtitle {
-    font-size: 1rem;
-    opacity: .82;
+.auth-panel-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 36rem;
+}
+
+.auth-headline {
     margin: 0;
-    max-width: 26em;
-    line-height: 1.5;
+    font-size: clamp(1.9rem, 3.2vw, 2.7rem);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    /* Líneas parejas: sin una palabra sola en la última. */
+    text-wrap: balance;
+}
+
+.auth-lead {
+    margin: 1rem 0 0;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: rgba(244, 246, 250, 0.72);
 }
 
 .auth-panel-extra {
-    margin-top: 1.75rem;
+    margin-top: 2.25rem;
 }
 
+.auth-panel-footer {
+    margin: 0;
+    font-size: 0.78rem;
+    color: rgba(244, 246, 250, 0.5);
+}
+
+.auth-panel-footer a {
+    color: rgba(244, 246, 250, 0.78);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.auth-panel-footer a:hover,
+.auth-panel-footer a:focus-visible {
+    color: var(--color-on-sidebar);
+    text-decoration: underline;
+}
+
+/* ── Formulario ───────────────────────────────────────────────────────── */
+
 .auth-form-side {
+    /* Posicionado para quedar por encima del panel de marca, que también lo
+       está: en el teléfono la tarjeta se monta sobre el encabezado. */
+    position: relative;
+    z-index: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem 1.5rem;
-    background: var(--color-bg) var(--marble-texture);
+    gap: 1.25rem;
+    padding: 2.5rem 1.5rem;
 }
 
 .auth-card {
     width: 100%;
-    max-width: 420px;
-    padding: 2rem 2rem;
+    max-width: 440px;
+    padding: 2.5rem 2.25rem;
+    border-radius: calc(var(--radius-md) + 4px);
+    box-shadow: 0 1px 2px rgba(11, 31, 58, 0.04), 0 18px 48px -12px rgba(11, 31, 58, 0.18);
 }
 
 .auth-shell.is-wide .auth-card {
-    max-width: 560px;
+    max-width: 600px;
 }
 
+.auth-flash {
+    margin: 0 0 1.25rem;
+}
+
+.auth-below {
+    width: 100%;
+    max-width: 440px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.auth-shell.is-wide .auth-below {
+    max-width: 600px;
+}
+
+/* ── Tablet y teléfono ────────────────────────────────────────────────── */
+
 @media (max-width: 860px) {
-    /* auto + 1fr: el panel de marca ocupa solo lo que mide, y el resto de la
-       pantalla es del formulario. Sin esto las dos filas se reparten la
-       altura por mitades y el formulario queda por debajo del pliegue. */
+    /* La marca pasa a ser un encabezado; el formulario, debajo, se monta
+       un poco sobre él. */
     .auth-shell {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto 1fr;
     }
 
     .auth-panel {
-        padding: 1.75rem 1.5rem 1.25rem;
+        gap: 1rem;
+        padding: 1.5rem 1.5rem 3.25rem;
     }
 
-    .auth-panel-subtitle {
+    .auth-panel-body {
         max-width: none;
     }
 
-    .auth-panel-extra {
-        margin-top: 1rem;
+    .auth-headline {
+        font-size: 1.35rem;
+        line-height: 1.25;
+    }
+
+    .auth-lead {
+        margin-top: 0.4rem;
+        font-size: 0.9rem;
+    }
+
+    /* Los beneficios y el pie se quedan en escritorio: en un teléfono lo
+       que importa es llegar al formulario. */
+    .auth-panel-extra,
+    .auth-panel-footer {
+        display: none;
+    }
+
+    .auth-form-side {
+        justify-content: flex-start;
+        margin-top: -2rem;
+        padding: 0 1.25rem 2rem;
     }
 }
 
 @media (max-width: 480px) {
     .auth-panel {
-        padding: 1.25rem 1rem 1rem;
+        padding: 1.25rem 1rem 3rem;
+    }
+
+    .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        font-size: 1rem;
+    }
+
+    .brand-name {
+        font-size: 1.1rem;
     }
 
     .auth-form-side {
-        padding: 1.25rem 1rem;
+        padding: 0 0.75rem 1.5rem;
     }
 
     .auth-card {
-        padding: 1.5rem 1.25rem;
+        padding: 1.75rem 1.25rem;
     }
 }
 </style>

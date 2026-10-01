@@ -2,6 +2,9 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { useRecordDetail } from '../../../Utils/recordDetail';
+import { EyeIcon } from '@lucide/vue';
 
 const props = defineProps({
     overrides: { type: Object, required: true },
@@ -27,20 +30,45 @@ const rows = computed(() => props.overrides.data ?? []);
 function money(value) {
     return Number(value ?? 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+function customerName(o) {
+    return o.sales_document?.business_partner?.name ?? o.sales_order?.business_partner?.name ?? '—';
+}
+
+function documentLabel(o) {
+    if (o.sales_document) return o.sales_document.consecutive;
+    if (o.sales_order) return `Pedido ${o.sales_order.number}`;
+    return '—';
+}
+
+// Ficha del cambio (CLAUDE.md secc. 20): quién lo pidió, la lista, los dos
+// precios y el motivo, y el enlace al documento.
+const { selected, openDetail, closeDetail } = useRecordDetail(() => rows.value);
 </script>
 
 <template>
     <Head title="Cambios de precio autorizados" />
 
     <AppLayout title="Cambios de precio autorizados">
-        <template #actions>
-            <input v-model="from" type="date" class="search-input" @change="applyFilters">
-            <input v-model="to" type="date" class="search-input" @change="applyFilters">
-            <select v-model="authorizedBy" class="search-input" @change="applyFilters">
-                <option value="">Todos los autorizantes</option>
-                <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-            </select>
-        </template>
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="applyFilters">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="from" type="date" @change="applyFilters">
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="to" type="date" @change="applyFilters">
+                </label>
+                <label class="filter-field">
+                    <span>Autorizante</span>
+                    <select v-model="authorizedBy" @change="applyFilters">
+                        <option value="">Todos los autorizantes</option>
+                        <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+                    </select>
+                </label>
+            </form>
+        </div>
 
         <p class="hint">
             Cada fila es una línea de factura que se apartó del precio de lista y que un administrador liberó.
@@ -61,60 +89,40 @@ function money(value) {
         </div>
 
         <div class="card">
-            <div class="table-scroll">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>Fecha</th>
                             <th>Documento</th>
-                            <th>Cliente</th>
                             <th>Artículo</th>
-                            <th>Lista</th>
-                            <th class="right">Precio de lista</th>
-                            <th class="right">Facturado</th>
-                            <th class="right">Diferencia</th>
-                            <th>Lo pidió</th>
+                            <th class="num">Diferencia</th>
                             <th>Lo autorizó</th>
-                            <th>Motivo</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="o in rows" :key="o.id">
-                            <td class="muted small">{{ o.created_at?.slice(0, 10) }}</td>
-                            <td>
-                                <Link
-                                    v-if="o.sales_document"
-                                    :href="route('sales-documents.show', o.sales_document.id)"
-                                    class="num"
-                                >{{ o.sales_document.consecutive }}</Link>
-                                <template v-else-if="o.sales_order">
-                                    <Link :href="route('sales-orders.show', o.sales_order.id)" class="num">
-                                        {{ o.sales_order.number }}
-                                    </Link>
-                                    <span class="block muted small">pedido</span>
-                                </template>
-                                <span v-else class="muted">—</span>
-                            </td>
-                            <td>
-                                {{ o.sales_document?.business_partner?.name
-                                    ?? o.sales_order?.business_partner?.name ?? '—' }}
-                            </td>
-                            <td>
-                                <strong class="num">{{ o.item?.code ?? '—' }}</strong>
+                        <tr
+                            v-for="o in rows"
+                            :key="o.id"
+                            class="clickable-row"
+                            tabindex="0"
+                            @click="openDetail(o)"
+                            @keydown.enter="openDetail(o)"
+                            @keydown.space.prevent="openDetail(o)"
+                        >
+                            <td class="code-cell">{{ o.created_at?.slice(0, 10) }}</td>
+                            <td data-label="Documento" class="code-cell">{{ documentLabel(o) }}</td>
+                            <td data-label="Artículo">
+                                <strong class="code-cell">{{ o.item?.code ?? '—' }}</strong>
                                 <span class="block muted small">{{ o.item?.name }}</span>
                             </td>
-                            <td class="muted small">{{ o.price_list_code ?? '—' }}</td>
-                            <td class="right">{{ money(o.list_unit_price) }}</td>
-                            <td class="right">{{ money(o.invoiced_unit_price) }}</td>
-                            <td class="right" :class="Number(o.difference) < 0 ? 'negative' : 'positive'">
+                            <td data-label="Diferencia" class="num" :class="Number(o.difference) < 0 ? 'negative' : 'positive'">
                                 {{ money(o.difference) }}
                             </td>
-                            <td class="muted small">{{ o.requested_by?.name ?? '—' }}</td>
-                            <td class="small"><strong>{{ o.authorized_by?.name ?? '—' }}</strong></td>
-                            <td class="muted small">{{ o.reason ?? '—' }}</td>
+                            <td data-label="Lo autorizó"><strong>{{ o.authorized_by?.name ?? '—' }}</strong></td>
                         </tr>
                         <tr v-if="!rows.length">
-                            <td colspan="11" class="muted empty-row">
+                            <td colspan="5" class="muted empty-row">
                                 No hubo cambios de precio autorizados en el período.
                             </td>
                         </tr>
@@ -134,21 +142,68 @@ function money(value) {
                 v-html="link.label"
             />
         </div>
+
+        <DetailModal :open="!!selected" :title="selected ? `${selected.item?.code ?? ''} — ${documentLabel(selected)}` : ''" @close="closeDetail">
+            <dl v-if="selected" class="detail-list">
+                <div>
+                    <dt>Fecha</dt>
+                    <dd>{{ selected.created_at?.slice(0, 10) }}</dd>
+                </div>
+                <div>
+                    <dt>Cliente</dt>
+                    <dd>{{ customerName(selected) }}</dd>
+                </div>
+                <div>
+                    <dt>Artículo</dt>
+                    <dd>{{ selected.item?.code ?? '—' }} — {{ selected.item?.name }}</dd>
+                </div>
+                <div>
+                    <dt>Lista de precios</dt>
+                    <dd>{{ selected.price_list_code ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Precio de lista</dt>
+                    <dd>{{ money(selected.list_unit_price) }}</dd>
+                </div>
+                <div>
+                    <dt>Facturado</dt>
+                    <dd>{{ money(selected.invoiced_unit_price) }}</dd>
+                </div>
+                <div>
+                    <dt>Diferencia</dt>
+                    <dd :class="Number(selected.difference) < 0 ? 'negative' : 'positive'">{{ money(selected.difference) }}</dd>
+                </div>
+                <div>
+                    <dt>Lo pidió</dt>
+                    <dd>{{ selected.requested_by?.name ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Lo autorizó</dt>
+                    <dd>{{ selected.authorized_by?.name ?? '—' }}</dd>
+                </div>
+                <div>
+                    <dt>Motivo</dt>
+                    <dd>{{ selected.reason ?? '—' }}</dd>
+                </div>
+            </dl>
+
+            <template #actions>
+                <Link v-if="selected?.sales_document" :href="route('sales-documents.show', selected.sales_document.id)" class="btn btn-primary">
+                    <EyeIcon /> Ver comprobante
+                </Link>
+                <Link v-else-if="selected?.sales_order" :href="route('sales-orders.show', selected.sales_order.id)" class="btn btn-primary">
+                    <EyeIcon /> Ver pedido
+                </Link>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.right { text-align: right; }
-.num { font-variant-numeric: tabular-nums; }
-.small { font-size: 0.76rem; }
+table { font-size: 0.85rem; }
+.code-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .block { display: block; }
-.hint { color: var(--color-text-muted); font-size: 0.82rem; margin: 0 0 0.75rem; max-width: 80ch; }
 .summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.1rem; margin-bottom: 0.75rem; font-size: 0.85rem; flex-wrap: wrap; }
 .negative { color: var(--color-danger); }
-.positive { color: var(--color-success, #1a7f4b); }
-.empty-row { text-align: center; padding: 1.5rem; }
-.pagination { display: flex; gap: 0.25rem; margin-top: 0.75rem; flex-wrap: wrap; }
-.page-link { padding: 0.25rem 0.55rem; border-radius: var(--radius-sm); font-size: 0.8rem; }
-.page-link.active { background: var(--color-primary, #0B1F3A); color: #fff; }
-.page-link.disabled { opacity: 0.4; pointer-events: none; }
+.positive { color: var(--color-success); }
 </style>

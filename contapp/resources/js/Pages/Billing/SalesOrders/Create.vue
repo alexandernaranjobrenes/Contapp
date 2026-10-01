@@ -2,6 +2,8 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
+import DetailModal from '../../../Components/DetailModal.vue';
+import { ArrowLeftIcon, PlusIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     customers: { type: Array, default: () => [] },
@@ -166,6 +168,10 @@ function submit() {
     <Head title="Nuevo pedido" />
 
     <AppLayout title="Nueva orden de pedido">
+        <div class="view-toolbar">
+            <Link :href="route('sales-orders.index')" class="btn btn-ghost"><ArrowLeftIcon /> Órdenes de pedido</Link>
+        </div>
+
         <div v-if="page.props.errors?.order" class="flash flash-error">{{ page.props.errors.order }}</div>
 
         <p class="hint">
@@ -174,8 +180,8 @@ function submit() {
             comprometieron—, porque prometer lo que no hay no es apartar.
         </p>
 
-        <form class="card" @submit.prevent="attemptSubmit">
-            <div class="grid-3">
+        <form class="card order-form" @submit.prevent="attemptSubmit">
+            <div class="form-grid">
                 <div class="field">
                     <label>Cliente</label>
                     <select v-model="form.business_partner_id" required>
@@ -193,57 +199,55 @@ function submit() {
                 </div>
             </div>
 
-            <div class="table-scroll">
+            <div class="table-responsive capture-grid lines-grid">
                 <table>
                     <thead>
                         <tr>
                             <th>Artículo</th>
                             <th>Bodega</th>
-                            <th class="right">Disponible</th>
-                            <th class="right">Cantidad</th>
-                            <th class="right">Precio pactado</th>
-                            <th class="right">Subtotal</th>
-                            <th></th>
+                            <th class="num">Cantidad</th>
+                            <th class="num">Precio pactado</th>
+                            <th class="num">Subtotal</th>
+                            <th><span class="sr-only">Quitar</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(line, index) in form.lines" :key="index">
-                            <td>
-                                <select v-model="line.item_id" required @change="applyListPrice(line)">
+                            <td class="item-cell">
+                                <select v-model="line.item_id" required :aria-label="`Artículo de la línea ${index + 1}`" @change="applyListPrice(line)">
                                     <option v-for="i in items" :key="i.id" :value="i.id">{{ i.code }} — {{ i.name }}</option>
                                 </select>
                             </td>
-                            <td>
-                                <select v-model="line.warehouse_id" required>
+                            <td data-label="Bodega" class="warehouse-cell">
+                                <select v-model="line.warehouse_id" required :aria-label="`Bodega de la línea ${index + 1}`">
                                     <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.code }}</option>
                                 </select>
                             </td>
-                            <td class="num right" :class="{ none: freeFor(line) <= 0 }">{{ quantity(freeFor(line)) }}</td>
-                            <td class="right">
-                                <input v-model="line.quantity" type="number" step="0.000001" min="0" class="cell-input" required>
+                            <td data-label="Cantidad" class="qty-cell">
+                                <input v-model="line.quantity" type="number" step="0.000001" min="0" class="right" required :aria-label="`Cantidad de la línea ${index + 1}`">
+                                <span class="free small" :class="{ none: freeFor(line) <= 0 }">Libres: {{ quantity(freeFor(line)) }}</span>
                                 <span v-if="exceeds(line)" class="error">Solo hay {{ quantity(freeFor(line)) }} libres.</span>
                             </td>
-                            <td class="right">
-                                <input v-model="line.unit_price" type="number" step="0.01" min="0" class="cell-input">
+                            <td data-label="Precio pactado" class="price-cell">
+                                <input v-model="line.unit_price" type="number" step="0.01" min="0" class="right" :aria-label="`Precio pactado de la línea ${index + 1}`">
                             </td>
-                            <td class="num right">
+                            <td data-label="Subtotal" class="num">
                                 {{ money(Number(line.quantity || 0) * Number(line.unit_price || 0)) }}
                             </td>
-                            <td>
+                            <td data-label="" class="remove-cell">
                                 <button
-                                    type="button" class="btn btn-ghost small-btn"
+                                    type="button" class="btn btn-ghost"
                                     :disabled="form.lines.length === 1"
+                                    :aria-label="`Quitar la línea ${index + 1}`"
                                     @click="form.lines.splice(index, 1)"
-                                >
-                                    Quitar
-                                </button>
+                                ><XIcon /></button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <button type="button" class="btn btn-ghost" @click="form.lines.push(emptyLine())">Agregar línea</button>
+            <button type="button" class="btn btn-ghost add-line" @click="form.lines.push(emptyLine())"><PlusIcon /> Agregar línea</button>
 
             <div class="field">
                 <label>Descripción (opcional)</label>
@@ -277,7 +281,7 @@ function submit() {
                 <div><span class="muted small">Total pactado (informativo)</span><strong class="num total">{{ money(total) }}</strong></div>
             </div>
 
-            <div class="actions">
+            <div class="form-actions">
                 <Link :href="route('sales-orders.index')" class="btn btn-ghost">Cancelar</Link>
                 <button type="submit" class="btn btn-primary" :disabled="invalid || form.processing">
                     {{ needsAuthorization ? 'Registrar (requiere autorización)' : 'Registrar pedido y apartar' }}
@@ -285,10 +289,8 @@ function submit() {
             </div>
         </form>
 
-        <div v-if="authorizing" class="modal-backdrop" @click.self="authorizing = false">
-            <form class="modal-card card" @submit.prevent="submitWithAuthorization">
-                <h2>Autorización de cambio de precio</h2>
-
+        <DetailModal :open="authorizing" title="Autorización de cambio de precio" @close="authorizing = false">
+            <form id="order-auth-form" @submit.prevent="submitWithAuthorization">
                 <p class="muted small">
                     Este pedido se aparta de la lista en <strong>{{ deviations.length }}</strong> línea(s).
                     Lo que se firme acá vale también para la factura que lo cumpla.
@@ -311,55 +313,44 @@ function submit() {
                     <label>Motivo (opcional)</label>
                     <input v-model="form.price_override_reason" type="text" maxlength="255">
                 </div>
-
-                <div class="actions">
-                    <button type="button" class="btn btn-ghost" @click="authorizing = false">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Autorizar y registrar</button>
-                </div>
             </form>
-        </div>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="authorizing = false">Cancelar</button>
+                <button type="submit" form="order-auth-form" class="btn btn-primary" :disabled="form.processing">Autorizar y registrar</button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
 <style scoped>
-.hint { font-size: 0.82rem; color: var(--color-text-muted); margin: 0 0 0.75rem; }
-.card { padding: 1rem 1.25rem; }
+.order-form { padding: 1rem 1.25rem; }
+.error { color: var(--color-danger); font-size: 0.76rem; display: block; }
 
-.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
-.field label { font-size: 0.78rem; color: var(--color-text-muted); }
-.error { color: var(--color-danger, #b91c1c); font-size: 0.76rem; }
-
-.table-scroll { overflow-x: auto; margin: 0 -1.25rem 0.75rem; }
-table { font-size: 0.85rem; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); white-space: nowrap; }
-.right { text-align: right; }
+table { font-size: 0.85rem; }
+th, td { padding: 0.4rem 0.5rem; }
+.right, td input.right { text-align: right; }
 .num { font-variant-numeric: tabular-nums; }
-.none { color: var(--color-danger, #b91c1c); }
-.muted { color: var(--color-text-muted); }
-.small { font-size: 0.76rem; }
-.cell-input { width: 7rem; text-align: right; }
-.small-btn { font-size: 0.76rem; padding: 0.2rem 0.5rem; }
+.none { color: var(--color-danger); }
 
-.price-warning { margin: 0.75rem 0; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); background: #fdf0ea; color: #a04000; font-size: 0.82rem; }
+.lines-grid { margin-bottom: 0.6rem; }
+.lines-grid td { vertical-align: top; }
+.warehouse-cell { width: 6rem; }
+.qty-cell, .price-cell { width: 8rem; }
+.item-cell select, .warehouse-cell select, .qty-cell input, .price-cell input { width: 100%; }
+.free { display: block; margin-top: 0.2rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.remove-cell { width: 1%; }
+.add-line { margin-bottom: 0.9rem; }
+
+@media screen and (max-width: 1024px) {
+    .warehouse-cell, .qty-cell, .price-cell { width: auto; }
+}
+
+.price-warning { margin: 0.75rem 0; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); background: var(--color-warning-soft); color: var(--color-warning); font-size: 0.82rem; }
 .deviation-list { margin: 0.4rem 0 0 1.1rem; padding: 0; font-size: 0.78rem; }
 .needs-auth { display: block; margin-top: 0.4rem; font-weight: 600; }
-.flash { margin: 0.75rem 0; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(11, 31, 58, 0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
-.modal-card { width: min(440px, 100%); padding: 1.4rem; }
-.modal-card h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 
 .totals { display: flex; gap: 1.75rem; padding: 0.85rem 0; border-top: 1px solid var(--color-border); }
 .totals > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .total { font-size: 1.05rem; }
-
-.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-
-.flash { margin-bottom: 0.75rem; padding: 0.6rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.85rem; }
-.flash-error { background: var(--color-danger-soft); color: var(--color-danger); }
-
-@media (max-width: 720px) {
-    .grid-3 { grid-template-columns: 1fr; }
-}
 </style>

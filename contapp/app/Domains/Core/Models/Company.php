@@ -25,7 +25,7 @@ class Company extends Model
     protected $fillable = [
         'license_id', 'legal_name', 'trade_name', 'tax_id', 'address', 'country_code',
         'local_currency_id', 'foreign_currency_id', 'system_currency_id',
-        'timezone', 'logo_path', 'status',
+        'timezone', 'logo_path', 'theme', 'status',
     ];
 
     public function license(): BelongsTo
