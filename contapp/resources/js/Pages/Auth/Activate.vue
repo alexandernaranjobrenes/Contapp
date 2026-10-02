@@ -1,9 +1,18 @@
 <script setup>
 import { useForm, Head, Link } from '@inertiajs/vue3';
 import AuthShell from '../../Components/AuthShell.vue';
+import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import { ArrowRightIcon, CheckIcon } from '@lucide/vue';
 
+defineProps({
+    passwordRequirements: { type: Array, required: true },
+});
+
 const form = useForm({
+    // 'new': alguien nuevo, se le crea la cuenta. 'existing': alguien que ya
+    // tiene cuenta en CONTAPP (Administrador o Usuario en la licencia de otra
+    // persona) y activa la suya con ella: solo correo y contraseña actual.
+    account: 'new',
     code: '',
     legal_name: '',
     trade_name: '',
@@ -13,6 +22,16 @@ const form = useForm({
     password: '',
     password_confirmation: '',
 });
+
+function setAccount(account) {
+    if (form.account === account) return;
+
+    form.account = account;
+    // Una contraseña escrita para crear la cuenta no es la que ya se tiene.
+    form.password = '';
+    form.password_confirmation = '';
+    form.clearErrors('name', 'email', 'password');
+}
 
 function submit() {
     form.post(route('license-activation.store'), {
@@ -27,19 +46,19 @@ function submit() {
     <AuthShell
         wide
         subtitle="Activá tu licencia y creá tu primera compañía"
-        lead="En un solo paso: el código que recibiste, los datos de tu compañía y tu usuario de Superusuario."
+        lead="En un solo paso: el código que recibiste, los datos de tu compañía y tu cuenta de Superusuario."
     >
         <template #panel-extra>
-            <ol class="steps">
-                <li><span class="step-number">1</span> El código de licencia que recibiste al contratar CONTAPP</li>
-                <li><span class="step-number">2</span> Los datos básicos de tu compañía</li>
-                <li><span class="step-number">3</span> Tu correo y una contraseña para acceder como Superusuario</li>
+            <ol class="auth-steps">
+                <li><span class="auth-step-number">1</span> El código de licencia que recibiste al contratar CONTAPP</li>
+                <li><span class="auth-step-number">2</span> Los datos básicos de tu compañía</li>
+                <li><span class="auth-step-number">3</span> Tu cuenta: una nueva, o la que ya tenés en CONTAPP</li>
             </ol>
         </template>
 
-        <header class="form-head">
-            <h2 class="form-title">Activar licencia</h2>
-            <p class="form-subtitle">Al terminar, entrás directo a tu compañía como Superusuario.</p>
+        <header class="auth-head">
+            <h2 class="auth-title">Activar licencia</h2>
+            <p class="auth-subtitle">Al terminar, entrás directo a tu compañía como Superusuario.</p>
         </header>
 
         <form @submit.prevent="submit">
@@ -67,91 +86,121 @@ function submit() {
                 </div>
             </div>
 
-            <h3 class="section-title">Tu usuario</h3>
+            <h3 class="section-title">Tu cuenta</h3>
 
-            <div class="grid">
-                <div class="field">
-                    <label for="name">Nombre</label>
-                    <input id="name" v-model="form.name" type="text" required>
-                    <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
-                </div>
-                <div class="field">
-                    <label for="email">Correo</label>
-                    <input id="email" v-model="form.email" type="email" required>
-                    <span v-if="form.errors.email" class="error">{{ form.errors.email }}</span>
-                </div>
-                <div class="field">
-                    <label for="password">Contraseña</label>
-                    <input id="password" v-model="form.password" type="password" required>
-                    <span v-if="form.errors.password" class="error">{{ form.errors.password }}</span>
-                </div>
-                <div class="field">
-                    <label for="password_confirmation">Confirmar contraseña</label>
-                    <input id="password_confirmation" v-model="form.password_confirmation" type="password" required>
-                </div>
+            <div class="account-switch" role="group" aria-label="¿Ya tenés una cuenta en CONTAPP?">
+                <button
+                    type="button"
+                    class="btn"
+                    :class="form.account === 'new' ? 'btn-primary' : 'btn-ghost'"
+                    :aria-pressed="form.account === 'new'"
+                    @click="setAccount('new')"
+                >
+                    Soy nuevo en CONTAPP
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    :class="form.account === 'existing' ? 'btn-primary' : 'btn-ghost'"
+                    :aria-pressed="form.account === 'existing'"
+                    @click="setAccount('existing')"
+                >
+                    Ya tengo una cuenta
+                </button>
             </div>
 
-            <button type="submit" class="btn btn-primary submit-btn" :disabled="form.processing">
+            <template v-if="form.account === 'new'">
+                <div class="grid">
+                    <div class="field">
+                        <label for="name">Nombre</label>
+                        <input id="name" v-model="form.name" type="text" autocomplete="name" required>
+                        <span v-if="form.errors.name" class="error">{{ form.errors.name }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="email">Correo</label>
+                        <input id="email" v-model="form.email" type="email" autocomplete="username" required>
+                        <span v-if="form.errors.email" class="error">{{ form.errors.email }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="password">Contraseña</label>
+                        <input
+                            id="password"
+                            v-model="form.password"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                            aria-describedby="password-rules"
+                            @input="form.clearErrors('password')"
+                        >
+                        <span v-if="form.errors.password" class="error">{{ form.errors.password }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="password_confirmation">Confirmar contraseña</label>
+                        <input
+                            id="password_confirmation"
+                            v-model="form.password_confirmation"
+                            type="password"
+                            autocomplete="new-password"
+                            required
+                            @input="form.clearErrors('password')"
+                        >
+                    </div>
+                </div>
+
+                <PasswordRequirements
+                    id="password-rules"
+                    :requirements="passwordRequirements"
+                    :password="form.password"
+                    :confirmation="form.password_confirmation"
+                />
+            </template>
+
+            <template v-else>
+                <!-- La cuenta ya existe: se comprueba con su contraseña
+                     actual. Acá no se le cambia el nombre ni la contraseña. -->
+                <p class="account-note">
+                    Ingresá con el correo y la contraseña que ya usás. La licencia queda a nombre de esa cuenta, y lo que
+                    tenés en otras compañías sigue igual.
+                </p>
+
+                <div class="grid">
+                    <div class="field">
+                        <label for="email">Correo</label>
+                        <input id="email" v-model="form.email" type="email" autocomplete="username" required>
+                        <span v-if="form.errors.email" class="error">{{ form.errors.email }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="password">Tu contraseña actual</label>
+                        <input
+                            id="password"
+                            v-model="form.password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                            @input="form.clearErrors('password')"
+                        >
+                        <span v-if="form.errors.password" class="error">{{ form.errors.password }}</span>
+                    </div>
+                </div>
+
+                <p class="account-note">
+                    <Link :href="route('password.request')" class="auth-alt-link">¿Olvidaste tu contraseña?</Link>
+                </p>
+            </template>
+
+            <button type="submit" class="btn btn-primary auth-submit submit-btn" :disabled="form.processing">
                 <CheckIcon /> Activar y crear compañía
             </button>
         </form>
 
-        <div class="back-link">
-            <span>¿Ya tenés cuenta?</span>
-            <Link :href="route('login')" class="back-link-a">Iniciar sesión <ArrowRightIcon :size="15" /></Link>
+        <div class="auth-alt">
+            <span>¿Solo querés entrar?</span>
+            <Link :href="route('login')" class="auth-alt-link">Iniciar sesión <ArrowRightIcon :size="15" /></Link>
         </div>
     </AuthShell>
 </template>
 
 <style scoped>
-.form-head {
-    margin-bottom: 1.25rem;
-}
-
-.form-title {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-}
-
-.form-subtitle {
-    margin: 0.35rem 0 0;
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-}
-
-.steps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.9rem;
-    font-size: 0.9rem;
-    line-height: 1.45;
-    color: rgba(244, 246, 250, 0.8);
-}
-
-.steps li {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-}
-
-.step-number {
-    flex-shrink: 0;
-    display: inline-grid;
-    place-items: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
-    color: var(--color-accent);
-    font-weight: 800;
-    font-size: 0.85rem;
-}
-
 .section-title {
     font-size: 0.74rem;
     font-weight: 700;
@@ -170,37 +219,22 @@ function submit() {
     gap: 0 1rem;
 }
 
-.submit-btn {
-    width: 100%;
-    min-height: 2.9rem;
-    justify-content: center;
-    margin-top: 1.25rem;
-    font-size: 0.95rem;
+/* Las dos opciones, mitad y mitad; en un teléfono, una debajo de la otra. */
+.account-switch {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: 0.5rem;
+    margin: 0.75rem 0 1rem;
 }
 
-.back-link {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem 0.4rem;
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--color-border);
+.account-note {
+    margin: 0 0 0.9rem;
     font-size: 0.85rem;
+    line-height: 1.5;
     color: var(--color-text-muted);
 }
 
-.back-link-a {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    color: var(--color-primary);
-    font-weight: 700;
-    text-decoration: none;
-}
-
-.back-link-a:hover {
-    text-decoration: underline;
+.submit-btn {
+    margin-top: 1.25rem;
 }
 </style>

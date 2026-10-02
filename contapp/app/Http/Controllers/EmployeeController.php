@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Payroll\Models\Department;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
@@ -14,13 +15,14 @@ use App\Domains\Payroll\Models\PersonnelAction;
 use App\Domains\Payroll\Models\VacationMovement;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class EmployeeController extends Controller
 {
+    public function __construct(private readonly MediaStorage $media) {}
+
     public function index(): Response
     {
         $employees = Employee::with(['costCenter:id,code,name'])
@@ -195,9 +197,10 @@ class EmployeeController extends Controller
     }
 
     /**
-     * La fotografía. Va al disco público porque se muestra en pantalla y en
-     * el comprobante de pago; no lleva dato sensible que justifique servirla
-     * a través de una ruta autenticada.
+     * La fotografía. Va al disco de imágenes (MediaStorage) con dirección
+     * pública porque se muestra en pantalla y en el comprobante de pago; no
+     * lleva dato sensible que justifique servirla a través de una ruta
+     * autenticada.
      */
     public function photo(Request $request, int $employee): RedirectResponse
     {
@@ -207,17 +210,22 @@ class EmployeeController extends Controller
             'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
 
-        $disk = Storage::disk('public');
+        $path = $this->media->store($request->file('photo'), "employees/{$model->company_id}");
 
-        // La anterior se borra: dejarla acumularía una foto por cada cambio
-        // de cada empleado, y ninguna vuelve a usarse.
-        if ($model->photo_path !== null && $disk->exists($model->photo_path)) {
-            $disk->delete($model->photo_path);
+        if ($path === null) {
+            return back()->withErrors([
+                'photo' => 'No se pudo guardar la fotografía. Probá de nuevo en un momento.',
+            ]);
         }
 
-        $path = $request->file('photo')->store("employees/{$model->company_id}", 'public');
+        $previous = $model->photo_path;
 
         $model->update(['photo_path' => $path]);
+
+        // La anterior se borra: dejarla acumularía una foto por cada cambio
+        // de cada empleado, y ninguna vuelve a usarse. Recién ahora, con la
+        // nueva ya guardada: si la subida falla, la ficha conserva su foto.
+        $this->media->delete($previous);
 
         return back()->with('success', 'Fotografía actualizada.');
     }
@@ -278,7 +286,7 @@ class EmployeeController extends Controller
             'is_ccss_exempt' => (bool) $employee->is_ccss_exempt,
             'is_pensioner' => (bool) $employee->is_pensioner,
             'status' => $employee->status,
-            'photo_url' => $this->photoUrl($employee->photo_path),
+            'photo_url' => $this->media->url($employee->photo_path),
             // La jornada ordinaria que le corresponde: es el umbral a partir
             // del cual una hora es extra, y no es el mismo para todos.
             'ordinary_hours' => Employee::ORDINARY_HOURS[$employee->journey_type] ?? null,
@@ -290,17 +298,6 @@ class EmployeeController extends Controller
             'day_rate' => $employee->dailyRate(),
             'hour_rate' => $employee->hourlyRate(),
         ];
-    }
-
-    private function photoUrl(?string $path): ?string
-    {
-        if ($path === null) {
-            return null;
-        }
-
-        $disk = Storage::disk('public');
-
-        return $disk->exists($path) ? $disk->url($path) : null;
     }
 
     /** @return array<string, array<string, string>> */

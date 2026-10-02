@@ -3,11 +3,11 @@
 namespace App\Domains\Payroll\Services;
 
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Payroll\Exceptions\InvalidPayrollException;
 use App\Domains\Payroll\Models\PayrollEntry;
 use App\Domains\Payroll\Models\PayrollEntryLine;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * El comprobante de pago como documento: los datos y el PDF.
@@ -32,6 +32,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class PayslipDocument
 {
+    public function __construct(private readonly MediaStorage $media) {}
+
     /**
      * Los datos del comprobante.
      *
@@ -64,8 +66,7 @@ class PayslipDocument
                 'name' => $company->trade_name ?: $company->legal_name,
                 'legal_name' => $company->legal_name,
                 'tax_id' => $company->tax_id,
-                'logo_url' => $this->publicUrl($company->logo_path),
-                'logo_path' => $this->localPath($company->logo_path),
+                'logo_url' => $this->media->versionedUrl($company->logo_path, $company->logo_updated_at),
             ],
             'employee' => [
                 'code' => $employee?->code,
@@ -79,7 +80,7 @@ class PayslipDocument
                     ? null
                     : $employee->costCenter->code.' — '.$employee->costCenter->name,
                 'hire_date' => $employee?->hire_date->format('Y-m-d'),
-                'photo_url' => $this->publicUrl($employee?->photo_path),
+                'photo_url' => $this->media->url($employee?->photo_path),
                 'bank_account' => $entry->bank_account,
                 'payment_method' => $entry->payment_method,
             ],
@@ -116,7 +117,14 @@ class PayslipDocument
     /** El PDF, listo para descargar, imprimir o adjuntar. */
     public function pdf(Company $company, PayrollEntry $entry): \Barryvdh\DomPDF\PDF
     {
-        return Pdf::loadView('reports.payslip', $this->payload($company, $entry))
+        $payload = $this->payload($company, $entry);
+
+        // El logo va incrustado: dompdf no baja imágenes por HTTP, así que
+        // una URL le saldría en blanco. Se agrega acá y no en payload()
+        // porque hay que bajarlo del disco, y la pantalla no lo necesita.
+        $payload['company']['logo_data_uri'] = $this->media->dataUri($company->logo_path);
+
+        return Pdf::loadView('reports.payslip', $payload)
             ->setPaper('letter', 'portrait');
     }
 
@@ -149,31 +157,5 @@ class PayslipDocument
         }
 
         return $entry;
-    }
-
-    private function publicUrl(?string $path): ?string
-    {
-        if ($path === null) {
-            return null;
-        }
-
-        $disk = Storage::disk('public');
-
-        return $disk->exists($path) ? $disk->url($path) : null;
-    }
-
-    /**
-     * La ruta en disco, que es lo que necesita el PDF: dompdf no baja
-     * imágenes por HTTP, así que una URL le saldría en blanco.
-     */
-    private function localPath(?string $path): ?string
-    {
-        if ($path === null) {
-            return null;
-        }
-
-        $disk = Storage::disk('public');
-
-        return $disk->exists($path) ? $disk->path($path) : null;
     }
 }

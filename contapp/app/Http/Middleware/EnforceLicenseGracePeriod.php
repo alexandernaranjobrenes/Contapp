@@ -16,10 +16,27 @@ use Symfony\Component\HttpFoundation\Response;
  * exentas a propósito: cerrar sesión o cambiar de compañía activa no crea
  * ni modifica ningún dato de negocio, y bloquearlas dejaría a alguien en
  * modo de gracia sin forma de salir de la compañía vencida.
+ *
+ * También quedan exentas las que no tocan la compañía vencida sino a la
+ * persona: activar su propia licencia (license-redemption.*), elegir su
+ * contraseña con el enlace del correo (password.update) y editar sus datos
+ * en «Mi cuenta» (profile.*). Que la licencia de otro esté vencida no es
+ * motivo para impedirle contratar la suya ni cambiar su contraseña.
  */
 class EnforceLicenseGracePeriod
 {
-    private const EXEMPT_ROUTES = ['logout', 'company-switch'];
+    private const EXEMPT_ROUTES = [
+        'logout',
+        'company-switch',
+        'license-redemption.store',
+        'license-redemption.password-link',
+        'password.update',
+        'profile.update',
+        'profile.password',
+        'profile.email.request',
+        'profile.photo.update',
+        'profile.photo.destroy',
+    ];
 
     public function handle(Request $request, Closure $next): Response
     {

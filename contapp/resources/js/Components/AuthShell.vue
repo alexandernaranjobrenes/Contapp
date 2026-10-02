@@ -78,6 +78,9 @@ const flash = computed(() => page.props.flash ?? {});
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
     background-color: var(--color-bg);
     background-image: var(--marble-texture);
+    /* El color de los enlaces del formulario. El primario solo no alcanza:
+       en modo oscuro es un tono medio que casi no se lee sobre la tarjeta. */
+    --auth-link: color-mix(in srgb, var(--color-primary) 55%, var(--color-text));
 }
 
 /* ── Panel de marca ───────────────────────────────────────────────────── */
@@ -235,6 +238,118 @@ const flash = computed(() => page.props.flash ?? {});
 
 .auth-shell.is-wide .auth-below {
     max-width: 600px;
+}
+
+/* ── Piezas que las pantallas ponen dentro del marco ──────────────────────
+   Van acá, y no repetidas en cada pantalla, porque son las mismas en todas:
+   el encabezado del formulario, su botón, el enlace del pie, los pasos
+   numerados del panel de marca y el ícono de un estado («revisá tu correo»,
+   «este enlace ya no sirve»). */
+
+:slotted(.auth-head) {
+    margin-bottom: 1.5rem;
+}
+
+:slotted(.auth-title) {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+:slotted(.auth-title:focus) {
+    outline: none;
+}
+
+:slotted(.auth-subtitle) {
+    margin: 0.35rem 0 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+}
+
+:slotted(.auth-error) {
+    margin: 0 0 1rem;
+}
+
+:slotted(.auth-submit) {
+    width: 100%;
+    min-height: 2.9rem;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+:slotted(.auth-alt) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem 0.4rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+:slotted(.auth-alt-link) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--auth-link);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+:slotted(.auth-alt-link:hover) {
+    text-decoration: underline;
+}
+
+:slotted(.auth-steps) {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: rgba(244, 246, 250, 0.8);
+}
+
+:slotted(.auth-steps li) {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+:slotted(.auth-step-number) {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    color: var(--color-accent);
+    font-weight: 800;
+    font-size: 0.85rem;
+}
+
+:slotted(.auth-state-icon) {
+    display: inline-grid;
+    place-items: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin-bottom: 1rem;
+    border-radius: 50%;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+}
+
+:slotted(.auth-state-icon.is-warning) {
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
 }
 
 /* ── Tablet y teléfono ────────────────────────────────────────────────── */

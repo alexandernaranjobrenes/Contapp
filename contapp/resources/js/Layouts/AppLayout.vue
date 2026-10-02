@@ -3,7 +3,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3';
 import { startCompanySwitch } from '../Utils/companySwitch';
 import {
-    BookOpenIcon, ChevronRightIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, MoonIcon,
+    BookOpenIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, MoonIcon,
     PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon, TagsIcon,
     UsersIcon, XIcon,
 } from '@lucide/vue';
@@ -36,6 +36,14 @@ const page = usePage();
 function passesModule(mod) {
     return !mod || page.props.moduleAccess?.[mod] !== 'none';
 }
+
+// La foto de perfil de la cuenta (Mi cuenta → Mis datos), para mostrarla en
+// lugar del ícono de «Mi cuenta». Si no carga —el bucket no responde, el
+// archivo ya no está— vuelve el ícono, en vez de dejar una imagen rota. Una
+// dirección nueva (se subió otra foto) merece otro intento.
+const photoFailed = ref(false);
+const accountPhoto = computed(() => (photoFailed.value ? null : page.props.auth?.user?.photo_url ?? null));
+watch(() => page.props.auth?.user?.photo_url, () => { photoFailed.value = false; });
 
 const nav = computed(() => {
     const items = [
@@ -210,6 +218,25 @@ const nav = computed(() => {
             children: adminChildren,
         });
     }
+
+    // «Mi cuenta»: lo que es de la persona y no de la compañía, para
+    // cualquier rol. Administración es de la compañía activa; esto no.
+    const accountChildren = [
+        { label: 'Mis datos', href: route('profile.edit'), match: ['profile.*'] },
+    ];
+    // Mientras la cuenta no sea dueña de una licencia: quien es Administrador
+    // o Usuario en la de otra persona puede activar la suya. Con una ya
+    // activada desaparece (una cuenta, una licencia).
+    if (page.props.auth?.user?.owns_license === false) {
+        accountChildren.push({ label: 'Activar una licencia', href: route('license-redemption.create'), match: ['license-redemption.*'] });
+    }
+    items.push({
+        label: 'Mi cuenta', icon: CircleUserRoundIcon,
+        // Con foto de perfil subida, la foto va en lugar del ícono.
+        photo: accountPhoto.value,
+        match: accountChildren.flatMap((c) => c.match),
+        children: accountChildren,
+    });
 
     return items
         .map((item) => item.children
@@ -537,7 +564,10 @@ function toggleGroup(item) {
                         @blur="scheduleCloseFlyout"
                         @keydown="onSectionKeydown"
                     >
-                        <span class="sidebar-icon"><component :is="item.icon" :size="18" /></span>
+                        <span class="sidebar-icon">
+                            <img v-if="item.photo" :src="item.photo" class="sidebar-photo" alt="" @error="photoFailed = true">
+                            <component :is="item.icon" v-else :size="18" />
+                        </span>
                         <span v-if="!compact" class="sidebar-label">{{ item.label }}</span>
                     </Link>
 
@@ -549,7 +579,10 @@ function toggleGroup(item) {
                             :aria-expanded="isGroupExpanded(item)"
                             @click="toggleGroup(item)"
                         >
-                            <span class="sidebar-icon-chip"><component :is="item.icon" :size="16" /></span>
+                            <span class="sidebar-icon-chip">
+                                <img v-if="item.photo" :src="item.photo" class="sidebar-photo" alt="" @error="photoFailed = true">
+                                <component :is="item.icon" v-else :size="16" />
+                            </span>
                             <span class="sidebar-label">{{ item.label }}</span>
                             <ChevronRightIcon class="sidebar-chevron" :class="{ open: isGroupExpanded(item) }" />
                         </button>
@@ -799,6 +832,27 @@ function toggleGroup(item) {
     justify-content: center;
     width: 1.25rem;
     flex-shrink: 0;
+}
+
+/*
+    La foto de perfil en lugar del ícono de «Mi cuenta». Un círculo de 26px —el
+    tamaño de la ficha de un ícono de sección— para que se reconozca la cara.
+    Es más alta que un ícono (18px), así que lleva márgenes negativos: ocupa
+    en la fila el mismo alto que un ícono y la fila de «Mi cuenta» no queda
+    más alta que las demás.
+*/
+.sidebar-photo {
+    display: block;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.sidebar-icon .sidebar-photo {
+    margin: -4px -3px;
 }
 
 /*
@@ -1156,6 +1210,13 @@ function toggleGroup(item) {
 }
 
 .content {
+    /* Posicionado a propósito: es lo único que se desplaza, y tiene que ser
+       el marco de referencia de lo que lleve `position: absolute` adentro
+       (los textos .sr-only, solo para lectores de pantalla). Sin esto esos
+       elementos se ubican contra la página entera, quedan por debajo de la
+       ventana cuando el contenido es largo, y la página gana un segundo
+       desplazamiento que baja más allá de la aplicación. */
+    position: relative;
     padding: 1.25rem;
     flex: 1;
     overflow-y: auto;

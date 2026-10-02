@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Disco de las imágenes subidas
+    |--------------------------------------------------------------------------
+    |
+    | Dónde van las fotografías de empleados y los logos de las compañías.
+    | "s3" es el bucket de Cloudflare R2; "public" las deja en
+    | storage/app/public. Solo lo lee App\Domains\Core\Support\MediaStorage.
+    |
+    */
+
+    'media' => env('MEDIA_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -56,7 +69,14 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
+            // Cloudflare R2 habla el protocolo de S3. Los checksums que el
+            // SDK de AWS agrega por defecto desde la 3.337 no son parte de lo
+            // que R2 garantiza: se mandan solo cuando la operación los exige.
+            'request_checksum_calculation' => 'when_required',
+            'response_checksum_validation' => 'when_required',
+            // Un fallo contra el bucket (red, credenciales) tiene que verse:
+            // apagado, una subida fallida devuelve false y nadie se entera.
+            'throw' => true,
             'report' => false,
         ],
 

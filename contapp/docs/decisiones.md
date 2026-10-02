@@ -3,6 +3,138 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-02 — Las imágenes subidas van a un bucket de Cloudflare R2
+
+**Pedido del usuario:** que las imágenes que guarda la aplicación no queden en sus carpetas, sino en un bucket de Cloudflare R2.
+
+- **Qué imágenes son:** la fotografía del empleado, que es la única que hoy se sube, y el logo de la compañía (`companies.logo_path`), que se lee en los PDF y en dos pantallas pero todavía no tiene dónde subirse.
+- **Un solo lugar nombra el disco:** `App\Domains\Core\Support\MediaStorage`, que lee `filesystems.media` (`MEDIA_DISK`: `s3` para el bucket, `public` para la carpeta local). Antes había siete `Storage::disk('public')` repartidos en cuatro archivos.
+- **R2 se usa con el driver `s3`** (`league/flysystem-aws-s3-v3`): habla el mismo protocolo, con `AWS_ENDPOINT` apuntando a la cuenta y `AWS_DEFAULT_REGION=auto`. La alternativa era un paquete propio de R2, que no agrega nada sobre el driver oficial.
+- **En la base se sigue guardando la ruta relativa** (`employees/7/abc.jpg`), igual en cualquier disco. Pasar de un disco a otro es copiar los archivos con la misma ruta; la base no se toca.
+- **Bucket con dirección pública** (`AWS_URL`), no enlaces firmados: es la decisión que ya estaba tomada para la fotografía (nombre aleatorio, sin dato sensible). Un adjunto sensible iría en otro bucket, privado.
+- **Tres cosas que cambian porque el disco es remoto:**
+  - Para armar una URL ya no se pregunta si el archivo existe. Era gratis en disco local; contra el bucket es una petición HTTP por cada fila del listado de empleados. Si el archivo falta, se ve la imagen rota en vez del estado «sin foto».
+  - Los PDF reciben el logo incrustado (`data:`), leído del disco. Antes las plantillas hacían `file_get_contents()` sobre una ruta local, que en un bucket no existe.
+  - El logo se baja solo al dibujar el PDF. `ReportHeaderFactory` también arma el encabezado del XLSX y de la pantalla, que no lo usan, así que ya no toca el disco.
+- **Los fallos se ven:** el disco `s3` lanza (`throw`), `MediaStorage` los reporta al log y devuelve null. Una subida fallida dice «No se pudo guardar la fotografía» y la ficha conserva la foto que tenía: la anterior se borra recién después de guardar la nueva.
+- **Checksums del SDK de AWS en `when_required`:** desde la 3.337 el SDK los agrega a toda petición, y no son parte de lo que R2 garantiza.
+- **Los tests no tocan el bucket:** `phpunit.xml` fija `MEDIA_DISK=public` y las pruebas de `MediaStorage` usan `Storage::fake('s3')`.
+- **CORS del bucket:** no hace falta para esto. El navegador solo muestra las imágenes con `<img>` y las subidas pasan por el servidor. Haría falta si un día el navegador sube directo al bucket o lee una imagen con `fetch`.
+
+---
+## 2026-10-02 — Logo de la compañía para los reportes
+
+**Pedido del usuario:** que el Superusuario (solo él) pueda ponerle un logo a cada una de sus compañías, guardado como `companies/user_owner_{id_user}/company_logo_{id_company}.{png, jpg…}`, cuidando las dimensiones para que salga bien en los reportes.
+
+- **Lo que ya había:** `companies.logo_path` existía y los reportes ya lo leían, pero no había dónde subirlo, y el encabezado lo limitaba a 60 × 60 px: un logo apaisado, que es lo más común, quedaba de unos 15 px de alto.
+- **Dónde se sube:** Administración → Apariencia, en una tarjeta «Logo para los reportes» con una vista previa del encabezado de un reporte, sobre papel blanco. Los Administradores la ven; subir y quitar es solo del Superusuario, y lo comprueba el servidor (`CompanyLogoController`, 403 para cualquier otro).
+- **Dónde se guarda:** en el disco de imágenes (el bucket de R2), como `companies/user_owner_{dueño}/company_logo_{compañía}.{ext}`. El dueño es el de la licencia de la compañía. Uno por compañía, con nombre fijo: subir otro lo reemplaza, y si cambia el formato el anterior se borra. Se agregó `companies.logo_updated_at` para la versión de la dirección (`?v=…`), igual que en la foto de perfil.
+- **Las dimensiones, en dos pasos:**
+  - **Al subirlo** (`CompanyLogo`): se le quita el margen vacío de alrededor y se reduce, sin deformarlo, para entrar en 600 × 240 px (unas cuatro veces el tamaño al que se imprime). Un logo exportado con aire a los costados se vería chico, porque el espacio del encabezado se le iría en ese aire.
+  - **Al dibujarlo** (`ReportLogo`): entra en una caja de 160 × 56 px. Uno apaisado ocupa el ancho; uno cuadrado o vertical, el alto. El ancho y el alto van ya calculados en el `<img>`, para no depender de cómo dompdf resuelva un `max-width`.
+- **Qué margen se recorta y cuál no:** solo el transparente o el blanco, que sobre papel no se ven. Un fondo de color es parte del logo y no se toca. Y es de una sola clase por imagen: en un logo de letras blancas sobre fondo transparente, lo blanco es el logo.
+- **No se recorta a cuadrado,** a diferencia de la foto de perfil: un logo tiene la forma que tiene.
+- **Mínimo:** 100 px en el lado más largo, ya sin márgenes; más chico se vería borroso al imprimir. Una imagen en blanco se rechaza. JPG o PNG, hasta 4 MB.
+- **Dónde sale:** en todos los reportes en PDF (comparten `reports.partials.header`), en el comprobante de pago y, en pantalla, en la presentación del asiento y la vista de impresión del comprobante, con la misma caja.
+- **Sin logo, el nombre arranca en el margen.** Primero se había dejado la sangría vacía que el encabezado tenía desde antes, para no mover nada en los reportes sin logo. El usuario la vio en un reporte de una compañía sin logo y la tomó por un logo que no cargaba (lo había subido en otra de sus compañías). Ahora la celda del logo existe solo si hay logo, y la tarjeta de Apariencia dice que el logo es de cada compañía.
+- **Con la licencia vencida no se puede cambiar:** a diferencia de Mi cuenta, el logo es un dato de la compañía, así que el modo de gracia lo bloquea.
+- **De paso:** abrir, enderezar y volver a codificar una imagen subida quedó en `UploadedImage`, que usan la foto de perfil y el logo.
+
+---
+## 2026-10-02 — La página entera se desplazaba más allá de la aplicación
+
+**Reporte del usuario:** en Mi cuenta había un segundo desplazamiento, el de la página, que bajaba hasta dejar la aplicación arriba y un espacio vacío abajo.
+
+- **Causa:** los textos `.sr-only` (solo para lectores de pantalla) de la lista de requisitos de contraseña. Llevan `position: absolute`, y el área que se desplaza (`.content`) no era su marco de referencia: se ubicaban contra la página entera, en la posición que les tocaba dentro del contenido largo, es decir, por debajo de la ventana. Eso le daba a la página un alto mayor que el de la pantalla.
+- **Arreglo:** `.content` pasa a ser `position: relative` en `AppLayout.vue` y `BackofficeLayout.vue`. Es el arreglo en el contenedor y no en el componente, porque cubre cualquier pantalla: hay `.sr-only` en encabezados de varias grillas de captura, que habrían hecho lo mismo en una pantalla lo bastante larga.
+- **Revisado:** ningún otro elemento con `position: absolute` dependía del marco anterior; todos tienen su propio ancestro posicionado.
+- **Regla:** quedó en CLAUDE.md secc. 28 (un solo desplazamiento vertical), con la comprobación que lo detecta.
+
+---
+## 2026-10-02 — Foto de perfil en «Mi cuenta», en el bucket de Cloudflare R2
+
+**Pedido del usuario:** poder agregar una foto de perfil desde Mi cuenta, guardada en el bucket de la aplicación (`contapp`) como `users/profile_{id_user}.{jpg, png…}`.
+
+- **Dónde va:** al disco de imágenes (`filesystems.media`, hoy el bucket de R2) a través de `MediaStorage`, igual que las fotos de empleados. La ruta es `users/profile_{id}.{ext}`, y en la base quedan `users.photo_path` y `users.photo_updated_at`.
+- **Una por cuenta, con nombre fijo.** Subir otra reemplaza la anterior; si cambia el formato (de `.jpg` a `.png`), la anterior se borra para que cada cuenta tenga un solo archivo. Quitar la foto la borra del bucket.
+- **La dirección lleva la fecha del cambio (`?v=…`).** Con nombre fijo la dirección pública es la misma después de cambiar la foto, y el navegador seguiría mostrando la vieja desde su caché.
+- **No se guarda el archivo tal como llega** (`ProfilePhoto`): se endereza según la nota de orientación del teléfono, se recorta al cuadrado central, se reduce a 512 px y se vuelve a codificar en su mismo formato. Así pesa poco (unos 30 KB contra hasta 4 MB) y queda sin metadatos.
+  - Lo de los metadatos importa por el nombre fijo: la dirección de la foto es pública y se puede adivinar (`profile_1`, `profile_2`…), y una foto de teléfono trae adentro el GPS de donde se tomó. Las fotos de empleados usan nombres al azar; estas no, porque así se pidió.
+- **Formatos: JPG y PNG.** Son los que la biblioteca GD del contenedor sabe leer y escribir; WebP se acepta solo si GD lo soporta, y hoy no. El límite es 4 MB y entre 100 y 6000 px de lado (el tope es por memoria: para recortarla hay que abrirla entera).
+- **De quién es:** las rutas no reciben un id; siempre es la cuenta de la sesión. Queda en la bitácora (`user.photo_updated`, `user.photo_removed`) y exenta del modo de gracia, como el resto de Mi cuenta.
+- **Dónde se ve:** en Mi cuenta y junto al nombre en la lista de usuarios de cada compañía (`UserAvatar.vue`). Sin foto, o si la imagen no carga, muestra las iniciales. No va en la barra superior (CLAUDE.md secc. 24).
+  - **También en el menú** (pedido aparte, el mismo día): con foto subida, reemplaza al ícono de «Mi cuenta», con el menú expandido y colapsado. La dirección viaja en `auth.user.photo_url` con cada pantalla; armarla no consulta al bucket. Sin foto, o si no carga, queda el ícono.
+- **Si el bucket no responde,** la pantalla lo dice y la cuenta conserva la foto que tenía.
+
+---
+## 2026-10-01 — «Mi cuenta»: cada persona edita sus propios datos
+
+**Pedido del usuario:** que todo usuario de CONTAPP pueda editar desde su cuenta la información personal que guarda el sistema (nombre, apellidos, contraseña, etc.).
+
+- **Qué guarda el sistema de una persona:** nombre, correo y contraseña. Los tres se editan en Mi cuenta → Mis datos (`ProfileController`, `Pages/Profile/Edit.vue`), para cualquier rol. La pantalla muestra además, solo para verlo, en qué compañías entra la cuenta y con qué rol.
+- **Nombre y apellidos van en un solo campo,** el `name` que ya existía. Separarlos en dos columnas obligaba a tocar el alta de usuarios, la activación y cada pantalla que muestra el nombre, sin que hoy nada lo necesite.
+- **Nunca recibe un id:** las rutas actúan sobre la cuenta de la sesión, así que no hay forma de editar la de otro. Un test manda `id`, `email`, `is_super_admin` y demás en el formulario del nombre y comprueba que solo cambia el nombre propio.
+- **La contraseña y el correo piden la contraseña actual,** para que una sesión que quedó abierta no alcance para quedarse con la cuenta. Las contraseñas equivocadas tienen freno (5 por minuto); equivocarse en la nueva no gasta intentos.
+- **Cambiar la contraseña** aplica la política de siempre, cierra las sesiones de los otros dispositivos (middleware `auth.session`) y deja abierta la que hizo el cambio. No marca `password_chosen_at`: saber la contraseña actual no prueba que el correo sea propio (también la sabe quien creó la cuenta), y esa prueba es la que se pide para activar una licencia.
+- **El correo cambia en dos pasos:** se pide el cambio y llega un enlace firmado a la casilla nueva; el correo de la cuenta cambia recién al abrirlo (dura 60 minutos). Sin confirmar, alguien podría ponerse el correo de otra persona y recibir los accesos que un Superusuario le diera a ella con «Invitar cuenta existente», que es por correo y sin aceptación.
+  - El enlace queda atado al correo que la cuenta tenía al pedirlo: usado una vez, o si el correo cambió por otro lado, deja de servir.
+  - La firma es relativa (ruta y parámetros), para que siga valiendo detrás de un proxy, y la revisa el controlador para poder contestar con un mensaje en vez de una página 403.
+  - Se puede abrir sin sesión, en otro dispositivo.
+- **No depende de la compañía activa:** sin middleware de rol ni de módulo, y exento del modo de gracia.
+- **Menú:** sección nueva «Mi cuenta», la última, para cualquier rol. «Activar una licencia» se mudó ahí desde Administración: es de la persona, no de la compañía, y un Usuario sin permisos ya no ve una sección «Administración» con un solo ítem (CLAUDE.md secc. 29).
+- **Bitácora:** `user.profile_updated`, `user.password_changed`, `user.email_change_requested` y `user.email_changed`, sin compañía.
+- **Fuera de alcance:** el Propietario (backoffice), que es otro plano y otra tabla.
+
+---
+## 2026-10-01 — Una cuenta existente puede activar su propia licencia
+
+**Pedido del usuario:** un Administrador o Usuario creado en la licencia de otra persona no podía obtener una licencia propia («el correo ya está en uso»). Lo esperado: una cuenta puede ser Superusuario de su licencia y Administrador o Usuario en la de otro, pero no tener más de una licencia (CLAUDE.md secc. 12).
+
+- **La causa:** la activación solo sabía crear cuentas nuevas (exigía un correo sin usar) y era solo para invitados. El rol ya era por licencia desde antes (`User::isSuperAdmin()` resuelve contra la compañía activa); faltaba la puerta de entrada.
+- **Dos puertas, un servicio** (`LicenseActivationService::activateForExistingUser`):
+  - **Pública:** el formulario de activación tiene «Soy nuevo en CONTAPP» y «Ya tengo una cuenta». La segunda pide correo y contraseña actual.
+  - **Con la sesión iniciada:** Administración → Activar una licencia (`LicenseRedemptionController`), para cualquier rol, visible mientras la cuenta no sea dueña de una.
+- **No toca la cuenta:** ni nombre, ni contraseña, ni sus membresías y roles en otras compañías. La compañía nueva pasa a ser la predeterminada (decidido con el usuario).
+- **No prende `users.is_super_admin`** en cuentas existentes: esa bandera solo se consulta en compañías sin licencia, y prenderla daría rango de Superusuario, de rebote, en cualquiera de esas a las que la cuenta perteneciera.
+- **Una cuenta, una licencia:** antes se cumplía de casualidad (cada activación creaba un usuario). Ahora lo valida el servicio y lo garantiza un índice único en `licenses.superuser_id`; la migración se niega a correr si ya hubiera duplicados.
+- **La contraseña tiene que ser propia** (`users.password_chosen_at`): la cuenta que dio de alta un Superusuario tiene la contraseña que él le puso. Si activara una licencia con ella, ese Superusuario podría entrar a la compañía nueva. Tiene que elegir una con el enlace que llega a su correo, que además prueba que la casilla es suya. La migración marca como propias las de quienes activaron una licencia o ya recuperaron su contraseña.
+  - Por eso el enlace de recuperación ahora también se puede abrir con la sesión iniciada; al guardar la contraseña, esa sesión se cierra.
+- **Sin pistas para quien no trae una licencia:** el código se revisa antes que el correo y la contraseña. Antes el formulario decía «ese correo ya está en uso» sin pedir un código válido. Los intentos de contraseña tienen freno (5 por minuto por correo y dirección).
+- **El modo de gracia no lo frena:** activar la licencia propia y elegir la contraseña quedan exentos del bloqueo de escritura de una compañía con la licencia vencida. Que la licencia de otro esté vencida no impide contratar la suya.
+- **«Agregar compañía»** no cambió: usa la licencia de la compañía activa, así que solo sirve parado en una compañía propia.
+- **Tests:** 23 nuevos, incluido el sentido contrario que no tenía ninguno (invitar al dueño de una licencia a la de otro).
+
+---
+## 2026-10-01 — Política de contraseñas
+
+**Pedido del usuario:** 8 caracteres, al menos 4 números y 4 letras, al menos una mayúscula y una minúscula, y al menos un carácter especial.
+
+- **Un solo lugar:** `App\Domains\Core\Support\PasswordPolicy`. Cada requisito es «al menos N caracteres de esta clase», con la clase escrita como una expresión regular que PHP y JavaScript entienden igual. La lista viaja a la pantalla, y la lista que se va tildando al escribir (`PasswordRequirements.vue`) evalúa lo mismo que valida el servidor. Cambiar la política es cambiar ese archivo.
+- **Dónde se exige:** en las tres pantallas donde se elige una contraseña: activar la licencia, crear un usuario y «Olvidé mi contraseña». Antes las tres pedían solo 8 caracteres.
+- **El mínimo real son 9 caracteres,** no 8: cuatro letras, cuatro números y un carácter especial ya suman nueve. Los 8 quedan como piso por si los otros números se cambian.
+- **Qué cuenta:** letra es cualquier letra, también con tilde y la ñ; número, del 0 al 9; carácter especial, cualquier signo de puntuación o símbolo. Un espacio no cuenta como especial.
+- **No toca las contraseñas que ya existen:** el login solo comprueba que coincida, así que nadie queda afuera. La política se aplica la próxima vez que esa persona elija una.
+- **Un solo error del servidor,** que nombra todo lo que falta («le falta tener al menos: 4 números, una mayúscula»), en vez de un mensaje por regla.
+
+---
+## 2026-10-01 — Recuperación de contraseña («Olvidé mi contraseña»)
+
+**Pedido del usuario:** todo el sistema de recuperación de contraseña en el login, ahora que hay un SMTP configurado.
+
+- **El flujo:** enlace «¿Olvidaste tu contraseña?» en el login → pedir el enlace con el correo → correo con un botón → elegir la contraseña nueva → de vuelta al login con el aviso. Usa el broker de contraseñas de Laravel: token guardado con hash, vence en 60 minutos, sirve una sola vez, y pedir otro deja sin efecto el anterior.
+- **No dice quién tiene cuenta:** la pantalla responde lo mismo («si ese correo tiene una cuenta, te llega un enlace») exista o no el correo, y también cuando ya se pidió un enlace hace menos de un minuto. El error de un enlace inválido es el mismo que el de un correo desconocido.
+- **Tampoco lo delata el tiempo:** el correo se envía después de responder (`defer`). Hablar con el SMTP tarda varios segundos (4 s contra Gmail en la prueba), y esa demora solo ocurriría con los correos que existen. De paso, la pantalla contesta en medio segundo.
+- **No se encola:** el proyecto no tiene un worker de colas corriendo (`docker-compose.yml` no levanta ninguno), y un enlace que vence en una hora no puede esperar a que alguien lo levante. Pendiente aparte: el envío de comprobantes de pago sí se encola (`PayslipMail`), así que necesita `php artisan queue:work` para salir.
+- **Frenos:** 5 pedidos por minuto por dirección IP (con mensaje en la pantalla), uno por minuto por correo (el del broker, silencioso; la pantalla muestra una cuenta regresiva antes de dejar reenviar) y 10 intentos por minuto al guardar la contraseña.
+- **Cambiar la contraseña cierra las sesiones abiertas con la anterior.** Se activó el middleware `auth.session` de Laravel (`authenticateSessions()` en `bootstrap/app.php`): cada sesión guarda el hash de la contraseña con la que se abrió y se cierra en su siguiente request si ya no coincide. Sin eso, recuperar la contraseña no sacaría a quien hubiera entrado con la vieja. Se descartó borrar filas de `sessions` por `user_id`: esa tabla no distingue el guard, y se habría cerrado la sesión del Propietario que tuviera el mismo número de id. El `remember_token` también se renueva.
+  - **En los tests:** `actingAs()` (en `tests/TestCase.php`) le quita a la sesión el hash del usuario anterior. Un test que cambia de usuario a mitad de camino usa la misma sesión de principio a fin, cosa que en la aplicación no pasa (el logout la invalida), y el middleware expulsaba al segundo usuario.
+- **El enlace se comprueba al abrirlo,** no recién al enviar el formulario: si venció o ya se usó, la pantalla lo dice de entrada y ofrece pedir otro.
+- **Bitácora:** `user.password_reset_requested` (cuando el correo salió) y `user.password_reset`, con la IP y sin compañía: la contraseña es de la persona, que puede pertenecer a compañías de varias licencias.
+- **Solo el plano operativo.** El Propietario no recupera su contraseña por una pantalla pública: su cuenta se aprovisiona a mano (CLAUDE.md secc. 11) y el broker no conoce su tabla. Un test lo deja fijo.
+- **El correo:** `ResetPasswordNotification` con la plantilla `mail.reset-password`, en español. Se agregó `lang/es.json` para el pie de los correos («Todos los derechos reservados»), que salía en inglés también en el comprobante de pago.
+- **Marco de acceso:** el encabezado del formulario, su botón, el enlace del pie, los pasos numerados y el ícono de estado pasaron a `AuthShell.vue` (`:slotted`, clases `auth-*`), porque con cinco pantallas ya estaban copiados en cada una. Los enlaces del formulario usan `--auth-link`: el primario solo casi no se leía en modo oscuro.
+
+---
 ## 2026-09-30 — Rediseño de las pantallas de acceso, y el fondo que nunca se aplicó
 
 **Pedido del usuario:** mejorar la estética del login y hacerlo responsivo.

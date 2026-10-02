@@ -23,6 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\EnforceLicenseGracePeriod::class,
         ]);
 
+        // Cada sesión guarda el hash de la contraseña con la que se abrió; si
+        // la contraseña cambia (ver NewPasswordController), las sesiones
+        // abiertas con la anterior se cierran en su siguiente request. Sin
+        // esto, recuperar la contraseña no sacaría a quien ya estuviera
+        // adentro con la vieja. Va por guard: no mezcla al Propietario con
+        // los usuarios de compañía.
+        $middleware->authenticateSessions();
+
         $middleware->alias([
             'can-manage-users' => \App\Http\Middleware\EnsureCanManageUsers::class,
             'can-manage-company' => \App\Http\Middleware\EnsureCanManageCompany::class,

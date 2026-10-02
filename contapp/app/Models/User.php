@@ -7,6 +7,7 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Models\UserRole;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Notifications\ResetPasswordNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -37,8 +38,21 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            // Nulo: la contraseña vigente la definió quien creó la cuenta.
+            // Ver LicenseActivationService::assertCanOwnLicense().
+            'password_chosen_at' => 'datetime',
+            'photo_updated_at' => 'datetime',
             'is_super_admin' => 'boolean',
         ];
+    }
+
+    /**
+     * El correo de «Olvidé mi contraseña», en español y con la plantilla del
+     * proyecto en vez de la notificación en inglés de Laravel.
+     */
+    public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
     }
 
     public function companies(): BelongsToMany

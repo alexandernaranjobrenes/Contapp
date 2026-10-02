@@ -58,8 +58,10 @@ class CompanyProvisioningController extends Controller
     }
 
     /**
-     * Todas las compañías de un mismo Superusuario comparten license_id por
-     * construcción, así que no importa cuál esté activa en la sesión.
+     * La licencia de la compañía en la que se está parado. Una persona puede
+     * ser dueña de una licencia y, además, Administrador o Usuario en la de
+     * otra: «Agregar compañía» solo le sirve desde una compañía propia, y
+     * desde una ajena da 403 (create) o NotLicenseSuperuserException (store).
      */
     private function licenseForCurrentCompany(): ?License
     {

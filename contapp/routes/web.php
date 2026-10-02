@@ -3,8 +3,11 @@
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\AgingController;
 use App\Http\Controllers\CompanyAppearanceController;
+use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\LicenseActivationController;
+use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
 use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
@@ -56,6 +59,7 @@ use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\LicenseCategoryController;
 use App\Http\Controllers\LicenseController;
+use App\Http\Controllers\LicenseRedemptionController;
 use App\Http\Controllers\LotExpiryController;
 use App\Http\Controllers\MultiCompanyComparisonController;
 use App\Http\Controllers\OpeningBalanceController;
@@ -71,6 +75,7 @@ use App\Http\Controllers\PersonnelActionController;
 use App\Http\Controllers\PriceListController;
 use App\Http\Controllers\PriceOverrideController;
 use App\Http\Controllers\ProductionOrderController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReorderController;
 use App\Http\Controllers\SalesDocumentController;
@@ -98,7 +103,26 @@ Route::middleware('guest')->group(function () {
 
     Route::get('activate', [LicenseActivationController::class, 'create'])->name('license-activation.create');
     Route::post('activate', [LicenseActivationController::class, 'store'])->name('license-activation.store');
+
+    // «Olvidé mi contraseña». Los nombres son los que espera Laravel: el
+    // correo arma su enlace con route('password.reset').
+    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
+    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])->name('password.email');
 });
+
+// El enlace del correo, fuera del grupo de invitados: también lo abre quien
+// tiene la sesión iniciada y pidió elegir su contraseña antes de activar una
+// licencia (LicenseRedemptionController::sendPasswordLink). Lo que protege
+// estas dos rutas es el token, no la sesión.
+Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])->name('password.reset');
+Route::post('reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:10,1')->name('password.update');
+
+// El enlace que confirma un correo nuevo (ProfileController). Tampoco exige
+// sesión: llega a la casilla nueva y puede abrirse en otro dispositivo. Lo
+// autoriza la firma del enlace, que revisa el controlador.
+Route::get('my-account/email/confirm/{user}', [ProfileController::class, 'confirmEmailChange'])
+    ->middleware('throttle:20,1')
+    ->name('profile.email.confirm');
 
 Route::middleware('auth')->group(function () {
     Route::delete('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -107,6 +131,24 @@ Route::middleware('auth')->group(function () {
 
     Route::get('companies/create', [CompanyProvisioningController::class, 'create'])->name('companies.create');
     Route::post('companies', [CompanyProvisioningController::class, 'store'])->name('companies.store');
+
+    // Activar una licencia propia con la cuenta que ya se tiene. Sin
+    // middleware de rol ni de módulo: no es un permiso dentro de la compañía
+    // activa, es una licencia de la persona.
+    Route::get('my-license/activate', [LicenseRedemptionController::class, 'create'])->name('license-redemption.create');
+    Route::post('my-license/activate', [LicenseRedemptionController::class, 'store'])->name('license-redemption.store');
+    Route::post('my-license/password-link', [LicenseRedemptionController::class, 'sendPasswordLink'])
+        ->middleware('throttle:6,1')
+        ->name('license-redemption.password-link');
+
+    // «Mi cuenta»: cada persona edita sus propios datos, sea cual sea su rol.
+    // Ninguna ruta recibe un id: siempre es la cuenta de la sesión.
+    Route::get('my-account', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('my-account', [ProfileController::class, 'update'])->name('profile.update');
+    Route::put('my-account/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
+    Route::post('my-account/email', [ProfileController::class, 'requestEmailChange'])->name('profile.email.request');
+    Route::post('my-account/photo', [ProfileController::class, 'updatePhoto'])->name('profile.photo.update');
+    Route::delete('my-account/photo', [ProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
 
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
@@ -726,6 +768,10 @@ Route::middleware('auth')->group(function () {
     Route::middleware('can-manage-company')->group(function () {
         Route::get('appearance', [CompanyAppearanceController::class, 'edit'])->name('appearance.edit');
         Route::put('appearance', [CompanyAppearanceController::class, 'update'])->name('appearance.update');
+        // El logo de los reportes. La pantalla es la misma, pero subirlo y
+        // quitarlo es solo del Superusuario: lo comprueba el controlador.
+        Route::post('appearance/logo', [CompanyLogoController::class, 'update'])->name('appearance.logo.update');
+        Route::delete('appearance/logo', [CompanyLogoController::class, 'destroy'])->name('appearance.logo.destroy');
     });
 
     Route::middleware('can-manage-users')->group(function () {

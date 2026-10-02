@@ -6,6 +6,10 @@ use Carbon\CarbonInterface;
 
 class ReportHeader
 {
+    /**
+     * @param  string|null  $logoPath  ruta del logo dentro del disco de
+     *                                 imágenes (MediaStorage), no una ruta del servidor
+     */
     public function __construct(
         public readonly string $companyName,
         public readonly ?string $taxId,

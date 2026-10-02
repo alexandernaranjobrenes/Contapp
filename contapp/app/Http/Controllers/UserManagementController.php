@@ -10,6 +10,8 @@ use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Services\PermissionGrantService;
 use App\Domains\Core\Services\UserLifecycleService;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\MediaStorage;
+use App\Domains\Core\Support\PasswordPolicy;
 use App\Domains\Licensing\Exceptions\LicenseQuotaExceededException;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -24,13 +26,13 @@ use Inertia\Response;
  */
 class UserManagementController extends Controller
 {
-    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service): Response
+    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, MediaStorage $media): Response
     {
         $company = Company::findOrFail($currentCompany->id());
         $modules = Module::orderBy('name')->get();
         $grantor = $request->user();
 
-        $users = $company->users()->get()->map(function (User $user) use ($company, $modules, $grantor, $service) {
+        $users = $company->users()->get()->map(function (User $user) use ($company, $modules, $grantor, $service, $media) {
             $permissions = ModulePermission::where('company_id', $company->id)
                 ->where('subject_type', 'user')
                 ->where('subject_id', $user->id)
@@ -42,6 +44,8 @@ class UserManagementController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                // La foto de perfil que cada quien sube en Mi cuenta.
+                'photo_url' => $media->versionedUrl($user->photo_path, $user->photo_updated_at),
                 'role_type' => $isSuperAdmin ? 'super_admin' : $user->roleTypeFor($company->id),
                 'status' => $user->pivot->status,
                 'can_manage' => ! $isSuperAdmin && $service->canManage($grantor, $user, $company->id),
@@ -71,6 +75,7 @@ class UserManagementController extends Controller
         }
 
         return Inertia::render('Users/Create', [
+            'passwordRequirements' => PasswordPolicy::requirements(),
             'grantableRoleTypes' => $grantableRoleTypes,
             'license' => $license ? [
                 'admins_count' => $license->adminsCount(),
@@ -94,7 +99,7 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', PasswordPolicy::rule()],
             'role_type' => ['required', 'string', 'in:admin,user'],
             'permissions' => ['array'],
             'permissions.*' => ['string', 'in:none,read,read_write'],

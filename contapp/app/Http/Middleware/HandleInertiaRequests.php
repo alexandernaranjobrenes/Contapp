@@ -8,6 +8,8 @@ use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Core\Support\CompanyTheme;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\MediaStorage;
+use App\Domains\Licensing\Models\License;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -66,6 +68,16 @@ class HandleInertiaRequests extends Middleware
         $isSuperAdmin = $user ? $user->isSuperAdmin($currentCompanyId) : false;
         $roleType = ($user && $currentCompanyId && ! $isSuperAdmin) ? $user->roleTypeFor($currentCompanyId) : null;
 
+        // ¿La cuenta ya es dueña de una licencia? No es lo mismo que ser
+        // Superusuario de la compañía activa: puede serlo de la suya y estar
+        // parada en la de otra persona. De esto depende que el menú ofrezca
+        // «Activar una licencia» (una cuenta, una licencia). Si la licencia
+        // de la compañía activa es suya, se sabe sin consultar.
+        $ownsLicense = $user !== null && (
+            $license?->superuser_id === $user->id
+            || License::where('superuser_id', $user->id)->exists()
+        );
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -89,6 +101,13 @@ class HandleInertiaRequests extends Middleware
                     // Administración → Apariencia (CLAUDE.md secc. 31): mismo
                     // criterio que el middleware can-manage-company.
                     'can_manage_company' => $currentCompanyId !== null && ($isSuperAdmin || $roleType === 'admin'),
+                    'owns_license' => $ownsLicense,
+                    // La foto de perfil (Mi cuenta): reemplaza al ícono de
+                    // «Mi cuenta» en el menú. Armar la dirección no consulta
+                    // al bucket, y sin foto ni siquiera se resuelve el disco.
+                    'photo_url' => $user->photo_path
+                        ? app(MediaStorage::class)->versionedUrl($user->photo_path, $user->photo_updated_at)
+                        : null,
                 ] : null,
             ],
             'propietario' => $propietario ? [

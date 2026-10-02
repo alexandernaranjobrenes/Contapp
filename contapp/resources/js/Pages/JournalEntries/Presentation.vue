@@ -170,11 +170,13 @@ function printNow() {
     gap: 0.85rem;
 }
 
+/* La misma caja que en los reportes en PDF (ReportLogo): el logo entra sin
+   deformarse, sea apaisado, cuadrado o vertical. */
 .logo {
-    width: 52px;
-    height: 52px;
+    flex-shrink: 0;
+    max-width: 160px;
+    max-height: 56px;
     object-fit: contain;
-    border-radius: var(--radius-sm);
 }
 
 .company-name {

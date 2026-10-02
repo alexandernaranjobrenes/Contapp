@@ -221,7 +221,8 @@ function printNow() {
 }
 
 .company { display: flex; gap: 0.8rem; align-items: center; }
-.logo { max-height: 3.2rem; max-width: 9rem; }
+/* La misma caja que en los reportes en PDF (ReportLogo). */
+.logo { flex-shrink: 0; max-width: 160px; max-height: 56px; object-fit: contain; }
 .company-name { font-weight: 700; font-size: 1.05rem; }
 .meta { font-size: 0.74rem; color: #555; }
 

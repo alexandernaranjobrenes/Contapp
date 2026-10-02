@@ -46,12 +46,19 @@
     <div class="head">
         <table style="width: 100%; border-collapse: collapse;">
             <tr>
-                <td style="width: 70px; vertical-align: top;">
-                    @if ($company['logo_path'])
-                        <img src="{{ 'data:image/png;base64,'.base64_encode(file_get_contents($company['logo_path'])) }}"
-                            style="max-width: 60px; max-height: 60px;">
-                    @endif
-                </td>
+                {{-- El logo, con su ancho y alto ya calculados para la caja
+                     del encabezado (ReportLogo), igual que en los reportes. --}}
+                @php
+                    $logoSize = \App\Domains\Reporting\Support\ReportLogo::size($company['logo_data_uri']);
+                @endphp
+                {{-- La celda existe solo si hay logo: sin él, el nombre
+                     arranca en el margen en vez de dejar un hueco. --}}
+                @if ($company['logo_data_uri'])
+                    <td style="width: {{ \App\Domains\Reporting\Support\ReportLogo::cellWidth($logoSize) }}px; vertical-align: middle;">
+                        <img src="{{ $company['logo_data_uri'] }}"
+                            style="{{ \App\Domains\Reporting\Support\ReportLogo::style($logoSize) }}">
+                    </td>
+                @endif
                 <td style="vertical-align: top;">
                     <div class="company">{{ $company['name'] }}</div>
                     @if ($company['tax_id'])

@@ -3,6 +3,7 @@
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Payroll\Exceptions\InvalidPayrollException;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\PayrollEntry;
@@ -13,7 +14,9 @@ use App\Domains\Payroll\Services\CostaRicaPayrollDefaults;
 use App\Domains\Payroll\Services\PayslipDocument;
 use App\Mail\PayslipMail;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * El comprobante de pago: PDF y envío por correo.
@@ -120,6 +123,31 @@ it('la pantalla y el PDF salen del mismo payload', function () {
         // El nombre lleva código y período: es lo que se busca en una carpeta
         // con cien comprobantes.
         ->and($pdf->headers->get('Content-Disposition'))->toContain('comprobante-cp1-abril-2026.pdf');
+});
+
+it('el PDF lleva el logo aunque esté en un bucket y no en una carpeta', function () {
+    Storage::fake('s3');
+    config(['filesystems.media' => 's3']);
+
+    $f = payslipFixture();
+
+    $logo = UploadedFile::fake()->image('logo.png', 60, 60);
+    Storage::disk('s3')->put('logos/logo.png', $logo->getContent());
+    $f['company']->update(['logo_path' => 'logos/logo.png']);
+
+    // La pantalla recibe la dirección pública; la ruta del servidor no viaja.
+    $payload = app(PayslipDocument::class)->payload($f['company'], $f['entry']);
+
+    expect($payload['company']['logo_url'])->toBe(Storage::disk('s3')->url('logos/logo.png'))
+        ->and($payload['company'])->not->toHaveKey('logo_path');
+
+    // El PDF lo lleva incrustado: dompdf no baja imágenes por HTTP.
+    $payload['company']['logo_data_uri'] = app(MediaStorage::class)->dataUri('logos/logo.png');
+
+    expect(view('reports.payslip', $payload)->render())
+        ->toContain('src="data:image/png;base64,'.base64_encode($logo->getContent()).'"');
+
+    $this->get(route('payslips.pdf', $f['entry']->id))->assertOk();
 });
 
 // ── El envío por correo ─────────────────────────────────────────────────

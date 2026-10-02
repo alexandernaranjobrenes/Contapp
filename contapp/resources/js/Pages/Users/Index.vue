@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DetailModal from '../../Components/DetailModal.vue';
+import UserAvatar from '../../Components/UserAvatar.vue';
 import { confirmAction } from '../../Utils/confirm';
 import { useRecordDetail } from '../../Utils/recordDetail';
 import { KeyRoundIcon, PlusIcon } from '@lucide/vue';
@@ -101,7 +102,7 @@ function askConfirm(action) {
                             @keydown.enter="openDetail(user)"
                             @keydown.space.prevent="openDetail(user)"
                         >
-                            <td>{{ user.name }}</td>
+                            <td><span class="user-cell"><UserAvatar :url="user.photo_url" :name="user.name" /> {{ user.name }}</span></td>
                             <td data-label="Correo" class="email-cell">{{ user.email }}</td>
                             <td data-label="Rol"><span class="badge" :class="user.role_type === 'super_admin' ? 'badge-success' : 'badge-neutral'">{{ roleLabel(user.role_type) }}</span></td>
                             <td data-label="Estado"><span class="badge" :class="statusInfo(user.status).cls">{{ statusInfo(user.status).label }}</span></td>
@@ -159,5 +160,8 @@ function askConfirm(action) {
 <style scoped>
 table { font-size: 0.85rem; }
 .email-cell { overflow-wrap: anywhere; }
+/* flex y no inline-flex: en línea, una foto (que no tiene línea de base de
+   texto) se apoya en la del renglón y la fila queda más alta que las demás. */
+.user-cell { display: flex; align-items: center; gap: 0.6rem; }
 .permission-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 </style>

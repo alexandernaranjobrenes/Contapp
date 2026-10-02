@@ -25,8 +25,15 @@ class Company extends Model
     protected $fillable = [
         'license_id', 'legal_name', 'trade_name', 'tax_id', 'address', 'country_code',
         'local_currency_id', 'foreign_currency_id', 'system_currency_id',
-        'timezone', 'logo_path', 'theme', 'status',
+        'timezone', 'logo_path', 'logo_updated_at', 'theme', 'status',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'logo_updated_at' => 'datetime',
+        ];
+    }
 
     public function license(): BelongsTo
     {

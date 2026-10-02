@@ -21,6 +21,7 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Reporting\DataTransferObjects\ReportHeader;
 use App\Domains\Reporting\Support\ReportHeaderFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -29,7 +30,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -355,7 +355,7 @@ class JournalEntryController extends Controller
      * comprobante, con el mismo encabezado de identidad de empresa que el
      * PDF/XLSX y botones para generarlos o imprimir directo desde ahí.
      */
-    public function presentation(Request $request, int $journalEntry, ReportHeaderFactory $headerFactory): Response
+    public function presentation(Request $request, int $journalEntry, ReportHeaderFactory $headerFactory, MediaStorage $media): Response
     {
         $entry = $this->findEntryForPresentation($journalEntry);
         $header = $this->presentationHeader($entry, $request, $headerFactory);
@@ -384,7 +384,7 @@ class JournalEntryController extends Controller
                 'company_name' => $header->companyName,
                 'tax_id' => $header->taxId,
                 'address' => $header->address,
-                'logo_url' => $this->publicLogoUrl($company->logo_path),
+                'logo_url' => $media->versionedUrl($company->logo_path, $company->logo_updated_at),
                 'generated_by_name' => $header->generatedByName,
                 'generated_at' => $header->generatedAt->format('Y-m-d H:i'),
             ],
@@ -416,17 +416,6 @@ class JournalEntryController extends Controller
             $label,
             "Fecha de contabilización: {$entry->posting_date->format('Y-m-d')}"
         );
-    }
-
-    private function publicLogoUrl(?string $logoPath): ?string
-    {
-        if ($logoPath === null) {
-            return null;
-        }
-
-        $disk = Storage::disk('public');
-
-        return $disk->exists($logoPath) ? $disk->url($logoPath) : null;
     }
 
     /**

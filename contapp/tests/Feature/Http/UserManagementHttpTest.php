@@ -24,7 +24,7 @@ it('un superusuario ve y crea usuarios en su compañía', function () {
     $this->post(route('users.store'), [
         'name' => 'Ana Admin',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
+        'password' => 'Secreto#1234',
         'role_type' => 'admin',
         'permissions' => [$module->id => 'read_write'],
     ])->assertRedirect(route('users.index'));
@@ -43,7 +43,7 @@ it('rechaza vía HTTP que un administrador otorgue más acceso del que tiene, si
 
     $admin = app(PermissionGrantService::class)->createUser(
         $superAdmin, $company,
-        ['name' => 'Ana Admin', 'email' => 'ana@example.com', 'password' => 'secreto123'],
+        ['name' => 'Ana Admin', 'email' => 'ana@example.com', 'password' => 'Secreto#1234'],
         'admin', [$module->id => 'read'],
     );
 
@@ -51,7 +51,7 @@ it('rechaza vía HTTP que un administrador otorgue más acceso del que tiene, si
     $this->post(route('users.store'), [
         'name' => 'Beto Usuario',
         'email' => 'beto@example.com',
-        'password' => 'secreto123',
+        'password' => 'Secreto#1234',
         'role_type' => 'user',
         'permissions' => [$module->id => 'read_write'],
     ])->assertSessionHasErrors('permissions');
@@ -69,12 +69,12 @@ it('un administrador puede editar los permisos de un usuario dentro de su propio
     $service = app(PermissionGrantService::class);
     $admin = $service->createUser(
         $superAdmin, $company,
-        ['name' => 'Ana Admin', 'email' => 'ana@example.com', 'password' => 'secreto123'],
+        ['name' => 'Ana Admin', 'email' => 'ana@example.com', 'password' => 'Secreto#1234'],
         'admin', [$module->id => 'read_write'],
     );
     $user = $service->createUser(
         $superAdmin, $company,
-        ['name' => 'Beto Usuario', 'email' => 'beto@example.com', 'password' => 'secreto123'],
+        ['name' => 'Beto Usuario', 'email' => 'beto@example.com', 'password' => 'Secreto#1234'],
         'user', [],
     );
 

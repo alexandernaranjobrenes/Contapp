@@ -42,13 +42,13 @@ const scope = [
             </ul>
         </template>
 
-        <header class="form-head">
+        <header class="auth-head">
             <span class="internal-badge">Uso interno · Equipo CONTAPP</span>
-            <h2 class="form-title">Iniciar sesión</h2>
+            <h2 class="auth-title">Iniciar sesión</h2>
         </header>
 
         <form novalidate @submit.prevent="submit">
-            <p v-if="form.errors.email" class="flash flash-error login-error" role="alert">{{ form.errors.email }}</p>
+            <p v-if="form.errors.email" class="flash flash-error auth-error" role="alert">{{ form.errors.email }}</p>
 
             <div class="field">
                 <label for="email">Correo</label>
@@ -97,7 +97,7 @@ const scope = [
                 Mantener la sesión iniciada
             </label>
 
-            <button type="submit" class="btn btn-primary login-submit" :disabled="form.processing">
+            <button type="submit" class="btn btn-primary auth-submit" :disabled="form.processing">
                 <LogInIcon /> Ingresar
             </button>
         </form>
@@ -135,15 +135,8 @@ const scope = [
     color: #f0b429;
 }
 
-.form-head {
-    margin-bottom: 1.5rem;
-}
-
-.form-title {
-    margin: 0.6rem 0 0;
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
+.internal-badge + .auth-title {
+    margin-top: 0.6rem;
 }
 
 /* Ámbar sobre grafito: la marca de esta puerta, distinta a propósito de la
@@ -160,10 +153,6 @@ const scope = [
     border-radius: var(--radius-sm);
 }
 
-.login-error {
-    margin: 0 0 1rem;
-}
-
 .field {
     margin-bottom: 1.1rem;
 }
@@ -171,12 +160,5 @@ const scope = [
 .remember {
     margin: 0.25rem 0 1.4rem;
     color: var(--color-text-muted);
-}
-
-.login-submit {
-    width: 100%;
-    min-height: 2.9rem;
-    justify-content: center;
-    font-size: 0.95rem;
 }
 </style>

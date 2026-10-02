@@ -232,7 +232,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
 }
 
 
-.content { padding: 1.25rem; flex: 1; overflow-y: auto; overflow-x: auto; }
+/* position: relative por lo mismo que en AppLayout.vue: lo que lleve
+   `position: absolute` adentro (.sr-only) se desplaza con el contenido en vez
+   de agregarle a la página un segundo desplazamiento. */
+.content { position: relative; padding: 1.25rem; flex: 1; overflow-y: auto; overflow-x: auto; }
 
 .flash {
     flex-shrink: 0;

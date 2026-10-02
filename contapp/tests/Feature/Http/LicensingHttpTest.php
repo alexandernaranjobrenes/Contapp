@@ -12,8 +12,8 @@ it('rechaza activar con un código que no existe', function () {
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertSessionHasErrors('code');
 
     $this->assertGuest();
@@ -29,8 +29,8 @@ it('activa una licencia válida, crea la compañía y deja al usuario logueado c
         'tax_id' => '3-101-999999',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertRedirect(route('dashboard'));
 
     $user = User::where('email', 'juan@example.com')->sole();
@@ -50,8 +50,8 @@ it('rechaza activar una licencia que ya alcanzó el máximo de compañías', fun
         'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     // El primer activate() dejó al cliente de pruebas autenticado como Ana;
@@ -64,8 +64,8 @@ it('rechaza activar una licencia que ya alcanzó el máximo de compañías', fun
         'legal_name' => 'Segunda Empresa',
         'name' => 'Beto',
         'email' => 'beto@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertSessionHasErrors('code');
 
     expect(User::where('email', 'beto@example.com')->exists())->toBeFalse();
@@ -79,8 +79,8 @@ it('rechaza activar una licencia vencida', function () {
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertSessionHasErrors('code');
 
     $this->assertGuest();
@@ -94,8 +94,8 @@ it('cierra la sesión de inmediato si la licencia de la compañía fue revocada'
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     $license->update(['status' => 'revoked']);
@@ -112,8 +112,8 @@ it('una licencia solo vencida (no revocada) entra en modo de gracia: no bloquea 
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     // La licencia vence después de la activación (ej. pasó un año sin renovar).
@@ -151,8 +151,8 @@ it('cambiar a una segunda compañía "pega" en el siguiente request, con el id l
         'legal_name' => 'Empresa Uno',
         'name' => 'Juan',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     $this->post(route('companies.store'), ['legal_name' => 'Empresa Dos'])->assertSessionHasNoErrors();
@@ -271,8 +271,8 @@ it('activar una licencia la fija como superuser_id del usuario creado', function
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertRedirect(route('dashboard'));
 
     $user = User::where('email', 'juan@example.com')->sole();
@@ -288,8 +288,8 @@ it('rechaza reactivar el mismo código aunque queden cupos disponibles: /activat
         'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertRedirect(route('dashboard'));
 
     $this->delete(route('logout'));
@@ -299,8 +299,8 @@ it('rechaza reactivar el mismo código aunque queden cupos disponibles: /activat
         'legal_name' => 'Segunda Empresa',
         'name' => 'Beto',
         'email' => 'beto@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ])->assertSessionHasErrors('code');
 
     expect(User::where('email', 'beto@example.com')->exists())->toBeFalse()
@@ -315,8 +315,8 @@ it('el superusuario dueño de la licencia agrega una compañía adicional bajo s
         'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     $user = User::where('email', 'ana@example.com')->sole();
@@ -343,8 +343,8 @@ it('rechaza agregar una compañía adicional cuando la licencia ya alcanzó su t
         'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     $this->post(route('companies.store'), [
@@ -362,8 +362,8 @@ it('rechaza agregar una compañía adicional a un usuario que no es el superusua
         'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
-        'password' => 'secreto123',
-        'password_confirmation' => 'secreto123',
+        'password' => 'Secreto#1234',
+        'password_confirmation' => 'Secreto#1234',
     ]);
 
     $superuser = User::where('email', 'ana@example.com')->sole();
@@ -372,7 +372,7 @@ it('rechaza agregar una compañía adicional a un usuario que no es el superusua
     $admin = app(PermissionGrantService::class)->createUser(
         $superuser,
         $company,
-        ['name' => 'Beto Admin', 'email' => 'beto-admin@example.com', 'password' => 'secreto123'],
+        ['name' => 'Beto Admin', 'email' => 'beto-admin@example.com', 'password' => 'Secreto#1234'],
         'admin',
         [],
     );

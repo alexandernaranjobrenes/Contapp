@@ -2,12 +2,14 @@
 import { ref } from 'vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import { ArrowLeftIcon } from '@lucide/vue';
 
 const props = defineProps({
     grantableRoleTypes: { type: Array, default: () => [] },
     license: { type: Object, default: null },
     modules: { type: Array, default: () => [] },
+    passwordRequirements: { type: Array, required: true },
 });
 
 const ROLE_LABELS = { admin: 'Administrador', user: 'Usuario' };
@@ -111,8 +113,22 @@ function submitInvite() {
                 </div>
                 <div class="field">
                     <label for="user-password">Contraseña</label>
-                    <input id="user-password" v-model="form.password" type="password" required minlength="8">
+                    <input
+                        id="user-password"
+                        v-model="form.password"
+                        type="password"
+                        autocomplete="new-password"
+                        required
+                        aria-describedby="user-password-rules"
+                        @input="form.clearErrors('password')"
+                    >
                     <p v-if="form.errors.password" class="error">{{ form.errors.password }}</p>
+                    <PasswordRequirements
+                        id="user-password-rules"
+                        class="password-rules"
+                        :requirements="passwordRequirements"
+                        :password="form.password"
+                    />
                 </div>
                 <div class="field">
                     <label for="user-role">Tipo de rol</label>
@@ -211,4 +227,5 @@ h3 { font-size: 0.88rem; margin: 1.25rem 0 0.25rem; }
 .permissions-table { font-size: 0.85rem; margin-bottom: 0.75rem; }
 .permissions-table select { width: 100%; max-width: 20rem; }
 .error { color: var(--color-danger); font-size: 0.78rem; margin: 0.2rem 0 0; }
+.password-rules { margin-top: 0.5rem; }
 </style>

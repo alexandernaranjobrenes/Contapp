@@ -57,15 +57,15 @@ const highlights = [
             </div>
         </template>
 
-        <header class="form-head">
-            <h2 class="form-title">Iniciar sesión</h2>
-            <p class="form-subtitle">Ingresá con tu correo y tu contraseña.</p>
+        <header class="auth-head">
+            <h2 class="auth-title">Iniciar sesión</h2>
+            <p class="auth-subtitle">Ingresá con tu correo y tu contraseña.</p>
         </header>
 
         <form novalidate @submit.prevent="submit">
             <!-- Las credenciales incorrectas llegan como error del correo: se
                  dicen arriba, en una línea, sin señalar cuál de los dos falló. -->
-            <p v-if="form.errors.email" class="flash flash-error login-error" role="alert">{{ form.errors.email }}</p>
+            <p v-if="form.errors.email" class="flash flash-error auth-error" role="alert">{{ form.errors.email }}</p>
 
             <div class="field">
                 <label for="email">Correo</label>
@@ -110,19 +110,25 @@ const highlights = [
                 <span v-if="form.errors.password" class="error">{{ form.errors.password }}</span>
             </div>
 
-            <label class="check remember">
-                <input v-model="form.remember" type="checkbox">
-                Mantener la sesión iniciada
-            </label>
+            <!-- El enlace va después de la contraseña, no al lado de su
+                 etiqueta: así el tabulador pasa del correo a la contraseña
+                 sin detenerse en él. -->
+            <div class="login-options">
+                <label class="check remember">
+                    <input v-model="form.remember" type="checkbox">
+                    Mantener la sesión iniciada
+                </label>
+                <Link :href="route('password.request')" class="forgot-link">¿Olvidaste tu contraseña?</Link>
+            </div>
 
-            <button type="submit" class="btn btn-primary login-submit" :disabled="form.processing">
+            <button type="submit" class="btn btn-primary auth-submit" :disabled="form.processing">
                 <LogInIcon /> Ingresar
             </button>
         </form>
 
-        <div class="activate">
+        <div class="auth-alt">
             <span>¿Tenés un código de licencia?</span>
-            <Link :href="route('license-activation.create')" class="activate-link">Activarlo acá <ArrowRightIcon :size="15" /></Link>
+            <Link :href="route('license-activation.create')" class="auth-alt-link">Activarlo acá <ArrowRightIcon :size="15" /></Link>
         </div>
 
         <template #below>
@@ -235,66 +241,34 @@ const highlights = [
 
 /* ── Formulario ───────────────────────────────────────────────────────── */
 
-.form-head {
-    margin-bottom: 1.5rem;
-}
-
-.form-title {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-}
-
-.form-subtitle {
-    margin: 0.35rem 0 0;
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-}
-
-.login-error {
-    margin: 0 0 1rem;
-}
-
 .field {
     margin-bottom: 1.1rem;
 }
 
-.remember {
-    margin: 0.25rem 0 1.4rem;
-    color: var(--color-text-muted);
-}
-
-.login-submit {
-    width: 100%;
-    min-height: 2.9rem;
-    justify-content: center;
-    font-size: 0.95rem;
-}
-
-.activate {
+/* La casilla a la izquierda y el enlace a la derecha; en un teléfono angosto
+   el enlace baja a su propia línea. */
+.login-options {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
-    gap: 0.25rem 0.4rem;
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--color-border);
-    font-size: 0.85rem;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    margin: 0.25rem 0 1.4rem;
+    font-size: 0.82rem;
+}
+
+.remember {
+    margin: 0;
     color: var(--color-text-muted);
 }
 
-.activate-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    color: var(--color-primary);
-    font-weight: 700;
+.forgot-link {
+    color: var(--auth-link);
+    font-weight: 600;
     text-decoration: none;
 }
 
-.activate-link:hover {
+.forgot-link:hover {
     text-decoration: underline;
 }
 </style>

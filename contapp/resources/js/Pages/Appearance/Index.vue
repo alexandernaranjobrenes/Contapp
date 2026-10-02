@@ -1,8 +1,9 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import { CheckIcon, PaletteIcon, Undo2Icon } from '@lucide/vue';
+import { confirmAction } from '../../Utils/confirm';
+import { CheckIcon, PaletteIcon, Undo2Icon, UploadIcon, XIcon } from '@lucide/vue';
 
 /**
  * Administración → Apariencia (CLAUDE.md secc. 31): el tema visual de la
@@ -15,7 +16,49 @@ const props = defineProps({
     themes: { type: Array, required: true },
     current: { type: String, required: true },
     companyName: { type: String, required: true },
+    // El logo de los reportes: su dirección, si quien mira puede cambiarlo
+    // (solo el Superusuario) y qué se puede subir.
+    logo: { type: Object, required: true },
+    // Lo que acompaña al logo en el encabezado de un reporte.
+    reportHeader: { type: Object, required: true },
 });
+
+const logoForm = useForm({ logo: null });
+const logoInput = ref(null);
+
+// Elegir el archivo ya lo sube: no hay un segundo botón de «guardar».
+function pickLogo(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // El peso se revisa antes de subir, para no esperar la subida de un
+    // archivo que el servidor va a rechazar igual.
+    if (file.size > props.logo.max_megabytes * 1024 * 1024) {
+        logoForm.setError('logo', `El logo no puede pesar más de ${props.logo.max_megabytes} MB.`);
+        event.target.value = '';
+        return;
+    }
+
+    logoForm.logo = file;
+    logoForm.post(route('appearance.logo.update'), {
+        preserveScroll: true,
+        forceFormData: true,
+        onFinish: () => { if (logoInput.value) logoInput.value.value = ''; },
+    });
+}
+
+function removeLogo() {
+    confirmAction({
+        title: 'Quitar el logo',
+        message: `Los reportes de ${props.companyName} van a salir solo con el nombre de la compañía. El logo se borra y no se puede recuperar.`,
+        confirmLabel: 'Quitar logo',
+        danger: true,
+        onConfirm: () => router.delete(route('appearance.logo.destroy'), {
+            preserveScroll: true,
+            onSuccess: () => logoForm.clearErrors(),
+        }),
+    });
+}
 
 const selected = ref(props.current);
 const form = useForm({ theme: props.current });
@@ -117,11 +160,115 @@ onBeforeUnmount(() => {
                 </span>
             </button>
         </div>
+
+        <section class="card logo-card" aria-labelledby="logo-title">
+            <div class="card-header">
+                <h2 id="logo-title" class="card-title">Logo para los reportes</h2>
+            </div>
+            <div class="logo-body">
+                <p id="logo-hint" class="logo-hint">
+                    Sale en el encabezado de los reportes en PDF, del comprobante de pago y de la presentación de los
+                    asientos de <strong>{{ companyName }}</strong>. {{ logo.formats }}, hasta {{ logo.max_megabytes }} MB.
+                    Al subirlo se le quita el margen vacío de alrededor y se ajusta sin deformarlo, así que sirve
+                    apaisado, cuadrado o vertical; lo ideal es un PNG con fondo transparente o blanco.
+                </p>
+
+                <!-- Así queda en un reporte: el mismo encabezado, sobre papel.
+                     Los colores son los del PDF, fijos a propósito: el papel
+                     es blanco con cualquier tema y en modo oscuro. -->
+                <figure class="paper">
+                    <figcaption class="paper-caption">Así se ve en el encabezado de un reporte</figcaption>
+                    <div class="paper-sheet">
+                        <div class="paper-head">
+                            <img
+                                v-if="logo.url"
+                                :src="logo.url"
+                                class="paper-logo"
+                                :style="{ maxWidth: `${logo.report_box.width}px`, maxHeight: `${logo.report_box.height}px` }"
+                                alt="Logo de la compañía"
+                            >
+                            <div>
+                                <div class="paper-company">{{ reportHeader.name }}</div>
+                                <div v-if="reportHeader.tax_id" class="paper-meta">Cédula jurídica: {{ reportHeader.tax_id }}</div>
+                                <div v-if="reportHeader.address" class="paper-meta">{{ reportHeader.address }}</div>
+                            </div>
+                        </div>
+                        <div class="paper-title">Balance de comprobación</div>
+                        <div class="paper-meta">Así aparece el título de cada reporte, con sus parámetros</div>
+                    </div>
+                </figure>
+                <p v-if="!logo.url" class="logo-hint no-logo-note">
+                    Esta compañía todavía no tiene logo: sus reportes salen solo con el nombre. El logo es de cada
+                    compañía; el de otra no se usa acá.
+                </p>
+
+                <template v-if="logo.can_edit">
+                    <div class="logo-actions">
+                        <label class="btn btn-primary file-btn" :class="{ disabled: logoForm.processing }">
+                            <UploadIcon /> {{ logo.url ? 'Cambiar logo' : 'Subir logo' }}
+                            <input
+                                ref="logoInput"
+                                type="file"
+                                :accept="logo.accept"
+                                :disabled="logoForm.processing"
+                                aria-describedby="logo-hint"
+                                @change="pickLogo"
+                            >
+                        </label>
+                        <button v-if="logo.url" type="button" class="btn btn-ghost btn-danger-text" @click="removeLogo">
+                            <XIcon /> Quitar logo
+                        </button>
+                    </div>
+                    <span v-if="logoForm.errors.logo" class="logo-error" role="alert">{{ logoForm.errors.logo }}</span>
+                </template>
+                <p v-else class="logo-hint logo-owner-note">Solo el Superusuario de la compañía puede cambiar el logo.</p>
+            </div>
+        </section>
     </AppLayout>
 </template>
 
 <style scoped>
 .preview-note { display: flex; align-items: center; gap: 0.5rem; }
+
+/* ── Logo para los reportes ───────────────────────────────────────────── */
+
+.logo-card { margin-top: 1.25rem; }
+.card-title { margin: 0; font-size: 0.95rem; font-weight: 700; }
+.logo-body { padding: 1rem 1.1rem; }
+.logo-hint { margin: 0 0 1rem; font-size: 0.85rem; line-height: 1.5; color: var(--color-text-muted); }
+.logo-owner-note { margin: 1rem 0 0; }
+.logo-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.logo-error { display: block; margin-top: 0.5rem; color: var(--color-danger); font-size: 0.78rem; }
+
+.paper { margin: 0; }
+.paper-caption { margin-bottom: 0.4rem; font-size: 0.78rem; color: var(--color-text-muted); }
+
+/* Una hoja: fondo blanco y la tinta del PDF, con cualquier tema. */
+.paper-sheet {
+    padding: 1rem 1.1rem 0.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: #fff;
+    color: #1a1a1a;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow-x: hidden;
+}
+
+.paper-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #0b1f3a;
+}
+
+.paper-logo { flex-shrink: 0; width: auto; height: auto; object-fit: contain; }
+
+.no-logo-note { margin: 0.75rem 0 0; }
+
+.paper-company { font-size: 14px; font-weight: 700; color: #0b1f3a; overflow-wrap: anywhere; }
+.paper-meta { font-size: 9px; color: #555; }
+.paper-title { margin-top: 10px; font-size: 13px; font-weight: 700; }
 
 .theme-grid {
     display: grid;
