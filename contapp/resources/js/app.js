@@ -3,9 +3,13 @@ import { createInertiaApp, router } from '@inertiajs/vue3';
 import { LUCIDE_CONTEXT } from '@lucide/vue';
 import CompanySwitchHost from './Components/CompanySwitchHost.vue';
 import ConfirmHost from './Components/ConfirmHost.vue';
-// Botón ocupado mientras dura la operación que disparó (CLAUDE.md secc. 27).
-// Se instala solo al importarlo.
+import ToastHost from './Components/ToastHost.vue';
+// Botón ocupado mientras dura la operación que disparó, también en las
+// descargas, y el error dicho en pantalla si falla (CLAUDE.md secc. 27).
+// Cada uno se instala solo al importarlo.
 import './Utils/busyButtons';
+import './Utils/downloads';
+import './Utils/requestErrors';
 
 // El tema visual de la compañía activa (CLAUDE.md secc. 31): cada página
 // trae el suyo en companyTheme. La primera carga ya lo trae puesto desde
@@ -31,10 +35,11 @@ createInertiaApp({
         return pages[`./Pages/${name}.vue`];
     },
     setup({ el, App, props, plugin }) {
-        // ConfirmHost y CompanySwitchHost van al lado de la página, no
-        // adentro: la confirmación de confirmAction() y la ventana del cambio
-        // de compañía siguen abiertas aunque la acción termine en otra página.
-        const app = createApp({ render: () => [h(App, props), h(ConfirmHost), h(CompanySwitchHost)] });
+        // ConfirmHost, CompanySwitchHost y ToastHost van al lado de la
+        // página, no adentro: la confirmación de confirmAction(), la ventana
+        // del cambio de compañía y los avisos siguen a la vista aunque la
+        // acción termine en otra página.
+        const app = createApp({ render: () => [h(App, props), h(ConfirmHost), h(CompanySwitchHost), h(ToastHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada

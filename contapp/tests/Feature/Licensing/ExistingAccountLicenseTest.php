@@ -451,10 +451,19 @@ it('el Superusuario de una licencia puede ser invitado como Administrador a la d
 
     $this->actingAs($f['otherOwner']);
 
-    $this->post(route('users.invite'), [
+    // Se lo invita, y entra cuando acepta (CompanyInvitationService).
+    $this->post(route('users.store'), [
         'email' => 'invitado@example.com',
         'role_type' => 'admin',
+        'permissions' => [],
     ])->assertRedirect(route('users.index'));
+
+    expect($guest['user']->fresh()->roleTypeFor($f['otherCompany']->id))->toBeNull();
+
+    app(\App\Domains\Core\Services\CompanyInvitationService::class)->accept(
+        \App\Domains\Core\Models\CompanyInvitation::where('email', 'invitado@example.com')->sole(),
+        null,
+    );
 
     $invited = $guest['user']->fresh();
 

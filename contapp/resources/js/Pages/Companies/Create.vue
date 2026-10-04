@@ -42,7 +42,7 @@ function submit() {
                     <input id="trade_name" v-model="form.trade_name" type="text">
                 </div>
                 <div class="field">
-                    <label for="tax_id">Cédula jurídica</label>
+                    <label for="tax_id">Cédula jurídica (opcional)</label>
                     <input id="tax_id" v-model="form.tax_id" type="text">
                 </div>
                 </div>

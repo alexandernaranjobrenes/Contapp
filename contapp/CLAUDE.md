@@ -171,8 +171,19 @@ Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (
 
 - **Una cuenta, una licencia.** Nadie es dueño de dos: lo valida `LicenseActivationService` y lo garantiza un índice único en `licenses.superuser_id`. Más compañías se piden ampliando el cupo de la que ya se tiene.
 - **Dos formas de llegar a ser dueño:** alguien nuevo activa creando su cuenta; quien ya tiene cuenta activa con ella, por «Ya tengo una cuenta» en el formulario público o por Mi cuenta → Activar una licencia con la sesión iniciada. Activar no le toca el nombre, la contraseña ni sus roles en otras compañías; la compañía nueva pasa a ser su predeterminada.
-- **Dos formas de entrar a la licencia de otro:** «Crear usuario nuevo» (correo que no existe) o «Invitar cuenta existente» (correo que ya tiene cuenta, sea o no dueño de una licencia).
-- **La contraseña tiene que ser de la persona.** Una cuenta creada por un Superusuario o un Administrador nace con la contraseña que ellos le pusieron (`users.password_chosen_at` nulo). No puede activar una licencia hasta elegir la suya con el enlace que llega a su correo; si no, quien la creó podría entrar a la compañía nueva.
+- **O se la asigna el backoffice** (Licencias → al emitirla, o desde su ficha): a una cuenta existente o a una nueva, por correo. La persona recibe un enlace que dura 30 minutos y la licencia se activa recién cuando lo acepta, con los datos de su primera compañía. Mientras tanto la licencia queda reservada: su código no sirve en la activación pública. El backoffice puede reenviar el correo, cambiar a quién está asignada o quitar la asignación, mientras no se haya aceptado. Una cuenta nueva siempre elige su contraseña al aceptar; una existente, solo si la suya la definió otra persona (`LicenseInvitationService`).
+- **Se entra a la licencia de otro solo por invitación** (Administración → Usuarios → Crear nuevo, `CompanyInvitationService`).
+  - **Quien invita pone el correo, el rol y los permisos por pantalla.** Nunca pone el nombre ni la contraseña de nadie.
+  - **La persona acepta desde el correo.** El enlace dura 7 días y se puede reenviar; al reenviarlo, el anterior deja de servir.
+  - **Sin cuenta en CONTAPP:** al aceptar elige su nombre y su contraseña, y la cuenta se crea recién ahí.
+  - **Con cuenta:** la compañía se suma a las que ya tiene, sin tocarle nada más.
+  - **Hasta que acepta no entra.** El cupo de la licencia cuenta las invitaciones sin aceptar.
+  - **Al aceptar se vuelve a revisar** que quien invitó todavía pueda dar ese rol y esos permisos.
+  - No hay forma de vincular una cuenta sin su aceptación.
+- **Los permisos son por pantalla del menú lateral**, con tres niveles: sin acceso, lectura, y lectura y escritura (secc. 29, `ScreenCatalog`).
+- **Solo el Superusuario cambia el rol** de alguien, de Usuario a Administrador o al revés, en la compañía activa (`PermissionGrantService::changeRole`). Se respeta el cupo de la licencia, y los permisos por pantalla no cambian.
+- **Suspender, reactivar y desactivar le avisan a la persona por correo**, con las compañías afectadas (`UserLifecycleService`). Si el correo falla, el cambio igual se hace y el mensaje lo dice.
+- **La contraseña tiene que ser de la persona.** Una cuenta creada antes por un Superusuario o un Administrador nació con la contraseña que ellos le pusieron (`users.password_chosen_at` nulo). No puede activar una licencia hasta elegir la suya con el enlace que llega a su correo; si no, quien la creó podría entrar a la compañía nueva. Las que entran por invitación eligen la suya.
 - **Un formulario nunca le cambia el nombre ni la contraseña a una cuenta existente** a partir de solo su correo: hay que probar que es propia (contraseña actual o sesión iniciada).
 
 ## 13. MODELO DE LICENCIAMIENTO
@@ -326,7 +337,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - [ ] ¿La fila completa abre la ficha, también con Enter y Espacio, sin botones en la fila?
 - [ ] ¿El alta es «Crear nuevo» arriba de la tabla, con el formulario en un modal (o su excepción de la secc. 21)?
 - [ ] ¿Las acciones de corte o irreversibles piden confirmación con `confirmAction()`?
-- [ ] ¿Los botones que guardan o eliminan viajan como visita de Inertia, para que se deshabiliten con su spinner (secc. 27)?
+- [ ] ¿Los botones que guardan, eliminan, consultan, generan o descargan viajan como visita de Inertia o como enlace de descarga, para que se deshabiliten con su spinner y el error se diga (secc. 27)?
 - [ ] ¿Ningún contenedor tiene `max-width` y los formularios usan `.form-grid` (secc. 25)?
 - [ ] ¿Ningún campo tiene estilos propios de borde, fondo, alto o letra (secc. 26)?
 - [ ] ¿Cada `<td>`, salvo el primero, tiene `data-label` para la vista de tarjetas?
@@ -340,7 +351,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Tamaño y trazo:** 16px y trazo 2 por defecto para toda la app (`app.provide(LUCIDE_CONTEXT, …)` en `resources/js/app.js`). `:size` solo cuando hace falta otro: 18 en el menú lateral. El color sale del texto (`currentColor`).
 - **Accesibilidad:** Lucide marca el ícono como decorativo (`aria-hidden`) si no lleva etiqueta. Un botón con solo ícono lleva `aria-label`, y `title` para el tooltip. Un ícono que por sí solo dice algo —el check de «sí» en una celda— lleva `aria-label` y `role="img"`.
 - **Desde CSS** (`::before`, `::after`, donde no hay plantilla): el SVG de lucide.dev como máscara, con las variables `--lucide-*` de `resources/css/app.scss`. Un ícono nuevo se agrega a `$lucide-icons`.
-- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; exportar o descargar `Download`; importar o subir `Upload`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`; reabrir `RotateCcw`; contabilizar `BookOpen`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`, Mi cuenta `CircleUserRound`. Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`.
+- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; exportar o descargar `Download`; importar o subir `Upload`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`; reabrir `RotateCcw`; contabilizar `BookOpen`; adjuntar una imagen `ImagePlus`; votar a favor y en contra `ArrowBigUp` y `ArrowBigDown`; borrar lo propio `Trash2`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`, Mi cuenta `CircleUserRound`. Barra superior: Comentarios y noticias `MessagesSquare` (y en el panel, la pestaña Noticias `Newspaper`). Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`, Comentarios `MessagesSquare`, Noticias `Newspaper`.
 
 **No son íconos (se quedan como están):** los caracteres tipográficos dentro de un texto —la flecha entre dos valores («Básica → Profesional», «USD → CRC», un rango de fechas, «borrador → aprobada»), las comillas «», el § de una cita de norma, el × de una fórmula, la raya y el punto medio—; los gráficos de datos (el minigráfico de `LedgerPanel`); y los documentos PDF, donde una advertencia se escribe con palabras («Atención: …»).
 
@@ -350,7 +361,8 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 **Regla:** la barra superior (`.topbar`) es la misma en todas las pantallas; lo único que cambia es el título (`.topbar-title`). Todo lo propio de una vista va en la **barra de la vista** (`.view-toolbar`), arriba de su tabla o de su contenido.
 
-- **La barra superior tiene, y solo tiene:** el botón del menú (en ≤ 1024px), el título, el selector de compañía, el cambio de tema, el rol y «Salir» (con ese texto, no «Salir del sistema»). El nombre del usuario no va. `AppLayout.vue` y `BackofficeLayout.vue` no tienen slot de acciones, a propósito: no hay por dónde meter un botón.
+- **La barra superior tiene, y solo tiene:** el botón del menú (en ≤ 1024px), el título, el selector de compañía, el cambio de tema, el rol, «Comentarios y noticias» (solo en la aplicación) y «Salir» (con ese texto, no «Salir del sistema»). El nombre del usuario no va. `AppLayout.vue` y `BackofficeLayout.vue` no tienen slot de acciones, a propósito: no hay por dónde meter un botón.
+- **«Comentarios y noticias»** (`MessagesSquare`, junto a «Salir»): abre a la derecha, debajo de la barra, el panel `Components/Feedback/FeedbackPanel.vue`. No es modal: Escape, la X, tocar fuera o cambiar de pantalla lo cierran. Tiene dos pestañas: Comentarios, donde cualquier cuenta publica, vota y comenta (ver `FeedbackService`), y Noticias, que publica el backoffice. Lleva un punto mientras haya una noticia que esa persona no vio.
 - **No existe una barra de documento.** La vieja `.doc-toolbar` (buscar, nuevo, guardar, imprimir… en una tira de íconos) se eliminó: cada acción va con su nombre en la barra de la vista o en el pie de la ficha.
 - **La barra de la vista** (`.view-toolbar`) tiene dos filas. **Arriba, los botones:** el enlace de volver (`ArrowLeft`, a la izquierda, cuando la pantalla es un detalle) y `.view-actions` a la derecha, con las exportaciones, «Guardar configuración», los enlaces a pantallas vecinas, los pasos de un flujo (calcular, aprobar, contabilizar) y «Crear nuevo», que va último. **Abajo, los filtros:** `.view-filters`, a todo el ancho, con el buscador, los rangos de fecha, los demás filtros y su botón «Consultar», pegados a la tabla que filtran.
 - **El código en el mismo orden que la pantalla:** volver, `.view-actions`, `.view-filters`. No se reordena con CSS (`order`), para que el teclado recorra la barra en el orden en que se ve.
@@ -375,12 +387,23 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Etiquetas:** cada campo de formulario lleva su `<label for>` dentro de un `.field`; un campo sin etiqueta visible (el de una grilla de captura) lleva `aria-label`. El error va debajo, en `.error`.
 - **Controles hechos a medida** (el conmutador de «tipo existente / tipo nuevo», las pestañas) usan la misma altura mínima de 2.25rem y `font: inherit`.
 
-## 27. GUARDAR Y ELIMINAR: EL BOTÓN SE DESHABILITA CON SU SPINNER HASTA QUE TERMINA
+## 27. GUARDAR, EXPORTAR, GENERAR: EL BOTÓN SE DESHABILITA CON SU SPINNER HASTA QUE TERMINA, Y EL ERROR SE DICE
 
-**Regla:** todo botón que guarda, elimina o dispara un proceso se deshabilita y muestra un spinner desde que se presiona hasta que la transacción termina. Sin doble clic que duplique un asiento, y sin dejar dudas de si el clic se registró.
+**Regla:** todo botón que guarda, elimina, dispara un proceso, consulta o genera un reporte, o descarga un archivo, se deshabilita y muestra un spinner desde que se presiona hasta que la acción termina. Si termina mal, el motivo queda a la vista. Sin doble clic que duplique un asiento, y sin dejar dudas de si el clic se registró o de por qué no pasó nada.
 
-- **Es automático:** `resources/js/Utils/busyButtons.js` escucha las visitas de Inertia. Toda visita que no sea GET marca el botón que la disparó —el del clic, el `submitter` del formulario, o la `label.btn` de un `input type="file"`— con `data-busy`, `aria-busy` y `aria-disabled`, y lo libera en el `finish` de esa misma visita. El spinner es el `loader-circle` de Lucide, desde CSS (`[data-busy]`).
-- **Para que funcione, la acción tiene que ser una visita de Inertia** (`router.post/put/delete` o `useForm`) disparada por un `<button>`: no `fetch` suelto ni un `<a>` que hace POST. Además se mantiene `:disabled="form.processing"` en el botón de enviar.
+- **Es automático, para toda la aplicación** (`resources/js/Utils/busyButtons.js`): el elemento que dispara una visita de Inertia queda marcado con `data-busy`, `aria-busy` y `aria-disabled` hasta el `finish` de esa visita. El spinner es el `loader-circle` de Lucide, desde CSS (`[data-busy]`).
+  - **Visitas que escriben** (POST, PUT, DELETE): marcan lo que se tocó —el botón del clic, el `submitter` del formulario, la `label.btn` de un `input type="file"`—.
+  - **Visitas GET** (Consultar, Generar, Crear nuevo…): marcan solo si lo tocado es un botón (`<button>` o `.btn`). Los enlaces del menú y de la paginación navegan sin spinner.
+- **Descargas** (`resources/js/Utils/downloads.js`): un enlace que descarga —con el ícono `Download` de Lucide (secc. 23), o el atributo `download` o `data-download` si lleva otro ícono— se pide con `fetch`, con el botón ocupado hasta que el archivo llega. Un enlace con `target="_blank"` (ver e imprimir en otra pestaña) no se toca.
+- **El error, siempre dicho:**
+  - **Validación:** junto a cada campo, como siempre.
+  - **Acción que escribe y el servidor rechaza** (403, 404, sesión vencida, error interno): vuelve a la pantalla con el motivo como mensaje arriba (`bootstrap/app.php`), en vez de la página de error encima de la aplicación. Un `abort(403, 'motivo')` muestra ese motivo.
+  - **Descarga que falla:** un aviso abajo a la derecha (`ToastHost.vue`), con el motivo que manda el servidor en JSON (las descargas llevan la cabecera `X-Contapp-Download`).
+  - **Visita GET que falla, o sin conexión:** el mismo aviso (`requestErrors.js`). En desarrollo, un error interno se deja ver con la página de Laravel.
+  - **Para mostrar un error desde el navegador:** `notifyError('…')` (`resources/js/Utils/notify.js`).
+- **Para que funcione, la acción tiene que ser una visita de Inertia** (`router.post/put/delete/get` o `useForm`) disparada por un `<button>` o un `.btn`, o una descarga por un `<a href>`: no un `fetch` suelto ni un `<a>` que hace POST. Además se mantiene `:disabled="form.processing"` en el botón de enviar.
+  - **La excepción es el panel «Comentarios y noticias»** (secc. 24): está en todas las pantallas, y una visita de Inertia recargaría la de atrás en cada voto. Habla JSON con `requestJson()` (`resources/js/Utils/http.js`, que nunca lanza y devuelve los errores por campo), marca el botón con `markBusy()` de `busyButtons.js` y dice el error junto al campo o con `notifyError()`. Sus rutas (`feedback.*`, `news.index`) contestan los errores en JSON (`bootstrap/app.php`).
+- **Al reabrir un formulario de `useForm`, cada campo se asigna; no se usa `reset()`.** Después de un envío exitoso, `useForm` toma lo enviado como su valor inicial, y `reset()` volvería a poner lo de la vez anterior.
 - **Confirmaciones con `confirmAction()`** (`resources/js/Utils/confirm.js`), nunca `window.confirm()`: `confirmAction({ title, message, confirmLabel, danger, onConfirm: () => router.delete(…) })`. El modal de confirmación (`ConfirmHost.vue`, montado una vez en `app.js`) queda abierto con su botón ocupado y Cancelar deshabilitado hasta que la visita termina, y entonces se cierra. `danger: true` para eliminar, anular, desactivar.
 - **Dónde va cada botón:** eliminar y anular, como `btn-ghost btn-danger-text` a la izquierda del pie de la ficha; la acción principal, `btn-primary` a la derecha.
 
@@ -389,7 +412,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 **Regla:** toda pantalla funciona sin desplazarse de lado a 375px (y 320px), 768px, 1025px y 1280px.
 
 - **Menú lateral:** en ≤ 1024px es un cajón que abre el botón de menú, con fondo que lo cierra, y que se cierra con Escape y al navegar. Colapsado en escritorio, los íconos van **centrados** en la barra angosta (`.is-collapsed`).
-- **Barra superior:** sus botones nunca se encogen; cuando no cabe todo, cede el título (se corta con puntos suspensivos hasta un mínimo legible). El rol se muestra desde 1025px; en ≤ 640px la compañía se angosta y «Salir» queda solo con su ícono (el texto sigue ahí para el lector de pantalla).
+- **Barra superior:** sus botones nunca se encogen; cuando no cabe todo, cede el título (se corta con puntos suspensivos hasta un mínimo legible). El rol se muestra desde 1025px; en ≤ 640px la compañía se angosta y «Salir» queda solo con su ícono (el texto sigue ahí para el lector de pantalla). El panel «Comentarios y noticias» ocupa todo el ancho en un teléfono.
 - **Tablas como tarjetas:** en ≤ 1024px (solo `@media screen`, para que en papel siga siendo tabla) cada fila de `.table-responsive` es una tarjeta: la primera celda es el título y cada otra celda muestra su `data-label` a la izquierda y su valor a la derecha. La celda fluye como texto, así que «código — nombre» o un detalle en una segunda línea se leen juntos. Una celda vacía no ocupa línea. El pie de totales también es tarjeta.
 - **`.no-cards`** para la tabla que tiene que seguir siendo tabla en pantallas chicas (por ejemplo, una con muy pocas columnas cortas); **`.capture-grid`** para las grillas de captura, donde el campo ocupa lo que la etiqueta deja libre y el texto de apoyo baja a su propia línea.
 - **Modales:** en un teléfono los botones del pie van de a dos por línea y a lo ancho.
@@ -404,7 +427,14 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Todo reporte va en «Reportes»,** dentro del módulo que reporta, nunca en un menú general de reportes.
 - **Cómo se declara:** en `AppLayout.vue`, cada hijo lleva `group: 'Reportes'` (o la categoría que corresponda). El submenú arma los subtítulos solo, en el orden en que aparecen; una sección con una sola categoría (Administración) no muestra subtítulo.
 - **Una pantalla nueva entra al menú en su categoría,** no al final de la lista. El nombre del menú dice lo que es («Parámetros de planilla», no «Configuración» a secas dentro de la categoría Configuración).
-- **Administración es de la compañía; Mi cuenta, de la persona.** En «Administración» va lo que se gestiona de la compañía activa (usuarios, apariencia, agregar compañía) y solo lo ve quien tiene ese permiso. «Mi cuenta» es la última sección y la ve cualquier rol: «Mis datos» (nombre, correo y contraseña propios) y «Activar una licencia». El nombre del usuario sigue sin ir en la barra superior (secc. 24): a su cuenta se entra por acá.
+- **Los permisos son por pantalla del menú.**
+  - **El catálogo:** cada opción de cada sección es una pantalla de `App\Domains\Core\Support\ScreenCatalog`, con su clave, su sección, su categoría y sus rutas. En `AppLayout.vue` el hijo lleva esa clave (`screen: 'accounting.journal_entries'`), y el menú muestra solo las pantallas que la persona puede abrir.
+  - **Quién protege:** el middleware `module-access` revisa además la pantalla de la ruta, con el mismo nivel que pide el grupo. Las rutas fuera de esos grupos usan `screen-access`.
+  - **Los reportes** son de solo consulta.
+  - **El permiso por módulo de antes** sigue valiendo para todas las pantallas de ese módulo, hasta que se guardan los permisos de esa persona con el editor nuevo.
+  - **Una pantalla nueva** se agrega al catálogo, con sus rutas, y a `AppLayout.vue`. Una ruta que usan varias pantallas para traer datos (el libro mayor, los precios de un cliente) va en `ScreenCatalog::SHARED_ROUTES`.
+  - **`ScreenCatalogTest` falla si algo de esto falta:** una ruta protegida sin pantalla, o el menú y el catálogo distintos.
+- **Administración es de la compañía; Mi cuenta, de la persona.** En «Administración» va lo que se gestiona de la compañía activa (usuarios, apariencia, agregar compañía) y solo lo ve quien tiene ese permiso. «Mi cuenta» es la última sección y la ve cualquier rol: «Mis datos» (nombre, correo y contraseña propios) y «Activar una licencia». La excepción son los datos de cada compañía (razón social, nombre comercial y cédula jurídica): se cambian desde «Mis datos → Tus compañías», porque ahí se listan todas las de la persona y no solo la activa. Solo los cambia el Superusuario de cada una. El nombre del usuario sigue sin ir en la barra superior (secc. 24): a su cuenta se entra por acá.
 - **Colapsado,** el ícono de la sección lleva a su primera pantalla (la primera de «Operación»), y al pasar el mouse por encima —o al llegar con el teclado— se abre a su lado una ventana flotante con el nombre de la sección y todas sus pantallas, con las mismas categorías, para navegar sin expandir la barra.
   - **Mouse:** la ventana se sostiene mientras el cursor va del ícono a ella. Cruzar otros íconos en el camino no la reemplaza: cambiar de sección requiere detenerse un momento sobre el ícono. Al salir, se cierra.
   - **Teclado:** flecha derecha (o abajo) entra a la ventana; las flechas la recorren; Escape o flecha izquierda vuelven al ícono.
@@ -419,6 +449,10 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **La ventana ya sale con el tema de la compañía a la que se va** (secc. 31): se nota el cambio antes de que termine.
 - **Un mínimo visible** (~1 s) aunque el servidor conteste antes, para que el cambio se note; sin animaciones para quien pidió movimiento reducido.
 - **Si la pantalla anterior no existe en la compañía nueva** (un asiento, un documento de la anterior), el cambio igual se completa y se sigue al Panel. Eso no se trata como un error.
+- **La licencia de la compañía elegida:**
+  - **Suspendida o revocada:** en el selector se ve marcada («— licencia revocada») y no se puede elegir. Si se bloquea con la página ya abierta, el servidor rechaza el cambio con el motivo (error `license` de `CompanySwitchController`). La tarjeta lo dice tal cual, sin «Reintentar», que no cambiaría nada.
+  - **Vencida:** se entra, en modo de gracia. El selector la marca («— licencia vencida») y la ventana avisa que no se va a poder crear ni modificar nada.
+  - **Si se bloquea la compañía en la que se está:** `SetCurrentCompany` pasa a otra, como siempre, y dice por qué.
 - **Errores, siempre dichos y con salida:** sin acceso a la compañía (403), sesión vencida (401/419), error del servidor, sin conexión, tiempo agotado (a los 10 s avisa que tarda y ofrece cerrar sesión; a los 30 s se cancela), o un cambio que el servidor no aplicó. La ventana pasa a una tarjeta con el motivo y sus salidas:
   - «Volver a {compañía anterior}».
   - «Reintentar».

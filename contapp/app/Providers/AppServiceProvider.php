@@ -11,7 +11,10 @@ use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaTransport;
 use App\Domains\Core\Models\Role;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -45,5 +48,12 @@ class AppServiceProvider extends ServiceProvider
             'user' => User::class,
             'role' => Role::class,
         ]);
+
+        // El canal de comentarios (FeedbackController), por cuenta. Con
+        // nombre y no `throttle:10,1`: esos comparten un solo contador por
+        // cuenta entre todas las rutas que los usan, y treinta votos dejarían
+        // a alguien sin poder publicar.
+        RateLimiter::for('feedback-write', fn (Request $request) => Limit::perMinute(10)->by((string) ($request->user()?->id ?? $request->ip())));
+        RateLimiter::for('feedback-vote', fn (Request $request) => Limit::perMinute(60)->by((string) ($request->user()?->id ?? $request->ip())));
     }
 }

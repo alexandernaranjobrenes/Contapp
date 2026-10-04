@@ -1,6 +1,5 @@
 <?php
 
-use App\Domains\Core\Models\Module;
 use App\Domains\Core\Support\PasswordPolicy;
 use App\Domains\Licensing\Models\License;
 use App\Models\User;
@@ -79,19 +78,26 @@ it('la activación de licencia muestra los requisitos y rechaza una contraseña 
     $this->assertGuest();
 });
 
-it('crear un usuario muestra los requisitos y rechaza una contraseña débil', function () {
-    logInAsCompanyUser(null, ['is_super_admin' => true]);
-    $module = Module::where('code', 'accounting')->firstOrFail();
+it('aceptar una invitación sin cuenta muestra los requisitos y rechaza una contraseña débil', function () {
+    // Quien invita ya no pone la contraseña de nadie: la elige la persona al
+    // aceptar (CompanyInvitationService).
+    ['user' => $owner, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true]);
+    \Illuminate\Support\Facades\Notification::fake();
 
-    $this->get(route('users.create'))
-        ->assertInertia(fn ($page) => $page->component('Users/Create')->has('passwordRequirements', 6));
+    ['invitation' => $invitation] = app(\App\Domains\Core\Services\CompanyInvitationService::class)
+        ->invite($owner, $company, 'ana@example.com', 'user', []);
+    $token = \Illuminate\Support\Str::random(64);
+    $invitation->forceFill(['token_hash' => hash('sha256', $token)])->save();
 
-    $this->post(route('users.store'), [
+    \Illuminate\Support\Facades\Auth::guard('web')->logout();
+
+    $this->get(route('company-invitation.show', $token))
+        ->assertInertia(fn ($page) => $page->component('Auth/AcceptInvitation')->has('passwordRequirements', 6));
+
+    $this->post(route('company-invitation.accept', $token), [
         'name' => 'Ana Admin',
-        'email' => 'ana@example.com',
         'password' => 'secreto123',
-        'role_type' => 'admin',
-        'permissions' => [$module->id => 'read_write'],
+        'password_confirmation' => 'secreto123',
     ])->assertSessionHasErrors('password');
 
     expect(User::where('email', 'ana@example.com')->exists())->toBeFalse();

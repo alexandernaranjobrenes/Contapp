@@ -1,30 +1,25 @@
 <script setup>
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import { ArrowLeftIcon } from '@lucide/vue';
+import ScreenPermissionsEditor from '../../Components/ScreenPermissionsEditor.vue';
+import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
 
+/**
+ * Los permisos de una persona por pantalla del menú (ScreenCatalog). Si
+ * todavía los tenía por módulo (el esquema anterior), se muestran ya
+ * repartidos en pantallas, y al guardar quedan por pantalla.
+ */
 const props = defineProps({
     targetUser: { type: Object, required: true },
-    modules: { type: Array, default: () => [] },
+    sections: { type: Array, required: true },
 });
 
-const LEVELS = ['none', 'read', 'read_write'];
-const LEVEL_LABELS = { none: 'Sin acceso', read: 'Lectura', read_write: 'Lectura/escritura' };
-
-function levelRank(level) {
-    return LEVELS.indexOf(level);
-}
-
-function selectableLevels(module) {
-    return LEVELS.filter((level) => levelRank(level) <= levelRank(module.max_access_level));
-}
-
 const form = useForm({
-    permissions: Object.fromEntries(props.modules.map((m) => [m.id, m.current_access_level])),
+    permissions: Object.fromEntries(props.sections.flatMap((s) => s.screens.map((sc) => [sc.key, sc.current_level]))),
 });
 
 function submit() {
-    form.put(route('users.permissions.update', props.targetUser.id));
+    form.put(route('users.permissions.update', props.targetUser.id), { preserveScroll: true });
 }
 </script>
 
@@ -36,32 +31,21 @@ function submit() {
             <Link :href="route('users.index')" class="btn btn-ghost"><ArrowLeftIcon /> Usuarios</Link>
         </div>
 
-        <p class="user-line">Permisos de <strong>{{ targetUser.name }}</strong> ({{ targetUser.email }})</p>
-
         <div class="card form-card">
+            <p class="user-line">Permisos de <strong>{{ targetUser.name }}</strong> ({{ targetUser.email }})</p>
+
             <form @submit.prevent="submit">
-                <p class="hint">Solo podés otorgar hasta el nivel de acceso que vos mismo tenés en cada módulo.</p>
-                <div class="table-responsive capture-grid">
-                <table class="permissions-table">
-                    <thead>
-                        <tr><th>Módulo</th><th>Nivel de acceso</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="module in modules" :key="module.id">
-                            <td>{{ module.name }}</td>
-                            <td data-label="Nivel de acceso">
-                                <select v-model="form.permissions[module.id]" :aria-label="`Nivel de acceso a ${module.name}`">
-                                    <option v-for="level in selectableLevels(module)" :key="level" :value="level">{{ LEVEL_LABELS[level] }}</option>
-                                </select>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-                </div>
+                <p class="hint">
+                    Por cada opción del menú. «Lectura» deja consultar y exportar; «Lectura y escritura», además crear,
+                    modificar y eliminar. Solo podés dar hasta el acceso que tenés vos.
+                </p>
                 <p v-if="form.errors.permissions" class="error">{{ form.errors.permissions }}</p>
 
+                <ScreenPermissionsEditor v-model="form.permissions" :sections="sections" />
+
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-primary" :disabled="form.processing">Guardar</button>
+                    <Link :href="route('users.index')" class="btn btn-ghost">Cancelar</Link>
+                    <button type="submit" class="btn btn-primary" :disabled="form.processing"><CheckIcon /> Guardar</button>
                 </div>
             </form>
         </div>
@@ -69,9 +53,13 @@ function submit() {
 </template>
 
 <style scoped>
-.user-line { color: var(--color-text-muted); font-size: 0.85rem; margin-bottom: 1rem; }
+.user-line { font-size: 0.88rem; margin: 0 0 0.6rem; }
 .form-card { padding: 1.25rem 1.5rem; }
-.permissions-table { font-size: 0.85rem; margin-bottom: 0.75rem; }
-.permissions-table select { width: 100%; max-width: 20rem; }
-.error { color: var(--color-danger); font-size: 0.78rem; margin: 0.2rem 0 0; }
+.hint { font-size: 0.78rem; margin: 0 0 0.6rem; }
+.error { color: var(--color-danger); font-size: 0.78rem; margin: 0 0 0.6rem; }
+.form-actions { margin-top: 1rem; }
+
+@media (max-width: 640px) {
+    .form-card { padding: 1rem; }
+}
 </style>

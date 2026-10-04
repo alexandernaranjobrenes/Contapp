@@ -2,15 +2,18 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { startCompanySwitch } from '../Utils/companySwitch';
+import { useNewsSeen } from '../Utils/newsSeen';
+import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
-    BookOpenIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon, MoonIcon,
-    PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon, TagsIcon,
-    UsersIcon, XIcon,
+    BookOpenIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
+    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon,
+    TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
 
 /**
  * La barra superior es la MISMA en todas las pantallas (CLAUDE.md secc. 24):
- * título, compañía, tema, rol y «Salir». Lo único que cambia es el título.
+ * título, compañía, tema, rol, «Comentarios y noticias» y «Salir». Lo único
+ * que cambia es el título.
  * El nombre del usuario no va: ocupaba lugar y no decide nada. Por
  * eso este layout no tiene un slot para acciones: los botones, filtros y
  * buscadores de cada pantalla van en su .view-toolbar, arriba de la tabla.
@@ -26,15 +29,16 @@ const page = usePage();
 // organizadas bajo secciones colapsables. Dentro de cada sección, cada hijo
 // lleva su categoría ("group") y el submenú la muestra como subtítulo
 // (CLAUDE.md secc. 29): primero el trabajo diario, después los reportes y al
-// final los catálogos y la configuración. "module" puede ir en la sección
-// (todos sus hijos comparten permiso, ej. Contabilidad) o en un hijo
-// puntual (ej. Reporte de IVA dentro de Impuestos, que no comparte permiso
-// con Indicadores de impuesto, un catálogo global sin gate propio — ver
-// routes/web.php). El backend sigue siendo quien realmente bloquea
-// (module-access middleware): esto es solo para no ofrecer en el menú algo
-// a lo que el usuario de todas formas no puede entrar.
-function passesModule(mod) {
-    return !mod || page.props.moduleAccess?.[mod] !== 'none';
+// final los catálogos y la configuración.
+//
+// Cada hijo lleva su pantalla ("screen"): los permisos son por pantalla del
+// menú (App\Domains\Core\Support\ScreenCatalog, que tiene las mismas; un test
+// lo verifica). Se muestran solo las que la persona puede abrir, y una
+// sección sin ninguna desaparece. El backend sigue siendo quien realmente
+// bloquea (EnsureModuleAccess): esto es solo para no ofrecer en el menú algo
+// a lo que de todas formas no puede entrar.
+function passesScreen(screen) {
+    return !screen || (page.props.screenAccess?.[screen] ?? 'none') !== 'none';
 }
 
 // La foto de perfil de la cuenta (Mi cuenta → Mis datos), para mostrarla en
@@ -49,136 +53,135 @@ const nav = computed(() => {
     const items = [
         { label: 'Panel', href: route('dashboard'), match: ['dashboard'], icon: LayoutDashboardIcon },
         {
-            label: 'Contabilidad', icon: BookOpenIcon, module: 'accounting',
+            label: 'Contabilidad', icon: BookOpenIcon,
             match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*',
                 'reports.trial-balance.*', 'reports.income-statement.*', 'reports.balance-sheet.*', 'reports.period-comparison.*',
                 'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*'],
             children: [
-                { group: 'Operación', label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
-                { group: 'Operación', label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
-                { group: 'Operación', label: 'Saldos iniciales', href: route('opening-balance.create'), match: ['opening-balance.*'] },
-                { group: 'Operación', label: 'Cierre de períodos', href: route('period-close.index'), match: ['period-close.*'] },
+                { screen: 'accounting.journal_entries', group: 'Operación', label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
+                { screen: 'accounting.journal_entry_schedules', group: 'Operación', label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
+                { screen: 'accounting.opening_balance', group: 'Operación', label: 'Saldos iniciales', href: route('opening-balance.create'), match: ['opening-balance.*'] },
+                { screen: 'accounting.period_close', group: 'Operación', label: 'Cierre de períodos', href: route('period-close.index'), match: ['period-close.*'] },
 
-                // Cada reporte conserva su propio `module: 'reports'`: el
-                // permiso de reportería es distinto del de contabilidad, y el
-                // middleware del backend sigue exigiendo el de reportes.
-                { group: 'Reportes', label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'], module: 'reports' },
+                // Cada reporte es su propia pantalla, en el módulo de
+                // reportería: su permiso es distinto del de contabilidad.
+                { screen: 'reports.trial_balance', group: 'Reportes', label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'] },
+                { screen: 'reports.income_statement', group: 'Reportes', label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'] },
+                { screen: 'reports.balance_sheet', group: 'Reportes', label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'] },
+                { screen: 'reports.period_comparison', group: 'Reportes', label: 'Comparativo entre periodos', href: route('reports.period-comparison.index'), match: ['reports.period-comparison.*'] },
+                { screen: 'reports.multi_company_comparison', group: 'Reportes', label: 'Comparativo de empresas', href: route('reports.multi-company-comparison.index'), match: ['reports.multi-company-comparison.*'] },
+                { screen: 'reports.document_type_register', group: 'Reportes', label: 'Registro por tipo de documento', href: route('reports.document-type-register.index'), match: ['reports.document-type-register.*'] },
                 // Guarda combinaciones de parámetros de VARIOS reportes, no
                 // solo de los contables; queda acá porque la mayoría lo son.
-                { group: 'Reportes', label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'], module: 'reports' },
+                { screen: 'reports.saved_reports', group: 'Reportes', label: 'Reportes guardados', href: route('saved-reports.index'), match: ['saved-reports.*'] },
                 // Exporta cuentas, centros de costo, normas de reparto,
                 // indicadores de IVA y socios: casi todo catálogo contable, y
                 // no tiene un módulo propio donde vivir.
-                { group: 'Reportes', label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'], module: 'reports' },
+                { screen: 'reports.catalog_export', group: 'Reportes', label: 'Exportar catálogos', href: route('reports.catalog-export.index'), match: ['reports.catalog-export.*'] },
 
-                { group: 'Catálogos', label: 'Catálogo de cuentas', href: route('chart-of-accounts.index'), match: ['chart-of-accounts.*'] },
-                { group: 'Catálogos', label: 'Tipos de documento', href: route('document-types.index'), match: ['document-types.*'] },
+                { screen: 'accounting.chart_of_accounts', group: 'Catálogos', label: 'Catálogo de cuentas', href: route('chart-of-accounts.index'), match: ['chart-of-accounts.*'] },
+                { screen: 'accounting.document_types', group: 'Catálogos', label: 'Tipos de documento', href: route('document-types.index'), match: ['document-types.*'] },
             ],
         },
         {
-            label: 'Centros de costo y cambiario', icon: TagsIcon, module: 'accounting',
+            label: 'Centros de costo y cambiario', icon: TagsIcon,
             match: ['cost-centers.*', 'cost-allocation-rules.*', 'exchange-rates.*', 'fx-revaluation.*',
                 'reports.cost-center.*', 'reports.cost-allocation-rule.*'],
             children: [
-                { group: 'Operación', label: 'Tipos de cambio', href: route('exchange-rates.index'), match: ['exchange-rates.*'] },
-                { group: 'Operación', label: 'Diferencial: ejecutar', href: route('fx-revaluation.create'), match: ['fx-revaluation.create', 'fx-revaluation.preview', 'fx-revaluation.store'] },
-                { group: 'Operación', label: 'Diferencial: historial', href: route('fx-revaluation.index'), match: ['fx-revaluation.index', 'fx-revaluation.show'] },
-                { group: 'Reportes', label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Reporte de normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'], module: 'reports' },
-                { group: 'Catálogos', label: 'Centros de costo', href: route('cost-centers.index'), match: ['cost-centers.*'] },
-                { group: 'Catálogos', label: 'Normas de reparto', href: route('cost-allocation-rules.index'), match: ['cost-allocation-rules.*'] },
+                { screen: 'accounting.exchange_rates', group: 'Operación', label: 'Tipos de cambio', href: route('exchange-rates.index'), match: ['exchange-rates.*'] },
+                { screen: 'accounting.fx_revaluation_run', group: 'Operación', label: 'Diferencial: ejecutar', href: route('fx-revaluation.create'), match: ['fx-revaluation.create', 'fx-revaluation.preview', 'fx-revaluation.store'] },
+                { screen: 'accounting.fx_revaluation_history', group: 'Operación', label: 'Diferencial: historial', href: route('fx-revaluation.index'), match: ['fx-revaluation.index', 'fx-revaluation.show'] },
+                { screen: 'reports.cost_center', group: 'Reportes', label: 'Auxiliar por centro de costo', href: route('reports.cost-center.index'), match: ['reports.cost-center.*'] },
+                { screen: 'reports.cost_allocation_rule', group: 'Reportes', label: 'Reporte de normas de reparto', href: route('reports.cost-allocation-rule.index'), match: ['reports.cost-allocation-rule.*'] },
+                { screen: 'accounting.cost_centers', group: 'Catálogos', label: 'Centros de costo', href: route('cost-centers.index'), match: ['cost-centers.*'] },
+                { screen: 'accounting.cost_allocation_rules', group: 'Catálogos', label: 'Normas de reparto', href: route('cost-allocation-rules.index'), match: ['cost-allocation-rules.*'] },
             ],
         },
         {
-            label: 'Inventario', icon: PackageIcon, module: 'inventory',
+            label: 'Inventario', icon: PackageIcon,
             match: ['items.*', 'item-groups.*', 'warehouses.*', 'units-of-measure.*', 'inventory-movements.*', 'gl-determinations.*', 'supplier-invoices.*', 'landed-costs.*', 'production-orders.*', 'warehouse-bins.*', 'stock-transfers.*', 'inventory-reports.*', 'price-lists.*', 'bills-of-materials.*', 'item-serials.*',
                 'reports.inventory-valuation.*', 'reports.inventory-aging.*'],
             children: [
                 // Veintiún pantallas: la operación se parte por área para que
                 // cada grupo se lea de un vistazo.
-                { group: 'Existencias', label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
-                { group: 'Existencias', label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
-                { group: 'Existencias', label: 'Tomas físicas', href: route('stock-counts.index'), match: ['stock-counts.*'] },
-                { group: 'Existencias', label: 'Deterioro (NIC 2)', href: route('inventory-write-downs.index'), match: ['inventory-write-downs.*'] },
-                { group: 'Compras', label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
-                { group: 'Compras', label: 'Sugerencia de compra', href: route('reorder.index'), match: ['reorder.*'] },
-                { group: 'Compras', label: 'Facturas de proveedor', href: route('supplier-invoices.index'), match: ['supplier-invoices.*'] },
-                { group: 'Compras', label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
-                { group: 'Compras', label: 'Rubros de nacionalización', href: route('import-costs.index'), match: ['import-costs.*'] },
-                { group: 'Producción', label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
-                { group: 'Producción', label: 'Listas de materiales', href: route('bills-of-materials.index'), match: ['bills-of-materials.*'] },
-                { group: 'Reportes', label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
-                { group: 'Reportes', label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'], module: 'reports' },
-                { group: 'Reportes', label: 'Lotes por vencer', href: route('lot-expiry.index'), match: ['lot-expiry.*'] },
-                { group: 'Catálogos', label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
-                { group: 'Catálogos', label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
-                { group: 'Catálogos', label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
-                { group: 'Catálogos', label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
-                { group: 'Catálogos', label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
-                { group: 'Configuración', label: 'Determinación de cuentas', href: route('gl-determinations.index'), match: ['gl-determinations.*'] },
+                { screen: 'inventory.movements', group: 'Existencias', label: 'Movimientos', href: route('inventory-movements.index'), match: ['inventory-movements.*'] },
+                { screen: 'inventory.transfers', group: 'Existencias', label: 'Traslados', href: route('stock-transfers.index'), match: ['stock-transfers.*'] },
+                { screen: 'inventory.stock_counts', group: 'Existencias', label: 'Tomas físicas', href: route('stock-counts.index'), match: ['stock-counts.*'] },
+                { screen: 'inventory.write_downs', group: 'Existencias', label: 'Deterioro (NIC 2)', href: route('inventory-write-downs.index'), match: ['inventory-write-downs.*'] },
+                { screen: 'inventory.purchase_orders', group: 'Compras', label: 'Órdenes de compra', href: route('purchase-orders.index'), match: ['purchase-orders.*'] },
+                { screen: 'inventory.reorder', group: 'Compras', label: 'Sugerencia de compra', href: route('reorder.index'), match: ['reorder.*'] },
+                { screen: 'inventory.supplier_invoices', group: 'Compras', label: 'Facturas de proveedor', href: route('supplier-invoices.index'), match: ['supplier-invoices.*'] },
+                { screen: 'inventory.landed_costs', group: 'Compras', label: 'Costos de importación', href: route('landed-costs.index'), match: ['landed-costs.*'] },
+                { screen: 'inventory.import_costs', group: 'Compras', label: 'Rubros de nacionalización', href: route('import-costs.index'), match: ['import-costs.*'] },
+                { screen: 'inventory.production_orders', group: 'Producción', label: 'Órdenes de fabricación', href: route('production-orders.index'), match: ['production-orders.*'] },
+                { screen: 'inventory.bills_of_materials', group: 'Producción', label: 'Listas de materiales', href: route('bills-of-materials.index'), match: ['bills-of-materials.*'] },
+                { screen: 'inventory.reports', group: 'Reportes', label: 'Reportes de inventario', href: route('inventory-reports.index'), match: ['inventory-reports.*'] },
+                { screen: 'reports.inventory_valuation', group: 'Reportes', label: 'Existencias valorizadas', href: route('reports.inventory-valuation.index'), match: ['reports.inventory-valuation.*'] },
+                { screen: 'reports.inventory_aging', group: 'Reportes', label: 'Antigüedad de inventario', href: route('reports.inventory-aging.index'), match: ['reports.inventory-aging.*'] },
+                { screen: 'inventory.lot_expiry', group: 'Reportes', label: 'Lotes por vencer', href: route('lot-expiry.index'), match: ['lot-expiry.*'] },
+                { screen: 'inventory.items', group: 'Catálogos', label: 'Artículos', href: route('items.index'), match: ['items.index', 'items.kardex', 'item-serials.*'] },
+                { screen: 'inventory.item_groups', group: 'Catálogos', label: 'Grupos de artículos', href: route('item-groups.index'), match: ['item-groups.*'] },
+                { screen: 'inventory.price_lists', group: 'Catálogos', label: 'Listas de precios', href: route('price-lists.index'), match: ['price-lists.*'] },
+                { screen: 'inventory.warehouses', group: 'Catálogos', label: 'Almacenes', href: route('warehouses.index'), match: ['warehouses.*', 'warehouse-bins.*'] },
+                { screen: 'inventory.units', group: 'Catálogos', label: 'Unidades de medida', href: route('units-of-measure.index'), match: ['units-of-measure.*'] },
+                { screen: 'inventory.gl_determinations', group: 'Configuración', label: 'Determinación de cuentas', href: route('gl-determinations.index'), match: ['gl-determinations.*'] },
             ],
         },
         {
-            label: 'Facturación', icon: ReceiptIcon, module: 'billing',
+            label: 'Facturación', icon: ReceiptIcon,
             match: ['sales-documents.*', 'sales-orders.*', 'billing-settings.*', 'price-overrides.*'],
             children: [
-                { group: 'Operación', label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
-                { group: 'Operación', label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
-                { group: 'Operación', label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
-                { group: 'Reportes', label: 'Cambios de precio autorizados', href: route('price-overrides.index'), match: ['price-overrides.*'] },
-                { group: 'Configuración', label: 'Parámetros de facturación', href: route('billing-settings.index'), match: ['billing-settings.*'] },
+                { screen: 'billing.sales_orders', group: 'Operación', label: 'Órdenes de pedido', href: route('sales-orders.index'), match: ['sales-orders.*'] },
+                { screen: 'billing.sales_documents', group: 'Operación', label: 'Comprobantes', href: route('sales-documents.index'), match: ['sales-documents.index', 'sales-documents.show'] },
+                { screen: 'billing.new_invoice', group: 'Operación', label: 'Nueva factura', href: route('sales-documents.create'), match: ['sales-documents.create'] },
+                { screen: 'billing.price_overrides', group: 'Reportes', label: 'Cambios de precio autorizados', href: route('price-overrides.index'), match: ['price-overrides.*'] },
+                { screen: 'billing.settings', group: 'Configuración', label: 'Parámetros de facturación', href: route('billing-settings.index'), match: ['billing-settings.*'] },
             ],
         },
         {
-            label: 'Planillas', icon: UsersIcon, module: 'payroll',
+            label: 'Planillas', icon: UsersIcon,
             match: ['employees.*', 'payroll-periods.*', 'payslips.*', 'employee-deductions.*', 'recurring-inputs.*', 'personnel-actions.*', 'vacations.*', 'labor-settlements.*', 'payroll-reports.*', 'job-structure.*', 'payroll-settings.*'],
             children: [
-                { group: 'Personal', label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
-                { group: 'Personal', label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
-                { group: 'Personal', label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
-                { group: 'Personal', label: 'Liquidaciones laborales', href: route('labor-settlements.index'), match: ['labor-settlements.*'] },
-                { group: 'Planilla', label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
-                { group: 'Planilla', label: 'Rubros fijos', href: route('recurring-inputs.index'), match: ['recurring-inputs.*'] },
-                { group: 'Planilla', label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
-                { group: 'Reportes', label: 'Reportes de planilla', href: route('payroll-reports.index'), match: ['payroll-reports.*'] },
-                { group: 'Configuración', label: 'Departamentos y puestos', href: route('job-structure.index'), match: ['job-structure.*', 'departments.*', 'job-positions.*'] },
-                { group: 'Configuración', label: 'Parámetros de planilla', href: route('payroll-settings.index'), match: ['payroll-settings.*'] },
+                { screen: 'payroll.employees', group: 'Personal', label: 'Empleados', href: route('employees.index'), match: ['employees.*'] },
+                { screen: 'payroll.personnel_actions', group: 'Personal', label: 'Acciones de personal', href: route('personnel-actions.index'), match: ['personnel-actions.*'] },
+                { screen: 'payroll.vacations', group: 'Personal', label: 'Vacaciones', href: route('vacations.index'), match: ['vacations.*'] },
+                { screen: 'payroll.labor_settlements', group: 'Personal', label: 'Liquidaciones laborales', href: route('labor-settlements.index'), match: ['labor-settlements.*'] },
+                { screen: 'payroll.periods', group: 'Planilla', label: 'Períodos de planilla', href: route('payroll-periods.index'), match: ['payroll-periods.*', 'payslips.*'] },
+                { screen: 'payroll.recurring_inputs', group: 'Planilla', label: 'Rubros fijos', href: route('recurring-inputs.index'), match: ['recurring-inputs.*'] },
+                { screen: 'payroll.deductions', group: 'Planilla', label: 'Deducciones y préstamos', href: route('employee-deductions.index'), match: ['employee-deductions.*'] },
+                { screen: 'payroll.reports', group: 'Reportes', label: 'Reportes de planilla', href: route('payroll-reports.index'), match: ['payroll-reports.*'] },
+                { screen: 'payroll.job_structure', group: 'Configuración', label: 'Departamentos y puestos', href: route('job-structure.index'), match: ['job-structure.*', 'departments.*', 'job-positions.*'] },
+                { screen: 'payroll.settings', group: 'Configuración', label: 'Parámetros de planilla', href: route('payroll-settings.index'), match: ['payroll-settings.*'] },
             ],
         },
         {
-            label: 'Socios de negocio', icon: HandshakeIcon, module: 'business_partners',
+            label: 'Socios de negocio', icon: HandshakeIcon,
             match: ['business-partners.*', 'bp-categories.*', 'reports.aging.*'],
             children: [
-                { group: 'Operación', label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
+                { screen: 'business_partners.partners', group: 'Operación', label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
                 // La antigüedad de saldos es de clientes y proveedores: su
                 // módulo es este, no contabilidad.
-                { group: 'Reportes', label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'], module: 'reports' },
-                { group: 'Catálogos', label: 'Categorías de socios', href: route('bp-categories.index'), match: ['bp-categories.*'] },
+                { screen: 'reports.aging', group: 'Reportes', label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'] },
+                { screen: 'business_partners.categories', group: 'Catálogos', label: 'Categorías de socios', href: route('bp-categories.index'), match: ['bp-categories.*'] },
             ],
         },
         {
-            label: 'Bancos', icon: LandmarkIcon, module: 'banking',
+            label: 'Bancos', icon: LandmarkIcon,
             match: ['bank-accounts.*', 'bank-reconciliations.*', 'bank-reconciliation-report.*', 'reports.cash-flow-projection.*'],
             children: [
-                { group: 'Operación', label: 'Conciliaciones bancarias', href: route('bank-reconciliations.hub'), match: ['bank-reconciliations.*'] },
-                { group: 'Reportes', label: 'Reporte de conciliaciones', href: route('bank-reconciliation-report.index'), match: ['bank-reconciliation-report.*'] },
+                { screen: 'banking.reconciliations', group: 'Operación', label: 'Conciliaciones bancarias', href: route('bank-reconciliations.hub'), match: ['bank-reconciliations.*'] },
+                { screen: 'banking.reconciliation_report', group: 'Reportes', label: 'Reporte de conciliaciones', href: route('bank-reconciliation-report.index'), match: ['bank-reconciliation-report.*'] },
                 // Qué se espera cobrar y pagar: es tesorería, no contabilidad.
-                { group: 'Reportes', label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'], module: 'reports' },
-                { group: 'Catálogos', label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
+                { screen: 'reports.cash_flow_projection', group: 'Reportes', label: 'Proyección de cobros y pagos', href: route('reports.cash-flow-projection.index'), match: ['reports.cash-flow-projection.*'] },
+                { screen: 'banking.accounts', group: 'Catálogos', label: 'Cuentas bancarias', href: route('bank-accounts.index'), match: ['bank-accounts.*'] },
             ],
         },
         {
             label: 'Impuestos', icon: PercentIcon,
             match: ['tax-rates.*', 'tax-report.*'],
             children: [
-                { group: 'Reportes', label: 'Reporte de IVA', href: route('tax-report.index'), match: ['tax-report.*'], module: 'tax' },
-                { group: 'Catálogos', label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
+                { screen: 'tax.report', group: 'Reportes', label: 'Reporte de IVA', href: route('tax-report.index'), match: ['tax-report.*'] },
+                { screen: 'tax.tax_rates', group: 'Catálogos', label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
             ],
         },
         // Ya no hay un grupo «Reportes» de nivel superior: cada reporte vive
@@ -193,12 +196,8 @@ const nav = computed(() => {
         // Planillas ya tenían los suyos adentro; esto termina de aplicar el
         // mismo criterio a los que quedaban sueltos.
         //
-        // La contrapartida: el permiso de módulo de cada reporte sigue siendo
-        // `reports`, pero ahora también hay que poder ver el módulo que lo
-        // contiene para que aparezca en el menú. Un usuario con reportería y
-        // sin contabilidad ya no ve el balance en el menú —aunque la dirección
-        // le sigue funcionando, porque el gate del backend es el de reportes—.
-        // Es el precio de que los reportes vivan donde se los busca.
+        // Con los permisos por pantalla, cada reporte se muestra si la persona
+        // tiene ese reporte, sin importar el resto de la sección.
     ];
 
     const adminChildren = [];
@@ -240,12 +239,9 @@ const nav = computed(() => {
 
     return items
         .map((item) => item.children
-            ? { ...item, children: item.children.filter((child) => passesModule(child.module)) }
+            ? { ...item, children: item.children.filter((child) => passesScreen(child.screen)) }
             : item)
-        .filter((item) => {
-            if (!passesModule(item.module)) return false;
-            return item.children ? item.children.length > 0 : true;
-        });
+        .filter((item) => (item.children ? item.children.length > 0 : true));
 });
 
 const ROLE_LABELS = {
@@ -462,6 +458,11 @@ const companies = computed(() => page.props.companies ?? []);
 const currentCompanyId = computed(() => page.props.currentCompanyId);
 const user = computed(() => page.props.auth?.user);
 
+// El panel «Comentarios y noticias» (Components/Feedback/FeedbackPanel.vue).
+// El punto del botón: hay una noticia del backoffice que todavía no se vio.
+const feedbackOpen = ref(false);
+const { hasUnseen: hasUnseenNews } = useNewsSeen();
+
 const LICENSE_STATUS_LABELS = {
     active: { label: 'Vigente', cls: 'badge-success' },
     expiring_soon: { label: 'Por vencer', cls: 'badge-warning' },
@@ -474,6 +475,17 @@ const licenseStatus = computed(() => {
     const status = page.props.license?.display_status;
     return LICENSE_STATUS_LABELS[status] ?? { label: status, cls: 'badge' };
 });
+
+// El estado de la licencia de cada compañía, en el selector.
+const LICENSE_STATE_SUFFIX = {
+    expired: ' — licencia vencida',
+    suspended: ' — licencia suspendida',
+    revoked: ' — licencia revocada',
+};
+
+function isBlockedCompany(company) {
+    return company.license_state === 'suspended' || company.license_state === 'revoked';
+}
 
 // El cambio va con su ventana de transición (CLAUDE.md secc. 30): tapa la
 // pantalla con el nombre de la compañía nueva hasta que el cambio queda hecho.
@@ -490,7 +502,7 @@ function switchCompany(event) {
 
     startCompanySwitch({
         // La ventana ya se pinta con el tema de la compañía a la que se va.
-        to: { id: to.id, name: companyName(to), theme: to.theme || 'marino' },
+        to: { id: to.id, name: companyName(to), theme: to.theme || 'marino', licenseState: to.license_state ?? 'ok' },
         from: from ? { id: from.id, name: companyName(from) } : null,
         // Si se queda en la anterior, el selector vuelve a mostrarla: con
         // :value de solo ida, Vue no lo corregiría solo.
@@ -647,8 +659,16 @@ function toggleGroup(item) {
                         :value="currentCompanyId"
                         @change="switchCompany"
                     >
-                        <option v-for="c in companies" :key="c.id" :value="c.id">
-                            {{ c.trade_name || c.legal_name }}
+                        <!-- Con la licencia suspendida o revocada no se puede
+                             entrar: se ve marcada y no se elige. Vencida sí
+                             (modo de gracia), avisando. -->
+                        <option
+                            v-for="c in companies"
+                            :key="c.id"
+                            :value="c.id"
+                            :disabled="isBlockedCompany(c) && c.id !== currentCompanyId"
+                        >
+                            {{ c.trade_name || c.legal_name }}{{ LICENSE_STATE_SUFFIX[c.license_state] ?? '' }}
                         </option>
                     </select>
 
@@ -658,6 +678,21 @@ function toggleGroup(item) {
                     </button>
 
                     <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
+
+                    <button
+                        v-if="user"
+                        type="button"
+                        class="btn btn-ghost topbar-icon-btn feedback-trigger"
+                        :class="{ 'is-open': feedbackOpen }"
+                        aria-controls="feedback-panel"
+                        :aria-expanded="feedbackOpen"
+                        :aria-label="hasUnseenNews ? 'Comentarios y noticias (hay noticias nuevas)' : 'Comentarios y noticias'"
+                        title="Comentarios y noticias"
+                        @click="feedbackOpen = !feedbackOpen"
+                    >
+                        <MessagesSquareIcon />
+                        <span v-if="hasUnseenNews" class="topbar-dot" aria-hidden="true" />
+                    </button>
 
                     <Link
                         v-if="user"
@@ -726,6 +761,8 @@ function toggleGroup(item) {
                     </template>
                 </nav>
             </Teleport>
+
+            <FeedbackPanel v-if="user" :open="feedbackOpen" @close="feedbackOpen = false" />
 
             <footer v-if="page.props.license" class="app-footer">
                 <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
@@ -1203,6 +1240,28 @@ function toggleGroup(item) {
     padding: 0;
 }
 
+/* Abierto el panel, el botón queda marcado: se ve de dónde salió. */
+.feedback-trigger {
+    position: relative;
+}
+
+.feedback-trigger.is-open {
+    background: var(--color-primary-soft);
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+}
+
+/* Hay una noticia que todavía no se vio. */
+.topbar-dot {
+    position: absolute;
+    top: 0.3rem;
+    right: 0.3rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-surface);
+}
+
 @media (min-width: 641px) {
     .topbar-heading {
         min-width: 11rem;
@@ -1394,6 +1453,11 @@ function toggleGroup(item) {
    para que al título le quede algo legible. */
 @media (max-width: 400px) {
     .company-select { max-width: 6.5rem; }
+}
+
+/* A 320px, con el botón de «Comentarios y noticias», un poco más. */
+@media (max-width: 360px) {
+    .company-select { max-width: 5.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

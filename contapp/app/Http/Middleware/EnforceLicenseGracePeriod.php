@@ -36,6 +36,21 @@ class EnforceLicenseGracePeriod
         'profile.email.request',
         'profile.photo.update',
         'profile.photo.destroy',
+        // Aceptar una licencia asignada desde el backoffice: es de la
+        // persona, no de la compañía en la que esté parada.
+        'license-invitation.accept',
+        // Los datos de una compañía desde Mi cuenta: la compañía editada
+        // puede no ser la activa, así que su licencia la revisa
+        // CompanyDetailsController, no este middleware.
+        'profile.companies.update',
+        // Aceptar una invitación a otra compañía: es de la persona.
+        'company-invitation.accept',
+        // El canal de comentarios sobre CONTAPP: no es de la compañía, y
+        // quien tiene la licencia vencida también tiene algo que decir.
+        'feedback.store',
+        'feedback.replies.store',
+        'feedback.vote',
+        'feedback.destroy',
     ];
 
     public function handle(Request $request, Closure $next): Response

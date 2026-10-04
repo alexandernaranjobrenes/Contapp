@@ -3,12 +3,17 @@
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\AgingController;
 use App\Http\Controllers\CompanyAppearanceController;
+use App\Http\Controllers\CompanyDetailsController;
 use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\CompanyInvitationAcceptanceController;
 use App\Http\Controllers\Auth\LicenseActivationController;
+use App\Http\Controllers\Auth\LicenseInvitationAcceptanceController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
+use App\Http\Controllers\Backoffice\FeedbackModerationController;
+use App\Http\Controllers\Backoffice\NewsController;
 use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankReconciliationController;
@@ -38,6 +43,7 @@ use App\Http\Controllers\EmployeeDeductionController;
 use App\Http\Controllers\EmployeeNoteController;
 use App\Http\Controllers\EmployeeRecurringInputController;
 use App\Http\Controllers\ExchangeRateController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\FxRevaluationController;
 use App\Http\Controllers\GlDeterminationController;
 use App\Http\Controllers\ImportCostController;
@@ -59,6 +65,7 @@ use App\Http\Controllers\LandedCostController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\LicenseCategoryController;
 use App\Http\Controllers\LicenseController;
+use App\Http\Controllers\LicenseInvitationController;
 use App\Http\Controllers\LicenseRedemptionController;
 use App\Http\Controllers\LotExpiryController;
 use App\Http\Controllers\MultiCompanyComparisonController;
@@ -117,6 +124,23 @@ Route::middleware('guest')->group(function () {
 Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])->name('password.reset');
 Route::post('reset-password', [NewPasswordController::class, 'store'])->middleware('throttle:10,1')->name('password.update');
 
+// El enlace del correo de una licencia asignada desde el backoffice
+// (LicenseInvitationService). Sin el middleware de invitados: quien ya tiene
+// cuenta puede abrirlo con la sesión iniciada. Lo que lo protege es el token.
+Route::get('license-invitation/{token}', [LicenseInvitationAcceptanceController::class, 'show'])->name('license-invitation.show');
+Route::post('license-invitation/{token}', [LicenseInvitationAcceptanceController::class, 'accept'])
+    ->middleware('throttle:10,1')
+    ->name('license-invitation.accept');
+
+// El enlace del correo de una invitación a trabajar en una compañía
+// (CompanyInvitationService). Igual que el de una licencia: sin el
+// middleware de invitados, porque quien ya tiene cuenta puede abrirlo con
+// la sesión iniciada. Lo que lo protege es el token.
+Route::get('company-invitation/{token}', [CompanyInvitationAcceptanceController::class, 'show'])->name('company-invitation.show');
+Route::post('company-invitation/{token}', [CompanyInvitationAcceptanceController::class, 'accept'])
+    ->middleware('throttle:10,1')
+    ->name('company-invitation.accept');
+
 // El enlace que confirma un correo nuevo (ProfileController). Tampoco exige
 // sesión: llega a la casilla nueva y puede abrirse en otro dispositivo. Lo
 // autoriza la firma del enlace, que revisa el controlador.
@@ -149,6 +173,21 @@ Route::middleware('auth')->group(function () {
     Route::post('my-account/email', [ProfileController::class, 'requestEmailChange'])->name('profile.email.request');
     Route::post('my-account/photo', [ProfileController::class, 'updatePhoto'])->name('profile.photo.update');
     Route::delete('my-account/photo', [ProfileController::class, 'destroyPhoto'])->name('profile.photo.destroy');
+    // Los datos de una compañía propia (solo su Superusuario, lo comprueba el
+    // controlador). Recibe la compañía: puede no ser la activa.
+    Route::put('my-account/companies/{company}', [CompanyDetailsController::class, 'update'])->name('profile.companies.update');
+
+    // El panel «Comentarios y noticias» de la barra superior
+    // (FeedbackController). Cualquier cuenta, con cualquier rol: no es un
+    // permiso de la compañía activa. Responde JSON, para no recargar la
+    // pantalla de atrás en cada voto.
+    Route::get('feedback', [FeedbackController::class, 'index'])->name('feedback.index');
+    Route::post('feedback', [FeedbackController::class, 'store'])->middleware('throttle:feedback-write')->name('feedback.store');
+    Route::get('feedback/{comment}/replies', [FeedbackController::class, 'replies'])->name('feedback.replies');
+    Route::post('feedback/{comment}/replies', [FeedbackController::class, 'storeReply'])->middleware('throttle:feedback-write')->name('feedback.replies.store');
+    Route::put('feedback/{comment}/vote', [FeedbackController::class, 'vote'])->middleware('throttle:feedback-vote')->name('feedback.vote');
+    Route::delete('feedback/{comment}', [FeedbackController::class, 'destroy'])->name('feedback.destroy');
+    Route::get('news', [FeedbackController::class, 'news'])->name('news.index');
 
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
@@ -744,10 +783,16 @@ Route::middleware('auth')->group(function () {
     // store/update/destroy (sin sufijo "Global") SÍ son de escritura acá:
     // operan solo sobre los indicadores PROPIOS de la compañía activa (ver
     // GlobalOrOwnCompanyScope) — nunca sobre el catálogo nacional.
+    //
+    // Con los permisos por pantalla del menú, crear, editar y eliminar los
+    // indicadores propios pide la pantalla «Indicadores de impuesto» con
+    // Lectura y escritura. Consultar el catálogo sigue abierto.
     Route::get('tax-rates', [TaxRateController::class, 'index'])->name('tax-rates.index');
-    Route::post('tax-rates', [TaxRateController::class, 'store'])->name('tax-rates.store');
-    Route::put('tax-rates/{taxRate}', [TaxRateController::class, 'update'])->name('tax-rates.update');
-    Route::delete('tax-rates/{taxRate}', [TaxRateController::class, 'destroy'])->name('tax-rates.destroy');
+    Route::middleware('screen-access:tax.tax_rates,read_write')->group(function () {
+        Route::post('tax-rates', [TaxRateController::class, 'store'])->name('tax-rates.store');
+        Route::put('tax-rates/{taxRate}', [TaxRateController::class, 'update'])->name('tax-rates.update');
+        Route::delete('tax-rates/{taxRate}', [TaxRateController::class, 'destroy'])->name('tax-rates.destroy');
+    });
 
     Route::middleware('module-access:accounting,read')->group(function () {
         Route::get('period-close', [PeriodCloseController::class, 'index'])->name('period-close.index');
@@ -779,9 +824,14 @@ Route::middleware('auth')->group(function () {
         Route::get('users/create', [UserManagementController::class, 'create'])->name('users.create');
         Route::post('users', [UserManagementController::class, 'store'])->name('users.store');
         Route::get('users/lookup', [UserManagementController::class, 'lookup'])->name('users.lookup');
-        Route::post('users/invite', [UserManagementController::class, 'storeInvite'])->name('users.invite');
+        // Dar de alta es invitar (users.store): la persona acepta desde el
+        // correo. Ya no hay una ruta que vincule una cuenta sin su aceptación.
+        Route::post('users/invitations/{invitation}/resend', [UserManagementController::class, 'resendInvitation'])->name('users.invitations.resend');
+        Route::delete('users/invitations/{invitation}', [UserManagementController::class, 'destroyInvitation'])->name('users.invitations.destroy');
         Route::get('users/{user}/permissions', [UserManagementController::class, 'editPermissions'])->name('users.permissions.edit');
         Route::put('users/{user}/permissions', [UserManagementController::class, 'updatePermissions'])->name('users.permissions.update');
+        // Usuario ↔ Administrador: solo el Superusuario (lo revisa el servicio).
+        Route::put('users/{user}/role', [UserManagementController::class, 'changeRole'])->name('users.role');
         Route::post('users/{user}/suspend', [UserManagementController::class, 'suspend'])->name('users.suspend');
         Route::post('users/{user}/reactivate', [UserManagementController::class, 'reactivate'])->name('users.reactivate');
         Route::post('users/{user}/deactivate', [UserManagementController::class, 'deactivate'])->name('users.deactivate');
@@ -814,6 +864,13 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     // El historial de la licencia (bitácora), para su ficha: se pide al
     // abrir la sección, no viaja en el listado.
     Route::get('licenses/{license}/history', [LicenseController::class, 'history'])->name('licenses.history');
+    // Asignar la licencia a una persona, que la acepta desde el correo
+    // (LicenseInvitationService). El lookup dice, antes de asignar, si el
+    // correo tiene cuenta y si su contraseña es propia.
+    Route::get('licenses/account-lookup', [LicenseInvitationController::class, 'lookup'])->name('licenses.account-lookup');
+    Route::post('licenses/{license}/invitation', [LicenseInvitationController::class, 'store'])->name('licenses.invitation.store');
+    Route::post('licenses/{license}/invitation/resend', [LicenseInvitationController::class, 'resend'])->name('licenses.invitation.resend');
+    Route::delete('licenses/{license}/invitation', [LicenseInvitationController::class, 'destroy'])->name('licenses.invitation.destroy');
 
     Route::get('license-categories', [LicenseCategoryController::class, 'index'])->name('license-categories.index');
     Route::post('license-categories', [LicenseCategoryController::class, 'store'])->name('license-categories.store');
@@ -835,4 +892,19 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('tax-rates', [TaxRateController::class, 'storeGlobal'])->name('tax-rates.store');
     Route::put('tax-rates/{taxRate}', [TaxRateController::class, 'updateGlobal'])->name('tax-rates.update');
     Route::delete('tax-rates/{taxRate}', [TaxRateController::class, 'destroyGlobal'])->name('tax-rates.destroy');
+
+    // El canal de comentarios de la aplicación: leer, responder como equipo,
+    // quitar (con el motivo por correo) y dar por resuelto (con un
+    // agradecimiento por correo). Ver FeedbackService.
+    Route::get('feedback', [FeedbackModerationController::class, 'index'])->name('feedback.index');
+    Route::post('feedback/{comment}/reply', [FeedbackModerationController::class, 'reply'])->name('feedback.reply');
+    Route::post('feedback/{comment}/remove', [FeedbackModerationController::class, 'remove'])->name('feedback.remove');
+    Route::post('feedback/{comment}/solve', [FeedbackModerationController::class, 'solve'])->name('feedback.solve');
+    Route::post('feedback/{comment}/reopen', [FeedbackModerationController::class, 'reopen'])->name('feedback.reopen');
+
+    // Las noticias que se ven en el panel de la barra superior.
+    Route::get('news', [NewsController::class, 'index'])->name('news.index');
+    Route::post('news', [NewsController::class, 'store'])->name('news.store');
+    Route::put('news/{news}', [NewsController::class, 'update'])->name('news.update');
+    Route::delete('news/{news}', [NewsController::class, 'destroy'])->name('news.destroy');
 });

@@ -4,7 +4,9 @@ import { computed, ref, watch } from 'vue';
 import BackofficeLayout from '../../../Layouts/BackofficeLayout.vue';
 import ConfirmModal from '../../../Components/ConfirmModal.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
-import { CheckIcon, ChevronRightIcon, PlusIcon } from '@lucide/vue';
+import LicenseAssignmentFields from '../../../Components/LicenseAssignmentFields.vue';
+import { confirmAction } from '../../../Utils/confirm';
+import { CheckIcon, ChevronRightIcon, MailIcon, PencilIcon, PlusIcon, UserPlusIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     licenses: { type: Array, default: () => [] },
@@ -18,6 +20,11 @@ const issueForm = useForm({
     category_id: '',
     expires_at: '',
     notes: '',
+    // A quién se asigna de una vez (LicenseAssignmentFields). 'none': como
+    // siempre, se entrega el código.
+    assign_to: 'none',
+    assign_email: '',
+    assign_name: '',
 });
 
 function openCreate() {
@@ -51,7 +58,7 @@ function issue() {
 // necesario para ubicar una licencia, y su fila abre este modal con el
 // detalle completo y todas las acciones.
 const selectedId = ref(null);
-const mode = ref('details'); // 'create' | 'details' | 'edit' | 'renew'
+const mode = ref('details'); // 'create' | 'details' | 'edit' | 'renew' | 'assign'
 
 // Se busca en props cada vez, no se guarda una copia: después de renovar o
 // suspender, Inertia recarga `licenses` y la ficha abierta muestra el dato
@@ -209,6 +216,13 @@ const HISTORY_ACTIONS = {
     license_reactivated: 'Reactivó la licencia',
     license_revoked: 'Revocó la licencia',
     license_code_revealed: 'Vio la clave completa',
+    license_invitation_assigned: 'Asignó la licencia',
+    license_invitation_updated: 'Cambió a quién está asignada',
+    license_invitation_sent: 'Envió el correo para aceptarla',
+    license_invitation_resent: 'Reenvió el correo para aceptarla',
+    license_invitation_cancelled: 'Quitó la asignación',
+    license_invitation_accepted: 'La persona aceptó la licencia',
+    license_activated: 'Se activó con una cuenta existente',
 };
 
 const HISTORY_FIELDS = {
@@ -219,20 +233,30 @@ const HISTORY_FIELDS = {
     expires_at: 'Vence',
     status: 'Estado',
     notes: 'Notas',
+    account_type: 'Cuenta',
+    email: 'Correo',
+    name: 'Nombre',
+    company: 'Compañía',
 };
 
 const STATUS_WORDS = { active: 'activa', suspended: 'suspendida', revoked: 'revocada' };
 
+const ACCOUNT_WORDS = { existing: 'existente', new: 'nueva' };
+
 function historyValue(field, value) {
     if (value === null || value === '') return '—';
-    return field === 'status' ? (STATUS_WORDS[value] ?? value) : value;
+    if (field === 'status') return STATUS_WORDS[value] ?? value;
+    if (field === 'account_type') return ACCOUNT_WORDS[value] ?? value;
+    return value;
 }
 
 // Al emitir no hay "antes": se muestran los datos con que nació. En el resto
 // se omite lo que no cambió (renovar guarda el estado aunque siga igual).
+const SNAPSHOT_ACTIONS = ['license_issued', 'license_invitation_assigned', 'license_invitation_sent', 'license_invitation_resent', 'license_invitation_accepted', 'license_activated'];
+
 function historyChanges(entry) {
-    return entry.action === 'license_issued'
-        ? entry.changes
+    return SNAPSHOT_ACTIONS.includes(entry.action)
+        ? entry.changes.filter((change) => change.to !== null)
         : entry.changes.filter((change) => change.from !== change.to);
 }
 
@@ -327,6 +351,68 @@ function confirmPendingAction() {
     });
 }
 
+// Asignar la licencia a una persona, o cambiar a quién está asignada, desde
+// la ficha (LicenseInvitationService). Mientras no la acepte, se puede
+// reenviar el correo, cambiar los datos o quitar la asignación.
+const assignForm = useForm({ assign_to: 'existing', assign_email: '', assign_name: '' });
+
+function startAssign() {
+    const invitation = selected.value.invitation;
+    assignForm.clearErrors();
+    assignForm.assign_to = invitation?.account_type ?? 'existing';
+    assignForm.assign_email = invitation?.email ?? '';
+    assignForm.assign_name = invitation?.account_type === 'new' ? invitation.name : '';
+    mode.value = 'assign';
+}
+
+function saveAssign() {
+    assignForm.post(route('backoffice.licenses.invitation.store', selected.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            mode.value = 'details';
+            refreshHistory();
+        },
+    });
+}
+
+function resendInvitation() {
+    router.post(route('backoffice.licenses.invitation.resend', selected.value.id), {}, {
+        preserveScroll: true,
+        onSuccess: refreshHistory,
+    });
+}
+
+function cancelInvitation() {
+    const license = selected.value;
+    confirmAction({
+        title: 'Quitar la asignación',
+        message: `${license.invitation.name ?? license.invitation.email} ya no va a poder aceptar ${license.masked_code}: el enlace que se le envió deja de servir, y la licencia vuelve a activarse con su código.`,
+        confirmLabel: 'Quitar asignación',
+        danger: true,
+        onConfirm: () => router.delete(route('backoffice.licenses.invitation.destroy', license.id), {
+            preserveScroll: true,
+            onSuccess: refreshHistory,
+        }),
+    });
+}
+
+// ¿Se puede asignar? Sin dueño todavía y vigente.
+function canAssign(license) {
+    return !license.superuser && license.status === 'active' && license.display_status !== 'expired';
+}
+
+const INVITATION_STATUS = {
+    pending: { label: 'Esperando que la acepte', cls: 'badge-warning' },
+    expired: { label: 'Enlace vencido', cls: 'badge-danger' },
+    accepted: { label: 'Aceptada', cls: 'badge-success' },
+};
+
+const clock = new Intl.DateTimeFormat('es-CR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+function invitationTime(iso) {
+    return iso ? `${historyWhen(iso).slice(0, 10)} a las ${clock.format(new Date(iso))}` : '—';
+}
+
 const STATUS_LABELS = {
     active: { label: 'Vigente', cls: 'badge-success' },
     expiring_soon: { label: 'Por vencer', cls: 'badge-warning' },
@@ -378,7 +464,17 @@ function statusOf(license) {
                             @keydown.space.prevent="openLicense(license)"
                         >
                             <td class="code-cell">{{ license.masked_code }}</td>
-                            <td data-label="Superusuario">{{ license.superuser?.name ?? '—' }}</td>
+                            <td data-label="Superusuario">
+                                <template v-if="license.superuser">{{ license.superuser.name }}</template>
+                                <!-- Asignada desde el backoffice, todavía sin aceptar. -->
+                                <template v-else-if="license.invitation">
+                                    {{ license.invitation.name ?? license.invitation.email }}
+                                    <span class="badge" :class="INVITATION_STATUS[license.invitation.status].cls">
+                                        {{ license.invitation.status === 'pending' ? 'Sin aceptar' : 'Enlace vencido' }}
+                                    </span>
+                                </template>
+                                <template v-else>—</template>
+                            </td>
                             <td data-label="Categoría">{{ license.category?.name ?? '—' }}</td>
                             <td data-label="Vence" class="date-cell">{{ license.expires_at }}</td>
                             <td data-label="Estado"><span class="badge" :class="statusOf(license).cls">{{ statusOf(license).label }}</span></td>
@@ -427,6 +523,9 @@ function statusOf(license) {
                     ¿Falta una categoría? Se administran en
                     <a :href="route('backoffice.license-categories.index')">Categorías de licencia</a>.
                 </p>
+
+                <h3 class="section-title assign-title">Activación</h3>
+                <LicenseAssignmentFields :form="issueForm" id-prefix="issue-assign" allow-none />
             </form>
 
             <dl v-if="selected && mode === 'details'" class="detail-list">
@@ -463,7 +562,33 @@ function statusOf(license) {
                     <dd v-if="selected.superuser">
                         {{ selected.superuser.name }} <span class="muted">· {{ selected.superuser.email }}</span>
                     </dd>
-                    <dd v-else class="muted">Todavía no se activó.</dd>
+                    <dd v-else-if="selected.invitation && selected.invitation.status !== 'accepted'" class="assignment-box">
+                        <span class="assignment-head">
+                            <strong>{{ selected.invitation.name ?? selected.invitation.email }}</strong>
+                            <span class="muted">· {{ selected.invitation.email }}</span>
+                            <span class="badge" :class="INVITATION_STATUS[selected.invitation.status].cls">{{ INVITATION_STATUS[selected.invitation.status].label }}</span>
+                        </span>
+                        <span class="assignment-meta muted">
+                            {{ selected.invitation.account_type === 'new' ? 'Cuenta nueva: se crea al aceptar.' : 'Cuenta existente.' }}
+                            <template v-if="selected.invitation.requires_password"> Al aceptar va a elegir su contraseña.</template>
+                        </span>
+                        <span class="assignment-meta muted">
+                            <template v-if="selected.invitation.status === 'pending'">El enlace vence el {{ invitationTime(selected.invitation.expires_at) }}.</template>
+                            <template v-else>El enlace venció el {{ invitationTime(selected.invitation.expires_at) }}: la licencia no se activó.</template>
+                            Correo enviado {{ selected.invitation.send_count }} {{ selected.invitation.send_count === 1 ? 'vez' : 'veces' }}.
+                        </span>
+                        <span class="assignment-actions">
+                            <button type="button" class="btn btn-ghost" @click="resendInvitation"><MailIcon /> Reenviar correo</button>
+                            <button type="button" class="btn btn-ghost" @click="startAssign"><PencilIcon /> Cambiar datos</button>
+                            <button type="button" class="btn btn-ghost btn-danger-text" @click="cancelInvitation"><XIcon /> Quitar asignación</button>
+                        </span>
+                    </dd>
+                    <dd v-else class="assignment-box">
+                        <span class="muted">Todavía no se activó.</span>
+                        <span v-if="canAssign(selected)" class="assignment-actions">
+                            <button type="button" class="btn btn-ghost" @click="startAssign"><UserPlusIcon /> Asignar a una persona</button>
+                        </span>
+                    </dd>
                 </div>
                 <div>
                     <dt>Compañías</dt>
@@ -568,6 +693,14 @@ function statusOf(license) {
                 <p v-if="editForm.errors.license" class="flash flash-error">{{ editForm.errors.license }}</p>
             </form>
 
+            <form v-if="selected && mode === 'assign'" id="license-assign-form" @submit.prevent="saveAssign">
+                <h3 class="section-title">{{ selected.invitation ? 'Cambiar a quién está asignada' : 'Asignar a una persona' }}</h3>
+                <p v-if="selected.invitation" class="hint assign-intro">
+                    Al guardar se envía un correo nuevo, con otro enlace de 30 minutos; el que se había enviado deja de servir.
+                </p>
+                <LicenseAssignmentFields :form="assignForm" id-prefix="detail-assign" />
+            </form>
+
             <form v-if="selected && mode === 'renew'" id="license-renew-form" @submit.prevent="saveRenew">
                 <h3 class="section-title">Renovar licencia</h3>
                 <p class="hint">Vencimiento actual: {{ selected.expires_at }}.</p>
@@ -581,7 +714,10 @@ function statusOf(license) {
             <template #actions>
                 <template v-if="mode === 'create'">
                     <button type="button" class="btn btn-ghost" @click="closeLicense">Cancelar</button>
-                    <button type="submit" form="license-issue-form" class="btn btn-primary" :disabled="issueForm.processing">Emitir</button>
+                    <button type="submit" form="license-issue-form" class="btn btn-primary" :disabled="issueForm.processing">
+                        <template v-if="issueForm.assign_to === 'none'">Emitir</template>
+                        <template v-else><MailIcon /> Emitir y enviar correo</template>
+                    </button>
                 </template>
                 <template v-else-if="selected && mode === 'details'">
                     <a :href="route('backoffice.licenses.commercial-profile.show', selected.id)" class="btn btn-ghost">Perfil comercial</a>
@@ -598,6 +734,10 @@ function statusOf(license) {
                 <template v-else-if="selected && mode === 'renew'">
                     <button type="button" class="btn btn-ghost" @click="mode = 'details'">Cancelar</button>
                     <button type="submit" form="license-renew-form" class="btn btn-primary" :disabled="renewForm.processing">Renovar</button>
+                </template>
+                <template v-else-if="selected && mode === 'assign'">
+                    <button type="button" class="btn btn-ghost" @click="mode = 'details'">Cancelar</button>
+                    <button type="submit" form="license-assign-form" class="btn btn-primary" :disabled="assignForm.processing"><MailIcon /> Guardar y enviar correo</button>
                 </template>
             </template>
         </DetailModal>
@@ -635,6 +775,16 @@ th, td { text-align: left; padding: 0.55rem 0.65rem; border-top: 1px solid var(-
 .empty-row { text-align: center; padding: 1.5rem; }
 
 .section-title { margin-top: 0; }
+.assign-title { margin-top: 1.25rem; }
+.assign-intro { margin: 0 0 0.75rem; }
+
+/* La asignación pendiente, en la ficha: a quién, en qué quedó el correo, y
+   qué se puede hacer. */
+.assignment-box { display: flex; flex-direction: column; gap: 0.3rem; }
+.assignment-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; overflow-wrap: anywhere; }
+.assignment-meta { font-size: 0.8rem; }
+.assignment-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+.assignment-actions .btn { padding: 0.25rem 0.6rem; font-size: 0.78rem; }
 
 .code-reveal { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; }
 .code-reveal .btn { padding: 0.25rem 0.6rem; font-size: 0.78rem; }

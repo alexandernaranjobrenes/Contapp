@@ -72,6 +72,20 @@ class SetCurrentCompany
             ?? $eligible->first(fn ($c) => $c->id === $user->default_company_id && (! $c->license_id || ! $c->license->isBlocked()))
             ?? $eligible->first(fn ($c) => ! $c->license_id || ! $c->license->isBlocked());
 
+        // La compañía en la que estaba quedó con la licencia suspendida o
+        // revocada (desde el backoffice, con la sesión abierta): se pasa a
+        // otra, como siempre, pero diciendo por qué. Solo para esta visita
+        // (now): en la siguiente ya está en la otra y no hay nada que avisar.
+        $preferred = $eligible->firstWhere('id', $preferredId);
+
+        if ($usable && $preferred && $preferred->id !== $usable->id && $preferred->license?->isBlocked()) {
+            $now = $usable->trade_name ?: $usable->legal_name;
+
+            // Sin doble punto si el nombre ya termina en uno («S.A.»).
+            $request->session()->now('error', $preferred->license->blockedMessage($preferred->trade_name ?: $preferred->legal_name)
+                .' Seguís en '.$now.(str_ends_with($now, '.') ? '' : '.'));
+        }
+
         if ($usable) {
             // Siempre normaliza a int, no solo cuando cambia: si el
             // preferido ya coincidía, la sesión seguía teniendo el string

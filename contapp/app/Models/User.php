@@ -124,7 +124,7 @@ class User extends Authenticatable
 
     public function canGrantPermissionsFor(int $companyId): bool
     {
-        if ($this->isSuperAdmin()) {
+        if ($this->isSuperAdmin($companyId)) {
             return true;
         }
 

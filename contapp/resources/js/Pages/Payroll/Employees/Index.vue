@@ -319,7 +319,7 @@ const monthlyBase = computed(() => props.employees
             </dl>
 
             <form v-if="mode === 'create' || (selected && mode === 'edit')" id="employee-form" @submit.prevent="submit">
-                <h3 class="section-title">Identidad</h3>                <h3 class="section-title">Identidad</h3>
+                <h3 class="section-title">Identidad</h3>
 
                 <div class="field-row">
                     <div class="field">

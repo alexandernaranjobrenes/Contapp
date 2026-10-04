@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Domains\Core\Models\AuditLog;
 use App\Domains\Licensing\Exceptions\InvalidLicenseException;
+use App\Domains\Licensing\Exceptions\InvitationException;
 use App\Domains\Licensing\Models\License;
 use App\Domains\Licensing\Models\LicenseCategory;
+use App\Domains\Licensing\Models\LicenseInvitation;
+use App\Domains\Licensing\Services\LicenseInvitationService;
 use App\Domains\Licensing\Services\LicenseService;
 use App\Http\Controllers\Concerns\RecordsPropietarioAudit;
 use Illuminate\Http\JsonResponse;
@@ -39,7 +42,7 @@ class LicenseController extends Controller
     public function index(): Response
     {
         $licenses = License::withCount('companies')
-            ->with(['issuedBy:id,name', 'category:id,name', 'commercialProfile.followUps', 'superuser:id,name,email'])
+            ->with(['issuedBy:id,name', 'category:id,name', 'commercialProfile.followUps', 'superuser:id,name,email', 'invitation.user'])
             ->orderByDesc('created_at')
             ->get()
             // Sin `code`: es la clave con la que el cliente activa la licencia
@@ -53,6 +56,20 @@ class LicenseController extends Controller
                 'next_pending_follow_up' => $license->commercialProfile?->nextPendingFollowUp(),
                 'admins_count' => $license->adminsCount(),
                 'users_count' => $license->usersCount(),
+                // A quién la asignó el backoffice y en qué quedó el correo
+                // (LicenseInvitationService). Sin el token: es la llave del
+                // enlace, y no tiene por qué salir del correo.
+                'invitation' => $license->invitation ? [
+                    'account_type' => $license->invitation->account_type,
+                    'name' => $license->invitation->personName(),
+                    'email' => $license->invitation->email,
+                    'status' => $license->invitation->status(),
+                    'requires_password' => $license->invitation->requiresPassword(),
+                    'expires_at' => $license->invitation->expires_at?->toIso8601String(),
+                    'sent_at' => $license->invitation->sent_at?->toIso8601String(),
+                    'send_count' => $license->invitation->send_count,
+                    'accepted_at' => $license->invitation->accepted_at?->toIso8601String(),
+                ] : null,
             ]);
 
         return Inertia::render('Backoffice/Licenses/Index', [
@@ -154,30 +171,49 @@ class LicenseController extends Controller
             ->all();
     }
 
-    public function store(Request $request, LicenseService $service): RedirectResponse
+    /**
+     * Emitir una licencia. Opcionalmente, asignada de una vez a una persona
+     * —una cuenta existente o una nueva—, que la acepta desde el correo
+     * (LicenseInvitationService). Si la asignación no se puede hacer (el
+     * correo no tiene cuenta, ya es dueño de otra licencia…), no se emite
+     * nada: el error vuelve junto al campo.
+     */
+    public function store(Request $request, LicenseService $service, LicenseInvitationService $invitations, LicenseInvitationController $assignments): RedirectResponse
     {
         $validated = $request->validate([
             'category_id' => ['required', 'integer', 'exists:license_categories,id'],
             'expires_at' => ['required', 'date', 'after:today'],
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
+        $assignment = $assignments->validateAssignment($request, required: false);
+        $assign = in_array($assignment['assign_to'] ?? 'none', [LicenseInvitation::EXISTING, LicenseInvitation::NEW], true);
 
         $category = LicenseCategory::findOrFail($validated['category_id']);
 
-        $license = DB::transaction(function () use ($request, $service, $category, $validated) {
-            $license = $service->issue(
-                $category,
-                new \DateTime($validated['expires_at']),
-                $validated['notes'] ?? null,
-                $request->user('propietario')->id,
-            );
+        try {
+            [$license, $invitation] = DB::transaction(function () use ($request, $service, $category, $validated, $assign, $assignment, $invitations, $assignments) {
+                $license = $service->issue(
+                    $category,
+                    new \DateTime($validated['expires_at']),
+                    $validated['notes'] ?? null,
+                    $request->user('propietario')->id,
+                );
 
-            $this->auditPropietario($request, 'license_issued', $license, null, $this->auditSnapshot(
-                $license, ['category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'notes'],
-            ));
+                $this->auditPropietario($request, 'license_issued', $license, null, $this->auditSnapshot(
+                    $license, ['category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'notes'],
+                ));
 
-            return $license;
-        });
+                $invitation = $assign ? $assignments->assignFromRequest($request, $license, $assignment, $invitations) : null;
+
+                return [$license, $invitation];
+            });
+        } catch (InvitationException $e) {
+            return back()->withErrors([$e->field === 'invitation' ? 'invitation' : "assign_{$e->field}" => $e->getMessage()])->withInput();
+        }
+
+        if ($invitation !== null) {
+            return $assignments->sendInvitation($request, $invitation, $invitations, 'license_invitation_sent', 'Licencia emitida.');
+        }
 
         // Excepción al código enmascarado (CLAUDE.md secc. 13): recién emitida,
         // el Propietario necesita la clave completa para entregársela al

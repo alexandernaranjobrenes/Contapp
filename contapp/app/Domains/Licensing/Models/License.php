@@ -70,6 +70,12 @@ class License extends Model
         return $this->hasMany(Company::class);
     }
 
+    /** A quién se la asignó el backoffice, si se la asignó (LicenseInvitationService). */
+    public function invitation(): HasOne
+    {
+        return $this->hasOne(LicenseInvitation::class);
+    }
+
     public function commercialProfile(): HasOne
     {
         return $this->hasOne(CommercialProfile::class);
@@ -99,6 +105,34 @@ class License extends Model
     public function isBlocked(): bool
     {
         return in_array($this->status, ['suspended', 'revoked'], true);
+    }
+
+    /**
+     * Por qué no se puede entrar a una compañía de esta licencia, dicho para
+     * quien lo intenta (el cambio de compañía). Null si se puede: una licencia
+     * solo vencida deja entrar en modo de gracia.
+     */
+    public function blockedMessage(string $companyName): ?string
+    {
+        return match ($this->status) {
+            'revoked' => "La licencia de {$companyName} fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de CONTAPP.",
+            'suspended' => "La licencia de {$companyName} está suspendida: mientras siga así no se puede entrar a esa compañía. Para reactivarla, contactá al equipo de CONTAPP.",
+            default => null,
+        };
+    }
+
+    /**
+     * El estado que importa para entrar a una compañía de esta licencia:
+     * 'ok', 'expired' (entra en modo de gracia), 'suspended' o 'revoked'.
+     */
+    public function accessState(): string
+    {
+        return match (true) {
+            $this->isRevoked() => 'revoked',
+            $this->isSuspended() => 'suspended',
+            $this->isExpired() => 'expired',
+            default => 'ok',
+        };
     }
 
     /**

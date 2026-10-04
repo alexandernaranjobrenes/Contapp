@@ -1,6 +1,6 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
-import { KeyRoundIcon, LayersIcon, LogOutIcon, MenuIcon, PercentIcon, XIcon } from '@lucide/vue';
+import { KeyRoundIcon, LayersIcon, LogOutIcon, MenuIcon, MessagesSquareIcon, NewspaperIcon, PercentIcon, XIcon } from '@lucide/vue';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 defineProps({
@@ -13,6 +13,9 @@ const nav = [
     { label: 'Licencias', href: route('backoffice.licenses.index'), match: ['backoffice.licenses.*'], icon: KeyRoundIcon },
     { label: 'Categorías de licencia', href: route('backoffice.license-categories.index'), match: ['backoffice.license-categories.*'], icon: LayersIcon },
     { label: 'Indicadores de IVA', href: route('backoffice.tax-rates.index'), match: ['backoffice.tax-rates.*'], icon: PercentIcon },
+    // Lo que se ve en el panel «Comentarios y noticias» de la aplicación.
+    { label: 'Comentarios', href: route('backoffice.feedback.index'), match: ['backoffice.feedback.*'], icon: MessagesSquareIcon },
+    { label: 'Noticias', href: route('backoffice.news.index'), match: ['backoffice.news.*'], icon: NewspaperIcon },
 ];
 
 function isCurrent(patterns) {

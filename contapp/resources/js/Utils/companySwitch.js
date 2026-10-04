@@ -106,7 +106,9 @@ function run() {
     router.put(route('company-switch'), { company_id: companySwitch.to.id }, {
         onCancelToken: (token) => { cancelToken = token; },
         onSuccess: (page) => verify(page),
-        onError: (errors) => fail('rejected', Object.values(errors ?? {})[0]),
+        // «license»: la licencia de esa compañía está suspendida o revocada
+        // (CompanySwitchController). Reintentar no cambia nada.
+        onError: (errors) => (errors?.license ? fail('blocked', errors.license) : fail('rejected', Object.values(errors ?? {})[0])),
         onCancel: () => { if (! settled && ! followingHome) fail('timeout'); },
         onFinish: () => { cancelToken = null; },
     });
@@ -166,15 +168,18 @@ function fail(kind, detail = null, status = null) {
 
     const to = companySwitch.to?.name ?? 'la compañía';
     const from = companySwitch.from?.name ?? 'la compañía anterior';
+    // Cierra la oración con el nombre, sin doble punto si ya termina en uno
+    // («Compañía S.A.»).
+    const end = (name) => (name.endsWith('.') ? name : `${name}.`);
 
     const errors = {
         network: {
             title: 'Sin conexión con el servidor',
-            message: `No se pudo completar el cambio a ${to}. Revisá tu conexión e intentá de nuevo.`,
+            message: `No se pudo completar el cambio a ${end(to)} Revisá tu conexión e intentá de nuevo.`,
         },
         timeout: {
             title: 'El servidor no respondió',
-            message: `El cambio a ${to} tardó demasiado y se canceló. Seguís en ${from}.`,
+            message: `El cambio a ${to} tardó demasiado y se canceló. Seguís en ${end(from)}`,
         },
         session: {
             title: 'Tu sesión venció',
@@ -183,19 +188,27 @@ function fail(kind, detail = null, status = null) {
         },
         forbidden: {
             title: 'Sin acceso a esa compañía',
-            message: `Tu usuario no tiene acceso activo a ${to}. Seguís en ${from}.`,
+            message: `Tu usuario no tiene acceso activo a ${to}. Seguís en ${end(from)}`,
+        },
+        blocked: {
+            title: `No se puede entrar a ${to}`,
+            message: `${detail} Seguís en ${end(from)}`,
+            canRetry: false,
         },
         rejected: {
             title: 'No se pudo cambiar de compañía',
-            message: detail ?? `El sistema rechazó el cambio a ${to}. Seguís en ${from}.`,
+            message: detail ?? `El sistema rechazó el cambio a ${to}. Seguís en ${end(from)}`,
         },
+        // El servidor no dejó la compañía elegida como activa. Si dijo por
+        // qué (la licencia, ver SetCurrentCompany), va ese motivo.
         'not-applied': {
-            title: 'El cambio no se aplicó',
-            message: detail ?? `El servidor respondió, pero la compañía activa sigue siendo ${from}.`,
+            title: `No se pudo entrar a ${to}`,
+            message: detail ?? `Seguís en ${end(from)} Puede que tu acceso a ${to} haya cambiado hace un momento: reintentá, y si se repite, avisale a quien administra tu cuenta.`,
+            canRetry: !detail,
         },
         server: {
             title: 'Error al cargar la compañía',
-            message: `El servidor respondió con un error${status ? ` (${status})` : ''} al pasar a ${to}. Podés reintentar, o volver a ${from}.`,
+            message: `El servidor respondió con un error${status ? ` (${status})` : ''} al pasar a ${to}. Podés reintentar, o volver a ${end(from)}`,
         },
     };
 

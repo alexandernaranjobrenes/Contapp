@@ -83,7 +83,7 @@ function sendPasswordLink() {
                         <span v-if="form.errors.trade_name" class="error">{{ form.errors.trade_name }}</span>
                     </div>
                     <div class="field">
-                        <label for="tax_id">Cédula jurídica</label>
+                        <label for="tax_id">Cédula jurídica (opcional)</label>
                         <input id="tax_id" v-model="form.tax_id" type="text">
                         <span v-if="form.errors.tax_id" class="error">{{ form.errors.tax_id }}</span>
                     </div>

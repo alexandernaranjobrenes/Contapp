@@ -71,15 +71,26 @@ class ProfileController extends Controller
                 ->wherePivot('status', 'active')
                 ->orderBy('companies.legal_name')
                 ->get()
-                ->map(fn ($company) => [
-                    'id' => $company->id,
-                    'name' => $company->trade_name ?: $company->legal_name,
-                    'role' => $user->isSuperAdmin($company->id)
-                        ? 'super_admin'
-                        : ($user->roleTypeFor($company->id) ?? 'user'),
-                    'is_current' => $company->id === $currentCompanyId,
-                    'is_default' => $company->id === $user->default_company_id,
-                ])
+                ->map(function ($company) use ($user, $currentCompanyId) {
+                    $isSuperAdmin = $user->isSuperAdmin($company->id);
+
+                    return [
+                        'id' => $company->id,
+                        'name' => $company->trade_name ?: $company->legal_name,
+                        'role' => $isSuperAdmin ? 'super_admin' : ($user->roleTypeFor($company->id) ?? 'user'),
+                        'is_current' => $company->id === $currentCompanyId,
+                        'is_default' => $company->id === $user->default_company_id,
+                        // Sus datos los cambia solo su Superusuario
+                        // (CompanyDetailsController).
+                        'can_edit' => $isSuperAdmin,
+                        'legal_name' => $company->legal_name,
+                        // El nombre comercial se muestra vacío si es el
+                        // mismo que la razón social: así lo cargó quien no
+                        // puso uno al crearla.
+                        'trade_name' => $company->trade_name === $company->legal_name ? '' : $company->trade_name,
+                        'tax_id' => $company->tax_id,
+                    ];
+                })
                 ->values(),
             'passwordRequirements' => PasswordPolicy::requirements(),
             'emailLinkMinutes' => self::EMAIL_LINK_MINUTES,

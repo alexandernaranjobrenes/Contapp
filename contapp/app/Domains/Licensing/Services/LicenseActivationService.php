@@ -9,6 +9,7 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Licensing\Exceptions\AccountNotEligibleException;
 use App\Domains\Licensing\Exceptions\InvalidLicenseException;
 use App\Domains\Licensing\Models\License;
+use App\Domains\Licensing\Models\LicenseInvitation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -41,9 +42,9 @@ class LicenseActivationService
      * @throws InvalidLicenseException
      * @throws AccountNotEligibleException
      */
-    public function activate(string $code, array $companyData, array $userData): array
+    public function activate(string $code, array $companyData, array $userData, ?LicenseInvitation $invitation = null): array
     {
-        $license = $this->redeemable($code);
+        $license = $this->redeemable($code, $invitation);
 
         // Después del código, no antes: así solo se entera de que un correo
         // ya tiene cuenta quien trae una licencia válida para canjear.
@@ -98,9 +99,9 @@ class LicenseActivationService
      * @throws InvalidLicenseException
      * @throws AccountNotEligibleException
      */
-    public function activateForExistingUser(string $code, array $companyData, User $user): array
+    public function activateForExistingUser(string $code, array $companyData, User $user, ?LicenseInvitation $invitation = null): array
     {
-        $license = $this->redeemable($code);
+        $license = $this->redeemable($code, $invitation);
 
         $this->assertCanOwnLicense($user);
 
@@ -136,9 +137,13 @@ class LicenseActivationService
     /**
      * La licencia de ese código, si todavía se puede canjear.
      *
+     * Una licencia asignada desde el backoffice (LicenseInvitationService)
+     * queda reservada para esa persona: solo se activa con su invitación, no
+     * con el código.
+     *
      * @throws InvalidLicenseException
      */
-    public function redeemable(string $code): License
+    public function redeemable(string $code, ?LicenseInvitation $invitation = null): License
     {
         $license = License::where('code', $code)->first();
 
@@ -148,6 +153,12 @@ class LicenseActivationService
 
         if ($license->superuser_id !== null) {
             throw new InvalidLicenseException('Esta licencia ya fue activada. Iniciá sesión con tu usuario para agregar otra compañía.');
+        }
+
+        $reservation = LicenseInvitation::where('license_id', $license->id)->whereNull('accepted_at')->first();
+
+        if ($reservation !== null && $reservation->id !== $invitation?->id) {
+            throw new InvalidLicenseException('Esta licencia está asignada a una persona y se activa desde el correo que recibió.');
         }
 
         if (! $license->canActivateAnotherCompany()) {

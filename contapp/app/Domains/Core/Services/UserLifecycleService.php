@@ -6,7 +6,9 @@ use App\Domains\Core\Exceptions\PrivilegeEscalationException;
 use App\Domains\Core\Models\AuditLog;
 use App\Domains\Core\Models\Company;
 use App\Models\User;
+use App\Notifications\MembershipStatusNotification;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Suspender/reactivar/desactivar un Administrador o Usuario — SIEMPRE por
@@ -21,12 +23,16 @@ use Illuminate\Support\Facades\DB;
  * (con can_grant_permissions) gestiona a los Usuarios que él mismo
  * administra, igual que ya puede restringirles funciones. Nadie gestiona a
  * otro Administrador ni al Superusuario salvo el propio Superusuario.
+ *
+ * A la persona le llega un correo con lo que pasó y en qué compañías
+ * (MembershipStatusNotification). Cada método devuelve si el correo salió: si
+ * falla, el cambio igual queda hecho.
  */
 class UserLifecycleService
 {
-    public function suspend(User $grantor, User $target, int $actingCompanyId): void
+    public function suspend(User $grantor, User $target, int $actingCompanyId): bool
     {
-        $this->applyStatus($grantor, $target, $actingCompanyId, 'suspended', 'user_suspended');
+        return $this->applyStatus($grantor, $target, $actingCompanyId, 'suspended', 'user_suspended');
     }
 
     /**
@@ -35,9 +41,9 @@ class UserLifecycleService
      * nada), pero el producto la expone como "permanente": no hay botón de
      * reactivar en la UI para un usuario deactivated (ver Users/Index.vue).
      */
-    public function reactivate(User $grantor, User $target, int $actingCompanyId): void
+    public function reactivate(User $grantor, User $target, int $actingCompanyId): bool
     {
-        $this->applyStatus($grantor, $target, $actingCompanyId, 'active', 'user_reactivated');
+        return $this->applyStatus($grantor, $target, $actingCompanyId, 'active', 'user_reactivated');
     }
 
     /**
@@ -46,12 +52,12 @@ class UserLifecycleService
      * intactos) — solo le cierra el acceso a esta licencia de forma
      * indefinida.
      */
-    public function deactivate(User $grantor, User $target, int $actingCompanyId): void
+    public function deactivate(User $grantor, User $target, int $actingCompanyId): bool
     {
-        $this->applyStatus($grantor, $target, $actingCompanyId, 'deactivated', 'user_deactivated');
+        return $this->applyStatus($grantor, $target, $actingCompanyId, 'deactivated', 'user_deactivated');
     }
 
-    private function applyStatus(User $grantor, User $target, int $actingCompanyId, string $status, string $action): void
+    private function applyStatus(User $grantor, User $target, int $actingCompanyId, string $status, string $action): bool
     {
         if (! app(PermissionGrantService::class)->canManage($grantor, $target, $actingCompanyId)) {
             throw new PrivilegeEscalationException('No podés gestionar el estado de este usuario.');
@@ -76,5 +82,24 @@ class UserLifecycleService
             'new_values' => ['status' => $status, 'scope_company_ids' => $companyIds->toArray()],
             'created_at' => now(),
         ]);
+
+        // Las compañías de la licencia en las que la persona está: las que
+        // cambiaron.
+        $companies = $target->companies()
+            ->whereIn('companies.id', $companyIds)
+            ->get(['companies.legal_name', 'companies.trade_name'])
+            ->map(fn (Company $c) => $c->trade_name ?: $c->legal_name)
+            ->values()
+            ->all();
+
+        try {
+            $target->notify(new MembershipStatusNotification($status, $companies, $grantor->name));
+        } catch (Throwable $e) {
+            report($e);
+
+            return false;
+        }
+
+        return true;
     }
 }

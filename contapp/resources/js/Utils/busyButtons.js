@@ -1,16 +1,24 @@
 import { router } from '@inertiajs/vue3';
 
 /**
- * Botón ocupado (CLAUDE.md secc. 27): el botón que dispara una operación que
- * escribe —guardar, eliminar, anular, contabilizar…— queda deshabilitado y
- * con un spinner hasta que la operación termina. Funciona solo, para toda
- * la aplicación: ninguna pantalla tiene que hacer nada.
+ * Botón ocupado (CLAUDE.md secc. 27): el botón que dispara una operación
+ * —guardar, eliminar, contabilizar, generar, consultar un reporte…— queda
+ * deshabilitado y con un spinner hasta que la operación termina, bien o mal.
+ * Funciona solo, para toda la aplicación: ninguna pantalla tiene que hacer
+ * nada. Las descargas (Exportar XLSX, Exportar PDF…) las maneja
+ * downloads.js con este mismo marcado.
  *
  * Cómo: un clic (o el envío de un formulario) recuerda qué botón fue. Si
- * mientras se atiende ese clic empieza una visita de Inertia que no es GET,
- * el botón queda marcado con data-busy (el aspecto está en app.scss) hasta
- * que esa visita termina, bien o mal. Las visitas GET —navegar, filtrar,
- * paginar— no marcan nada.
+ * mientras se atiende ese clic empieza una visita de Inertia, el botón queda
+ * marcado con data-busy (el aspecto está en app.scss) hasta que esa visita
+ * termina. Una visita que escribe (POST, PUT, DELETE) marca cualquier cosa
+ * que se haya tocado; una GET —consultar, generar un reporte, pasar de
+ * pantalla— solo marca un botón (un <button> o algo con .btn): los enlaces
+ * del menú y de la paginación navegan sin spinner.
+ *
+ * Si la operación falla, el botón se libera igual y el error queda a la
+ * vista: los de validación junto a cada campo, los del servidor como
+ * mensaje de la página (bootstrap/app.php) o como aviso (requestErrors.js).
  *
  * Inertia dispara "start" sin esperar nada, dentro del mismo clic que llamó
  * a router.post() o form.put(), y "start" y "finish" de una misma visita
@@ -37,7 +45,16 @@ function remember(element) {
     }, REMEMBER_MS);
 }
 
-function markBusy(element) {
+/** ¿Se ve como un botón? Solo esos se marcan en una visita GET. */
+function looksLikeButton(element) {
+    return element.matches('button, input[type="submit"], input[type="button"], .btn');
+}
+
+/**
+ * Marca el elemento como ocupado y devuelve la función que lo libera. La usa
+ * también downloads.js.
+ */
+export function markBusy(element) {
     const previousAriaDisabled = element.getAttribute('aria-disabled');
     element.setAttribute('data-busy', '');
     element.setAttribute('aria-busy', 'true');
@@ -103,7 +120,8 @@ document.addEventListener('change', (event) => {
 
 router.on('start', (event) => {
     const visit = event.detail.visit;
-    if (!pending || visit.method === 'get' || visit.prefetch) return;
+    if (!pending || visit.prefetch) return;
+    if (visit.method === 'get' && !looksLikeButton(pending)) return;
 
     const element = pending;
     pending = null;

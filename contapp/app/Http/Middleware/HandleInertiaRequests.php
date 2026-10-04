@@ -6,12 +6,17 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\Module;
 use App\Domains\Core\Models\ModulePermission;
 use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Core\Services\ScreenAccessService;
 use App\Domains\Core\Support\CompanyTheme;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Core\Support\MediaStorage;
+use App\Domains\Core\Support\ScreenCatalog;
+use App\Domains\Feedback\Models\NewsPost;
 use App\Domains\Licensing\Models\License;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -68,6 +73,13 @@ class HandleInertiaRequests extends Middleware
         $isSuperAdmin = $user ? $user->isSuperAdmin($currentCompanyId) : false;
         $roleType = ($user && $currentCompanyId && ! $isSuperAdmin) ? $user->roleTypeFor($currentCompanyId) : null;
 
+        // El nivel en cada pantalla del menú, una sola vez por visita.
+        $screenAccess = match (true) {
+            ! $user || ! $currentCompanyId => [],
+            $isSuperAdmin => collect(ScreenCatalog::keys())->mapWithKeys(fn (string $key) => [$key => ScreenCatalog::maxLevel($key)])->all(),
+            default => app(ScreenAccessService::class)->levelsFor($user, $currentCompanyId),
+        };
+
         // ¿La cuenta ya es dueña de una licencia? No es lo mismo que ser
         // Superusuario de la compañía activa: puede serlo de la suya y estar
         // parada en la de otra persona. De esto depende que el menú ofrezca
@@ -115,19 +127,33 @@ class HandleInertiaRequests extends Middleware
                 'name' => $propietario->name,
                 'email' => $propietario->email,
             ] : null,
+            // Las compañías del selector de la barra superior, con el estado
+            // de su licencia: una suspendida o revocada se muestra marcada y
+            // no se puede elegir; una vencida avisa que entra en modo de
+            // gracia (CLAUDE.md secc. 30).
             'companies' => $user
-                ? $user->companies()->wherePivot('status', 'active')->get(['companies.id', 'companies.legal_name', 'companies.trade_name', 'companies.theme'])
+                ? $user->companies()->wherePivot('status', 'active')->with('license:id,status,expires_at')
+                    ->get(['companies.id', 'companies.legal_name', 'companies.trade_name', 'companies.theme', 'companies.license_id'])
+                    ->map(fn (Company $c) => [
+                        'id' => $c->id,
+                        'legal_name' => $c->legal_name,
+                        'trade_name' => $c->trade_name,
+                        'theme' => $c->theme,
+                        'license_state' => $c->license?->accessState() ?? 'ok',
+                    ])
+                    ->values()
                 : [],
             'currentCompanyId' => $request->session()->get('current_company_id'),
             // El tema visual de la compañía activa (CLAUDE.md secc. 31). Lo
             // aplican app.blade.php en la primera carga y app.js al navegar.
             'companyTheme' => $company ? CompanyTheme::resolve($company->theme)->value : CompanyTheme::default()->value,
             'licenseGrace' => app(CurrentCompany::class)->isInGracePeriod(),
-            // Para que AppLayout.vue pueda ocultar ítems de nav sin permiso
-            // en el módulo correspondiente, en vez de mostrar 18 ítems
-            // idénticos sin importar el nivel de acceso real del usuario.
+            // El nivel en cada pantalla del menú (ScreenCatalog): AppLayout.vue
+            // muestra solo las que la persona puede abrir. moduleAccess es el
+            // de cada módulo, el más alto entre sus pantallas.
+            'screenAccess' => $screenAccess ?: (object) [],
             'moduleAccess' => ($user && $currentCompanyId)
-                ? $this->moduleAccessFor($user, $currentCompanyId, $isSuperAdmin)
+                ? $this->moduleAccessFor($user, $currentCompanyId, $isSuperAdmin, $screenAccess)
                 : (object) [],
             'license' => $license ? [
                 'category' => $license->category?->name,
@@ -135,6 +161,12 @@ class HandleInertiaRequests extends Middleware
                 'expires_at' => $license->expires_at->format('Y-m-d'),
                 'display_status' => $license->displayStatus(),
             ] : null,
+            // La fecha de la última noticia del backoffice: el botón de
+            // «Comentarios y noticias» de la barra superior lleva un punto
+            // mientras haya una que esta persona todavía no vio. Va en caché
+            // porque esto corre en toda visita; NewsService la borra al
+            // publicar, editar o eliminar una noticia.
+            'latestNewsAt' => fn () => $user ? $this->latestNewsAt() : null,
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
@@ -143,16 +175,31 @@ class HandleInertiaRequests extends Middleware
         ];
     }
 
+    /** La fecha de la última noticia, o null si no hay ninguna. */
+    private function latestNewsAt(): ?string
+    {
+        // Sin noticias se guarda '' y no null: un null en caché cuenta como
+        // que no está, y se consultaría en cada visita.
+        $latest = Cache::remember(NewsPost::LATEST_CACHE_KEY, 600, function () {
+            $max = NewsPost::max('created_at');
+
+            return $max ? Carbon::parse($max)->toIso8601String() : '';
+        });
+
+        return $latest !== '' ? $latest : null;
+    }
+
     /**
-     * Deliberadamente en 2 queries fijas (catálogo de módulos + permisos del
+     * Deliberadamente en queries fijas (catálogo de módulos + permisos del
      * usuario), NUNCA una por módulo: esto corre en TODA request Inertia, a
      * diferencia de PermissionGrantService::effectiveAccessLevel(), pensado
      * para un chequeo puntual (ver EnsureModuleAccess), no para llamarse en
-     * loop acá.
+     * loop acá. El nivel de cada pantalla ya viene calculado.
      *
+     * @param  array<string, string>  $screenAccess
      * @return array<string, string> module code => access_level
      */
-    private function moduleAccessFor(User $user, int $companyId, bool $isSuperAdmin): array
+    private function moduleAccessFor(User $user, int $companyId, bool $isSuperAdmin, array $screenAccess): array
     {
         $modules = Module::query()->pluck('code', 'id');
 
@@ -166,6 +213,16 @@ class HandleInertiaRequests extends Middleware
             ->where('subject_id', $user->id)
             ->pluck('access_level', 'module_id');
 
-        return $modules->mapWithKeys(fn (string $code, int $id) => [$code => $granted[$id] ?? 'none'])->all();
+        return $modules->mapWithKeys(function (string $code, int $id) use ($granted, $screenAccess) {
+            $level = $granted[$id] ?? 'none';
+
+            foreach ($screenAccess as $key => $screenLevel) {
+                if (ScreenCatalog::find($key)['module'] === $code) {
+                    $level = ScreenAccessService::max($level, $screenLevel);
+                }
+            }
+
+            return [$code => $level];
+        })->all();
     }
 }

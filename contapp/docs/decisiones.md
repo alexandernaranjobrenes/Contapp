@@ -22,6 +22,173 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 - **CORS del bucket:** no hace falta para esto. El navegador solo muestra las imágenes con `<img>` y las subidas pasan por el servidor. Haría falta si un día el navegador sube directo al bucket o lee una imagen con `fetch`.
 
 ---
+## 2026-10-03 — Cambiar a una compañía con la licencia bloqueada o vencida: el motivo, dicho
+
+**Lo que vio el usuario:** al pasar a una compañía, «El cambio no se aplicó: el servidor respondió, pero la compañía activa sigue siendo prueba». Pidió un mensaje claro cuando la causa es la licencia (vencida, etc.).
+
+- **La causa:**
+  - La licencia de esa compañía estaba revocada.
+  - `CompanySwitchController` guardaba el cambio igual, y en la visita siguiente `SetCurrentCompany` lo descartaba en silencio (no deja entrar con una licencia bloqueada).
+  - La ventana solo podía decir que el cambio no se aplicó.
+- **Ahora el controlador rechaza el cambio con el motivo:**
+  - «La licencia de X fue revocada…» o «…está suspendida…» (`License::blockedMessage`).
+  - La ventana lo muestra con el título «No se puede entrar a X», y sin «Reintentar», que no cambiaría nada.
+- **Una licencia solo vencida deja entrar,** como siempre (modo de gracia). La ventana del cambio ya avisa que no se va a poder crear ni modificar nada, para que no sea una sorpresa.
+- **El selector de la barra superior marca el estado de cada licencia** («— licencia vencida», «— licencia revocada») y no deja elegir una bloqueada. Para eso, `companies` comparte `license_state` (`License::accessState`).
+- **Si se bloquea la compañía en la que alguien está trabajando:** `SetCurrentCompany` lo pasa a otra, como antes, pero ahora con el motivo arriba («… Seguís en Y»), solo en esa visita.
+- **El mensaje genérico de «no se aplicó»** (cuando el servidor no dice por qué) también es más claro, y sugiere reintentar y, si se repite, avisar a quien administra la cuenta.
+- **De paso:** los mensajes de la ventana cerraban con el nombre de la compañía más un punto, y una razón social que ya termina en punto («S.A.») quedaba con dos.
+
+---
+## 2026-10-03 — Corrección: aceptar una invitación dependía de la compañía activa
+
+**Lo que vio el usuario:** al aceptar una invitación a «prueba», el aviso «Esta invitación ya no es válida: cambiaron los permisos de quien te invitó», sin que nadie los hubiera cambiado. Además, como Administrador, el editor de permisos solo le ofrecía «Sin acceso».
+
+- **La causa del primero:**
+  - Al aceptar se revisa que quien invitó todavía pueda dar ese rol (`PermissionGrantService::grantableRoleTypes`).
+  - Esa revisión, `canManage`, `effectiveAccessLevel`, `hasAtLeast` y `User::canGrantPermissionsFor` recibían la compañía, pero preguntaban «¿es Superusuario?» contra la compañía *activa* de la sesión.
+  - Quien acepta está parado en su propia compañía (o en ninguna), así que el Superusuario de la compañía de la invitación no se reconocía como tal.
+  - Ahora todos preguntan contra la compañía que reciben.
+- **Por qué no lo vieron las pruebas:** en un test las requests comparten el contenedor, y la compañía activa de quien invitó quedaba puesta para la request que aceptaba. El ayudante que simula «otro navegador» ahora la olvida. Además hay una prueba con el caso real, que falla con el código anterior.
+- **El segundo no era un error de permisos:** ese Administrador solo tenía Facturación con Lectura (lo que se le dio al invitarlo), y un Administrador da hasta lo que tiene. Pero el editor mostraba las 66 pantallas, todas con «Sin acceso». Ahora muestra solo las que quien edita puede dar, más las que la persona ya tiene aunque él no pueda darlas (bloqueadas), y explica por qué no ve las demás.
+
+---
+## 2026-10-03 — Cambiar el rol de una persona, y avisarle por correo cuando cambia su acceso
+
+**Pedido del usuario:** que el Superusuario pueda convertir Usuarios en Administradores y viceversa, y que la persona reciba un correo cuando la desactivan, la reactivan o la eliminan.
+
+- **El cambio de rol es solo del Superusuario,** desde la ficha de la persona en Usuarios («Hacer Administrador» / «Hacer Usuario»).
+  - Un Administrador no cambia roles, ni siquiera de Usuarios.
+  - El rol del Superusuario no se cambia: es el dueño de la licencia.
+- **El rol es por compañía,** como cuando se invita: cambia en la compañía activa.
+- **Respeta el cupo de la licencia,** contando las invitaciones sin aceptar. La regla pasó a `PermissionGrantService::assertSeatAvailable`, que también usan las invitaciones.
+- **Los permisos por pantalla no cambian.** Lo que cambia es si puede invitar y gestionar Usuarios.
+  - Las invitaciones que un Administrador mandó antes de pasar a Usuario dejan de servir al aceptarse, porque ya no puede dar ese rol.
+- **«Desactivar, reactivar o eliminar»:** en la aplicación son Suspender (temporal), Reactivar y Desactivar. Este último es el «eliminar» de hecho: permanente, sin borrar el historial.
+  - Las tres le mandan un correo a la persona, con lo que pasó, quién lo hizo y las compañías de la licencia afectadas.
+  - El mensaje de la pantalla dice si el correo salió. Si falla, el cambio igual se hace.
+- **El cambio de rol no manda correo:** no estaba pedido.
+- **De paso:** los errores de suspender, reactivar y desactivar se mandaban como error del campo `user`, que la pantalla no muestra en ningún lado. Ahora van como mensaje arriba.
+
+---
+## 2026-10-03 — Permisos por pantalla del menú, y alta de personas por invitación
+
+**Pedido del usuario:**
+- Que los permisos de Administradores y Usuarios sean por cada opción y subopción del menú lateral, no por módulo.
+- Que al crear a alguien le llegue una invitación por correo y no entre hasta aceptarla.
+- Si el correo no tiene cuenta en CONTAPP, que al aceptar complete sus datos y cree su contraseña: el Superusuario no escribe la contraseña ni los datos de nadie.
+
+**Permisos:**
+- **Una pantalla por opción del menú** (66, en `ScreenCatalog`), con sección, categoría y las rutas que le pertenecen. Cada una tiene tres niveles: sin acceso, lectura, y lectura y escritura.
+- **Los reportes y «Comprobantes» son de solo consulta.** Emitir es «Nueva factura». La prueba del catálogo lo detectó: «Comprobantes» no tiene ninguna ruta que escriba.
+- **El permiso por módulo de antes sigue valiendo, para no quitarle acceso a nadie.**
+  - Vale para todas las pantallas de su módulo, y no hubo migración de datos.
+  - Al guardar los permisos de una persona con el editor nuevo, se reemplaza por filas por pantalla (`screen_permissions`).
+  - Lo que vale en cada pantalla es el más alto de los dos (`ScreenAccessService`).
+- **Quién bloquea:**
+  - El mismo `module-access` de siempre, que ahora revisa también la pantalla de la ruta, con el nivel que pide su grupo.
+  - Las rutas que varias pantallas usan para traer datos quedan con el permiso del módulo, que tiene quien tenga cualquier pantalla de ese módulo: el libro mayor, los precios de un cliente al facturar, los lotes y la receta de producción.
+  - Los enlaces de una pantalla a otra (un comprobante que muestra su asiento) no se tocaron. Sin permiso, avisan «No tenés permiso».
+- **El catálogo de indicadores de impuesto** se sigue consultando sin permiso, como ya estaba decidido. Su pantalla controla el menú y la edición de los indicadores propios, que antes podía hacer cualquiera.
+- **Nada por encima de lo que se tiene, por pantalla.**
+  - Una pantalla donde la persona ya tiene más de lo que quien edita puede dar aparece bloqueada, y guardar no se la quita.
+  - Antes, en ese caso no se podía guardar nada.
+- **`ScreenCatalogTest`** falla si una ruta protegida no tiene pantalla, si una pantalla de solo consulta escribe, o si el menú y el catálogo no coinciden.
+
+**Invitaciones:**
+- **El enlace dura 7 días.** No lo pidió el usuario: es más que los 30 minutos de una licencia porque la persona puede no estar esperando el correo. Se puede reenviar (el anterior deja de servir) o cancelar desde la ficha de la invitación en Usuarios.
+- **Al aceptar queda con la sesión iniciada y parada en la compañía**, como al aceptar una licencia. El enlace llegó a su correo, que es lo mismo que pide recuperar la contraseña.
+  - Con la sesión de otra cuenta abierta no se acepta: se ofrece cerrarla.
+- **Se revisa todo otra vez al aceptar:**
+  - El cupo de la licencia.
+  - Que la licencia no esté suspendida.
+  - Que quien invitó siga pudiendo dar ese rol y esos permisos.
+  - Si le bajaron el acceso, la invitación ya no sirve.
+- **El cupo cuenta las invitaciones sin aceptar.** Si no, se podía invitar a más gente de la que entra.
+- **Se quitó `users.invite`**, que vinculaba una cuenta existente sin que la persona aceptara.
+  - `PermissionGrantService::createUser/inviteUser` quedan para las pruebas y los seeders.
+  - Las pruebas que daban de alta con contraseña ahora invitan y aceptan.
+- **De paso:**
+  - La pantalla de alta mandaba una propiedad `license` (el cupo) que pisaba la licencia compartida del pie de página: el pie decía «Licencia — · · Vence». Ahora se llama `quota`.
+  - Al aceptar se guarda el hash de la contraseña en la sesión. Si quedaba uno anterior, `auth.session` cerraba la sesión en la siguiente visita.
+
+---
+## 2026-10-03 — Canal de comentarios y noticias en la barra superior
+
+**Pedido del usuario:**
+- Un canal donde la gente deje recomendaciones, sugerencias y comentarios sobre CONTAPP, en un panel lateral que abre un botón junto a «Salir». Votos a favor y en contra, como en Reddit, y lo más votado arriba.
+- Comentar lo de otros, con hasta dos imágenes por comentario (solo imágenes).
+- Desde el backoffice: ver, comentar como administrador, eliminar con el motivo por correo al autor, y dar por solucionado, con un agradecimiento por correo, para que deje de verse.
+- Una pestaña de noticias que publica el backoffice (una imagen, título, descripción y enlace), que se pueden editar y eliminar.
+- Las imágenes en R2: `comments/{id}_{n}` y `news/{id}_{n}`.
+
+- **Lo que se vota son las publicaciones; las respuestas no.** La lista que se ordena por votos es la de publicaciones. Las respuestas son la conversación de una publicación y se leen en el orden en que se escribieron, con las del equipo destacadas. No se vota lo propio.
+- **Publicaciones y respuestas en una sola tabla** (`feedback_comments.parent_id`): el id es único entre las dos, y las imágenes se llaman igual para ambas, `comments/{id}_{n}.{ext}`. El autor es una cuenta (`user_id`) o el equipo desde el backoffice (`propietario_id`), que se ve como «Equipo CONTAPP».
+- **El puntaje** (`score`, a favor menos en contra) se recalcula desde `feedback_votes` en cada voto, con la publicación bloqueada. Así dos votos al mismo tiempo no se pisan.
+- **Global, de todas las licencias.** Del autor se muestra el nombre y la foto, nunca el correo ni la compañía. En el backoffice sí se ve el correo: es a quien se le escribe.
+- **Eliminar y solucionar no borran la fila:** la sacan de la aplicación y queda el registro (quién, cuándo, el motivo) en los filtros «Solucionadas» y «Eliminadas» del backoffice. Las imágenes de lo eliminado sí se borran del bucket. Una publicación solucionada por error se puede reabrir, sin avisarle a nadie.
+- **El autor puede borrar lo suyo** (no estaba pedido, pero sin esto no había forma de corregir un error). Eso sí se borra del todo, con sus imágenes y, si es una publicación, con sus comentarios y votos.
+- **Si el correo falla, la acción igual se hace**, y el mensaje del backoffice lo dice («…pero no se pudo enviar…»). No se encola: no hay worker de colas.
+- **Imágenes:** JPG o PNG (el GD del contenedor no tiene WebP), hasta 5 MB y 6000 px. Se vuelven a codificar (se van los metadatos, como el GPS de una foto) y se achican a 2000 px de lado si son más grandes; una captura tiene que seguir leyéndose.
+- **Como un chat:** en la pestaña Comentarios las publicaciones van arriba, con su propio desplazamiento, y el formulario para publicar queda fijo abajo («Contanos qué mejorarías de CONTAPP»). Lo recién publicado aparece primero y la lista sube hasta verlo. Corrección del usuario sobre la primera versión, que tenía el formulario arriba.
+- **El panel habla JSON, no Inertia:** está en todas las pantallas, y una visita de Inertia recargaría la de atrás (un reporte, un asiento a medio cargar) en cada voto. Por eso sus rutas devuelven los errores en JSON (`bootstrap/app.php`) y el panel marca sus botones con `markBusy()`. Queda montado al cerrarlo, así no se pierde lo que se estaba escribiendo.
+- **El enlace de una noticia** es una dirección completa (http o https), que se abre en otra pestaña, o una pantalla de CONTAPP que empieza con «/», que se abre en la misma. No se acepta `javascript:` ni `//otro-sitio`.
+- **El punto de noticias nuevas:** el servidor comparte la fecha de la última noticia (`latestNewsAt`, en caché, que se borra al publicar, editar o eliminar una). La fecha de la última que se vio queda en el navegador, por cuenta. En otro dispositivo el punto vuelve a aparecer.
+- **Modo de gracia:** escribir, votar y comentar quedan exentos (`EnforceLicenseGracePeriod`). El canal es sobre CONTAPP, no sobre la compañía vencida.
+- **Límites por cuenta:** 10 publicaciones o comentarios por minuto y 60 votos por minuto, con limitadores con nombre (`AppServiceProvider`). Con `throttle:10,1`, todas las rutas que lo usan comparten un contador por cuenta, y votar dejaría a alguien sin poder publicar.
+- **De paso:**
+  - `useForm` toma lo enviado como valor inicial después de un envío exitoso, y `reset()` volvía a poner el motivo de la eliminación anterior. Ahora cada campo se asigna al abrir (CLAUDE.md secc. 27).
+  - El aviso de error en el navegador (`messageForStatus`) suma el 401.
+
+---
+## 2026-10-03 — Los datos de la compañía se cambian desde «Mi cuenta»
+
+**Pedido del usuario:** cambiar desde «Mi cuenta» la razón social, el nombre comercial y la cédula jurídica de las compañías, con la cédula marcada «(opcional)».
+
+- **Quién:** solo el Superusuario de esa compañía, igual que el logo. Un Administrador o un Usuario ve sus compañías con los datos, pero sin el botón «Editar datos», y el servidor le responde 403.
+- **Cualquier compañía propia, no solo la activa:** «Mi cuenta» lista todas. La ruta lleva la compañía (`PUT my-account/companies/{company}`, `CompanyDetailsController`) y se comprueba la pertenencia y el rol en esa compañía, no en la activa. La licencia que se mira es la de esa compañía: con su licencia vencida o bloqueada no se cambia.
+- **Las mismas reglas que al crearla:** razón social obligatoria; sin nombre comercial se usa la razón social; sin cédula queda vacía (null).
+- **En el formulario,** el nombre comercial igual a la razón social se muestra vacío, porque no se puso uno. Así, guardar sin tocarlo no fija como nombre comercial una razón social vieja.
+- **Bitácora:** `company.details_updated` con los campos que cambiaron. Guardar sin cambios no deja registro.
+- **Lo ya emitido no cambia:** los reportes y comprobantes nuevos salen con los datos nuevos. El modal lo avisa.
+- **«Cédula jurídica (opcional)»** también en los otros formularios donde se escribe: activar licencia, aceptar una licencia asignada, nueva compañía y activar una licencia desde «Mi cuenta».
+- **Modo de gracia:** el middleware (`EnforceLicenseGracePeriod`) mira la licencia de la compañía activa, que puede ser la de otra persona. Por eso la ruta está exenta ahí, como el resto de «Mi cuenta», y el controlador revisa la licencia de la compañía que se edita.
+
+---
+## 2026-10-03 — Botones ocupados en toda acción, y el error siempre dicho
+
+**Pedido del usuario:** que todos los botones —Guardar, Exportar, Generar…— se deshabiliten con un spinner hasta que la acción termine bien, o hasta que se muestre el error.
+
+- **Lo que ya había:** el spinner solo en las acciones que escriben (POST, PUT, DELETE).
+- **Las consultas y los reportes:** una visita GET también marca el botón que la disparó, siempre que sea un botón (`<button>` o `.btn`). Los enlaces del menú y la paginación no, para que navegar no llene la pantalla de spinners.
+- **Las descargas** (Exportar XLSX y PDF, plantillas, el XML de una factura): eran enlaces comunes. El navegador no avisaba nada mientras se armaba el archivo, y si el servidor fallaba abandonaba la pantalla para mostrar la página de error. Ahora `downloads.js` pide el archivo con `fetch`, con el botón ocupado, y lo guarda cuando llega. Reconoce las descargas por el ícono `Download`, que la secc. 23 ya exigía, así que las ~45 que hay no se tocaron una por una.
+- **Los errores:**
+  - **Acción que escribe y el servidor rechaza:** vuelve a la pantalla con el motivo como mensaje (`bootstrap/app.php`), en vez de que Inertia dibuje la página de error encima de la aplicación.
+  - **Visita GET que falla:** no se hace lo mismo, porque «volver» podría ser volver a ella misma y entrar en un bucle; va un aviso en pantalla (`requestErrors.js` y `ToastHost.vue`).
+  - **Descarga que falla:** el servidor contesta en JSON y el aviso dice el motivo («el campo desde debe ser una fecha válida»).
+  - **En desarrollo,** un error interno se sigue viendo con la página de Laravel, que es la que dice dónde falló.
+- **De paso:** el formulario de nuevo empleado mostraba dos veces el título «Identidad».
+
+---
+## 2026-10-03 — Asignar una licencia desde el backoffice, con aceptación por correo
+
+**Pedido del usuario:** al crear una licencia en el backoffice, poder activarla de una vez a una persona —con cuenta en CONTAPP o con una cuenta nueva— mediante un correo de aceptación que dure como máximo 30 minutos. Si no la acepta, la licencia no se activa, y el backoffice puede reenviar el correo o cambiar los datos mientras no se haya activado. Si la persona ya tiene cuenta y su contraseña la puso otra persona, tiene que cambiarla para activar; si la cuenta la creó el backoffice, siempre.
+
+- **El modelo:** `license_invitations`, una fila por licencia (`LicenseInvitationService`). Cada envío genera un token nuevo (en la base, solo su hash) que vence a los 30 minutos y deja sin efecto el anterior.
+- **Mientras no se acepte, la licencia queda reservada:** su código no sirve en la activación pública ni en «Activar una licencia», para que nadie se la gane a la persona a la que se asignó.
+- **Aceptar** (`/license-invitation/{token}`, pantalla pública): la persona carga los datos de su primera compañía —activar una licencia siempre crea la primera— y, si corresponde, elige su contraseña. Queda como Superusuario, con la sesión iniciada en su compañía.
+- **La contraseña:**
+  - **Cuenta nueva:** siempre la elige al aceptar.
+  - **Cuenta existente cuya contraseña la definió otra persona** (`password_chosen_at` nulo): la cambia al aceptar, o no se activa.
+  - **Cuenta existente con contraseña propia:** acepta con su contraseña de siempre.
+  - Abrir el enlace prueba que la casilla es suya, así que la contraseña elegida ahí cuenta como propia.
+- **La cuenta nueva no se crea al asignar, sino al aceptar,** y el formulario del backoffice no pide contraseña. La regla exige que la persona elija la suya para activar, así que una contraseña puesta por el backoffice nunca llegaría a usarse. Crearla antes, sin poder usarse, además le bloquearía el correo a esa persona en el resto de CONTAPP (no podría activar otra licencia ni ser invitada).
+- **Validaciones al asignar:** la licencia sin dueño y vigente; para una cuenta existente, que exista, esté activa y no sea dueña de otra licencia; para una nueva, que el correo no tenga cuenta; y que el correo no tenga otra asignación esperando. Si la asignación no se puede hacer al emitir, tampoco se emite la licencia. Las mismas reglas se vuelven a comprobar al aceptar.
+- **En el backoffice:** al emitir, «Activación» con «Sin asignar» (como siempre: se entrega el código), «Cuenta existente» o «Cuenta nueva». Con un correo existente, la pantalla consulta si tiene cuenta, si ya es dueña de una licencia y si su contraseña es propia. La ficha muestra a quién está asignada, si el enlace sigue vigente y cuántas veces se envió, con «Reenviar correo», «Cambiar datos» y «Quitar asignación».
+- **Bitácora:** asignación, cambios, envíos, quitar y aceptar quedan en el historial de la licencia.
+- **El correo** (`LicenseInvitationNotification`) dice qué licencia es, qué va a pedir el enlace y cuánto dura. No se encola, por lo mismo que los demás correos con enlace.
+
+---
 ## 2026-10-02 — Logo de la compañía para los reportes
 
 **Pedido del usuario:** que el Superusuario (solo él) pueda ponerle un logo a cada una de sus compañías, guardado como `companies/user_owner_{id_user}/company_logo_{id_company}.{png, jpg…}`, cuidando las dimensiones para que salga bien en los reportes.

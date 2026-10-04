@@ -1,11 +1,12 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import DetailModal from '../../Components/DetailModal.vue';
 import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import UserAvatar from '../../Components/UserAvatar.vue';
 import { confirmAction } from '../../Utils/confirm';
-import { CheckIcon, KeyRoundIcon, MailIcon, UploadIcon, XIcon } from '@lucide/vue';
+import { CheckIcon, KeyRoundIcon, MailIcon, PencilIcon, UploadIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
     account: { type: Object, required: true },
@@ -25,6 +26,40 @@ const profileForm = useForm({ name: props.account.name });
 const emailForm = useForm({ email: '', current_password: '' });
 
 const passwordForm = useForm({ current_password: '', password: '', password_confirmation: '' });
+
+// Los datos de una compañía propia (solo su Superusuario: ver can_edit), en
+// un modal (CLAUDE.md secc. 21).
+const editingCompanyId = ref(null);
+const editingCompany = computed(() => props.memberships.find((m) => m.id === editingCompanyId.value) ?? null);
+const companyForm = useForm({ legal_name: '', trade_name: '', tax_id: '' });
+
+function editCompany(membership) {
+    companyForm.clearErrors();
+    // Cada campo se asigna al abrir: sin el rastro de otra compañía.
+    companyForm.legal_name = membership.legal_name ?? '';
+    companyForm.trade_name = membership.trade_name ?? '';
+    companyForm.tax_id = membership.tax_id ?? '';
+    editingCompanyId.value = membership.id;
+}
+
+// Bajo el nombre, la razón social (si no es el mismo nombre) y la cédula.
+function membershipDetail(membership) {
+    return [
+        membership.trade_name ? membership.legal_name : null,
+        membership.tax_id ? `Cédula jurídica ${membership.tax_id}` : null,
+    ].filter(Boolean).join(' · ');
+}
+
+function closeCompany() {
+    editingCompanyId.value = null;
+}
+
+function saveCompany() {
+    companyForm.put(route('profile.companies.update', editingCompanyId.value), {
+        preserveScroll: true,
+        onSuccess: closeCompany,
+    });
+}
 
 const photoForm = useForm({ photo: null });
 const photoInput = ref(null);
@@ -239,21 +274,70 @@ function changePassword() {
                 <p v-if="!memberships.length" class="muted hint">Tu cuenta todavía no pertenece a ninguna compañía.</p>
                 <template v-else>
                     <p class="muted hint">
-                        El rol es de cada compañía: lo asigna quien la administra, y por eso no se cambia desde acá.
+                        El rol es de cada compañía: lo asigna quien la administra, y por eso no se cambia desde acá. Los
+                        datos de una compañía —razón social, nombre comercial y cédula jurídica— los cambia su Superusuario.
                     </p>
                     <ul class="memberships">
                         <li v-for="membership in memberships" :key="membership.id">
-                            <span class="membership-name">{{ membership.name }}</span>
+                            <span class="membership-main">
+                                <span class="membership-name">{{ membership.name }}</span>
+                                <span v-if="membershipDetail(membership)" class="membership-detail muted">
+                                    {{ membershipDetail(membership) }}
+                                </span>
+                            </span>
                             <span class="membership-tags">
                                 <span v-if="membership.is_current" class="badge badge-success">Activa ahora</span>
                                 <span v-if="membership.is_default" class="badge badge-neutral">Predeterminada</span>
                                 <span class="badge badge-neutral">{{ ROLE_LABELS[membership.role] ?? membership.role }}</span>
+                                <button
+                                    v-if="membership.can_edit"
+                                    type="button"
+                                    class="btn btn-ghost edit-company"
+                                    :aria-label="`Editar los datos de ${membership.name}`"
+                                    @click="editCompany(membership)"
+                                >
+                                    <PencilIcon /> Editar datos
+                                </button>
                             </span>
                         </li>
                     </ul>
                 </template>
             </div>
         </section>
+
+        <DetailModal :open="!!editingCompany" :title="editingCompany ? `Datos de ${editingCompany.name}` : ''" @close="closeCompany">
+            <form v-if="editingCompany" id="company-details-form" @submit.prevent="saveCompany">
+                <p class="muted hint">
+                    La razón social y la cédula jurídica salen en el encabezado de los reportes y en los comprobantes
+                    electrónicos que se emitan desde ahora. Los que ya se emitieron no cambian.
+                </p>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="company-legal-name">Razón social</label>
+                        <input id="company-legal-name" v-model="companyForm.legal_name" type="text" maxlength="255" required>
+                        <span v-if="companyForm.errors.legal_name" class="error">{{ companyForm.errors.legal_name }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="company-trade-name">Nombre comercial</label>
+                        <input id="company-trade-name" v-model="companyForm.trade_name" type="text" maxlength="255" aria-describedby="company-trade-name-hint">
+                        <span id="company-trade-name-hint" class="field-hint muted">Si lo dejás vacío, se usa la razón social.</span>
+                        <span v-if="companyForm.errors.trade_name" class="error">{{ companyForm.errors.trade_name }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="company-tax-id">Cédula jurídica (opcional)</label>
+                        <input id="company-tax-id" v-model="companyForm.tax_id" type="text" maxlength="50">
+                        <span v-if="companyForm.errors.tax_id" class="error">{{ companyForm.errors.tax_id }}</span>
+                    </div>
+                </div>
+            </form>
+
+            <template #actions>
+                <button type="button" class="btn btn-ghost" @click="closeCompany">Cancelar</button>
+                <button type="submit" form="company-details-form" class="btn btn-primary" :disabled="companyForm.processing">
+                    <CheckIcon /> Guardar datos
+                </button>
+            </template>
+        </DetailModal>
     </AppLayout>
 </template>
 
@@ -291,6 +375,10 @@ function changePassword() {
     font-size: 0.88rem;
 }
 
+.membership-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .membership-name { font-weight: 600; overflow-wrap: anywhere; }
+.membership-detail { font-size: 0.8rem; overflow-wrap: anywhere; }
+.edit-company { padding: 0.2rem 0.55rem; font-size: 0.78rem; }
+.field-hint { display: block; margin-top: 0.2rem; font-size: 0.75rem; }
 .membership-tags { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
 </style>

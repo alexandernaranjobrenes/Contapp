@@ -52,6 +52,13 @@ watch(() => companySwitch.status, async (status) => {
 
                     <p v-if="companySwitch.from" class="switch-from">desde {{ companySwitch.from.name }}</p>
 
+                    <!-- Vencida se entra igual, en modo de gracia: que no sea
+                         una sorpresa no poder guardar nada. -->
+                    <p v-if="companySwitch.to?.licenseState === 'expired'" class="switch-grace">
+                        Su licencia está vencida: vas a poder consultar y exportar, pero no crear ni modificar registros
+                        hasta que se renueve.
+                    </p>
+
                     <div class="switch-progress" :class="{ full: companySwitch.status === 'done' || companySwitch.status === 'leaving' }">
                         <span class="switch-progress-bar"></span>
                     </div>
@@ -78,7 +85,8 @@ watch(() => companySwitch.status, async (status) => {
                             <button type="button" class="btn btn-ghost" @click="stayInCurrentCompany">
                                 <Undo2Icon /> Volver a {{ companySwitch.from?.name }}
                             </button>
-                            <button type="button" class="btn btn-ghost" @click="retryCompanySwitch">
+                            <!-- Con la licencia bloqueada, reintentar no cambia nada. -->
+                            <button v-if="companySwitch.error?.canRetry !== false" type="button" class="btn btn-ghost" @click="retryCompanySwitch">
                                 <RotateCcwIcon /> Reintentar
                             </button>
                         </template>
@@ -240,6 +248,18 @@ watch(() => companySwitch.status, async (status) => {
     max-width: 26rem;
     font-size: 0.82rem;
     color: rgba(244, 246, 250, 0.75);
+}
+
+/* El aviso de licencia vencida: sobre el fondo oscuro, con el acento. */
+.switch-grace {
+    margin: 0.9rem 0 0;
+    max-width: 26rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: rgba(244, 246, 250, 0.9);
 }
 
 .switch-logout-link {

@@ -2,42 +2,45 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Core\Exceptions\CompanyInvitationException;
 use App\Domains\Core\Exceptions\PrivilegeEscalationException;
-use App\Domains\Core\Exceptions\UserNotFoundException;
 use App\Domains\Core\Models\Company;
-use App\Domains\Core\Models\Module;
-use App\Domains\Core\Models\ModulePermission;
+use App\Domains\Core\Models\CompanyInvitation;
+use App\Domains\Core\Services\CompanyInvitationService;
 use App\Domains\Core\Services\PermissionGrantService;
+use App\Domains\Core\Services\ScreenAccessService;
 use App\Domains\Core\Services\UserLifecycleService;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Core\Support\MediaStorage;
-use App\Domains\Core\Support\PasswordPolicy;
+use App\Domains\Core\Support\ScreenCatalog;
 use App\Domains\Licensing\Exceptions\LicenseQuotaExceededException;
 use App\Models\User;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
  * Gestión de usuarios dentro de una licencia (CLAUDE.md secc. 12, 14, 16).
  * Protegido por el middleware 'can-manage-users' en routes/web.php.
+ *
+ * Dar de alta es invitar (CompanyInvitationService): se pone el correo, el
+ * rol y los permisos; la persona acepta desde el correo y, si no tenía
+ * cuenta, elige ahí su nombre y su contraseña. Los permisos son por pantalla
+ * del menú (ScreenCatalog).
  */
 class UserManagementController extends Controller
 {
-    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, MediaStorage $media): Response
+    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens, MediaStorage $media): Response
     {
         $company = Company::findOrFail($currentCompany->id());
-        $modules = Module::orderBy('name')->get();
         $grantor = $request->user();
+        $grantorIsSuperAdmin = $grantor->isSuperAdmin($company->id);
 
-        $users = $company->users()->get()->map(function (User $user) use ($company, $modules, $grantor, $service, $media) {
-            $permissions = ModulePermission::where('company_id', $company->id)
-                ->where('subject_type', 'user')
-                ->where('subject_id', $user->id)
-                ->pluck('access_level', 'module_id');
-
+        $users = $company->users()->get()->map(function (User $user) use ($company, $grantor, $grantorIsSuperAdmin, $service, $screens, $media) {
             $isSuperAdmin = $user->isSuperAdmin($company->id);
 
             return [
@@ -49,14 +52,31 @@ class UserManagementController extends Controller
                 'role_type' => $isSuperAdmin ? 'super_admin' : $user->roleTypeFor($company->id),
                 'status' => $user->pivot->status,
                 'can_manage' => ! $isSuperAdmin && $service->canManage($grantor, $user, $company->id),
-                'permissions' => $modules->map(fn (Module $module) => [
-                    'module' => $module->only(['id', 'code', 'name']),
-                    'access_level' => $isSuperAdmin ? 'read_write' : ($permissions[$module->id] ?? 'none'),
-                ])->values(),
+                // Convertir Usuario ↔ Administrador: solo el Superusuario.
+                'can_change_role' => ! $isSuperAdmin && $grantorIsSuperAdmin,
+                'access' => $isSuperAdmin ? null : $this->accessSummary($screens->levelsFor($user, $company->id)),
             ];
         });
 
-        return Inertia::render('Users/Index', ['users' => $users]);
+        $invitations = CompanyInvitation::notAccepted()
+            ->where('company_id', $company->id)
+            ->with('inviter:id,name')
+            ->orderByDesc('sent_at')
+            ->get()
+            ->map(fn (CompanyInvitation $invitation) => [
+                'id' => $invitation->id,
+                'email' => $invitation->email,
+                'role_type' => $invitation->role_type,
+                'status' => $invitation->status(),
+                'inviter' => $invitation->inviter?->name,
+                'sent_at' => $invitation->sent_at?->toIso8601String(),
+                'expires_at' => $invitation->expires_at?->toIso8601String(),
+                'send_count' => $invitation->send_count,
+                'can_manage' => $this->canManageInvitation($grantor, $invitation, $service),
+                'access' => $this->accessSummary($invitation->screen_permissions ?? []),
+            ]);
+
+        return Inertia::render('Users/Index', ['users' => $users, 'invitations' => $invitations]);
     }
 
     public function create(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service): Response
@@ -74,127 +94,107 @@ class UserManagementController extends Controller
             }));
         }
 
+        $pending = $license
+            ? CompanyInvitation::pending()->whereIn('company_id', $license->companies()->pluck('id'))->get(['role_type'])->countBy('role_type')
+            : collect();
+
         return Inertia::render('Users/Create', [
-            'passwordRequirements' => PasswordPolicy::requirements(),
             'grantableRoleTypes' => $grantableRoleTypes,
-            'license' => $license ? [
+            'quota' => $license ? [
                 'admins_count' => $license->adminsCount(),
                 'max_admins' => $license->max_admins,
                 'users_count' => $license->usersCount(),
                 'max_users' => $license->max_users,
+                'pending_admins' => $pending['admin'] ?? 0,
+                'pending_users' => $pending['user'] ?? 0,
             ] : null,
-            'modules' => Module::orderBy('name')->get()->map(fn (Module $module) => [
-                'id' => $module->id,
-                'code' => $module->code,
-                'name' => $module->name,
-                'max_access_level' => $service->effectiveAccessLevel($grantor, $company->id, $module),
-            ]),
+            'sections' => $this->screenTree($service->grantableScreenLevels($grantor, $company->id)),
+            'expiresInDays' => CompanyInvitationService::EXPIRES_IN_DAYS,
         ]);
     }
 
-    public function store(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service): RedirectResponse
+    /** Invita a una persona: le llega un correo para aceptar. */
+    public function store(Request $request, CurrentCompany $currentCompany, CompanyInvitationService $invitations): RedirectResponse
     {
         $company = Company::findOrFail($currentCompany->id());
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', PasswordPolicy::rule()],
-            'role_type' => ['required', 'string', 'in:admin,user'],
-            'permissions' => ['array'],
-            'permissions.*' => ['string', 'in:none,read,read_write'],
-        ]);
-
-        $modulePermissions = collect($validated['permissions'] ?? [])
-            ->filter(fn ($level) => $level !== 'none')
-            ->all();
+        $validated = $this->validateInvitation($request);
 
         try {
-            $service->createUser(
-                $request->user(),
-                $company,
-                ['name' => $validated['name'], 'email' => $validated['email'], 'password' => $validated['password']],
-                $validated['role_type'],
-                $modulePermissions,
-            );
-        } catch (PrivilegeEscalationException|LicenseQuotaExceededException $e) {
-            return back()->withErrors(['permissions' => $e->getMessage()]);
-        }
-
-        return redirect()->route('users.index')->with('success', 'Usuario creado.');
-    }
-
-    /**
-     * Lookup previo al flujo de "invitar usuario existente" (nunca crea
-     * nada): permite mostrar en el frontend "ya existe una cuenta con este
-     * correo (nombre: X)" ANTES de que el Superusuario/Administrador
-     * confirme vincularla — mitigación mínima ante la ausencia de un flujo
-     * de invitación por correo con aceptación (no hay envío de mail real
-     * configurado, ver MAIL_MAILER=log).
-     */
-    public function lookup(Request $request): JsonResponse
-    {
-        $validated = $request->validate(['email' => ['required', 'email']]);
-
-        $user = User::where('email', $validated['email'])->where('status', 'active')->first();
-
-        return response()->json([
-            'exists' => (bool) $user,
-            'name' => $user?->name,
-        ]);
-    }
-
-    public function storeInvite(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service): RedirectResponse
-    {
-        $company = Company::findOrFail($currentCompany->id());
-
-        $validated = $request->validate([
-            'email' => ['required', 'email'],
-            'role_type' => ['required', 'string', 'in:admin,user'],
-            'permissions' => ['array'],
-            'permissions.*' => ['string', 'in:none,read,read_write'],
-        ]);
-
-        $modulePermissions = collect($validated['permissions'] ?? [])
-            ->filter(fn ($level) => $level !== 'none')
-            ->all();
-
-        try {
-            $user = $service->inviteUser(
+            ['invitation' => $invitation, 'mailed' => $mailed] = $invitations->invite(
                 $request->user(),
                 $company,
                 $validated['email'],
                 $validated['role_type'],
-                $modulePermissions,
+                $validated['permissions'] ?? [],
             );
-        } catch (UserNotFoundException|PrivilegeEscalationException|LicenseQuotaExceededException $e) {
-            return back()->withErrors(['email' => $e->getMessage()]);
+        } catch (CompanyInvitationException $e) {
+            return back()->withErrors([$e->field => $e->getMessage()]);
+        } catch (PrivilegeEscalationException|LicenseQuotaExceededException $e) {
+            return back()->withErrors(['permissions' => $e->getMessage()]);
         }
 
-        return redirect()->route('users.index')->with('success', "{$user->name} ahora tiene acceso a esta compañía.");
+        return redirect()->route('users.index')->with(...$this->sentMessage($invitation, $mailed));
     }
 
-    public function editPermissions(int $user, CurrentCompany $currentCompany, PermissionGrantService $service): Response
+    /**
+     * Antes de invitar: ¿el correo ya tiene cuenta en CONTAPP? Si la tiene, se
+     * muestra su nombre, para que quien invita reconozca a la persona. Nunca
+     * crea nada.
+     */
+    public function lookup(Request $request, CurrentCompany $currentCompany, CompanyInvitationService $invitations): JsonResponse
+    {
+        $validated = $request->validate(['email' => ['required', 'email']]);
+        $account = $invitations->accountFor($validated['email']);
+
+        return response()->json([
+            'exists' => $account !== null && $account->status === 'active',
+            'name' => $account?->status === 'active' ? $account->name : null,
+            'member' => $account !== null && $account->companies()->whereKey($currentCompany->id())->exists(),
+        ]);
+    }
+
+    public function resendInvitation(Request $request, int $invitation, CurrentCompany $currentCompany, CompanyInvitationService $invitations, PermissionGrantService $service): RedirectResponse
+    {
+        $invitation = $this->ownInvitation($invitation, $currentCompany);
+        abort_unless($this->canManageInvitation($request->user(), $invitation, $service), 403, 'No podés gestionar esta invitación.');
+
+        try {
+            $mailed = $invitations->send($invitation);
+        } catch (CompanyInvitationException $e) {
+            return back()->withErrors(['invitation' => $e->getMessage()]);
+        }
+
+        return back()->with(...$this->sentMessage($invitation, $mailed));
+    }
+
+    public function destroyInvitation(Request $request, int $invitation, CurrentCompany $currentCompany, CompanyInvitationService $invitations, PermissionGrantService $service): RedirectResponse
+    {
+        $invitation = $this->ownInvitation($invitation, $currentCompany);
+        abort_unless($this->canManageInvitation($request->user(), $invitation, $service), 403, 'No podés gestionar esta invitación.');
+
+        try {
+            $invitations->cancel($invitation);
+        } catch (CompanyInvitationException $e) {
+            return back()->withErrors(['invitation' => $e->getMessage()]);
+        }
+
+        return back()->with('success', "Cancelaste la invitación a {$invitation->email}: el enlace del correo ya no sirve.");
+    }
+
+    public function editPermissions(int $user, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens): Response
     {
         $company = Company::findOrFail($currentCompany->id());
         $target = User::findOrFail($user);
+        $grantor = request()->user();
 
-        abort_unless($service->canManage(request()->user(), $target, $company->id), 403);
-
-        $current = ModulePermission::where('company_id', $company->id)
-            ->where('subject_type', 'user')
-            ->where('subject_id', $target->id)
-            ->pluck('access_level', 'module_id');
+        abort_unless($service->canManage($grantor, $target, $company->id), 403);
 
         return Inertia::render('Users/Permissions', [
             'targetUser' => $target->only(['id', 'name', 'email']),
-            'modules' => Module::orderBy('name')->get()->map(fn (Module $module) => [
-                'id' => $module->id,
-                'code' => $module->code,
-                'name' => $module->name,
-                'current_access_level' => $current[$module->id] ?? 'none',
-                'max_access_level' => $service->effectiveAccessLevel(request()->user(), $company->id, $module),
-            ]),
+            'sections' => $this->screenTree(
+                $service->grantableScreenLevels($grantor, $company->id),
+                $screens->levelsFor($target, $company->id),
+            ),
         ]);
     }
 
@@ -203,13 +203,10 @@ class UserManagementController extends Controller
         $company = Company::findOrFail($currentCompany->id());
         $target = User::findOrFail($user);
 
-        $validated = $request->validate([
-            'permissions' => ['array'],
-            'permissions.*' => ['string', 'in:none,read,read_write'],
-        ]);
+        $validated = $request->validate($this->permissionRules());
 
         try {
-            $service->updatePermissions($request->user(), $target, $company->id, $validated['permissions'] ?? []);
+            $service->updateScreenPermissions($request->user(), $target, $company->id, $validated['permissions'] ?? []);
         } catch (PrivilegeEscalationException $e) {
             return back()->withErrors(['permissions' => $e->getMessage()]);
         }
@@ -219,40 +216,134 @@ class UserManagementController extends Controller
 
     public function suspend(int $user, CurrentCompany $currentCompany, UserLifecycleService $service): RedirectResponse
     {
-        $target = User::findOrFail($user);
-
-        try {
-            $service->suspend(request()->user(), $target, $currentCompany->id());
-        } catch (PrivilegeEscalationException $e) {
-            return back()->withErrors(['user' => $e->getMessage()]);
-        }
-
-        return back()->with('success', "{$target->name} fue suspendido.");
+        return $this->changeStatus($user, $currentCompany, fn (User $target) => $service->suspend(request()->user(), $target, $currentCompany->id()), 'fue suspendido');
     }
 
     public function reactivate(int $user, CurrentCompany $currentCompany, UserLifecycleService $service): RedirectResponse
     {
-        $target = User::findOrFail($user);
-
-        try {
-            $service->reactivate(request()->user(), $target, $currentCompany->id());
-        } catch (PrivilegeEscalationException $e) {
-            return back()->withErrors(['user' => $e->getMessage()]);
-        }
-
-        return back()->with('success', "{$target->name} fue reactivado.");
+        return $this->changeStatus($user, $currentCompany, fn (User $target) => $service->reactivate(request()->user(), $target, $currentCompany->id()), 'fue reactivado');
     }
 
     public function deactivate(int $user, CurrentCompany $currentCompany, UserLifecycleService $service): RedirectResponse
     {
+        return $this->changeStatus($user, $currentCompany, fn (User $target) => $service->deactivate(request()->user(), $target, $currentCompany->id()), 'fue desactivado');
+    }
+
+    /** El Superusuario convierte a un Usuario en Administrador, o al revés. */
+    public function changeRole(Request $request, int $user, CurrentCompany $currentCompany, PermissionGrantService $service): RedirectResponse
+    {
+        $company = Company::findOrFail($currentCompany->id());
+        $target = User::findOrFail($user);
+        $roleType = $request->validate(['role_type' => ['required', 'string', 'in:admin,user']])['role_type'];
+
+        try {
+            $service->changeRole($request->user(), $target, $company, $roleType);
+        } catch (PrivilegeEscalationException|LicenseQuotaExceededException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "{$target->name} ahora es ".($roleType === 'admin' ? 'Administrador' : 'Usuario').' en esta compañía.');
+    }
+
+    /**
+     * Suspender, reactivar o desactivar, y avisarle a la persona por correo
+     * (UserLifecycleService). El mensaje dice si el correo salió.
+     */
+    private function changeStatus(int $user, CurrentCompany $currentCompany, Closure $apply, string $done): RedirectResponse
+    {
         $target = User::findOrFail($user);
 
         try {
-            $service->deactivate(request()->user(), $target, $currentCompany->id());
+            $mailed = $apply($target);
         } catch (PrivilegeEscalationException $e) {
-            return back()->withErrors(['user' => $e->getMessage()]);
+            return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "{$target->name} fue desactivado.");
+        return back()->with('success', $mailed
+            ? "{$target->name} {$done} y le avisamos por correo a {$target->email}."
+            : "{$target->name} {$done}, pero no se pudo enviar el correo a {$target->email}.");
+    }
+
+    /** @return array<string, mixed> */
+    private function validateInvitation(Request $request): array
+    {
+        return $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'role_type' => ['required', 'string', 'in:admin,user'],
+            ...$this->permissionRules(),
+        ], [], ['email' => 'correo', 'role_type' => 'rol']);
+    }
+
+    /** Los permisos llegan como clave de pantalla => nivel. */
+    private function permissionRules(): array
+    {
+        return [
+            'permissions' => ['array'],
+            'permissions.*' => ['string', Rule::in(['none', 'read', 'read_write'])],
+        ];
+    }
+
+    /** @return array{0: string, 1: string} */
+    private function sentMessage(CompanyInvitation $invitation, bool $mailed): array
+    {
+        return $mailed
+            ? ['success', "Le enviamos la invitación a {$invitation->email}. Va a poder entrar cuando la acepte desde el correo."]
+            : ['error', "La invitación a {$invitation->email} quedó creada, pero no se pudo enviar el correo. Probá reenviarla desde su ficha en un momento."];
+    }
+
+    private function ownInvitation(int $id, CurrentCompany $currentCompany): CompanyInvitation
+    {
+        return CompanyInvitation::notAccepted()->where('company_id', $currentCompany->id())->findOrFail($id);
+    }
+
+    /** El Superusuario, todas; un Administrador, las de rol Usuario (como con las personas). */
+    private function canManageInvitation(User $grantor, CompanyInvitation $invitation, PermissionGrantService $service): bool
+    {
+        return in_array($invitation->role_type, $service->grantableRoleTypes($grantor, $invitation->company_id), true);
+    }
+
+    /**
+     * Las secciones del menú con sus pantallas, para el editor de permisos:
+     * hasta dónde puede dar quien edita y lo que la persona tiene hoy.
+     *
+     * @param  array<string, string>  $maxLevels
+     * @param  array<string, string>  $current
+     */
+    private function screenTree(array $maxLevels, array $current = []): array
+    {
+        return collect(ScreenCatalog::sections())->map(fn (array $section) => [
+            'key' => $section['key'],
+            'label' => $section['label'],
+            'screens' => collect($section['screens'])->map(fn (array $screen) => [
+                'key' => $screen['key'],
+                'label' => $screen['label'],
+                'group' => $screen['group'],
+                'read_only' => $screen['read_only'],
+                'max_level' => ScreenAccessService::min($maxLevels[$screen['key']] ?? 'none', ScreenCatalog::maxLevel($screen['key'])),
+                'current_level' => $current[$screen['key']] ?? 'none',
+            ])->values(),
+        ])->values()->all();
+    }
+
+    /**
+     * Para la ficha: por sección, qué pantallas tiene y con qué nivel.
+     *
+     * @param  array<string, string>  $levels
+     * @return list<array{label: string, screens: list<array{label: string, level: string}>}>
+     */
+    private function accessSummary(array $levels): array
+    {
+        return collect(ScreenCatalog::sections())
+            ->map(fn (array $section) => [
+                'label' => $section['label'],
+                'screens' => collect($section['screens'])
+                    ->filter(fn (array $screen) => ($levels[$screen['key']] ?? 'none') !== 'none')
+                    ->map(fn (array $screen) => ['label' => $screen['label'], 'level' => $levels[$screen['key']]])
+                    ->values()
+                    ->all(),
+            ])
+            ->filter(fn (array $section) => $section['screens'] !== [])
+            ->values()
+            ->all();
     }
 }
