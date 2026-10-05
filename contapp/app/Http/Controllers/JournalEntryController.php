@@ -31,6 +31,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -931,7 +932,7 @@ class JournalEntryController extends Controller
             ->where('company_id', $companyId)
             ->value('requires_electronic_key');
 
-        return $request->validate([
+        $validated = $request->validate([
             'intent' => ['required', 'in:draft,post'],
             'document_type_id' => ['required', 'integer'],
             // document_date es puramente informativa (fecha del documento
@@ -1011,7 +1012,74 @@ class JournalEntryController extends Controller
             // dentro de la transacción (mismo criterio que ya se usa para
             // tax_rate_id, cuya vigencia/monto también se valida más adentro).
             'lines.*.apply_to_open_item_id' => ['nullable', 'integer', 'exists:bp_open_items,id'],
+
+            // El reparto de UNA línea entre VARIAS partidas, cada una con su
+            // monto: es lo que permite que un cobro cancele una factura y
+            // abone otra. Que la suma sea exactamente el monto de la línea lo
+            // garantiza JournalLineInput; que cada partida sea del mismo
+            // socio, compañía y moneda, PostJournalService.
+            'lines.*.open_item_applications' => ['array'],
+            'lines.*.open_item_applications.*.open_item_id' => ['required', 'integer', 'exists:bp_open_items,id'],
+            'lines.*.open_item_applications.*.amount' => ['required', 'numeric', 'gt:0'],
         ]);
+
+        $this->assertApplicationsMatchLineAmount($validated, $intent);
+
+        return $validated;
+    }
+
+    /**
+     * El reparto de cada línea tiene que sumar el monto de la línea.
+     *
+     * La regla vive en JournalLineInput, que es quien la garantiza para TODOS
+     * los que contabilizan —facturación, notas de crédito, el motor de
+     * planilla—. Pero el DTO la impone con una InvalidArgumentException, que
+     * no es una RuntimeException y por tanto no la atrapa el try/catch de
+     * store(): al usuario le salía una pantalla de error 500 en vez de un
+     * mensaje.
+     *
+     * Así que acá se comprueba antes, para devolverla como lo que es —un dato
+     * del formulario que no cuadra— sin quitarle al DTO su última línea de
+     * defensa.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function assertApplicationsMatchLineAmount(array $validated, string $intent): void
+    {
+        foreach ($validated['lines'] ?? [] as $index => $line) {
+            $applications = $line['open_item_applications'] ?? [];
+
+            if ($applications === []) {
+                continue;
+            }
+
+            $applied = array_reduce(
+                $applications,
+                fn (string $carry, array $a) => bcadd($carry, number_format((float) $a['amount'], 2, '.', ''), 2),
+                '0.00'
+            );
+
+            $debit = number_format((float) ($line['debit'] ?? 0), 2, '.', '');
+            $credit = number_format((float) ($line['credit'] ?? 0), 2, '.', '');
+            $amount = bccomp($debit, '0.00', 2) > 0 ? $debit : $credit;
+
+            // Un borrador puede estar a medio llenar: ahí la línea todavía no
+            // tiene monto contra el cual cuadrar el reparto.
+            if ($intent !== 'post' && bccomp($amount, '0.00', 2) === 0) {
+                continue;
+            }
+
+            if (bccomp($applied, $amount, 2) !== 0) {
+                throw ValidationException::withMessages([
+                    "lines.{$index}.open_item_applications" => sprintf(
+                        'Lo repartido entre partidas (%s) no coincide con el monto de la línea (%s). '.
+                        'Si el socio pagó de más, el sobrante necesita su propia línea.',
+                        $applied,
+                        $amount,
+                    ),
+                ]);
+            }
+        }
     }
 
     /**
@@ -1034,7 +1102,13 @@ class JournalEntryController extends Controller
                 electronicKey: $line['electronic_key'] ?? null,
                 dueDate: $line['due_date'] ?? null,
                 opensItem: $line['opens_item'] ?? false,
-                applyToOpenItemId: isset($line['apply_to_open_item_id']) ? (int) $line['apply_to_open_item_id'] : null,
+                // Las dos formas conviven: el selector de una sola partida
+                // manda apply_to_open_item_id y el repartidor manda la lista.
+                // El DTO normaliza la primera a la segunda.
+                applyToOpenItemId: ($line['open_item_applications'] ?? []) === [] && isset($line['apply_to_open_item_id'])
+                    ? (int) $line['apply_to_open_item_id']
+                    : null,
+                openItemApplications: $line['open_item_applications'] ?? [],
                 referenceDocument: $line['reference_document'] ?? null,
                 referenceDocumentDate: $line['reference_document_date'] ?? null,
             ),

@@ -59,12 +59,17 @@ class BankReconciliationService
             ->whereHas('bankReconciliation', fn ($q) => $q->where('bank_account_id', $bankAccount->id))
             ->pluck('journal_detail_id');
 
+        // Mismo criterio que ledgerBalance(): si el saldo cuenta el anulado y
+        // su espejo, la lista de movimientos a confirmar también tiene que
+        // traerlos. Si no, el espejo quedaría como un movimiento pendiente de
+        // ver en el banco —donde nunca va a aparecer, porque el par no movió
+        // plata— y la conciliación no podría cerrar nunca.
         $details = JournalDetail::where('account_id', $bankAccount->gl_account_id)
             ->whereNotIn('id', $alreadyConfirmedDetailIds)
             ->whereHas('journalEntry', function ($q) use ($company, $cutoffDate) {
                 $q->withoutGlobalScope(CompanyScope::class)
                     ->where('company_id', $company->id)
-                    ->where('status', 'posted')
+                    ->whereIn('status', ['posted', 'voided'])
                     ->whereDate('posting_date', '<=', $cutoffDate->format('Y-m-d'));
             })
             ->get();
@@ -169,12 +174,35 @@ class BankReconciliationService
             }
         }
 
-        $reconciliation->update([
+        $attributes = [
             'unrecorded_deposits' => $unrecordedDeposits,
             'unpaid_checks' => $unpaidChecks,
             'unrecorded_bank_credits' => $unrecordedBankCredits,
             'unrecorded_bank_debits' => $unrecordedBankDebits,
-        ]);
+        ];
+
+        // ── El saldo de libros se vuelve a leer, no se arrastra ─────────
+        //
+        // Era una foto tomada al abrir la conciliación y nunca se refrescaba.
+        // Como una conciliación se abre y se trabaja durante días —y en el
+        // camino se siguen contabilizando asientos con fecha anterior al
+        // corte— ese número envejecía: el mayor decía una cosa y la
+        // conciliación otra, sin que nada avisara cuál estaba vieja.
+        //
+        // Un saldo es una SUMA y se recalcula; el proyecto no almacena saldos
+        // justamente por esto (CLAUDE.md). Acá se recalcula en cada
+        // recálculo, que es cada vez que se toca una línea.
+        //
+        // Una conciliación ya CERRADA no se toca: es el documento de un corte
+        // que ya se firmó, y su saldo tiene que seguir diciendo lo que decía
+        // ese día.
+        if ($reconciliation->status !== 'completed') {
+            $attributes['book_balance'] = $this->ledgerBalance(
+                $company, $bankAccount->gl_account_id, $bucket, $reconciliation->cutoff_date
+            );
+        }
+
+        $reconciliation->update($attributes);
 
         return $reconciliation->fresh();
     }
@@ -235,13 +263,32 @@ class BankReconciliationService
         );
     }
 
+    /**
+     * El saldo de libros de la cuenta a la fecha de corte.
+     *
+     * ── Cuenta lo contabilizado Y lo anulado ────────────────────────────
+     *
+     * Exactamente el mismo criterio que LedgerService, y por la misma razón:
+     * anular un asiento NO lo borra — lo marca `voided` y crea un asiento
+     * espejo `posted` con el signo contrario. Los dos tienen que contar para
+     * que el par neteé en cero.
+     *
+     * Contando solo los `posted` —como hacía esto— entra el espejo pero no el
+     * original: el saldo queda corrido por el monto completo de la reversión,
+     * y el «saldo en libros» de la conciliación deja de coincidir con el que
+     * muestra el mayor de la misma cuenta a la misma fecha.
+     *
+     * Es el mismo error que se encontró y corrigió en el mayor el 2026-09-09
+     * (ver docs/decisiones.md); había quedado vivo acá, donde duele más,
+     * porque este número es contra el que se cuadra el banco.
+     */
     private function ledgerBalance(Company $company, int $accountId, string $bucket, \DateTimeInterface $cutoffDate): string
     {
         $details = JournalDetail::where('account_id', $accountId)
             ->whereHas('journalEntry', function ($q) use ($company, $cutoffDate) {
                 $q->withoutGlobalScope(CompanyScope::class)
                     ->where('company_id', $company->id)
-                    ->where('status', 'posted')
+                    ->whereIn('status', ['posted', 'voided'])
                     ->whereDate('posting_date', '<=', $cutoffDate->format('Y-m-d'));
             })
             ->get();

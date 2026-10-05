@@ -61,13 +61,33 @@ function journalHttpFixture(): array
     $add = DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'ADD']);
 
     $fiscalYear = FiscalYear::factory()->create(['company_id' => $company->id, 'year' => (int) now()->format('Y')]);
-    FiscalPeriod::factory()->create([
-        'fiscal_year_id' => $fiscalYear->id,
-        'period_number' => (int) now()->format('n'),
-        'start_date' => now()->startOfMonth()->format('Y-m-d'),
-        'end_date' => now()->endOfMonth()->format('Y-m-d'),
-        'status' => 'open',
-    ]);
+
+    // El mes actual y el ANTERIOR.
+    //
+    // El anterior hace falta porque varias pruebas de este archivo
+    // contabilizan "unos días atrás" para probar filtros por fecha, y con
+    // solo el mes corriente eso dependía del día del calendario: el 20 pasaba
+    // y el 4 fallaba con NoOpenFiscalPeriodException, porque restarle 10 días
+    // al 4 de octubre cae en septiembre.
+    //
+    // Una prueba que pasa o falla según la fecha en que se corra no prueba
+    // nada: el primer día del mes alguien se encuentra la suite roja sin
+    // haber tocado el código.
+    foreach ([now(), now()->subMonthNoOverflow()] as $month) {
+        // Solo los meses del mismo año fiscal: en enero, el mes anterior
+        // pertenece al año pasado y ese año no existe en este fixture.
+        if ((int) $month->format('Y') !== (int) now()->format('Y')) {
+            continue;
+        }
+
+        FiscalPeriod::factory()->create([
+            'fiscal_year_id' => $fiscalYear->id,
+            'period_number' => (int) $month->format('n'),
+            'start_date' => $month->copy()->startOfMonth()->format('Y-m-d'),
+            'end_date' => $month->copy()->endOfMonth()->format('Y-m-d'),
+            'status' => 'open',
+        ]);
+    }
 
     return compact('user', 'company', 'cash', 'capital', 'add');
 }
@@ -352,6 +372,96 @@ it('contabiliza una línea que aplica a una partida existente y cierra su saldo,
 
     expect($openItem->fresh()->balance)->toEqual('0.00')
         ->and($openItem->fresh()->status)->toBe('closed');
+});
+
+it('UN SOLO COBRO repartido entre dos facturas desde el formulario', function () {
+    $fx = journalHttpFixture();
+    $cxc = ChartOfAccount::factory()->create(['company_id' => $fx['company']->id, 'code' => '1-01-02-01-001']);
+    $partner = BusinessPartner::create([
+        'company_id' => $fx['company']->id, 'code' => 'C-002', 'name' => 'Cliente dos', 'type' => 'client',
+        'gl_account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'status' => 'active',
+    ]);
+
+    // Dos facturas del mismo socio: ₡500 y ₡800.
+    foreach ([500, 800] as $monto) {
+        $this->post(route('journal-entries.store'), [
+            'document_type_id' => $fx['add']->id,
+            'document_date' => now()->format('Y-m-d'),
+            'posting_date' => now()->format('Y-m-d'),
+            'lines' => [
+                ['account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => $monto, 'credit' => 0, 'business_partner_id' => $partner->id, 'opens_item' => true],
+                ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => $monto],
+            ],
+        ])->assertRedirect(route('journal-entries.index'));
+    }
+
+    [$primera, $segunda] = BpOpenItem::orderBy('id')->get()->all();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    // Un cobro de ₡900 en UNA sola línea: cancela la de ₡500 y abona ₡400 a
+    // la de ₡800. Es el caso que el usuario no podía registrar.
+    $this->post(route('journal-entries.store'), [
+        'document_type_id' => $trb->id,
+        'document_date' => now()->format('Y-m-d'),
+        'posting_date' => now()->format('Y-m-d'),
+        'lines' => [
+            ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 900, 'credit' => 0],
+            [
+                'account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => 900,
+                'business_partner_id' => $partner->id,
+                'open_item_applications' => [
+                    ['open_item_id' => $primera->id, 'amount' => 500],
+                    ['open_item_id' => $segunda->id, 'amount' => 400],
+                ],
+            ],
+        ],
+    ])->assertRedirect(route('journal-entries.index'));
+
+    expect($primera->fresh()->balance)->toEqual('0.00')
+        ->and($primera->fresh()->status)->toBe('closed')
+        ->and($segunda->fresh()->balance)->toEqual('400.00')
+        ->and($segunda->fresh()->status)->toBe('partial');
+});
+
+it('rechaza desde el formulario un reparto que no suma el monto de la línea', function () {
+    $fx = journalHttpFixture();
+    $cxc = ChartOfAccount::factory()->create(['company_id' => $fx['company']->id, 'code' => '1-01-02-01-001']);
+    $partner = BusinessPartner::create([
+        'company_id' => $fx['company']->id, 'code' => 'C-003', 'name' => 'Cliente tres', 'type' => 'client',
+        'gl_account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'status' => 'active',
+    ]);
+
+    $this->post(route('journal-entries.store'), [
+        'document_type_id' => $fx['add']->id,
+        'document_date' => now()->format('Y-m-d'),
+        'posting_date' => now()->format('Y-m-d'),
+        'lines' => [
+            ['account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 500, 'credit' => 0, 'business_partner_id' => $partner->id, 'opens_item' => true],
+            ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => 500],
+        ],
+    ]);
+
+    $openItem = BpOpenItem::sole();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    // La línea es de ₡500 y solo se reparten ₡300: los ₡200 restantes no
+    // tendrían destino. Se rechaza en vez de aplicarlos a medias.
+    $this->post(route('journal-entries.store'), [
+        'document_type_id' => $trb->id,
+        'document_date' => now()->format('Y-m-d'),
+        'posting_date' => now()->format('Y-m-d'),
+        'lines' => [
+            ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 500, 'credit' => 0],
+            [
+                'account_id' => $cxc->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => 500,
+                'business_partner_id' => $partner->id,
+                'open_item_applications' => [['open_item_id' => $openItem->id, 'amount' => 300]],
+            ],
+        ],
+    ])->assertSessionHasErrors();
+
+    expect($openItem->fresh()->balance)->toEqual('500.00')
+        ->and($openItem->fresh()->status)->toBe('open');
 });
 
 it('el formulario de creación trae las series activas y no agotadas de cada tipo de documento', function () {

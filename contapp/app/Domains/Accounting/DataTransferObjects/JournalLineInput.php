@@ -14,6 +14,14 @@ class JournalLineInput
 
     public readonly ?string $taxableBase;
 
+    /**
+     * El reparto ya normalizado: una lista, siempre, aunque sea de un solo
+     * elemento. Ver el parámetro $openItemApplications del constructor.
+     *
+     * @var array<int, array{open_item_id: int, amount: string}>
+     */
+    public readonly array $openItemApplications;
+
     public function __construct(
         public readonly int $accountId,
         public readonly int $currencyId,
@@ -40,6 +48,17 @@ class JournalLineInput
          * mismo monto hay que distribuirlo entre varios.
          */
         public readonly ?int $costCenterId = null,
+        /**
+         * Reparto del monto de la línea entre VARIAS partidas, cada una con
+         * su monto: [['open_item_id' => 12, 'amount' => '3000.00'], ...].
+         *
+         * Es la forma general; applyToOpenItemId es el caso particular de una
+         * sola partida por el monto completo, y se normaliza a esto en el
+         * constructor para que el motor tenga un solo camino.
+         *
+         * @var array<int, array{open_item_id: int, amount: string}>
+         */
+        array $openItemApplications = [],
     ) {
         $this->debit = number_format((float) $debit, 2, '.', '');
         $this->credit = number_format((float) $credit, 2, '.', '');
@@ -66,15 +85,22 @@ class JournalLineInput
         }
 
         // Cada línea elige UNA sola cosa: o abre una partida nueva (vencimiento)
-        // o cancela una existente (aplicación) — nunca ambas (ver
-        // docs/decisiones.md 2026-08-24, respuesta del usuario: "una partida
-        // por línea").
-        if ($this->opensItem && $this->applyToOpenItemId !== null) {
+        // o cancela partidas existentes (aplicación) — nunca ambas (ver
+        // docs/decisiones.md 2026-08-24).
+        if ($this->opensItem && ($this->applyToOpenItemId !== null || $openItemApplications !== [])) {
             throw new \InvalidArgumentException('Una línea no puede abrir partida (opensItem) y aplicar a una partida existente a la vez.');
         }
 
-        if ($this->applyToOpenItemId !== null && $businessPartnerId === null) {
-            throw new \InvalidArgumentException('Una línea que aplica a una partida existente (applyToOpenItemId) requiere un socio de negocio.');
+        if ($this->applyToOpenItemId !== null && $openItemApplications !== []) {
+            throw new \InvalidArgumentException(
+                'Una línea trae applyToOpenItemId y openItemApplications a la vez: son la misma cosa expresada de dos formas.'
+            );
+        }
+
+        $this->openItemApplications = $this->normalizeApplications($openItemApplications);
+
+        if ($this->openItemApplications !== [] && $businessPartnerId === null) {
+            throw new \InvalidArgumentException('Una línea que aplica a partidas existentes requiere un socio de negocio.');
         }
 
         if ($this->taxRateId !== null && $this->taxableBase === null) {
@@ -87,7 +113,7 @@ class JournalLineInput
         // y en la práctica una cuenta de costo/gasto (la única que exige
         // norma de reparto) nunca es una cuenta de control CxC/CxP ni de
         // impuesto, así que esta combinación no tiene un caso real.
-        if ($this->costAllocationRuleId !== null && ($this->opensItem || $this->applyToOpenItemId !== null || $this->taxRateId !== null)) {
+        if ($this->costAllocationRuleId !== null && ($this->opensItem || $this->openItemApplications !== [] || $this->taxRateId !== null)) {
             throw new \InvalidArgumentException('Una línea con norma de reparto no puede abrir/aplicar partida ni llevar impuesto a la vez.');
         }
 
@@ -123,5 +149,87 @@ class JournalLineInput
     public function amount(): string
     {
         return $this->isDebit() ? $this->debit : $this->credit;
+    }
+
+    /**
+     * Normaliza el reparto entre partidas y comprueba la regla que lo
+     * gobierna.
+     *
+     * ── Lo aplicado tiene que ser EXACTAMENTE el monto de la línea ───────
+     *
+     * Un pago de ₡5.334.337,52 repartido entre tres facturas tiene que sumar
+     * ₡5.334.337,52. Ni más —eso sería aplicar plata que no entró— ni menos
+     * —eso dejaría un sobrante sin destino contable, que es como aparecen las
+     * diferencias que nadie sabe de dónde salieron—.
+     *
+     * Si el socio pagó de más y sobra, eso es un pago a cuenta y necesita su
+     * propia línea contra la cuenta que corresponda: el motor no puede
+     * adivinar cuál.
+     *
+     * @param  array<int, array{open_item_id: int|string, amount: int|float|string}>  $applications
+     * @return array<int, array{open_item_id: int, amount: string}>
+     */
+    private function normalizeApplications(array $applications): array
+    {
+        // El caso de una sola partida por el monto completo se expresa igual
+        // que el general: así el motor recorre siempre una lista y no hay dos
+        // caminos distintos que puedan divergir con el tiempo.
+        if ($this->applyToOpenItemId !== null) {
+            return [['open_item_id' => $this->applyToOpenItemId, 'amount' => $this->amount()]];
+        }
+
+        if ($applications === []) {
+            return [];
+        }
+
+        $normalized = [];
+        $seen = [];
+        $total = '0.00';
+
+        foreach ($applications as $application) {
+            if (! isset($application['open_item_id'])) {
+                throw new \InvalidArgumentException('Cada aplicación a partida requiere open_item_id.');
+            }
+
+            $id = (int) $application['open_item_id'];
+
+            // Dos renglones contra la misma partida esconden el monto real
+            // que se le está aplicando: se suman en uno solo.
+            if (isset($seen[$id])) {
+                throw new \InvalidArgumentException(
+                    "La partida id {$id} aparece dos veces en la misma línea; hay que aplicarle un solo monto."
+                );
+            }
+
+            $seen[$id] = true;
+
+            $amount = number_format((float) ($application['amount'] ?? 0), 2, '.', '');
+
+            if (bccomp($amount, '0.00', 2) <= 0) {
+                throw new \InvalidArgumentException(
+                    "El monto aplicado a la partida id {$id} debe ser mayor a cero."
+                );
+            }
+
+            $normalized[] = ['open_item_id' => $id, 'amount' => $amount];
+            $total = bcadd($total, $amount, 2);
+        }
+
+        // Un borrador puede estar a medio llenar (allowZeroAmount): ahí la
+        // línea todavía no tiene monto contra el cual cuadrar el reparto.
+        $lineAmount = $this->amount();
+
+        if ($this->allowZeroAmount && bccomp($lineAmount, '0.00', 2) === 0) {
+            return $normalized;
+        }
+
+        if (bccomp($total, $lineAmount, 2) !== 0) {
+            throw new \InvalidArgumentException(
+                "El reparto entre partidas suma {$total} y la línea es de {$lineAmount}: ".
+                'lo aplicado tiene que ser exactamente el monto de la línea.'
+            );
+        }
+
+        return $normalized;
     }
 }

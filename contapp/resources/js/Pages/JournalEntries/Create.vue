@@ -84,11 +84,207 @@ function openItemsForLine(line) {
 // Cada línea elige UNA sola cosa (ver guarda en JournalLineInput): marcar
 // "abre partida" limpia cualquier aplicación ya elegida, y viceversa.
 function onOpensItemToggle(line) {
-    if (line.opens_item) line.apply_to_open_item_id = null;
+    if (line.opens_item) line.open_item_applications = [];
 }
 
-function onApplyToOpenItemChange(line) {
-    if (line.apply_to_open_item_id) line.opens_item = false;
+// ── Reparto del monto de la línea entre varias partidas ─────────────────
+//
+// Un cobro no cancela siempre una sola factura: cancela una, abona otra y
+// deja una tercera intacta. Antes acá había un desplegable de UNA partida y
+// el motor le aplicaba el monto completo de la línea, así que repartir
+// obligaba a partir el asiento en varias líneas contra la misma cuenta —o
+// simplemente no se podía.
+//
+// Ahora la línea lleva una lista de {open_item_id, amount}: el usuario
+// escribe cuánto va a cada factura. La regla que lo gobierna —que la suma sea
+// exactamente el monto de la línea— la impone JournalLineInput; esta pantalla
+// solo la hace visible mientras se digita, para no descubrirla al guardar.
+
+const distributingLineIndex = ref(null);
+const distributionDraft = ref([]);
+
+const distributingLine = computed(
+    () => (distributingLineIndex.value === null ? null : form.lines[distributingLineIndex.value] ?? null)
+);
+
+/** El monto que hay que repartir: el débito o el crédito de la línea. */
+function lineAmount(line) {
+    return parseFloat(line?.debit) || parseFloat(line?.credit) || 0;
+}
+
+function openDistribution(index) {
+    const line = form.lines[index];
+
+    // Se arranca del reparto ya guardado, para poder corregirlo sin rehacerlo.
+    const existing = Object.fromEntries(
+        (line.open_item_applications ?? []).map((a) => [a.open_item_id, a.amount])
+    );
+
+    distributionDraft.value = openItemsForLine(line).map((oi) => ({
+        open_item_id: oi.id,
+        label: `${oi.document_type_code}-${oi.document_number}`,
+        due_date: oi.due_date,
+        currency: oi.currency?.code ?? null,
+        balance: parseFloat(oi.balance) || 0,
+        amount: existing[oi.id] ?? '',
+    }));
+
+    distributingLineIndex.value = index;
+}
+
+function closeDistribution() {
+    distributingLineIndex.value = null;
+    distributionDraft.value = [];
+}
+
+/** Llena la fila con lo que falte por repartir, sin pasarse de su saldo. */
+function fillRow(row) {
+    const pending = Math.round((lineAmount(distributingLine.value) - distributedTotal.value) * 100) / 100
+        + (parseFloat(row.amount) || 0);
+
+    row.amount = Math.min(pending, row.balance).toFixed(2);
+}
+
+const distributedTotal = computed(
+    () => distributionDraft.value.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
+);
+
+// En céntimos: con decimales, 1000 + 300 no siempre da exactamente 1300.
+const distributionRemaining = computed(() => {
+    const target = Math.round(lineAmount(distributingLine.value) * 100);
+
+    return (target - Math.round(distributedTotal.value * 100)) / 100;
+});
+
+const distributionRows = computed(() => distributionDraft.value.filter((r) => (parseFloat(r.amount) || 0) > 0));
+
+/** Una fila a la que se le quiere aplicar más de lo que debe. */
+function rowExceedsBalance(row) {
+    return Math.round((parseFloat(row.amount) || 0) * 100) > Math.round(row.balance * 100);
+}
+
+const distributionIsValid = computed(
+    () => distributionRows.value.length > 0
+        && Math.round(distributionRemaining.value * 100) === 0
+        && ! distributionDraft.value.some(rowExceedsBalance)
+);
+
+function confirmDistribution() {
+    const line = distributingLine.value;
+
+    line.open_item_applications = distributionRows.value.map((r) => ({
+        open_item_id: r.open_item_id,
+        amount: parseFloat(r.amount).toFixed(2),
+    }));
+
+    // Abrir partida y aplicar a partidas se excluyen (ver JournalLineInput).
+    if (line.open_item_applications.length) line.opens_item = false;
+
+    closeDistribution();
+}
+
+function clearDistribution(line) {
+    line.open_item_applications = [];
+}
+
+/**
+ * Lo que el reparto guardado le va a hacer a cada partida, ya resuelto contra
+ * el saldo de cada una: cancela, abona (y cuánto queda), o se pasa.
+ */
+function applicationSummary(line) {
+    const applications = line.open_item_applications ?? [];
+
+    if (! applications.length) return null;
+
+    const items = openItemsForLine(line);
+    const lineCurrency = props.currencies.find((c) => c.id === line.currency_id)?.code ?? null;
+
+    const rows = applications.map((a) => {
+        const item = items.find((oi) => oi.id === a.open_item_id);
+        const amount = parseFloat(a.amount) || 0;
+        const balance = parseFloat(item?.balance) || 0;
+        const cents = Math.round(amount * 100);
+        const balanceCents = Math.round(balance * 100);
+
+        return {
+            key: a.open_item_id,
+            label: item ? `${item.document_type_code}-${item.document_number}` : `#${a.open_item_id}`,
+            currencyMismatch: !! (item?.currency?.code && lineCurrency && item.currency.code !== lineCurrency),
+            amount,
+            remaining: (balanceCents - cents) / 100,
+            state: cents > balanceCents ? 'over' : (cents === balanceCents ? 'full' : 'partial'),
+        };
+    });
+
+    const applied = rows.reduce((sum, r) => sum + r.amount, 0);
+    const difference = (Math.round(lineAmount(line) * 100) - Math.round(applied * 100)) / 100;
+
+    return { rows, applied, difference, balanced: difference === 0 };
+}
+
+/**
+ * Qué le va a pasar a la partida cuando esta línea se contabilice.
+ *
+ * ── El abono parcial YA funcionaba; lo que faltaba era decirlo ──────────
+ *
+ * El motor aplica el monto de la línea y, si queda saldo, deja la partida en
+ * «parcial» (ApplyPaymentService). Pero la pantalla mostraba el saldo de la
+ * partida dentro del desplegable y el monto en la columna de débito o
+ * crédito —dos lugares distintos— y dejaba la resta a cargo del usuario.
+ *
+ * Con una partida de ₡12.339.036,99 y un abono de ₡5.334.337,52, saber si
+ * eso cancela o abona exige hacer la cuenta de cabeza, y no hay forma de
+ * confirmar la intención antes de contabilizar. De ahí la impresión de que
+ * el sistema «no deja hacer un abono»: lo dejaba, pero sin decirlo.
+ *
+ * El otro caso que resuelve: el SOBREPAGO. Aplicar más de lo que la partida
+ * debe lo rechaza el motor al contabilizar, y hasta ahora eso se descubría
+ * después de llenar el asiento entero. Acá se ve al escribir el monto.
+ */
+function openItemApplication(line) {
+    if (! line.apply_to_open_item_id) return null;
+
+    const item = openItemsForLine(line).find((oi) => oi.id === line.apply_to_open_item_id);
+
+    if (! item) return null;
+
+    const balance = parseFloat(item.balance) || 0;
+    // Una línea lleva débito O crédito, nunca los dos: el que tenga valor es
+    // el monto que se va a aplicar.
+    const amount = parseFloat(line.debit) || parseFloat(line.credit) || 0;
+
+    // La moneda de la línea y la de la partida tienen que ser la misma: ver
+    // la guarda del mismo nombre en PostJournalService.
+    const itemCurrency = item.currency?.code ?? null;
+    const lineCurrency = props.currencies.find((c) => c.id === line.currency_id)?.code ?? null;
+
+    if (itemCurrency && lineCurrency && itemCurrency !== lineCurrency) {
+        return { state: 'currency', balance, amount, itemCurrency, lineCurrency };
+    }
+
+    if (amount <= 0) {
+        return { state: 'pending', balance, amount, currency: itemCurrency };
+    }
+
+    // Se compara en céntimos para no arrastrar el error de coma flotante: con
+    // decimales, 5334337.52 + 7004699.47 no da exactamente 12339036.99.
+    const cents = Math.round(amount * 100);
+    const balanceCents = Math.round(balance * 100);
+
+    if (cents > balanceCents) {
+        return {
+            state: 'over', balance, amount, currency: itemCurrency,
+            excess: (cents - balanceCents) / 100,
+        };
+    }
+
+    return {
+        state: cents === balanceCents ? 'full' : 'partial',
+        balance,
+        amount,
+        currency: itemCurrency,
+        remaining: (balanceCents - cents) / 100,
+    };
 }
 
 // Aviso previo (no autoritativo — PostJournalService::post() es quien
@@ -98,7 +294,10 @@ function bpLineRequirementUnmet(line) {
     if (line.mode !== 'partner' || bpLineRequirement.value === 'none') return false;
 
     const satisfiesDueDate = !! line.opens_item;
-    const satisfiesApplication = !! line.apply_to_open_item_id;
+    // Mira el reparto, no el campo de una sola partida: ese quedó siempre
+    // vacío al reemplazar el desplegable por el repartidor, así que el aviso
+    // "falta aplicación" salía incluso con la aplicación ya hecha.
+    const satisfiesApplication = (line.open_item_applications ?? []).length > 0;
 
     if (bpLineRequirement.value === 'due_date') return ! satisfiesDueDate;
     if (bpLineRequirement.value === 'application') return ! satisfiesApplication;
@@ -236,6 +435,7 @@ function emptyLine(dueDate = null) {
         due_date: dueDate, // fecha de vencimiento de ESTA línea, si aplica
         opens_item: false, // true = esta línea queda como partida pendiente (ver bpLineRequirement)
         apply_to_open_item_id: null, // partida existente que cancela esta línea, si aplica
+        open_item_applications: [], // reparto de ESTA línea entre varias partidas: [{ open_item_id, amount }]
         reference_document: null, // número del documento fuente de ESTA línea (ej. "Factura #4521"), si aplica
         reference_document_date: null, // fecha de ESE documento, independiente de la fecha de contabilización
         _expanded: false, // UI: fila "detalle" (norma de reparto/IVA/doc. ref./vencimiento) visible aunque no tenga datos — ver showSecondary(); se descarta antes de enviar (submit())
@@ -427,6 +627,7 @@ function addLine() {
         electronic_key: null,
         opens_item: false,
         apply_to_open_item_id: null,
+        open_item_applications: [],
         _expanded: false,
     });
 }
@@ -857,19 +1058,80 @@ function submitSchedule() {
                                         Abre partida (vencimiento)
                                     </label>
 
-                                    <select
-                                        v-if="showsApplicationControl"
-                                        v-model="line.apply_to_open_item_id"
-                                        class="bp-open-item-select"
-                                        @change="onApplyToOpenItemChange(line)"
+                                    <!--
+                                        Aplicar a partidas: el monto de la línea se reparte entre
+                                        las facturas que cancela o abona, cada una con el suyo. El
+                                        desplegable de una sola partida que había antes aplicaba
+                                        siempre el monto completo de la línea, así que repartir un
+                                        cobro entre dos facturas era imposible.
+                                    -->
+                                    <button
+                                        v-if="showsApplicationControl && openItemsForLine(line).length"
+                                        type="button"
+                                        class="btn btn-ghost btn-sm bp-apply-btn"
+                                        @click="openDistribution(index)"
                                     >
-                                        <option :value="null">— Aplicar a partida —</option>
-                                        <option v-for="oi in openItemsForLine(line)" :key="oi.id" :value="oi.id">
-                                            {{ oi.document_type_code }}-{{ oi.document_number }} · vence {{ oi.due_date }} · saldo {{ oi.currency?.code }} {{ formatMoney(oi.balance) }}
-                                        </option>
-                                    </select>
+                                        <SearchIcon />
+                                        <template v-if="(line.open_item_applications ?? []).length">
+                                            {{ line.open_item_applications.length }} partida(s) ·
+                                            {{ formatMoney(applicationSummary(line).applied) }}
+                                        </template>
+                                        <template v-else>Aplicar a partidas…</template>
+                                    </button>
+
+                                    <button
+                                        v-if="(line.open_item_applications ?? []).length"
+                                        type="button" class="btn btn-ghost btn-sm bp-clear-btn"
+                                        title="Quitar el reparto de esta línea"
+                                        @click="clearDistribution(line)"
+                                    >
+                                        <XIcon />
+                                    </button>
+
                                     <span v-if="showsApplicationControl && line.business_partner_id && !openItemsForLine(line).length" class="muted small">
                                         Este socio no tiene partidas abiertas.
+                                    </span>
+
+                                    <!--
+                                        Qué le pasa a la partida con el monto de esta línea.
+                                        Se dice en palabras —abono o cancelación— y con la resta
+                                        hecha, para no obligar a hacerla de cabeza entre el saldo
+                                        del desplegable y el monto de la columna.
+                                    -->
+                                    <!--
+                                        Qué le pasa a cada partida con el reparto guardado: se dice
+                                        en palabras y con la resta hecha, para no obligar a hacerla
+                                        de cabeza entre el saldo y el monto.
+                                    -->
+                                    <span v-if="applicationSummary(line)" class="open-item-effect">
+                                        <span
+                                            v-for="row in applicationSummary(line).rows"
+                                            :key="row.key"
+                                            class="oie-row"
+                                            :class="`oie-${row.currencyMismatch ? 'over' : row.state}`"
+                                        >
+                                            <strong>{{ row.label }}:</strong>
+                                            <template v-if="row.currencyMismatch">
+                                                <TriangleAlertIcon /> está en otra moneda que la línea.
+                                            </template>
+                                            <template v-else-if="row.state === 'full'">
+                                                cancela la partida ({{ formatMoney(row.amount) }}).
+                                            </template>
+                                            <template v-else-if="row.state === 'partial'">
+                                                abono de {{ formatMoney(row.amount) }}, quedan
+                                                <strong>{{ formatMoney(row.remaining) }}</strong> pendientes.
+                                            </template>
+                                            <template v-else>
+                                                <TriangleAlertIcon /> {{ formatMoney(row.amount) }} excede su saldo.
+                                            </template>
+                                        </span>
+
+                                        <span v-if="! applicationSummary(line).balanced" class="oie-row oie-over">
+                                            <TriangleAlertIcon />
+                                            Lo repartido ({{ formatMoney(applicationSummary(line).applied) }}) no
+                                            coincide con el monto de la línea: hay una diferencia de
+                                            <strong>{{ formatMoney(applicationSummary(line).difference) }}</strong>.
+                                        </span>
                                     </span>
 
                                     <span v-if="bpLineRequirementUnmet(line)" class="bp-requirement-warning" :title="`Este tipo de documento exige: ${bpLineRequirementLabels[bpLineRequirement]}`">
@@ -912,6 +1174,84 @@ function submitSchedule() {
                 @close="documentSearchOpen = false"
                 @select="onTemplateSelected"
             />
+
+            <!--
+                El repartidor: una fila por partida abierta del socio y una
+                COLUMNA DE MONTO donde se escribe cuánto va a cada una.
+
+                No se puede confirmar hasta que lo repartido sea exactamente el
+                monto de la línea: es la misma regla que impone el motor, pero
+                dicha mientras se digita en vez de al guardar.
+            -->
+            <div v-if="distributingLine" class="modal-backdrop" @click.self="closeDistribution">
+                <div class="modal card distribution-modal">
+                    <h2>Aplicar a partidas</h2>
+
+                    <p class="hint small">
+                        Escribí cuánto de esta línea va a cada factura. Podés cancelar una y abonar otra:
+                        lo único que se exige es que la suma sea el monto de la línea.
+                    </p>
+
+                    <div class="distribution-totals">
+                        <span>Monto de la línea <strong>{{ formatMoney(lineAmount(distributingLine)) }}</strong></span>
+                        <span>Repartido <strong>{{ formatMoney(distributedTotal) }}</strong></span>
+                        <span :class="{ 'dist-pending': distributionRemaining !== 0 }">
+                            Falta <strong>{{ formatMoney(distributionRemaining) }}</strong>
+                        </span>
+                    </div>
+
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Documento</th>
+                                    <th>Vence</th>
+                                    <th class="num">Saldo</th>
+                                    <th class="num">Monto a aplicar</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in distributionDraft" :key="row.open_item_id">
+                                    <td>{{ row.label }}</td>
+                                    <td class="small muted">{{ row.due_date }}</td>
+                                    <td class="num">{{ row.currency }} {{ formatMoney(row.balance) }}</td>
+                                    <td class="num">
+                                        <input
+                                            v-model="row.amount"
+                                            type="number" step="0.01" min="0"
+                                            class="dist-amount"
+                                            :class="{ 'dist-over': rowExceedsBalance(row) }"
+                                            :max="row.balance"
+                                        >
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-ghost btn-sm" @click="fillRow(row)">
+                                            Todo
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p v-if="distributionDraft.some(rowExceedsBalance)" class="error">
+                        Hay partidas con un monto mayor a su saldo. A una partida no se le puede aplicar
+                        más de lo que debe.
+                    </p>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-ghost" @click="closeDistribution">Cancelar</button>
+                        <button
+                            type="button" class="btn btn-primary"
+                            :disabled="! distributionIsValid"
+                            @click="confirmDistribution"
+                        >
+                            Aplicar
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <p v-if="form.errors.lines" class="error form-error">{{ form.errors.lines }}</p>
 
@@ -1220,6 +1560,52 @@ function submitSchedule() {
     font-size: 0.74rem;
     color: var(--color-warning);
     white-space: normal;
+}
+
+/* El efecto sobre la partida: ocupa la fila completa para que la frase se lea
+   entera, en vez de cortarse al lado del desplegable. */
+.open-item-effect {
+    display: block;
+    flex-basis: 100%;
+    margin-top: 0.3rem;
+    font-size: 0.74rem;
+    line-height: 1.35;
+    white-space: normal;
+}
+
+.oie-row { display: block; }
+.oie-partial { color: var(--color-info); }
+.oie-full { color: var(--color-success); }
+.oie-over,
+.oie-currency { color: var(--color-danger); }
+.oie-pending { color: var(--color-text-muted); }
+
+/* El botón de aplicar y el de quitar van juntos en la misma fila: el de
+   quitar solo tiene sentido pegado al que muestra el reparto. */
+.bp-apply-btn { white-space: nowrap; }
+.bp-clear-btn { flex: 0 0 auto; }
+
+.distribution-modal { min-width: min(42rem, 92vw); }
+
+.distribution-totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.82rem;
+}
+
+/* Mientras falte repartir, el número que falta es el que hay que mirar. */
+.dist-pending { color: var(--color-warning); }
+
+.dist-amount {
+    width: 10rem;
+    text-align: right;
+}
+
+.dist-over {
+    border-color: var(--color-danger);
+    background-color: var(--color-danger-soft);
 }
 
 .cost-allocation-rule-select.needs-value {

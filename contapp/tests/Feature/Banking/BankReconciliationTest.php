@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalDetail;
+use App\Domains\Accounting\Services\LedgerService;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\Banking\Exceptions\UnbalancedReconciliationException;
 use App\Domains\Banking\Models\BankAccount;
@@ -297,4 +298,105 @@ it('delete() suelta las líneas de estado de cuenta que estaban enlazadas', func
     $service->delete($reconciliation);
 
     expect($statementLine->fresh()->matched)->toBeFalse();
+});
+
+it('EL SALDO DE LIBROS CUENTA LO ANULADO: un asiento reversado no corre el saldo', function () {
+    $fx = bankingFixture();
+    $add = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'ADD-X']);
+    $service = app(PostJournalService::class);
+
+    // Un depósito de 500 que después se anula. Anular NO borra: marca el
+    // original como 'voided' y contabiliza un espejo 'posted' con el signo
+    // contrario. El par neteá en cero, así que el saldo no debería moverse.
+    $erroneo = $service->post($fx['company'], $add, new DateTime('2026-01-12'), new DateTime('2026-01-12'), [
+        new JournalLineInput($fx['bankGlAccount']->id, $fx['company']->local_currency_id, debit: 500, credit: 0),
+        new JournalLineInput($fx['equity']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
+    ], 'Depósito por error');
+
+    $service->reverse($fx['company'], $erroneo->fresh(), new DateTime('2026-01-13'));
+
+    $reconciliation = app(BankReconciliationService::class)->open(
+        $fx['bankAccount'], new DateTime('2026-01-31'), bankBalance: 1000
+    );
+
+    // Contando solo los 'posted' entraba el espejo (−500) pero no el original
+    // (+500), y el saldo salía en 300.00 en vez de 800.00: la conciliación
+    // discrepaba del mayor de la misma cuenta a la misma fecha.
+    expect($reconciliation->book_balance)->toEqual('800.00');
+});
+
+it('el saldo de libros de la conciliación coincide con el del mayor', function () {
+    $fx = bankingFixture();
+    $add = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'ADD-X']);
+    $service = app(PostJournalService::class);
+
+    $erroneo = $service->post($fx['company'], $add, new DateTime('2026-01-12'), new DateTime('2026-01-12'), [
+        new JournalLineInput($fx['bankGlAccount']->id, $fx['company']->local_currency_id, debit: 500, credit: 0),
+        new JournalLineInput($fx['equity']->id, $fx['company']->local_currency_id, debit: 0, credit: 500),
+    ], 'Depósito por error');
+
+    $service->reverse($fx['company'], $erroneo->fresh(), new DateTime('2026-01-13'));
+
+    $reconciliation = app(BankReconciliationService::class)->open(
+        $fx['bankAccount'], new DateTime('2026-01-31'), bankBalance: 1000
+    );
+
+    // Son dos caminos distintos para el mismo número, y es el síntoma que
+    // reportó el usuario: el mayor decía una cosa y la conciliación otra.
+    $ledger = app(LedgerService::class)->build(
+        $fx['company'],
+        'account',
+        $fx['bankGlAccount']->id,
+        null,
+        '2026-01-31',
+    );
+
+    expect($reconciliation->book_balance)->toEqual(number_format((float) $ledger->closingBalance, 2, '.', ''));
+});
+
+it('EL SALDO SE REFRESCA: un asiento contabilizado después de abrir la conciliación entra al saldo', function () {
+    $fx = bankingFixture();
+    $add = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'ADD-X']);
+    $service = app(BankReconciliationService::class);
+
+    $reconciliation = $service->open($fx['bankAccount'], new DateTime('2026-01-31'), bankBalance: 1000);
+
+    expect($reconciliation->book_balance)->toEqual('800.00');
+
+    // Un depósito con fecha ANTERIOR al corte, contabilizado después de haber
+    // abierto la conciliación. Es lo normal: una conciliación se trabaja
+    // durante días y la contabilidad no se detiene mientras tanto.
+    app(PostJournalService::class)->post($fx['company'], $add, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+        new JournalLineInput($fx['bankGlAccount']->id, $fx['company']->local_currency_id, debit: 300, credit: 0),
+        new JournalLineInput($fx['equity']->id, $fx['company']->local_currency_id, debit: 0, credit: 300),
+    ], 'Depósito posterior');
+
+    // Antes esto quedaba en 800.00 para siempre: el saldo era una foto tomada
+    // al abrir y nunca se volvía a leer.
+    expect($service->recalculate($reconciliation->fresh())->book_balance)->toEqual('1100.00');
+});
+
+it('una conciliación CERRADA conserva el saldo con que se cerró', function () {
+    $fx = bankingFixture();
+    $add = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'ADD-X']);
+    $service = app(BankReconciliationService::class);
+
+    $reconciliation = $service->open($fx['bankAccount'], new DateTime('2026-01-31'), bankBalance: 800);
+
+    foreach (BankReconciliationLine::where('bank_reconciliation_id', $reconciliation->id)->get() as $line) {
+        $service->confirmInBank($line);
+    }
+
+    $cerrada = $service->close($reconciliation->fresh());
+
+    expect($cerrada->status)->toBe('completed')->and($cerrada->book_balance)->toEqual('800.00');
+
+    app(PostJournalService::class)->post($fx['company'], $add, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+        new JournalLineInput($fx['bankGlAccount']->id, $fx['company']->local_currency_id, debit: 300, credit: 0),
+        new JournalLineInput($fx['equity']->id, $fx['company']->local_currency_id, debit: 0, credit: 300),
+    ], 'Depósito posterior al cierre');
+
+    // El corte ya se firmó: su saldo tiene que seguir diciendo lo que decía
+    // ese día, aunque después se contabilice algo con fecha anterior.
+    expect($service->recalculate($cerrada->fresh())->book_balance)->toEqual('800.00');
 });

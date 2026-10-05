@@ -232,7 +232,7 @@ class PostJournalService
                 // que una línea nunca trae ambas a la vez.
                 if ($documentType->bp_line_requirement !== 'none' && $line->businessPartnerId !== null) {
                     $satisfiesDueDate = $line->opensItem;
-                    $satisfiesApplication = $line->applyToOpenItemId !== null;
+                    $satisfiesApplication = $line->openItemApplications !== [];
 
                     $satisfied = match ($documentType->bp_line_requirement) {
                         'due_date' => $satisfiesDueDate,
@@ -250,7 +250,7 @@ class PostJournalService
                     }
                 }
 
-                if ($line->applyToOpenItemId !== null) {
+                if ($line->openItemApplications !== []) {
                     $applyItemLines[$index] = $line;
                 }
 
@@ -859,9 +859,16 @@ class PostJournalService
      * diferencia del flujo de OpenItemController::applyPayment(), que hace
      * ambos pasos por separado y fuera de este service.
      *
-     * El monto aplicado es el propio monto (débito o crédito) de la línea:
-     * no tiene sentido que "cuánto pago" y "cuánto contabilizo" difieran
-     * dentro del mismo asiento.
+     * ── Una línea puede repartirse entre VARIAS partidas ────────────────
+     *
+     * Un cobro de ₡5.334.337,52 puede cancelar una factura completa y abonar
+     * otra, cada una por su monto. El DTO ya garantiza que la suma del
+     * reparto es exactamente el monto de la línea, así que "cuánto pago" y
+     * "cuánto aplico" nunca difieren dentro del mismo asiento.
+     *
+     * El caso corriente —una sola partida por el monto completo— es ese mismo
+     * reparto con un elemento: el DTO lo normaliza para que acá haya un solo
+     * camino.
      */
     private function applyToExistingOpenItem(
         Company $company,
@@ -870,24 +877,68 @@ class PostJournalService
         \DateTimeInterface $postingDate,
         ?int $createdBy,
     ): void {
+        foreach ($line->openItemApplications as $application) {
+            $this->applyOneOpenItem(
+                $company, $journalEntry, $line, $application, $postingDate, $createdBy
+            );
+        }
+    }
+
+    /**
+     * Un renglón del reparto: valida que la partida sea de esta compañía, de
+     * este socio y de esta moneda, y le aplica su monto.
+     *
+     * @param  array{open_item_id: int, amount: string}  $application
+     */
+    private function applyOneOpenItem(
+        Company $company,
+        JournalEntry $journalEntry,
+        JournalLineInput $line,
+        array $application,
+        \DateTimeInterface $postingDate,
+        ?int $createdBy,
+    ): void {
         // No se usa el CompanyScope ambiental de BusinessPartner (ver
         // docstring de la clase): este service debe ser correcto incluso sin
         // CurrentCompany seteado.
         $openItem = BpOpenItem::with(['businessPartner' => fn ($q) => $q->withoutGlobalScope(CompanyScope::class)])
-            ->find($line->applyToOpenItemId);
+            ->find($application['open_item_id']);
 
         if (! $openItem || ! $openItem->businessPartner || $openItem->businessPartner->company_id !== $company->id) {
-            throw new InvalidOpenItemException("La partida id {$line->applyToOpenItemId} no existe en esta compañía.");
+            throw new InvalidOpenItemException("La partida id {$application['open_item_id']} no existe en esta compañía.");
         }
 
         if ($openItem->business_partner_id !== $line->businessPartnerId) {
             throw new InvalidOpenItemException("La partida #{$openItem->id} no pertenece al socio de negocio de esta línea.");
         }
 
+        // ── La moneda de la línea tiene que ser la de la partida ────────
+        //
+        // ApplyPaymentService compara el monto aplicado contra el saldo como
+        // dos números pelados: no sabe de monedas. Sin esta guarda, una línea
+        // de ₡5.000 aplicada a una partida de US$5.000 pasaba la validación
+        // de sobrepago —5.000 no excede a 5.000— y la cerraba por completo.
+        //
+        // El resultado era una cuenta por cobrar cancelada con una
+        // quinceava parte de lo que valía, sin ningún error: ni la partida ni
+        // el asiento quedaban descuadrados entre sí, así que no había nada
+        // que delatara el problema hasta conciliar con el socio.
+        //
+        // Se compara por moneda y no por tipo de cambio a propósito: una
+        // partida se abona en la moneda en que se pactó. Convertir acá
+        // implicaría decidir con qué tipo de cambio, y esa decisión no le
+        // corresponde al motor del asiento.
+        if ($openItem->currency_id !== $line->currencyId) {
+            throw new InvalidOpenItemException(
+                "La partida #{$openItem->id} está en otra moneda que la línea que intenta aplicarla. ".
+                'Una partida se abona en la moneda en que se pactó.'
+            );
+        }
+
         $this->applyPaymentService->apply(
             $openItem,
             $journalEntry,
-            $line->amount(),
+            $application['amount'],
             $postingDate,
             createdBy: $createdBy,
         );

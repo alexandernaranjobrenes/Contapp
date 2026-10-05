@@ -1382,6 +1382,168 @@ it('rechaza aplicar una línea a una partida de OTRO socio de negocio', function
     ]);
 })->throws(InvalidOpenItemException::class);
 
+it('LA PRUEBA DEL REPARTO: una sola línea cancela una factura y abona otra', function () {
+    $fx = bpControlFixture();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    // Una segunda factura del mismo socio: ₡400 además de los ₡1.000 que ya
+    // trae el fixture.
+    app(PostJournalService::class)->post(
+        $fx['company'], $fx['documentType'], new DateTime('2026-01-06'), new DateTime('2026-01-06'),
+        [
+            new JournalLineInput($fx['cxc']->id, $fx['company']->local_currency_id, debit: 400, credit: 0, businessPartnerId: $fx['client']->id, opensItem: true),
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 0, credit: 400),
+        ],
+    );
+
+    $segunda = BpOpenItem::where('business_partner_id', $fx['client']->id)
+        ->whereKeyNot($fx['openItem']->id)->sole();
+
+    // Un cobro de ₡1.300: cancela los ₡1.000 de la primera y abona ₡300 a la
+    // segunda. UNA sola línea de crédito, como lo pidió el usuario.
+    $payment = app(PostJournalService::class)->post($fx['company'], $trb, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+        new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 1300, credit: 0),
+        new JournalLineInput(
+            $fx['cxc']->id, $fx['company']->local_currency_id, debit: 0, credit: 1300,
+            businessPartnerId: $fx['client']->id,
+            openItemApplications: [
+                ['open_item_id' => $fx['openItem']->id, 'amount' => 1000],
+                ['open_item_id' => $segunda->id, 'amount' => 300],
+            ],
+        ),
+    ]);
+
+    expect($payment->status)->toBe('posted');
+
+    expect($fx['openItem']->fresh()->balance)->toEqual('0.00')
+        ->and($fx['openItem']->fresh()->status)->toBe('closed')
+        ->and($segunda->fresh()->balance)->toEqual('100.00')
+        ->and($segunda->fresh()->status)->toBe('partial');
+
+    // Dos aplicaciones, una por partida, ambas colgando del mismo asiento.
+    expect(BpPaymentApplication::where('payment_journal_entry_id', $payment->id)->count())->toBe(2);
+});
+
+it('exige que el reparto sume exactamente el monto de la línea', function () {
+    $fx = bpControlFixture();
+
+    // ₡600 repartidos sobre una línea de ₡1.000: faltan ₡400 sin destino.
+    // Admitirlo dejaría un sobrante que no está en ninguna cuenta.
+    new JournalLineInput(
+        $fx['cxc']->id, $fx['company']->local_currency_id, debit: 0, credit: 1000,
+        businessPartnerId: $fx['client']->id,
+        openItemApplications: [['open_item_id' => $fx['openItem']->id, 'amount' => 600]],
+    );
+})->throws(InvalidArgumentException::class, 'exactamente el monto de la línea');
+
+it('rechaza repartir dos veces sobre la misma partida en una línea', function () {
+    $fx = bpControlFixture();
+
+    // Dos renglones contra la misma partida esconden cuánto se le está
+    // aplicando de verdad.
+    new JournalLineInput(
+        $fx['cxc']->id, $fx['company']->local_currency_id, debit: 0, credit: 1000,
+        businessPartnerId: $fx['client']->id,
+        openItemApplications: [
+            ['open_item_id' => $fx['openItem']->id, 'amount' => 600],
+            ['open_item_id' => $fx['openItem']->id, 'amount' => 400],
+        ],
+    );
+})->throws(InvalidArgumentException::class, 'aparece dos veces');
+
+it('el reparto respeta el saldo de cada partida por separado', function () {
+    $fx = bpControlFixture();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    app(PostJournalService::class)->post(
+        $fx['company'], $fx['documentType'], new DateTime('2026-01-06'), new DateTime('2026-01-06'),
+        [
+            new JournalLineInput($fx['cxc']->id, $fx['company']->local_currency_id, debit: 400, credit: 0, businessPartnerId: $fx['client']->id, opensItem: true),
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 0, credit: 400),
+        ],
+    );
+
+    $segunda = BpOpenItem::where('business_partner_id', $fx['client']->id)
+        ->whereKeyNot($fx['openItem']->id)->sole();
+
+    try {
+        // El total cuadra con la línea, pero a la segunda partida —que debe
+        // ₡400— se le quieren aplicar ₡500.
+        app(PostJournalService::class)->post($fx['company'], $trb, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+            new JournalLineInput($fx['cash']->id, $fx['company']->local_currency_id, debit: 1400, credit: 0),
+            new JournalLineInput(
+                $fx['cxc']->id, $fx['company']->local_currency_id, debit: 0, credit: 1400,
+                businessPartnerId: $fx['client']->id,
+                openItemApplications: [
+                    ['open_item_id' => $fx['openItem']->id, 'amount' => 900],
+                    ['open_item_id' => $segunda->id, 'amount' => 500],
+                ],
+            ),
+        ]);
+    } catch (OpenItemOverpaymentException) {
+        // esperado
+    }
+
+    // Y la PRIMERA tampoco se tocó, aunque su monto sí cabía: el asiento es
+    // todo o nada.
+    expect($fx['openItem']->fresh()->balance)->toEqual('1000.00')
+        ->and($segunda->fresh()->balance)->toEqual('400.00')
+        ->and(BpPaymentApplication::count())->toBe(0);
+});
+
+it('LA PRUEBA DE LA MONEDA: rechaza abonar una partida con una línea en otra moneda', function () {
+    $fx = bpControlFixture();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    ExchangeRate::factory()->create([
+        'company_id' => $fx['company']->id,
+        'currency_id' => $fx['company']->foreign_currency_id,
+        'rate_date' => '2026-01-20',
+        'rate' => '500.000000',
+    ]);
+
+    // La partida debe ₡1.000. Sin la guarda, una línea de US$1.000 pasaba la
+    // validación de sobrepago —1.000 no excede a 1.000— y la CERRABA: una
+    // cuenta por cobrar de mil colones cancelada con mil dólares, o al revés,
+    // sin que nada quedara descuadrado y sin ningún error a la vista.
+    app(PostJournalService::class)->post($fx['company'], $trb, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+        new JournalLineInput($fx['cash']->id, $fx['company']->foreign_currency_id, debit: 1000, credit: 0),
+        new JournalLineInput(
+            $fx['cxc']->id, $fx['company']->foreign_currency_id, debit: 0, credit: 1000,
+            businessPartnerId: $fx['client']->id, applyToOpenItemId: $fx['openItem']->id,
+        ),
+    ]);
+})->throws(InvalidOpenItemException::class);
+
+it('la partida en otra moneda queda intacta tras el rechazo', function () {
+    $fx = bpControlFixture();
+    $trb = DocumentType::factory()->create(['company_id' => $fx['company']->id, 'code' => 'TRB', 'bp_line_requirement' => 'application']);
+
+    ExchangeRate::factory()->create([
+        'company_id' => $fx['company']->id,
+        'currency_id' => $fx['company']->foreign_currency_id,
+        'rate_date' => '2026-01-20',
+        'rate' => '500.000000',
+    ]);
+
+    try {
+        app(PostJournalService::class)->post($fx['company'], $trb, new DateTime('2026-01-20'), new DateTime('2026-01-20'), [
+            new JournalLineInput($fx['cash']->id, $fx['company']->foreign_currency_id, debit: 1000, credit: 0),
+            new JournalLineInput(
+                $fx['cxc']->id, $fx['company']->foreign_currency_id, debit: 0, credit: 1000,
+                businessPartnerId: $fx['client']->id, applyToOpenItemId: $fx['openItem']->id,
+            ),
+        ]);
+    } catch (InvalidOpenItemException) {
+        // esperado
+    }
+
+    // Ni se abonó, ni se cerró, ni quedó una aplicación suelta.
+    expect($fx['openItem']->fresh()->balance)->toEqual('1000.00')
+        ->and($fx['openItem']->fresh()->status)->toBe('open')
+        ->and(BpPaymentApplication::where('open_item_id', $fx['openItem']->id)->count())->toBe(0);
+});
+
 it('rechaza aplicar una línea a una partida de OTRA compañía', function () {
     $fx = bpControlFixture();
     $fxB = bpControlFixture();
