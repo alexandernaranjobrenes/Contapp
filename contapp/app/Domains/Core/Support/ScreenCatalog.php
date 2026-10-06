@@ -67,6 +67,17 @@ final class ScreenCatalog
                 $r('accounting.journal_entry_schedules', 'Registros programados', 'Operación', 'accounting', ['journal-entry-schedules.*']),
                 $r('accounting.opening_balance', 'Saldos iniciales', 'Operación', 'accounting', ['opening-balance.*']),
                 $r('accounting.period_close', 'Cierre de períodos', 'Operación', 'accounting', ['period-close.*']),
+                // Los libros legales —mayor y diario— son UNA pantalla, no dos.
+                //
+                // Los dos salen del mismo controlador y las mismas rutas: cuál
+                // reporte se abre va en un parámetro de la URL, no en el nombre
+                // de la ruta. Declararlos como dos permisos separados sería
+                // prometer una granularidad que el sistema no puede exigir —
+                // quien tuviera uno podría abrir el otro cambiando la URL, y el
+                // permiso diría que no.
+                //
+                // Entre prometer de más y decir la verdad, se dice la verdad.
+                $report('reports.accounting_books', 'Libros legales (mayor y diario)', 'accounting-reports'),
                 $report('reports.trial_balance', 'Balance de comprobación', 'reports.trial-balance'),
                 $report('reports.income_statement', 'Estado de resultados', 'reports.income-statement'),
                 $report('reports.balance_sheet', 'Balance general', 'reports.balance-sheet'),

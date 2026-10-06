@@ -67,8 +67,29 @@ class ContiChatController extends Controller
         ];
 
         $timeout = max(10, (int) config('services.conti.timeout', 120));
-        // Esperar al agente no consume tiempo de CPU, pero por si acaso.
-        @set_time_limit($timeout + 15);
+
+        // Esperar al agente no consume tiempo de CPU, pero por si acaso se le
+        // da aire a la petición.
+        //
+        // ── Solo por HTTP: en consola esto envenena el proceso ──────────
+        //
+        // set_time_limit() no acota ESTA petición: reinicia el contador del
+        // PROCESO y le pone ese tope desde ese momento. En php-fpm da igual,
+        // porque cada petición es un proceso que muere al contestar.
+        //
+        // En consola no: la suite de pruebas corre entera en un solo proceso,
+        // así que una prueba que toque este endpoint le deja al proceso 135
+        // segundos de vida — y la suite se cae con «Maximum execution time of
+        // 135 seconds exceeded» dos minutos después, en cualquier otra prueba,
+        // sin relación con la que lo causó. Falla real: tumbó la suite completa
+        // en el archivo de pruebas HTTP de asientos, que no tiene nada que ver
+        // con el chat.
+        //
+        // En consola el límite ya es 0 (sin tope), así que no hay nada que
+        // ampliar y la llamada solo puede hacer daño.
+        if (PHP_SAPI !== 'cli') {
+            @set_time_limit($timeout + 15);
+        }
 
         try {
             $client = Http::timeout($timeout)->acceptJson();

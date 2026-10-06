@@ -57,7 +57,7 @@ const nav = computed(() => {
             label: 'Contabilidad', icon: BookOpenIcon,
             match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*',
                 'reports.trial-balance.*', 'reports.income-statement.*', 'reports.balance-sheet.*', 'reports.period-comparison.*',
-                'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*'],
+                'reports.multi-company-comparison.*', 'reports.document-type-register.*', 'reports.catalog-export.*', 'saved-reports.*', 'accounting-reports.*'],
             children: [
                 { screen: 'accounting.journal_entries', group: 'Operación', label: 'Registros', href: route('journal-entries.index'), match: ['journal-entries.*'] },
                 { screen: 'accounting.journal_entry_schedules', group: 'Operación', label: 'Registros programados', href: route('journal-entry-schedules.index'), match: ['journal-entry-schedules.*'] },
@@ -66,6 +66,18 @@ const nav = computed(() => {
 
                 // Cada reporte es su propia pantalla, en el módulo de
                 // reportería: su permiso es distinto del de contabilidad.
+                // UNA entrada para los dos libros, no una por libro.
+                //
+                // Los dos salen del mismo controlador y comparten pantalla de
+                // permiso (ver ScreenCatalog), y el menú exige una entrada por
+                // pantalla — lo comprueba ScreenCatalogTest. Así que se entra
+                // al índice y ahí se escoge mayor o diario, que es el mismo
+                // patrón de «Reportes de inventario» y «Reportes» de planillas.
+                //
+                // Va primero entre los reportes: los libros se consultan a
+                // diario para rastrear un saldo, mientras que los estados
+                // financieros se miran al cerrar.
+                { screen: 'reports.accounting_books', group: 'Reportes', label: 'Libro mayor y diario', href: route('accounting-reports.index'), match: ['accounting-reports.*'] },
                 { screen: 'reports.trial_balance', group: 'Reportes', label: 'Balance de comprobación', href: route('reports.trial-balance.index'), match: ['reports.trial-balance.*'] },
                 { screen: 'reports.income_statement', group: 'Reportes', label: 'Estado de resultados', href: route('reports.income-statement.index'), match: ['reports.income-statement.*'] },
                 { screen: 'reports.balance_sheet', group: 'Reportes', label: 'Balance general', href: route('reports.balance-sheet.index'), match: ['reports.balance-sheet.*'] },
@@ -538,8 +550,16 @@ function childGroups(item) {
     return groups;
 }
 
+// `match` es opcional en una entrada de menú: sin él, la entrada simplemente
+// nunca se resalta. Pero esto se llama al pintar el menú, y el menú está en
+// TODAS las pantallas — así que un `match` olvidado en una sola entrada
+// reventaba la aplicación completa con un «Cannot read properties of
+// undefined», sin pista de cuál entrada era.
+//
+// Pasó de verdad al agregar los libros legales. Una propiedad opcional que
+// falta no puede costar la aplicación entera.
 function isCurrent(patterns) {
-    return patterns.some((pattern) => route().current(pattern));
+    return (patterns ?? []).some((pattern) => route().current(pattern));
 }
 
 // Grupos del menú (ítems con "children", ej. Bancos): se abren solos cuando

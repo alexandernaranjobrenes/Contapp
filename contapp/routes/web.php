@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountingReportsController;
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\AgingController;
 use App\Http\Controllers\CompanyAppearanceController;
@@ -715,6 +716,15 @@ Route::middleware('auth')->group(function () {
         // inventario porque su razón de ser es contable — amarrar el kardex
         // con la cuenta de inventario del balance — y porque el permiso que
         // corresponde es el de ver reportes, no el de mover mercancía.
+        // Los libros legales —mayor y diario— sobre la misma infraestructura
+        // tabular que inventario y planillas: un índice, una consulta y tres
+        // salidas, sirviendo a cualquier reporte del registro.
+        Route::get('accounting-reports', [AccountingReportsController::class, 'index'])->name('accounting-reports.index');
+        Route::get('accounting-reports/{report}', [AccountingReportsController::class, 'show'])->name('accounting-reports.show');
+        Route::get('accounting-reports/{report}/export', [AccountingReportsController::class, 'export'])->name('accounting-reports.export');
+        Route::get('accounting-reports/{report}/pdf', [AccountingReportsController::class, 'exportPdf'])->name('accounting-reports.export-pdf');
+        Route::get('accounting-reports/{report}/print', [AccountingReportsController::class, 'print'])->name('accounting-reports.print');
+
         Route::get('reports/inventory-aging', [InventoryAgingController::class, 'index'])->name('reports.inventory-aging.index');
         Route::get('reports/inventory-aging/export', [InventoryAgingController::class, 'export'])->name('reports.inventory-aging.export');
         Route::get('reports/inventory-aging/export-pdf', [InventoryAgingController::class, 'exportPdf'])->name('reports.inventory-aging.export-pdf');
