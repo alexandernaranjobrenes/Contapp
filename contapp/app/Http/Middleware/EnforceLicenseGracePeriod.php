@@ -51,6 +51,11 @@ class EnforceLicenseGracePeriod
         'feedback.replies.store',
         'feedback.vote',
         'feedback.destroy',
+        // Hablar con Conti no escribe nada: consulta. Lo que Conti prepare
+        // para guardar se frena aparte (ContiActionService), y confirmarlo
+        // (conti.actions.confirm) sigue bloqueado acá. Descartarlo, no.
+        'conti.messages.store',
+        'conti.actions.discard',
     ];
 
     public function handle(Request $request, Closure $next): Response

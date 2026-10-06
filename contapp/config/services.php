@@ -59,4 +59,23 @@ return [
         'indicator_usd_venta' => env('BCCR_INDICATOR_USD_VENTA', '317'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Conti — el asistente (CLAUDE.md secc. 32)
+    |--------------------------------------------------------------------------
+    |
+    | El chat de CONTAPP le pasa cada mensaje al flujo de n8n por su
+    | Chat Trigger (modo «Embedded Chat», con autenticación básica). Sin
+    | webhook_url, Conti no aparece. El usuario y la contraseña son los de la
+    | autenticación básica del Chat Trigger: así solo CONTAPP puede hablarle.
+    |
+    */
+    'conti' => [
+        'webhook_url' => env('CONTI_WEBHOOK_URL'),
+        'webhook_user' => env('CONTI_WEBHOOK_USER'),
+        'webhook_password' => env('CONTI_WEBHOOK_PASSWORD'),
+        // Lo que se espera la respuesta del agente, en segundos.
+        'timeout' => (int) env('CONTI_TIMEOUT', 120),
+    ],
+
 ];

@@ -3,6 +3,29 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-05 — Conti consulta los datos y prepara registros, con los permisos de la persona
+
+**Pedido del usuario:** que Conti, el asistente de n8n, pueda consultar todo lo que la persona tiene registrado y opinar sobre eso, sin ver datos sensibles y respetando sus permisos. Que también pueda guardar datos, siempre que la persona lo permita y tenga el permiso.
+
+- **API propia en vez de conectar n8n a MySQL:** el filtro por compañía lo pone Laravel (`CompanyScope`) y los permisos por pantalla también. Con SQL directo el agente vería cualquier compañía y cualquier pantalla. La API (`/api/conti/*`) reutiliza los modelos, el scope, `ScreenAccessService` y los servicios de los reportes: Conti ve exactamente lo que la persona ve en el menú, con los mismos números.
+- **El chat es de CONTAPP y le habla a n8n desde el servidor.** El widget oficial de n8n pesa 1,7 MB y hubiera dejado el pase en el navegador. Así el pase no sale del servidor, y el Chat Trigger exige una contraseña que solo CONTAPP conoce: nadie más le puede hablar al agente ni gastar el modelo.
+- **Un pase por mensaje, de 15 minutos** (`conti_tokens`, solo el hash). Se ata a la persona y a la compañía activa. Cada consulta vuelve a revisar la cuenta, la membresía y la licencia, y al cerrar sesión se revocan todos. Si se filtrara, sirve minutos y solo para lo que esa persona ya puede ver.
+- **Lista explícita de campos por conjunto, en español** (`ContiResourceCatalog`, 54 consultas), en vez de devolver filas enteras: un dato nuevo en una tabla no aparece solo en Conti. Encima, `ContiRedactor` limpia toda respuesta de correos, teléfonos, direcciones, identificación, número de asegurado, nacimiento y contraseñas, y enmascara las cuentas bancarias. Hace falta sobre todo para los reportes, que se reutilizan tal cual.
+- **El costo y el salario según la pantalla:** quien solo factura ve artículos sin costo promedio, y quien solo registra vacaciones ve la ficha del trabajador sin salario ni cuenta bancaria. Es lo mismo que pasa en sus pantallas.
+- **Guardar es preparar y confirmar.** Si el agente confirmara porque la persona escribió «sí», bastaría con convencer al modelo. Conti solo prepara (`POST /api/conti/acciones`), y la persona confirma en una pantalla de CONTAPP con su sesión. El agente no tiene cómo hacerlo.
+  - **Al preparar**, la acción se prueba en seco: se ejecuta dentro de una transacción que se deshace. Así un período sin abrir, un asiento que no cuadra o una partida ya cerrada se dicen antes de que la persona abra el enlace.
+  - **Al confirmar**, se revisan otra vez permisos y licencia, y se vuelve a preparar con los datos de ese momento. Solo se guarda si el resultado es idéntico (hash del payload) a lo que la persona vio.
+- **Doce acciones, las de uso diario:** asiento (preliminar por defecto), crear y actualizar socio, aplicar cobro o pago, tipo de cambio, centro de costo, cuenta contable, precios de una lista, orden de compra, anotación de un trabajador, movimiento de planilla y vacaciones. Cada una usa los mismos campos, reglas y servicios que el controlador de su pantalla. Quedaron afuera las que piden una firma o un proceso en pantalla: facturar con precio autorizado, mover inventario, cerrar períodos y calcular planillas.
+- **Correo y teléfono tampoco se escriben:** al crear o actualizar un socio, Conti no los pide. Así la regla «Conti no maneja datos de contacto» es una sola, para leer y para escribir.
+- **El enlace de confirmación se arma con `APP_URL`**, no con la dirección por la que el agente llegó a la API. En la verificación, n8n llegaba por la red interna de Docker y el enlace salía con ese nombre de host.
+- **El panel corre el contenido** en pantallas de 1100px o más: con el chat abierto, los botones de confirmar quedaban debajo del panel.
+- **El contexto del agente va en dos tiempos.** El catálogo entero pesaba 56 KB por mensaje, así que `contexto` da la lista corta y el detalle de una consulta, un reporte o una acción se pide aparte.
+- **Verificado:**
+  - 43 pruebas nuevas en `tests/Feature/Conti`: pases, permisos por pantalla, aislamiento entre compañías, datos sensibles, modo de gracia, las doce acciones de punta a punta, el chat con n8n simulado, y el catálogo contra el menú. La suite completa pasa: 1980 pruebas.
+  - En el navegador, con un n8n simulado en el contenedor de Node que usaba el pase de la metadata contra la API: saludo con contexto, consulta de socios en tabla, 403 explicado, preparar un centro de costo, abrir el enlace desde el chat sin perder la conversación, y confirmar. También en oscuro y en teléfono.
+  - Los datos de prueba se borraron y el `.env` quedó como estaba.
+
+---
 ## 2026-10-02 — Las imágenes subidas van a un bucket de Cloudflare R2
 
 **Pedido del usuario:** que las imágenes que guarda la aplicación no queden en sus carpetas, sino en un bucket de Cloudflare R2.

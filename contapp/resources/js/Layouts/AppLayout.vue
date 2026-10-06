@@ -2,12 +2,13 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { startCompanySwitch } from '../Utils/companySwitch';
+import { closeConti, conti, toggleConti } from '../Utils/contiChat';
 import { useNewsSeen } from '../Utils/newsSeen';
 import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
     BookOpenIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
-    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SunIcon,
-    TagsIcon, UsersIcon, XIcon,
+    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SparklesIcon,
+    SunIcon, TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
 
 /**
@@ -463,6 +464,13 @@ const user = computed(() => page.props.auth?.user);
 const feedbackOpen = ref(false);
 const { hasUnseen: hasUnseenNews } = useNewsSeen();
 
+// Conti, el asistente (CLAUDE.md secc. 32): su panel va al lado de la página
+// (app.js) y ocupa el mismo lugar que «Comentarios y noticias», así que
+// abrir uno cierra el otro.
+const contiEnabled = computed(() => Boolean(page.props.conti?.enabled));
+watch(feedbackOpen, (open) => { if (open) closeConti(); });
+watch(() => conti.open, (open) => { if (open) feedbackOpen.value = false; });
+
 const LICENSE_STATUS_LABELS = {
     active: { label: 'Vigente', cls: 'badge-success' },
     expiring_soon: { label: 'Por vencer', cls: 'badge-warning' },
@@ -634,7 +642,7 @@ function toggleGroup(item) {
 
         <div class="nav-backdrop" @click="navOpen = false" />
 
-        <div class="app-main">
+        <div class="app-main" :class="{ 'conti-docked': contiEnabled && conti.open }">
             <header class="topbar">
                 <div class="topbar-heading">
                     <button
@@ -678,6 +686,21 @@ function toggleGroup(item) {
                     </button>
 
                     <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
+
+                    <!-- Conti, el asistente (Components/Conti/ContiPanel.vue). -->
+                    <button
+                        v-if="contiEnabled"
+                        type="button"
+                        class="btn btn-ghost conti-trigger"
+                        :class="{ 'is-open': conti.open }"
+                        aria-controls="conti-panel"
+                        :aria-expanded="conti.open"
+                        title="Conti, el asistente"
+                        @click="toggleConti"
+                    >
+                        <SparklesIcon />
+                        <span class="conti-label">Conti</span>
+                    </button>
 
                     <button
                         v-if="user"
@@ -1186,6 +1209,26 @@ function toggleGroup(item) {
     overflow: hidden;
 }
 
+/* Con Conti abierto en una pantalla ancha, todo lo de abajo de la barra se
+   corre a la izquierda: nada queda debajo del panel (ContiPanel.vue, 27rem),
+   tampoco los botones de confirmar lo que Conti preparó. En una pantalla
+   angosta el panel la ocupa entera y se cierra para ver la de atrás. */
+@media (min-width: 1100px) {
+    .app-main > :not(.topbar) {
+        transition: margin-right .2s ease;
+    }
+
+    .app-main.conti-docked > :not(.topbar) {
+        margin-right: 27rem;
+    }
+}
+
+@media (min-width: 1100px) and (prefers-reduced-motion: reduce) {
+    .app-main > :not(.topbar) {
+        transition: none;
+    }
+}
+
 .topbar {
     min-height: var(--topbar-height);
     flex-shrink: 0;
@@ -1246,6 +1289,17 @@ function toggleGroup(item) {
 }
 
 .feedback-trigger.is-open {
+    background: var(--color-primary-soft);
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+}
+
+/* Conti: con su nombre a la vista, que es como la gente lo va a buscar. */
+.conti-trigger {
+    gap: 0.35rem;
+    padding-inline: 0.65rem;
+}
+
+.conti-trigger.is-open {
     background: var(--color-primary-soft);
     border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
 }
@@ -1434,6 +1488,8 @@ function toggleGroup(item) {
     .topbar-actions { gap: 0.35rem; }
     .company-select { max-width: 8rem; }
     .logout-btn { width: 2.25rem; padding: 0; }
+    .conti-trigger { width: 2.25rem; padding: 0; }
+    .conti-label,
     .logout-label {
         position: absolute;
         width: 1px;

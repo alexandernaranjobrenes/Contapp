@@ -167,6 +167,13 @@ class HandleInertiaRequests extends Middleware
             // porque esto corre en toda visita; NewsService la borra al
             // publicar, editar o eliminar una noticia.
             'latestNewsAt' => fn () => $user ? $this->latestNewsAt() : null,
+            // Conti, el asistente (CLAUDE.md secc. 32): el chat aparece si
+            // la instalación tiene el flujo de n8n configurado y la persona
+            // está en una compañía. Lo que puede ver o hacer lo deciden sus
+            // permisos, en el servidor.
+            'conti' => [
+                'enabled' => $user !== null && $currentCompanyId !== null && filled(config('services.conti.webhook_url')),
+            ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

@@ -5,6 +5,8 @@ use App\Http\Controllers\AgingController;
 use App\Http\Controllers\CompanyAppearanceController;
 use App\Http\Controllers\CompanyDetailsController;
 use App\Http\Controllers\CompanyLogoController;
+use App\Http\Controllers\ContiActionController;
+use App\Http\Controllers\ContiChatController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\CompanyInvitationAcceptanceController;
 use App\Http\Controllers\Auth\LicenseActivationController;
@@ -188,6 +190,17 @@ Route::middleware('auth')->group(function () {
     Route::put('feedback/{comment}/vote', [FeedbackController::class, 'vote'])->middleware('throttle:feedback-vote')->name('feedback.vote');
     Route::delete('feedback/{comment}', [FeedbackController::class, 'destroy'])->name('feedback.destroy');
     Route::get('news', [FeedbackController::class, 'news'])->name('news.index');
+
+    // Conti, el asistente (CLAUDE.md secc. 32). Cualquier rol: lo que Conti
+    // puede ver o guardar lo deciden los permisos de la persona, en cada
+    // consulta de su API (routes/api.php) y al confirmar.
+    // - mensajes: el chat le pasa cada mensaje al flujo de n8n (JSON).
+    // - acciones: la persona revisa lo que Conti preparó y lo confirma o lo
+    //   descarta. Es el único camino por el que Conti guarda algo.
+    Route::post('conti/mensajes', [ContiChatController::class, 'store'])->middleware('throttle:conti-chat')->name('conti.messages.store');
+    Route::get('conti/acciones/{uuid}', [ContiActionController::class, 'show'])->name('conti.actions.show');
+    Route::post('conti/acciones/{uuid}/confirmar', [ContiActionController::class, 'confirm'])->name('conti.actions.confirm');
+    Route::post('conti/acciones/{uuid}/descartar', [ContiActionController::class, 'discard'])->name('conti.actions.discard');
 
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
