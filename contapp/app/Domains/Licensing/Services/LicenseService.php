@@ -30,6 +30,12 @@ class LicenseService
             'max_companies' => $category->max_companies,
             'max_admins' => $category->max_admins,
             'max_users' => $category->max_users,
+            // Una categoría recién creada en memoria no trae el valor por
+            // defecto de la columna: sin dato, Conti desactivado.
+            'ai_enabled' => (bool) $category->ai_enabled,
+            'ai_daily_credits' => $category->ai_daily_credits,
+            'ai_weekly_credits' => $category->ai_weekly_credits,
+            'ai_user_daily_credits' => $category->ai_user_daily_credits,
             'expires_at' => $expiresAt->format('Y-m-d'),
             'status' => 'active',
             'notes' => $notes,
@@ -38,18 +44,21 @@ class LicenseService
     }
 
     /**
-     * Edición de una licencia ya emitida: categoría, cupos y notas. Nunca
+     * Edición de una licencia ya emitida: categoría, cupos, notas y Conti. Nunca
      * toca `code`/`superuser_id` (inmutables tras la activación), ni
      * `status`/`expires_at` (tienen su propio flujo: revoke/suspend/
      * reactivate y renew() respectivamente).
      *
-     * @param  array{category_id?: int, max_companies?: int, max_admins?: int, max_users?: int, notes?: ?string}  $data
+     * @param  array{category_id?: int, max_companies?: int, max_admins?: int, max_users?: int, notes?: ?string, ai_enabled?: bool, ai_daily_credits?: ?string, ai_weekly_credits?: ?string, ai_user_daily_credits?: ?string}  $data
      *
      * @throws InvalidLicenseException si el nuevo cupo queda por debajo de lo ya consumido.
      */
     public function update(License $license, array $data): License
     {
-        $data = Arr::only($data, ['category_id', 'max_companies', 'max_admins', 'max_users', 'notes']);
+        $data = Arr::only($data, [
+            'category_id', 'max_companies', 'max_admins', 'max_users', 'notes',
+            'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits',
+        ]);
 
         if (array_key_exists('max_companies', $data) && $data['max_companies'] < $license->companies()->count()) {
             throw new InvalidLicenseException("No podés bajar el cupo de compañías por debajo de las {$license->companies()->count()} ya activas.");

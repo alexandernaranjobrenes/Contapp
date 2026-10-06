@@ -2,6 +2,7 @@
 
 namespace App\Domains\Core\Services;
 
+use App\Domains\Conti\Services\ContiAccessService;
 use App\Domains\Core\Exceptions\CompanyInvitationException;
 use App\Domains\Core\Exceptions\PrivilegeEscalationException;
 use App\Domains\Core\Models\AuditLog;
@@ -38,7 +39,10 @@ class CompanyInvitationService
 {
     public const EXPIRES_IN_DAYS = 7;
 
-    public function __construct(private readonly PermissionGrantService $grants) {}
+    public function __construct(
+        private readonly PermissionGrantService $grants,
+        private readonly ContiAccessService $conti,
+    ) {}
 
     /**
      * Crea la invitación y manda el correo. Si ya había una sin aceptar para
@@ -46,13 +50,14 @@ class CompanyInvitationService
      * nuevos y la vuelve a mandar.
      *
      * @param  array<string, string>  $screenLevels  clave de pantalla => nivel
+     * @param  array|null  $contiSettings  Conti, si lo eligió el Superusuario (ContiAccessService::normalize)
      * @return array{invitation: CompanyInvitation, mailed: bool}
      *
      * @throws CompanyInvitationException
      * @throws PrivilegeEscalationException
      * @throws LicenseQuotaExceededException
      */
-    public function invite(User $grantor, Company $company, string $email, string $roleType, array $screenLevels): array
+    public function invite(User $grantor, Company $company, string $email, string $roleType, array $screenLevels, ?array $contiSettings = null): array
     {
         $email = Str::lower(trim($email));
 
@@ -83,6 +88,7 @@ class CompanyInvitationService
         $invitation->fill([
             'role_type' => $roleType,
             'screen_permissions' => array_filter($levels, fn (string $level) => $level !== 'none'),
+            'conti_settings' => $contiSettings,
             'invited_by' => $grantor->id,
         ])->save();
 
@@ -92,7 +98,7 @@ class CompanyInvitationService
             'action' => 'user_invitation_sent',
             'auditable_type' => CompanyInvitation::class,
             'auditable_id' => $invitation->id,
-            'new_values' => ['email' => $email, 'role_type' => $roleType, 'screens' => $invitation->screen_permissions],
+            'new_values' => ['email' => $email, 'role_type' => $roleType, 'screens' => $invitation->screen_permissions, 'conti' => $contiSettings],
             'created_at' => now(),
         ]);
 
@@ -239,6 +245,8 @@ class CompanyInvitationService
             ]);
 
             $this->grants->writeScreenLevels($company->id, $account, $levels);
+            // Conti, como lo eligió el Superusuario al invitar.
+            $this->conti->applyInvitation($invitation, $account);
 
             $invitation->forceFill([
                 'accepted_at' => now(),

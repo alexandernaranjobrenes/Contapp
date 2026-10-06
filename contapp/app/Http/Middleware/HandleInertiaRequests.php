@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Domains\Conti\Services\ContiAccessService;
+use App\Domains\Conti\Services\ContiModelService;
+use App\Domains\Conti\Services\ContiUsageService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\Module;
 use App\Domains\Core\Models\ModulePermission;
@@ -167,12 +170,18 @@ class HandleInertiaRequests extends Middleware
             // porque esto corre en toda visita; NewsService la borra al
             // publicar, editar o eliminar una noticia.
             'latestNewsAt' => fn () => $user ? $this->latestNewsAt() : null,
-            // Conti, el asistente (CLAUDE.md secc. 32): el chat aparece si
-            // la instalación tiene el flujo de n8n configurado y la persona
-            // está en una compañía. Lo que puede ver o hacer lo deciden sus
-            // permisos, en el servidor.
+            // Conti, el asistente (CLAUDE.md secc. 32): el chat aparece si la
+            // instalación tiene la key de OpenAI, la licencia de la compañía
+            // lo tiene activado y el Superusuario no se lo quitó a la
+            // persona. Lo que puede ver o hacer lo deciden los permisos de la
+            // persona, en el servidor.
             'conti' => [
-                'enabled' => $user !== null && $currentCompanyId !== null && filled(config('services.conti.webhook_url')),
+                'enabled' => $user instanceof User && app(ContiUsageService::class)->enabledFor($company, $user),
+                // El modelo con que le responde, para el encabezado del chat.
+                // Sale de la configuración, sin preguntarle nada a OpenAI.
+                'model' => $user instanceof User
+                    ? app(ContiModelService::class)->name(app(ContiModelService::class)->forUser($user, app(ContiAccessService::class)->allowedModels($user, $company)))
+                    : null,
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),

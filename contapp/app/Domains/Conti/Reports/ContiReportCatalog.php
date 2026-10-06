@@ -39,7 +39,7 @@ use App\Domains\Tax\Services\TaxReportService;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * Los reportes que Conti puede pedir (GET /api/conti/reportes/{clave}).
+ * Los reportes que Conti puede pedir, por clave (la herramienta «reporte»).
  *
  * Cada uno corre el mismo servicio que su pantalla, con los mismos valores
  * por defecto, y pide la misma pantalla del menú. Los reportes tabulares de

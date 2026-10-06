@@ -15,12 +15,21 @@ class LicenseCategory extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'max_companies', 'max_admins', 'max_users', 'duration_months', 'description', 'is_active'];
+    protected $fillable = [
+        'name', 'max_companies', 'max_admins', 'max_users', 'duration_months', 'description', 'is_active',
+        // Con qué valores de Conti nace cada licencia de esta categoría
+        // (LicenseService::issue), igual que los cupos.
+        'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits',
+    ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'ai_enabled' => 'boolean',
+            'ai_daily_credits' => 'decimal:2',
+            'ai_weekly_credits' => 'decimal:2',
+            'ai_user_daily_credits' => 'decimal:2',
         ];
     }
 

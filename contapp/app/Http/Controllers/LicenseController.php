@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Conti\Models\ContiUsage;
+use App\Domains\Conti\Services\ContiUsageService;
 use App\Domains\Core\Models\AuditLog;
 use App\Domains\Licensing\Exceptions\InvalidLicenseException;
 use App\Domains\Licensing\Exceptions\InvitationException;
@@ -34,13 +36,23 @@ class LicenseController extends Controller
     use RecordsPropietarioAudit;
 
     /** Lo que el Propietario puede cambiar al editar (ver update()). */
-    private const EDITABLE = ['category_id', 'max_companies', 'max_admins', 'max_users', 'notes'];
+    private const EDITABLE = [
+        'category_id', 'max_companies', 'max_admins', 'max_users', 'notes',
+        'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits',
+    ];
 
     /** Cuántos movimientos trae el historial de la ficha (ver history()). */
     private const HISTORY_LIMIT = 50;
 
-    public function index(): Response
+    public function index(ContiUsageService $usage): Response
     {
+        // Lo que consumió cada licencia en Conti hoy y esta semana, en dos
+        // consultas para todas (CLAUDE.md secc. 32).
+        $aiToday = ContiUsage::where('created_at', '>=', $usage->dayStart())->whereNotNull('license_id')
+            ->groupBy('license_id')->selectRaw('license_id, SUM(credits) as credits')->pluck('credits', 'license_id');
+        $aiWeek = ContiUsage::where('created_at', '>=', $usage->weekStart())->whereNotNull('license_id')
+            ->groupBy('license_id')->selectRaw('license_id, SUM(credits) as credits')->pluck('credits', 'license_id');
+
         $licenses = License::withCount('companies')
             ->with(['issuedBy:id,name', 'category:id,name', 'commercialProfile.followUps', 'superuser:id,name,email', 'invitation.user'])
             ->orderByDesc('created_at')
@@ -56,6 +68,8 @@ class LicenseController extends Controller
                 'next_pending_follow_up' => $license->commercialProfile?->nextPendingFollowUp(),
                 'admins_count' => $license->adminsCount(),
                 'users_count' => $license->usersCount(),
+                'ai_today' => bcadd((string) ($aiToday[$license->id] ?? '0'), '0', 2),
+                'ai_week' => bcadd((string) ($aiWeek[$license->id] ?? '0'), '0', 2),
                 // A quién la asignó el backoffice y en qué quedó el correo
                 // (LicenseInvitationService). Sin el token: es la llave del
                 // enlace, y no tiene por qué salir del correo.
@@ -75,7 +89,21 @@ class LicenseController extends Controller
         return Inertia::render('Backoffice/Licenses/Index', [
             'licenses' => $licenses,
             'categories' => LicenseCategory::where('is_active', true)->orderBy('name')->get(['id', 'name', 'max_companies', 'max_admins', 'max_users', 'duration_months']),
+            'aiConfigured' => $usage->configured(),
+            'aiCreditUsd' => (float) config('conti.credit_usd', 0.01),
         ]);
+    }
+
+    /**
+     * El consumo de Conti de una licencia, para su ficha: hoy, esta semana,
+     * los últimos 30 días, por compañía, por persona y día por día. Se pide
+     * al abrir la sección, no viaja en el listado.
+     */
+    public function aiUsage(int $license, ContiUsageService $usage): JsonResponse
+    {
+        return response()
+            ->json($usage->report(License::findOrFail($license)))
+            ->header('Cache-Control', 'no-store');
     }
 
     /**
@@ -200,7 +228,7 @@ class LicenseController extends Controller
                 );
 
                 $this->auditPropietario($request, 'license_issued', $license, null, $this->auditSnapshot(
-                    $license, ['category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'notes'],
+                    $license, ['category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'notes', 'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits'],
                 ));
 
                 $invitation = $assign ? $assignments->assignFromRequest($request, $license, $assignment, $invitations) : null;
@@ -232,6 +260,11 @@ class LicenseController extends Controller
             'max_admins' => ['required', 'integer', 'min:0', 'max:1000'],
             'max_users' => ['required', 'integer', 'min:0', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:255'],
+            // Conti: activado y límites en créditos (vacío = sin límite).
+            'ai_enabled' => ['boolean'],
+            'ai_daily_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'ai_weekly_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'ai_user_daily_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
         ]);
 
         try {

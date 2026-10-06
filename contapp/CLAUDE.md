@@ -479,16 +479,53 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 ## 32. CONTI, EL ASISTENTE: VE LO QUE LA PERSONA VE, Y NO GUARDA NADA SIN SU CONFIRMACIÓN
 
-**Regla:** Conti es el chat de la barra superior, con un agente de n8n detrás (`docs/conti-n8n.md`, prompt en `docs/prompt-agente-ayuda-contapp.md`). Consulta y prepara a nombre de la persona, con sus permisos por pantalla, en su compañía activa. Nunca ve datos sensibles y nunca escribe sin que la persona confirme en CONTAPP.
+**Regla:** Conti es el chat que abre el botón flotante del robot (`BotIcon`), en la esquina inferior derecha. El agente está en el código (`app/Domains/Conti/Agent`) y usa la API de OpenAI. Consulta y prepara a nombre de la persona, con sus permisos por pantalla, en su compañía activa. Nunca ve datos sensibles y nunca escribe sin que la persona confirme en CONTAPP. Se activa por licencia, con límites de uso.
 
-- **El camino de un mensaje:** `ContiPanel.vue` → `POST /conti/mensajes` (`ContiChatController`, con la sesión) → Chat Trigger de n8n, desde el servidor y con autenticación básica. En la metadata va un pase (`ContiTokenService`: 15 minutos, se guarda solo su hash, se revoca al cerrar sesión). El navegador nunca ve el pase.
-- **La API** (`routes/api.php`, `/api/conti/*`): `AuthenticateContiToken` revisa en cada petición la cuenta, la membresía y la licencia, y fija `Auth` y `CurrentCompany`. Los permisos los decide `ContiContext::authorize()` con `ScreenAccessService`: consultar pide Lectura en la pantalla del menú; preparar, Lectura y escritura. Una licencia vencida deja consultar y no preparar.
+- **El camino de un mensaje:** `ContiPanel.vue` → `POST /conti/mensajes` (`ContiChatController`) → `ContiUsageService::blockFor()` (¿la licencia lo tiene?, ¿queda cupo?) → `ContiAgent::reply()` → OpenAI (`OpenAiClient`, Chat Completions con herramientas).
+  - El agente da vueltas, hasta `conti.max_iterations`, pidiendo herramientas de `ContiToolbox`: `manual`, `contexto`, `consultar`, `reporte`, `preparar_accion` y `estado_accion`.
+  - Las herramientas corren dentro de CONTAPP con el `ContiContext` del mensaje (persona, compañía, modo de gracia). No hay API ni pase: el modelo solo pide, y CONTAPP decide qué devuelve.
+- **El prompt:** `resources/conti/instrucciones.md`, más un bloque armado en cada mensaje: quién es la persona, la compañía, la pantalla, la fecha, las consultas, reportes y acciones que tiene permitidos, y el índice del manual. El manual de uso (`resources/conti/manual.md`) no va entero: el modelo busca la sección con la herramienta `manual` (`ContiManual`).
+- **Los permisos** los decide `ContiContext::authorize()` con `ScreenAccessService`: consultar pide Lectura en la pantalla del menú; preparar, Lectura y escritura. Una licencia vencida deja consultar y no preparar.
+- **El hilo de la conversación** queda en la caché (`conti:history:{persona}:{compañía}:{sesión}`, los últimos 16 mensajes, 6 horas). Guarda solo el texto, nunca los datos que devolvieron las herramientas, y no queda en la base de datos.
+  - El pedido del chat no escribe la sesión (`NullSessionHandler`): tarda varios segundos, y al terminar pisaría lo que la persona cambió mientras tanto, como la compañía activa.
+- **Consumo y límites** (`ContiUsageService`, tabla `conti_usage`):
+  - Cada mensaje guarda los tokens y su costo según `config/conti.php` (precio por modelo; uno que no está, con el precio de respaldo).
+  - Se mide en **créditos**: 1 crédito = US$0,01 (`CONTI_CREDIT_USD`).
+  - La licencia tiene `ai_enabled` y límites opcionales: por día y por semana para toda la licencia, y por persona al día. El día y la semana (lunes a domingo) son de Costa Rica.
+  - Sin cupo, el chat responde 429 con el motivo. El mensaje que cruza el límite termina; los siguientes se bloquean. Desde el 80 % se avisa en el chat.
+  - La categoría trae los valores por defecto: se copian a la licencia al emitirla.
+- **El Superusuario reparte el cupo** (`ContiAccessService`, tabla `conti_user_settings`, por persona y licencia):
+  - El cupo de la licencia lo comparten todas sus personas, él incluido: si alguien lo gasta, nadie más puede usar Conti hasta que se renueve. Los mensajes del límite lo dicen.
+  - Al invitar (`company_invitations.conti_settings`, se aplica al aceptar) y en «Editar permisos», solo el Superusuario, y solo si la licencia tiene Conti, decide por persona (`ContiAccessFields.vue`):
+    - si puede usarlo: sin acceso, no ve el botón y el chat responde 403;
+    - su límite por día y por semana, sin pasar los de la licencia ni el de persona del backoffice; por día cuenta el más chico;
+    - qué modelos puede elegir: todos marcados = «todos», también los que se agreguen.
+  - Sin decisión, la persona puede usar Conti, sin límite propio y con todos los modelos; así quedan quienes invita un Administrador.
+  - Al Superusuario no se lo limita.
+  - Un Administrador no ve la sección, y si la manda, se ignora.
+  - La ficha de cada persona en Usuarios muestra al Superusuario lo que tiene y lo que gastó hoy y en la semana.
+- **Modelo y consumo** (el medidor en el encabezado del chat, `ContiSettings.vue` → `ContiSettingsController`):
+  - **El modelo es de cada persona** (`users.conti_model`; vacío = `OPENAI_MODEL`). Se elige entre los de `conti.models`, que tienen que tener precio en `conti.pricing`, menos los que la key no puede usar. Eso se pregunta a OpenAI con `GET /models`, que no consume tokens, y se recuerda un día (`ContiModelService`).
+  - Los que razonan (`reasoning`, la familia GPT-5) van con `reasoning_effort` corto y más salida (`max_output_tokens_reasoning`), porque lo que piensan cuenta como salida.
+  - Un modelo nuevo se ofrece agregando su precio y su entrada en `config/conti.php`. El precio se busca por nombre exacto o versión con fecha: `gpt-5.4` no es `gpt-5`.
+  - **El consumo** es el de la persona en la licencia de la compañía: hoy, esta semana y este mes, en tokens, créditos y mensajes. Debajo van los límites que le aplican, el suyo primero, con lo usado de cada uno.
+  - Se ve y se cambia también con la licencia vencida o sin cupo: es de la persona, no de la compañía.
+- **En el backoffice**, en la ficha de la licencia: activar Conti, los límites (en «Editar»), lo gastado hoy y en la semana, y «Consumo de Conti» (`licenses/{id}/ai-usage`): 30 días, por compañía y por persona.
 - **Qué puede consultar:** `ContiResourceCatalog` (un archivo por módulo en `app/Domains/Conti/Resources`). Cada conjunto declara sus pantallas, su consulta (pasa por el CompanyScope; una tabla sin `company_id` se filtra por su padre con `whereHas`) y sus campos, **con una lista explícita y en español**. Un campo nuevo se agrega a propósito, nunca «toda la fila».
-- **Datos sensibles:** ni correos, ni teléfonos, ni direcciones, ni identificación, ni número de asegurado, ni fecha de nacimiento, ni contraseñas o tokens. Cuentas bancarias, con los últimos cuatro dígitos (`ContiRedactor::mask`). Anotaciones confidenciales, nunca. `ContiRedactor::clean()` es la red de abajo: limpia toda respuesta de la API, sobre todo los reportes, que se reutilizan tal cual.
+- **Datos sensibles:** ni correos, ni teléfonos, ni direcciones, ni identificación, ni número de asegurado, ni fecha de nacimiento, ni contraseñas o tokens. Cuentas bancarias, con los últimos cuatro dígitos (`ContiRedactor::mask`). Anotaciones confidenciales, nunca. `ContiRedactor::clean()` es la red de abajo: limpia todo lo que una herramienta le devuelve al modelo, sobre todo los reportes, que se reutilizan tal cual.
 - **Reportes:** `ContiReportCatalog` corre los mismos servicios que las pantallas. Los tabulares de Inventario y Planillas entran solos desde sus registros, sin las columnas sensibles y con un tope de 300 filas.
 - **Guardar:** cada acción es una clase (`app/Domains/Conti/Actions`, registrada en `ContiActionCatalog`). Se valida y se resuelven los códigos con los mismos campos y reglas que el controlador de la pantalla, y se usan sus servicios, no se reimplementan. `ContiActionService`:
   - **prepara**: valida, prueba en seco (ejecuta dentro de una transacción que se deshace) y deja la acción pendiente 30 minutos;
-  - **confirma** solo desde CONTAPP, con la sesión de su dueño y en su compañía: revisa otra vez permisos y licencia, vuelve a preparar y guarda solo si el resultado es idéntico (hash del payload) a lo que se mostró.
-- **Una acción nueva** necesita: la clase con `prepare()`/`execute()`, su lugar en `ContiActionCatalog`, una prueba de punta a punta en `tests/Feature/Conti`, y una línea en la sección 1.13 del prompt.
+  - **confirma** solo desde CONTAPP, con la sesión de su dueño y en su compañía: revisa otra vez permisos y licencia, vuelve a preparar y guarda solo si el resultado es idéntico (hash del payload) a lo que se mostró. El modelo no tiene ninguna herramienta para confirmar.
+- **Una acción nueva** necesita: la clase con `prepare()`/`execute()`, su lugar en `ContiActionCatalog`, una prueba de punta a punta en `tests/Feature/Conti`, y una línea en la sección 1.13 de `resources/conti/manual.md`.
+- **El botón** es flotante, redondo y con el robot, en la esquina inferior derecha (`.conti-fab` en `AppLayout.vue`). No va en la barra superior (secc. 24).
+  - Va anclado justo arriba del pie, mida lo que mida.
+  - Se oculta mientras hay un panel de la derecha abierto.
+  - `.content` deja lugar abajo para que no tape lo último de la página, como «Guardar».
 - **El panel** (`ContiPanel.vue`) va al lado de la página (`app.js`) para que la conversación siga al navegar. Ocupa el lugar de «Comentarios y noticias» (abrir uno cierra el otro), y en pantallas de 1100px o más corre el contenido a la izquierda para no tapar nada. Las respuestas se pasan a HTML con `contiMarkdown.js`, que escapa todo antes de dar formato.
-- **Sin `CONTI_WEBHOOK_URL`** Conti no aparece. Las pruebas no tocan n8n (`Http::fake`). Para probar en el navegador sin n8n, sirve un simulador en el contenedor de Node que lea el pase de la metadata y llame a la API.
+- **Confirmar sin salir de la pantalla:** el enlace del chat (`/conti/acciones/{uuid}`) abre `ContiActionModal.vue` encima de la pantalla en que se está (montado en `app.js`, como el panel). Pide y decide en JSON contra `ContiActionController`, que atiende igual a la pantalla `Conti/Action.vue`: esa queda para el enlace abierto en otra pestaña o recargado. Las dos muestran el resumen con `ContiActionDetails.vue`.
+  - Al confirmar, la pantalla de atrás se recarga (`router.reload()`) para que se vea lo guardado.
+  - La conversación anota cómo quedó: confirmado, descartado o por qué no se guardó.
+  - El enlace es una ruta relativa, y el modelo a veces le inventa un dominio («https://app.contapp.run/conti/…»). `ContiAgent::tidyLinks()` se lo quita a la respuesta, y `contiMarkdown.js` también, para lo que ya estaba guardado en el chat.
+- **Sin `OPENAI_API_KEY`**, o con la licencia sin Conti, el botón no aparece. El modelo sale de `OPENAI_MODEL` (por defecto `gpt-4.1-mini`); uno nuevo se agrega a `conti.pricing` con su precio, para que el consumo salga bien.
+- **Las pruebas** no tocan OpenAI: usan `Http::fake` con `openAiReply()` (`tests/Feature/Conti/helpers.php`), y las herramientas se prueban directo con `contiTools()`. Para probar en el navegador sin gastar, sirve un OpenAI simulado en el contenedor de Node, apuntado con `OPENAI_BASE_URL`.

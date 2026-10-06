@@ -11,6 +11,10 @@ import { CheckIcon, ChevronRightIcon, MailIcon, PencilIcon, PlusIcon, UserPlusIc
 const props = defineProps({
     licenses: { type: Array, default: () => [] },
     categories: { type: Array, default: () => [] },
+    // Conti, el asistente (CLAUDE.md secc. 32): si la instalación tiene la
+    // key de OpenAI, y cuánto vale un crédito en dólares.
+    aiConfigured: { type: Boolean, default: false },
+    aiCreditUsd: { type: Number, default: 0.01 },
 });
 
 // Alta (CLAUDE.md secc. 21): el botón «Crear nuevo», arriba de la tabla,
@@ -168,6 +172,9 @@ watch(selectedId, () => {
     historyError.value = '';
     history.value = [];
     historyHasMore.value = false;
+    aiOpen.value = false;
+    aiError.value = '';
+    aiReport.value = null;
 });
 
 function toggleHistory() {
@@ -208,6 +215,59 @@ async function loadHistory() {
     }
 }
 
+// El consumo de Conti de la licencia (CLAUDE.md secc. 32): se pide al abrir
+// la sección, igual que el historial.
+const aiOpen = ref(false);
+const aiLoading = ref(false);
+const aiError = ref('');
+const aiReport = ref(null);
+
+function toggleAiUsage() {
+    aiOpen.value = !aiOpen.value;
+    if (aiOpen.value) loadAiUsage();
+}
+
+async function loadAiUsage() {
+    const licenseId = selectedId.value;
+    aiLoading.value = true;
+    aiError.value = '';
+
+    try {
+        const res = await fetch(route('backoffice.licenses.ai-usage', licenseId), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (res.redirected) throw new Error('session');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (selectedId.value === licenseId) aiReport.value = data;
+    } catch (error) {
+        if (selectedId.value === licenseId) {
+            aiError.value = error.message === 'session'
+                ? 'Tu sesión venció: recargá la página para volver a entrar.'
+                : 'No se pudo cargar el consumo. Intentá de nuevo.';
+        }
+    } finally {
+        aiLoading.value = false;
+    }
+}
+
+// Créditos con coma decimal y sin ceros de más: «12,5», «100».
+const creditFormat = new Intl.NumberFormat('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const usdFormat = new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+function credits(value) {
+    return value === null || value === undefined || value === '' ? 'sin límite' : creditFormat.format(Number(value));
+}
+
+function usd(value) {
+    return usdFormat.format(Number(value));
+}
+
+// Las barras del consumo de los últimos 30 días, relativas al día de más uso.
+const aiMaxDay = computed(() => Math.max(0.01, ...(aiReport.value?.por_dia ?? []).map((d) => Number(d.creditos))));
+
 const HISTORY_ACTIONS = {
     license_issued: 'Emitió la licencia',
     license_updated: 'Editó la licencia',
@@ -237,13 +297,21 @@ const HISTORY_FIELDS = {
     email: 'Correo',
     name: 'Nombre',
     company: 'Compañía',
+    ai_enabled: 'Conti',
+    ai_daily_credits: 'Conti: límite diario',
+    ai_weekly_credits: 'Conti: límite semanal',
+    ai_user_daily_credits: 'Conti: límite diario por persona',
 };
+
+const AI_LIMIT_FIELDS = ['ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits'];
 
 const STATUS_WORDS = { active: 'activa', suspended: 'suspendida', revoked: 'revocada' };
 
 const ACCOUNT_WORDS = { existing: 'existente', new: 'nueva' };
 
 function historyValue(field, value) {
+    if (field === 'ai_enabled') return value ? 'activado' : 'desactivado';
+    if (AI_LIMIT_FIELDS.includes(field)) return credits(value);
     if (value === null || value === '') return '—';
     if (field === 'status') return STATUS_WORDS[value] ?? value;
     if (field === 'account_type') return ACCOUNT_WORDS[value] ?? value;
@@ -273,6 +341,7 @@ function historyWhen(iso) {
 
 const editForm = useForm({
     category_id: '', max_companies: 1, max_admins: 3, max_users: 10, notes: '',
+    ai_enabled: false, ai_daily_credits: '', ai_weekly_credits: '', ai_user_daily_credits: '',
 });
 
 function startEdit() {
@@ -283,6 +352,10 @@ function startEdit() {
     editForm.max_admins = license.max_admins;
     editForm.max_users = license.max_users;
     editForm.notes = license.notes ?? '';
+    editForm.ai_enabled = Boolean(license.ai_enabled);
+    editForm.ai_daily_credits = license.ai_daily_credits ?? '';
+    editForm.ai_weekly_credits = license.ai_weekly_credits ?? '';
+    editForm.ai_user_daily_credits = license.ai_user_daily_credits ?? '';
     mode.value = 'edit';
 }
 
@@ -620,7 +693,80 @@ function statusOf(license) {
                     <dt>Notas</dt>
                     <dd>{{ selected.notes || '—' }}</dd>
                 </div>
+                <div class="full">
+                    <dt>Conti (asistente de IA)</dt>
+                    <dd v-if="selected.ai_enabled" class="ai-summary">
+                        <span><span class="badge badge-success">Activado</span></span>
+                        <span>
+                            Hoy: <strong>{{ credits(selected.ai_today) }}</strong> de {{ credits(selected.ai_daily_credits) }} créditos ·
+                            Semana: <strong>{{ credits(selected.ai_week) }}</strong> de {{ credits(selected.ai_weekly_credits) }}
+                        </span>
+                        <span class="muted">Por persona al día: {{ credits(selected.ai_user_daily_credits) }}</span>
+                    </dd>
+                    <dd v-else class="muted">Desactivado: el botón Conti no aparece en sus compañías.</dd>
+                </div>
             </dl>
+
+            <section v-if="selected && mode === 'details'" class="history">
+                <button
+                    type="button"
+                    class="history-toggle"
+                    aria-controls="license-ai-usage"
+                    :aria-expanded="aiOpen"
+                    @click="toggleAiUsage"
+                >
+                    <ChevronRightIcon class="history-chevron" :class="{ open: aiOpen }" />
+                    Consumo de Conti
+                </button>
+
+                <div v-if="aiOpen" id="license-ai-usage" aria-live="polite">
+                    <p v-if="aiLoading && !aiReport" class="history-note muted">Cargando…</p>
+                    <p v-else-if="aiError" class="history-note error-text">{{ aiError }}</p>
+                    <template v-else-if="aiReport">
+                        <dl class="ai-totals">
+                            <div><dt>Hoy</dt><dd>{{ credits(aiReport.hoy.creditos) }} créditos · {{ aiReport.hoy.mensajes }} mensajes</dd></div>
+                            <div><dt>Esta semana</dt><dd>{{ credits(aiReport.semana.creditos) }} créditos · {{ aiReport.semana.mensajes }} mensajes</dd></div>
+                            <div>
+                                <dt>Últimos 30 días</dt>
+                                <dd>
+                                    {{ credits(aiReport.treinta_dias.creditos) }} créditos · {{ aiReport.treinta_dias.mensajes }} mensajes ·
+                                    {{ usd(aiReport.treinta_dias.costo_usd) }}
+                                    <span v-if="aiReport.treinta_dias.errores" class="muted"> · {{ aiReport.treinta_dias.errores }} con error</span>
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <div class="ai-days" role="img" aria-label="Créditos por día, últimos 30 días">
+                            <span
+                                v-for="day in aiReport.por_dia"
+                                :key="day.fecha"
+                                class="ai-day"
+                                :style="{ height: `${Math.max(2, (Number(day.creditos) / aiMaxDay) * 100)}%` }"
+                                :title="`${day.fecha}: ${credits(day.creditos)} créditos, ${day.mensajes} mensajes`"
+                            />
+                        </div>
+
+                        <template v-if="aiReport.por_compania.length">
+                            <h4 class="ai-subtitle">Esta semana, por compañía</h4>
+                            <ul class="ai-list">
+                                <li v-for="row in aiReport.por_compania" :key="row.nombre">
+                                    <span>{{ row.nombre }}</span>
+                                    <span class="muted">{{ credits(row.creditos) }} créditos · {{ row.mensajes }} mensajes</span>
+                                </li>
+                            </ul>
+                            <h4 class="ai-subtitle">Esta semana, por persona</h4>
+                            <ul class="ai-list">
+                                <li v-for="row in aiReport.por_persona" :key="row.nombre">
+                                    <span>{{ row.nombre }}</span>
+                                    <span class="muted">{{ credits(row.creditos) }} créditos · {{ row.mensajes }} mensajes</span>
+                                </li>
+                            </ul>
+                        </template>
+                        <p v-else class="history-note muted">Sin consumo esta semana.</p>
+                        <p class="history-note muted">1 crédito = {{ usd(aiCreditUsd) }} de lo que cobra el modelo de IA.</p>
+                    </template>
+                </div>
+            </section>
 
             <section v-if="selected && mode === 'details'" class="history">
                 <button
@@ -690,6 +836,33 @@ function statusOf(license) {
                     <input id="edit-license-notes" v-model="editForm.notes" type="text">
                     <span v-if="editForm.errors.notes" class="error">{{ editForm.errors.notes }}</span>
                 </div>
+
+                <h3 class="section-title assign-title">Conti (asistente de IA)</h3>
+                <label class="check"><input v-model="editForm.ai_enabled" type="checkbox"> Activado para esta licencia</label>
+                <p v-if="!aiConfigured" class="hint">
+                    Esta instalación todavía no tiene la key de OpenAI: aunque lo actives, Conti no aparece hasta configurarla.
+                </p>
+                <div v-if="editForm.ai_enabled" class="field-row quota-row">
+                    <div class="field">
+                        <label for="edit-license-ai-daily">Créditos por día</label>
+                        <input id="edit-license-ai-daily" v-model="editForm.ai_daily_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="editForm.errors.ai_daily_credits" class="error">{{ editForm.errors.ai_daily_credits }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="edit-license-ai-weekly">Créditos por semana</label>
+                        <input id="edit-license-ai-weekly" v-model="editForm.ai_weekly_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="editForm.errors.ai_weekly_credits" class="error">{{ editForm.errors.ai_weekly_credits }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="edit-license-ai-user">Por persona al día</label>
+                        <input id="edit-license-ai-user" v-model="editForm.ai_user_daily_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="editForm.errors.ai_user_daily_credits" class="error">{{ editForm.errors.ai_user_daily_credits }}</span>
+                    </div>
+                </div>
+                <p v-if="editForm.ai_enabled" class="hint">
+                    1 crédito = {{ usd(aiCreditUsd) }} de lo que cobra el modelo de IA. Vacío = sin límite. El día y la semana (de lunes
+                    a domingo) son los de Costa Rica, y cuentan para toda la licencia: todas sus compañías y personas juntas.
+                </p>
                 <p v-if="editForm.errors.license" class="flash flash-error">{{ editForm.errors.license }}</p>
             </form>
 
@@ -829,4 +1002,16 @@ th, td { text-align: left; padding: 0.55rem 0.65rem; border-top: 1px solid var(-
 /* Los tres cupos son números cortos: caben de a tres por línea incluso en
    un teléfono. */
 .quota-row .field { min-width: 5.5rem; }
+
+/* Conti en la ficha: el estado, el consumo contra el límite, y la sección
+   de consumo con una barra por día de los últimos 30. */
+.ai-summary { display: flex; flex-direction: column; gap: 0.25rem; }
+.ai-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 0.5rem 1rem; margin: 0.6rem 0 0; }
+.ai-totals dt { font-size: 0.74rem; color: var(--color-text-muted); }
+.ai-totals dd { margin: 0.1rem 0 0; font-size: 0.84rem; font-weight: 600; }
+.ai-days { display: flex; align-items: flex-end; gap: 2px; height: 3.5rem; margin-top: 0.75rem; padding-bottom: 1px; border-bottom: 1px solid var(--color-border); }
+.ai-day { flex: 1; min-width: 2px; border-radius: 2px 2px 0 0; background: color-mix(in srgb, var(--color-primary) 70%, transparent); }
+.ai-subtitle { margin: 0.9rem 0 0.3rem; font-size: 0.8rem; }
+.ai-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; }
+.ai-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.1rem 0.75rem; }
 </style>

@@ -21,7 +21,18 @@ class LicenseCategoryController extends Controller
 {
     use RecordsPropietarioAudit;
 
-    private const FIELDS = ['name', 'max_companies', 'max_admins', 'max_users', 'duration_months', 'description', 'is_active'];
+    private const FIELDS = [
+        'name', 'max_companies', 'max_admins', 'max_users', 'duration_months', 'description', 'is_active',
+        'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits',
+    ];
+
+    /** Conti: con qué nace cada licencia de la categoría (CLAUDE.md secc. 32). */
+    private const AI_RULES = [
+        'ai_enabled' => ['boolean'],
+        'ai_daily_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+        'ai_weekly_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+        'ai_user_daily_credits' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+    ];
 
     public function index(): Response
     {
@@ -40,6 +51,7 @@ class LicenseCategoryController extends Controller
             'duration_months' => ['required', 'integer', 'min:1', 'max:120'],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
+            ...self::AI_RULES,
         ]);
 
         DB::transaction(function () use ($request, $validated) {
@@ -63,6 +75,7 @@ class LicenseCategoryController extends Controller
             'duration_months' => ['required', 'integer', 'min:1', 'max:120'],
             'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['boolean'],
+            ...self::AI_RULES,
         ]);
 
         DB::transaction(function () use ($request, $category, $validated) {

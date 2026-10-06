@@ -3,6 +3,82 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-06 — El Superusuario reparte el cupo de Conti entre las personas de su licencia
+
+**Pedido del usuario:** que solo el Superusuario, al crear o editar Administradores y Usuarios, elija si pueden usar Conti, sus límites (sin pasar los de la licencia) y los modelos permitidos. El consumo es compartido: si alguien gasta todo, ni el Superusuario puede usarlo; el Superusuario reparte.
+
+- **Por persona y por licencia** (`conti_user_settings`), no por compañía: el cupo es de la licencia y vale en todas sus compañías. Editarlo desde una compañía vale para las demás.
+- **En las pantallas que ya existen:** la invitación y «Editar permisos», con una sección «Conti» (`ContiAccessFields.vue`).
+  - Solo el Superusuario la ve, y solo si la licencia tiene Conti y la instalación tiene la key.
+  - Lo que manda otro rol se ignora.
+  - En la invitación queda en `conti_settings` y se aplica al aceptar, si la mandó el Superusuario.
+- **Sin decisión, la persona puede usar Conti** sin límite propio. Así nadie pierde Conti al instalar esto, y es lo que reciben quienes invita un Administrador. Si se quiere lo contrario («sin Conti hasta que el Superusuario diga»), es cambiar el valor por defecto en `ContiAccessService`.
+- **Los límites propios se suman a los de la licencia, no los reemplazan:** se corta con el primero que se alcance. Por día cuenta el más chico entre el de persona del backoffice y el del Superusuario.
+  - No pueden pasar los de la licencia: el formulario los frena y el servidor también.
+  - Si después el backoffice los baja, igual cuenta el más chico.
+- **Al Superusuario no se lo limita:** gasta del cupo como todos, pero no tiene límite propio, y nadie puede quitarle Conti desde Usuarios.
+- **Todos los modelos marcados se guarda como «todos»** (null), para que un modelo nuevo en `conti.models` les llegue sin editar a cada persona. Con algunos, solo esos; la persona elige entre ellos en «Modelo y consumo».
+- **Los mensajes del límite de la licencia dicen que el cupo es compartido** («…que comparten todas sus personas»). Así quien se queda sin Conti entiende por qué, aunque no lo haya gastado.
+- **Verificado:**
+  - 8 pruebas nuevas en `ContiAccessTest`, más las de Conti y las de usuarios e invitaciones: 126 pasan.
+  - En el navegador, con una Superusuaria, un Administrador y una Usuaria temporales:
+    - la sección al invitar y al editar;
+    - el límite rechazado por el navegador y por el servidor;
+    - la ficha con lo que tiene y gastó;
+    - el Administrador sin la sección;
+    - la Usuaria con solo sus dos modelos y sus límites primero;
+    - sin acceso, sin el botón; y en teléfono y en oscuro.
+  - La licencia 0001 y su Superusuario quedaron como estaban.
+
+---
+## 2026-10-06 — Cada persona elige el modelo de Conti y ve su consumo
+
+**Pedido del usuario:** que cada persona pueda elegir el modelo de OpenAI y ver su consumo diario, semanal y mensual de tokens, con sus límites.
+
+- **El modelo es de la persona, no de la licencia** (`users.conti_model`): así lo pidió el usuario. Los límites siguen en créditos, así que un modelo caro no pasa el tope de gasto: solo lo alcanza antes.
+- **Solo modelos con precio conocido** (`conti.models`, cada uno con su precio en `conti.pricing`). La key puede usar decenas de modelos (gpt-5.4, gpt-6, o1-pro…), pero con uno sin precio el consumo saldría mal: o1-pro cuesta cientos de veces más que el mini.
+- **La lista se cruza con la key**, con `GET /models`, que no consume tokens y se recuerda un día. Así no se ofrece un modelo que después falle. Si OpenAI no contesta, se ofrecen todos.
+- **El predeterminado no se guarda** al elegirlo: quien no eligió otro sigue al de la instalación si cambia `OPENAI_MODEL`.
+- **La familia GPT-5 razona:** se le pide un razonamiento corto (`reasoning_effort` = low) y se le dejan 4000 tokens de salida, porque lo que piensa cuenta como salida. Con 1500 podía quedarse sin respuesta.
+- **El precio se busca por nombre exacto o versión con fecha:** con el prefijo solo, `gpt-5.4` se cobraba como `gpt-5`.
+- **Consumo en tokens y en créditos:** se pidió en tokens, pero los límites están en créditos (entrada y salida tienen precios distintos). Se muestran las dos cosas, y los límites con lo usado.
+- **Verificado:**
+  - 8 pruebas nuevas en `ContiSettingsTest`; las 67 de Conti pasan.
+  - En el navegador: los cinco modelos, la elección que se guarda y sigue en otra página, el consumo y los límites (el 85 % en ámbar), en teléfono y en oscuro. No se le mandó ningún mensaje a Conti.
+
+---
+## 2026-10-06 — Conti pasa de n8n al código, con OpenAI, y se activa y se limita por licencia
+
+**Pedido del usuario:** que desde el backoffice se pueda activar o no Conti en cada licencia y controlar su consumo por día y por semana. Se resolvió hacer el agente en el código, con su propia key de OpenAI. Reemplaza lo de n8n de la entrada del 2026-10-05: lo demás de esa entrada sigue igual (campos explícitos, `ContiRedactor`, preparar y confirmar, las doce acciones).
+
+- **En el código y no en n8n:**
+  - El consumo hay que medirlo mensaje a mensaje, por licencia, compañía y persona, y cortarlo antes de llamar al modelo. Con n8n, los tokens quedaban del otro lado.
+  - n8n era un servicio más para mantener y pagar (la prueba gratis era de 15 días).
+  - Ya no hace falta la API `/api/conti/*` ni los pases: las herramientas corren dentro de CONTAPP con la persona y la compañía del mensaje (`ContiContext`). Se borraron `routes/api.php`, `ContiTokenService`, `AuthenticateContiToken` y la tabla `conti_tokens`.
+- **Una migración nueva** (`2026_10_06_100000_add_conti_usage_and_license_limits`) en vez de editar la del 2026-10-05: esa ya estaba subida, y en una base donde ya corrió, `migrate` no vuelve a correr un archivo editado.
+- **OpenAI Chat Completions con herramientas**, sin SDK: un `Http::post` con timeout (`OpenAiClient`). Cada error de OpenAI se traduce a un mensaje para la persona: key inválida, sin saldo, modelo que no existe, sin conexión. El modelo por defecto es `gpt-4.1-mini` (`OPENAI_MODEL`), por precio y porque maneja bien las herramientas.
+- **Créditos en vez de tokens:** 1 crédito = US$0,01 de lo que cobra el modelo.
+  - Un límite en tokens no dice cuánto cuesta, porque la entrada, la entrada en caché y la salida tienen precios distintos.
+  - El costo de cada mensaje se calcula con la tabla de `config/conti.php` y queda guardado (`conti_usage`). Si OpenAI cambia los precios, lo ya gastado no cambia.
+- **Límites:** por día y por semana para toda la licencia, y uno opcional por persona al día, para que una sola persona no gaste el cupo de todos.
+  - La semana va de lunes a domingo y el día cierra a las 00:00 de Costa Rica.
+  - La categoría trae los valores por defecto, y se copian a la licencia al emitirla (igual que los cupos de compañías y usuarios).
+  - Se revisa antes de llamar al modelo: el mensaje que cruza el límite termina, y los siguientes se bloquean. Cortar a la mitad dejaría a la persona sin respuesta y con el gasto hecho.
+- **El manual va como herramienta, no en el prompt:** pesaba unos 30 000 tokens y se hubiera pagado en cada vuelta del agente. Ahora el prompt lleva el índice, y `manual` devuelve las secciones que se piden.
+- **El hilo de la conversación va en la caché, no en la base de datos:** 16 mensajes, 6 horas, solo texto. Los datos que devolvieron las consultas no se guardan, y la persona no tiene que mandar el historial (no se puede falsificar desde el navegador).
+- **El chat no escribe la sesión:** el pedido tarda varios segundos, y al terminar Laravel hubiera escrito la sesión que leyó al empezar, pisando, por ejemplo, un cambio de compañía hecho mientras tanto.
+- **El enlace de confirmación es relativo** (`/conti/acciones/…`): el panel lo abre dentro de CONTAPP y ya no depende de `APP_URL`.
+- **Se confirma en un modal, sin salir de la pantalla** (pedido del usuario): el enlace del chat abre `ContiActionModal.vue` encima de donde se está, y al confirmar esa pantalla se recarga para mostrar lo guardado. La pantalla `Conti/Action.vue` queda para el enlace abierto en otra pestaña. Las dos usan el mismo controlador, con las mismas reglas: la persona dueña, su compañía activa, sus permisos y la licencia.
+- **Verificado:**
+  - 55 pruebas en `tests/Feature/Conti`, con OpenAI simulado (`Http::fake`): el agente y sus vueltas, cada herramienta con sus permisos, licencia sin Conti, cada límite, el aviso del 80 %, el costo, los errores de OpenAI y el backoffice.
+  - En el navegador, con un OpenAI simulado en el contenedor de Node:
+    - saludo con el contexto de la persona y consulta de socios en tabla;
+    - el aviso del 81 %, preparar un centro de costo y confirmarlo desde el chat;
+    - el bloqueo por límite con su motivo y sin «Reintentar», y «Conti no está disponible» con OpenAI caído;
+    - en el backoffice, la ficha con lo gastado, el consumo por compañía y por persona, y la edición de los límites.
+  - Los datos de prueba se borraron, la licencia y el `.env` quedaron como estaban.
+
+---
 ## 2026-10-05 — Conti consulta los datos y prepara registros, con los permisos de la persona
 
 **Pedido del usuario:** que Conti, el asistente de n8n, pueda consultar todo lo que la persona tiene registrado y opinar sobre eso, sin ver datos sensibles y respetando sus permisos. Que también pueda guardar datos, siempre que la persona lo permita y tenga el permiso.

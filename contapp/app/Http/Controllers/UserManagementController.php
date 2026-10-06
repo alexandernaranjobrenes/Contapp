@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Conti\Services\ContiAccessService;
 use App\Domains\Core\Exceptions\CompanyInvitationException;
 use App\Domains\Core\Exceptions\PrivilegeEscalationException;
 use App\Domains\Core\Models\Company;
@@ -31,16 +32,25 @@ use Inertia\Response;
  * rol y los permisos; la persona acepta desde el correo y, si no tenía
  * cuenta, elige ahí su nombre y su contraseña. Los permisos son por pantalla
  * del menú (ScreenCatalog).
+ *
+ * Conti (CLAUDE.md secc. 32): al invitar y al editar los permisos de alguien,
+ * el Superusuario —y nadie más— decide si puede usar Conti, sus límites y
+ * sus modelos (ContiAccessService). El cupo es de la licencia y lo comparten
+ * todos: así lo reparte.
  */
 class UserManagementController extends Controller
 {
-    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens, MediaStorage $media): Response
+    public function index(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens, MediaStorage $media, ContiAccessService $conti): Response
     {
         $company = Company::findOrFail($currentCompany->id());
         $grantor = $request->user();
         $grantorIsSuperAdmin = $grantor->isSuperAdmin($company->id);
+        $members = $company->users()->get();
 
-        $users = $company->users()->get()->map(function (User $user) use ($company, $grantor, $grantorIsSuperAdmin, $service, $screens, $media) {
+        // Lo de Conti de cada persona: solo lo ve el Superusuario.
+        $contiSummaries = $conti->canConfigure($grantor, $company) ? $conti->summaries($company->license, $members) : null;
+
+        $users = $members->map(function (User $user) use ($company, $grantor, $grantorIsSuperAdmin, $service, $screens, $media, $contiSummaries) {
             $isSuperAdmin = $user->isSuperAdmin($company->id);
 
             return [
@@ -55,6 +65,7 @@ class UserManagementController extends Controller
                 // Convertir Usuario ↔ Administrador: solo el Superusuario.
                 'can_change_role' => ! $isSuperAdmin && $grantorIsSuperAdmin,
                 'access' => $isSuperAdmin ? null : $this->accessSummary($screens->levelsFor($user, $company->id)),
+                'conti' => $contiSummaries[$user->id] ?? null,
             ];
         });
 
@@ -74,12 +85,13 @@ class UserManagementController extends Controller
                 'send_count' => $invitation->send_count,
                 'can_manage' => $this->canManageInvitation($grantor, $invitation, $service),
                 'access' => $this->accessSummary($invitation->screen_permissions ?? []),
+                'conti' => $contiSummaries !== null ? $conti->describe($invitation->conti_settings) : null,
             ]);
 
         return Inertia::render('Users/Index', ['users' => $users, 'invitations' => $invitations]);
     }
 
-    public function create(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service): Response
+    public function create(Request $request, CurrentCompany $currentCompany, PermissionGrantService $service, ContiAccessService $conti): Response
     {
         $company = Company::findOrFail($currentCompany->id());
         $grantor = $request->user();
@@ -110,14 +122,16 @@ class UserManagementController extends Controller
             ] : null,
             'sections' => $this->screenTree($service->grantableScreenLevels($grantor, $company->id)),
             'expiresInDays' => CompanyInvitationService::EXPIRES_IN_DAYS,
+            'conti' => $conti->canConfigure($grantor, $company) ? $conti->form($company) : null,
         ]);
     }
 
     /** Invita a una persona: le llega un correo para aceptar. */
-    public function store(Request $request, CurrentCompany $currentCompany, CompanyInvitationService $invitations): RedirectResponse
+    public function store(Request $request, CurrentCompany $currentCompany, CompanyInvitationService $invitations, ContiAccessService $conti): RedirectResponse
     {
         $company = Company::findOrFail($currentCompany->id());
-        $validated = $this->validateInvitation($request);
+        $configuresConti = $conti->canConfigure($request->user(), $company);
+        $validated = $this->validateInvitation($request, $configuresConti ? $company : null, $conti);
 
         try {
             ['invitation' => $invitation, 'mailed' => $mailed] = $invitations->invite(
@@ -126,6 +140,7 @@ class UserManagementController extends Controller
                 $validated['email'],
                 $validated['role_type'],
                 $validated['permissions'] ?? [],
+                $configuresConti && isset($validated['conti']) ? $conti->normalize($validated['conti']) : null,
             );
         } catch (CompanyInvitationException $e) {
             return back()->withErrors([$e->field => $e->getMessage()]);
@@ -181,7 +196,7 @@ class UserManagementController extends Controller
         return back()->with('success', "Cancelaste la invitación a {$invitation->email}: el enlace del correo ya no sirve.");
     }
 
-    public function editPermissions(int $user, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens): Response
+    public function editPermissions(int $user, CurrentCompany $currentCompany, PermissionGrantService $service, ScreenAccessService $screens, ContiAccessService $conti): Response
     {
         $company = Company::findOrFail($currentCompany->id());
         $target = User::findOrFail($user);
@@ -195,20 +210,29 @@ class UserManagementController extends Controller
                 $service->grantableScreenLevels($grantor, $company->id),
                 $screens->levelsFor($target, $company->id),
             ),
+            'conti' => $conti->canConfigure($grantor, $company) ? $conti->form($company, $target) : null,
         ]);
     }
 
-    public function updatePermissions(Request $request, int $user, CurrentCompany $currentCompany, PermissionGrantService $service): RedirectResponse
+    public function updatePermissions(Request $request, int $user, CurrentCompany $currentCompany, PermissionGrantService $service, ContiAccessService $conti): RedirectResponse
     {
         $company = Company::findOrFail($currentCompany->id());
         $target = User::findOrFail($user);
+        $configuresConti = $conti->canConfigure($request->user(), $company);
 
-        $validated = $request->validate($this->permissionRules());
+        $validated = $request->validate(
+            [...$this->permissionRules(), ...($configuresConti ? $conti->rules($company->license, $request) : [])],
+            $conti->messages($company->license),
+        );
 
         try {
             $service->updateScreenPermissions($request->user(), $target, $company->id, $validated['permissions'] ?? []);
         } catch (PrivilegeEscalationException $e) {
             return back()->withErrors(['permissions' => $e->getMessage()]);
+        }
+
+        if ($configuresConti && isset($validated['conti'])) {
+            $conti->save($request->user(), $company, $target, $conti->normalize($validated['conti']));
         }
 
         return redirect()->route('users.index')->with('success', "Permisos de {$target->name} actualizados.");
@@ -264,14 +288,19 @@ class UserManagementController extends Controller
             : "{$target->name} {$done}, pero no se pudo enviar el correo a {$target->email}.");
     }
 
-    /** @return array<string, mixed> */
-    private function validateInvitation(Request $request): array
+    /**
+     * Con compañía, también lo de Conti (lo manda solo el Superusuario).
+     *
+     * @return array<string, mixed>
+     */
+    private function validateInvitation(Request $request, ?Company $contiCompany, ContiAccessService $conti): array
     {
         return $request->validate([
             'email' => ['required', 'email', 'max:255'],
             'role_type' => ['required', 'string', 'in:admin,user'],
             ...$this->permissionRules(),
-        ], [], ['email' => 'correo', 'role_type' => 'rol']);
+            ...($contiCompany ? $conti->rules($contiCompany->license, $request) : []),
+        ], $conti->messages($contiCompany?->license), ['email' => 'correo', 'role_type' => 'rol']);
     }
 
     /** Los permisos llegan como clave de pantalla => nivel. */

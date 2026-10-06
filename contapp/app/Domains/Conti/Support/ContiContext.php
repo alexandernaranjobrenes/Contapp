@@ -9,8 +9,8 @@ use App\Models\User;
 use LogicException;
 
 /**
- * A nombre de quién y en qué compañía consulta Conti, durante una petición a
- * su API (AuthenticateContiToken lo arma). Es el único lugar que decide si
+ * A nombre de quién y en qué compañía consulta Conti mientras responde un
+ * mensaje (ContiChatController lo arma). Es el único lugar que decide si
  * Conti puede ver o guardar algo: con los mismos permisos por pantalla que
  * la persona tiene en el menú (ScreenAccessService), ni uno más.
  */
@@ -35,12 +35,12 @@ class ContiContext
 
     public function user(): User
     {
-        return $this->user ?? throw new LogicException('Conti sin persona: falta AuthenticateContiToken.');
+        return $this->user ?? throw new LogicException('Conti sin persona: falta armar el ContiContext.');
     }
 
     public function company(): Company
     {
-        return $this->company ?? throw new LogicException('Conti sin compañía: falta AuthenticateContiToken.');
+        return $this->company ?? throw new LogicException('Conti sin compañía: falta armar el ContiContext.');
     }
 
     public function inGrace(): bool

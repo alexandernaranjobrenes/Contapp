@@ -18,6 +18,8 @@ class CompanyInvitation extends Model
     protected $fillable = [
         'company_id', 'email', 'role_type', 'screen_permissions', 'invited_by',
         'token_hash', 'expires_at', 'sent_at', 'send_count', 'accepted_at', 'accepted_user_id',
+        // Conti, si lo eligió el Superusuario al invitar (ContiAccessService).
+        'conti_settings',
     ];
 
     protected $hidden = ['token_hash'];
@@ -26,6 +28,7 @@ class CompanyInvitation extends Model
     {
         return [
             'screen_permissions' => 'array',
+            'conti_settings' => 'array',
             'expires_at' => 'datetime',
             'sent_at' => 'datetime',
             'accepted_at' => 'datetime',

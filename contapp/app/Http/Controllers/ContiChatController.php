@@ -2,44 +2,55 @@
 
 namespace App\Http\Controllers;
 
-use App\Domains\Conti\Services\ContiTokenService;
+use App\Domains\Conti\Agent\ContiAgent;
+use App\Domains\Conti\Agent\ContiAgentException;
+use App\Domains\Conti\Services\ContiAccessService;
+use App\Domains\Conti\Services\ContiModelService;
+use App\Domains\Conti\Services\ContiUsageService;
+use App\Domains\Conti\Support\ContiContext;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Session\NullSessionHandler;
+use Illuminate\Support\Facades\Cache;
 
 /**
- * POST /conti/mensajes: lo que la persona le escribe a Conti, desde el chat
- * de la aplicación (ContiChat.vue).
+ * POST /conti/mensajes: lo que la persona le escribe a Conti desde el chat de
+ * la aplicación (ContiPanel.vue), y su respuesta (CLAUDE.md secc. 32).
  *
- * CONTAPP le pasa el mensaje al flujo de n8n desde el servidor, no el
- * navegador: así el pase de la API de Conti (ContiTokenService) nunca llega
- * al navegador, y el Chat Trigger de n8n puede exigir una contraseña que
- * solo CONTAPP conoce (config/services.php: conti).
+ * 1. Revisa que la licencia tenga Conti y le quede cupo (ContiUsageService):
+ *    si no, responde el motivo sin llamar al modelo.
+ * 2. Corre el agente (ContiAgent) a nombre de la persona, en su compañía, con
+ *    el modelo que ella eligió (ContiModelService).
+ * 3. Registra lo consumido —también si el modelo falló a la mitad: OpenAI
+ *    lo cobra igual— y avisa si algún límite va por encima del 80 %.
  *
- * El pase va en la metadata del mensaje, junto con quién pregunta y desde
- * qué pantalla. La conversación se identifica por persona y compañía: dos
- * personas, o la misma en dos compañías, nunca comparten la memoria del
- * agente.
+ * La conversación se recuerda en caché unas horas, por persona, compañía y
+ * conversación del chat. Nunca en la base: solo se guarda el consumo.
  */
 class ContiChatController extends Controller
 {
-    public function store(Request $request, CurrentCompany $currentCompany, ContiTokenService $tokens): JsonResponse
-    {
+    public function store(
+        Request $request,
+        CurrentCompany $currentCompany,
+        ContiUsageService $usage,
+        ContiContext $context,
+        ContiAgent $agent,
+        ContiModelService $models,
+        ContiAccessService $access,
+    ): JsonResponse {
+        // Esta petición puede tardar lo que tarde el modelo. Si al terminar
+        // guardara la sesión, pisaría lo que otra pestaña haya cambiado
+        // mientras tanto (un cambio de compañía, un aviso). No tiene nada que
+        // guardar en ella: se la deja de solo lectura.
+        $request->session()->setHandler(new NullSessionHandler);
+
         $validated = $request->validate([
             'mensaje' => ['required', 'string', 'max:4000'],
             'sesion' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9-]+$/'],
             'pantalla' => ['nullable', 'string', 'max:150'],
         ]);
-
-        $url = config('services.conti.webhook_url');
-
-        if (! $url) {
-            return response()->json(['message' => 'Conti todavía no está configurado en esta instalación de CONTAPP.'], 503);
-        }
 
         $companyId = $currentCompany->id();
 
@@ -48,110 +59,41 @@ class ContiChatController extends Controller
         }
 
         $user = $request->user();
-        $company = Company::findOrFail($companyId);
-        $role = $user->isSuperAdmin($companyId) ? 'Superusuario' : ($user->roleTypeFor($companyId) === 'admin' ? 'Administrador' : 'Usuario');
+        $company = Company::with('license')->findOrFail($companyId);
 
-        $payload = [
-            'action' => 'sendMessage',
-            'sessionId' => "u{$user->id}-c{$companyId}-{$validated['sesion']}",
-            'chatInput' => $validated['mensaje'],
-            'metadata' => [
-                'contiToken' => $tokens->issue($user, $companyId),
-                'usuario' => $user->name,
-                'rol' => $role,
-                'compania' => $company->trade_name ?: $company->legal_name,
-                'pantalla' => $validated['pantalla'] ?? null,
-                'fecha' => now()->format('Y-m-d'),
-                'modo_gracia' => $currentCompany->isInGracePeriod(),
-            ],
-        ];
-
-        $timeout = max(10, (int) config('services.conti.timeout', 120));
-
-        // Esperar al agente no consume tiempo de CPU, pero por si acaso se le
-        // da aire a la petición.
-        //
-        // ── Solo por HTTP: en consola esto envenena el proceso ──────────
-        //
-        // set_time_limit() no acota ESTA petición: reinicia el contador del
-        // PROCESO y le pone ese tope desde ese momento. En php-fpm da igual,
-        // porque cada petición es un proceso que muere al contestar.
-        //
-        // En consola no: la suite de pruebas corre entera en un solo proceso,
-        // así que una prueba que toque este endpoint le deja al proceso 135
-        // segundos de vida — y la suite se cae con «Maximum execution time of
-        // 135 seconds exceeded» dos minutos después, en cualquier otra prueba,
-        // sin relación con la que lo causó. Falla real: tumbó la suite completa
-        // en el archivo de pruebas HTTP de asientos, que no tiene nada que ver
-        // con el chat.
-        //
-        // En consola el límite ya es 0 (sin tope), así que no hay nada que
-        // ampliar y la llamada solo puede hacer daño.
-        if (PHP_SAPI !== 'cli') {
-            @set_time_limit($timeout + 15);
+        if ($block = $usage->blockFor($user, $company)) {
+            return response()->json(['message' => $block[1]], $block[0]);
         }
+
+        $context->set($user, $company, $currentCompany->isInGracePeriod());
+        @set_time_limit(180);
+
+        $historyKey = "conti:history:{$user->id}:{$company->id}:{$validated['sesion']}";
+        $history = Cache::get($historyKey, []);
 
         try {
-            $client = Http::timeout($timeout)->acceptJson();
-
-            if (config('services.conti.webhook_user')) {
-                $client = $client->withBasicAuth(config('services.conti.webhook_user'), (string) config('services.conti.webhook_password'));
+            $reply = $agent->reply($history, $validated['mensaje'], $validated['pantalla'] ?? null, $models->forUser($user, $access->allowedModels($user, $company)));
+        } catch (ContiAgentException $e) {
+            if ($e->usage !== null) {
+                $usage->record($user, $company, $e->usage, 'error');
             }
 
-            $response = $client->post($url, $payload);
-        } catch (ConnectionException) {
-            return response()->json(['message' => 'Conti no está disponible en este momento. Probá de nuevo en unos minutos.'], 502);
+            return response()->json(['message' => $e->getMessage()], $e->status);
         }
 
-        if ($response->failed()) {
-            report(new \RuntimeException("Conti: el flujo de n8n respondió {$response->status()}."));
+        $usage->record($user, $company, $reply->usage);
 
-            return response()->json(['message' => 'Conti no pudo responder esta vez. Probá de nuevo; si se repite, avisale al equipo de CONTAPP.'], 502);
-        }
+        $history = array_slice([
+            ...$history,
+            ['role' => 'user', 'content' => $validated['mensaje']],
+            ['role' => 'assistant', 'content' => $reply->text],
+        ], -max(2, (int) config('conti.history_messages', 16)));
 
-        $reply = $this->replyFrom($response);
+        Cache::put($historyKey, $history, now()->addMinutes((int) config('conti.history_minutes', 360)));
 
-        if ($reply === '') {
-            return response()->json(['message' => 'Conti no devolvió una respuesta. Probá reformular la pregunta.'], 502);
-        }
-
-        return response()->json(['respuesta' => $reply]);
-    }
-
-    /**
-     * La respuesta del agente. El Chat Trigger contesta {"output": "…"} (a
-     * veces dentro de una lista), o en modo streaming una línea JSON por
-     * pedazo ({"type": "item", "content": "…"}).
-     */
-    private function replyFrom(Response $response): string
-    {
-        $json = $response->json();
-
-        if (is_array($json)) {
-            $first = array_is_list($json) ? ($json[0] ?? []) : $json;
-
-            foreach (['output', 'text', 'response', 'message'] as $key) {
-                if (is_array($first) && is_string($first[$key] ?? null)) {
-                    return trim($first[$key]);
-                }
-            }
-        }
-
-        $body = trim($response->body());
-        $streamed = '';
-
-        foreach (preg_split('/\r?\n/', $body) as $line) {
-            $chunk = json_decode($line, true);
-
-            if (is_array($chunk) && ($chunk['type'] ?? null) === 'item' && is_string($chunk['content'] ?? null)) {
-                $streamed .= $chunk['content'];
-            }
-        }
-
-        if ($streamed !== '') {
-            return trim($streamed);
-        }
-
-        return is_array($json) ? '' : $body;
+        return response()->json([
+            'respuesta' => $reply->text,
+            'aviso' => $usage->warningFor($user, $company),
+        ]);
     }
 }

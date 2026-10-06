@@ -8,6 +8,7 @@ use App\Http\Controllers\CompanyDetailsController;
 use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\ContiActionController;
 use App\Http\Controllers\ContiChatController;
+use App\Http\Controllers\ContiSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\CompanyInvitationAcceptanceController;
 use App\Http\Controllers\Auth\LicenseActivationController;
@@ -194,14 +195,19 @@ Route::middleware('auth')->group(function () {
 
     // Conti, el asistente (CLAUDE.md secc. 32). Cualquier rol: lo que Conti
     // puede ver o guardar lo deciden los permisos de la persona, en cada
-    // consulta de su API (routes/api.php) y al confirmar.
-    // - mensajes: el chat le pasa cada mensaje al flujo de n8n (JSON).
+    // herramienta que usa el agente y al confirmar.
+    // - mensajes: cada mensaje del chat va al agente (OpenAI) y vuelve su
+    //   respuesta (JSON). Gasta del cupo de Conti de la licencia.
     // - acciones: la persona revisa lo que Conti preparó y lo confirma o lo
     //   descarta. Es el único camino por el que Conti guarda algo.
+    // - ajustes: «Modelo y consumo» en el chat: el modelo de OpenAI que
+    //   eligió la persona y lo que gastó (JSON).
     Route::post('conti/mensajes', [ContiChatController::class, 'store'])->middleware('throttle:conti-chat')->name('conti.messages.store');
     Route::get('conti/acciones/{uuid}', [ContiActionController::class, 'show'])->name('conti.actions.show');
     Route::post('conti/acciones/{uuid}/confirmar', [ContiActionController::class, 'confirm'])->name('conti.actions.confirm');
     Route::post('conti/acciones/{uuid}/descartar', [ContiActionController::class, 'discard'])->name('conti.actions.discard');
+    Route::get('conti/ajustes', [ContiSettingsController::class, 'show'])->name('conti.settings.show');
+    Route::put('conti/ajustes/modelo', [ContiSettingsController::class, 'updateModel'])->name('conti.settings.model');
 
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
@@ -887,6 +893,8 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     // El historial de la licencia (bitácora), para su ficha: se pide al
     // abrir la sección, no viaja en el listado.
     Route::get('licenses/{license}/history', [LicenseController::class, 'history'])->name('licenses.history');
+    // El consumo de Conti de la licencia, para su ficha (CLAUDE.md secc. 32).
+    Route::get('licenses/{license}/ai-usage', [LicenseController::class, 'aiUsage'])->name('licenses.ai-usage');
     // Asignar la licencia a una persona, que la acepta desde el correo
     // (LicenseInvitationService). El lookup dice, antes de asignar, si el
     // correo tiene cuenta y si su contraseña es propia.

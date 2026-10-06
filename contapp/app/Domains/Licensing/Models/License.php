@@ -25,12 +25,21 @@ class License extends Model
      */
     private const EXPIRING_SOON_THRESHOLD_DAYS = 30;
 
-    protected $fillable = ['code', 'category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'status', 'notes', 'issued_by'];
+    protected $fillable = [
+        'code', 'category_id', 'max_companies', 'max_admins', 'max_users', 'expires_at', 'status', 'notes', 'issued_by',
+        // Conti, el asistente (CLAUDE.md secc. 32): si la licencia lo tiene y
+        // sus límites en créditos. Vacío = sin límite.
+        'ai_enabled', 'ai_daily_credits', 'ai_weekly_credits', 'ai_user_daily_credits',
+    ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'date',
+            'ai_enabled' => 'boolean',
+            'ai_daily_credits' => 'decimal:2',
+            'ai_weekly_credits' => 'decimal:2',
+            'ai_user_daily_credits' => 'decimal:2',
         ];
     }
 

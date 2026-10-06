@@ -46,6 +46,11 @@ const INVITATION_STATUS = {
 
 const ACCESS_LABELS = { read: 'Lectura', read_write: 'Lectura y escritura' };
 
+// Conti (solo lo manda el servidor al Superusuario): límites en créditos.
+const creditFormat = new Intl.NumberFormat('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const credits = (value) => (value === null || value === undefined ? 'Sin límite propio' : `${creditFormat.format(Number(value))} créditos`);
+const contiModels = (conti) => (conti.models ? conti.models.join(', ') : 'Todos');
+
 function screensCount(access) {
     return (access ?? []).reduce((sum, section) => sum + section.screens.length, 0);
 }
@@ -240,6 +245,38 @@ function cancelInvitation() {
                         </ul>
                     </div>
                 </div>
+
+                <template v-if="selected.conti">
+                    <h4 class="block-title">Conti</h4>
+                    <p v-if="selected.conti.superuser" class="muted small">
+                        Sin límite propio: usa el cupo de la licencia, que comparte con todas las personas.
+                        Gastó {{ creditFormat.format(Number(selected.conti.used_today)) }} créditos hoy y {{ creditFormat.format(Number(selected.conti.used_week)) }} esta semana.
+                    </p>
+                    <dl v-else class="detail-list">
+                        <div>
+                            <dt>Puede usarlo</dt>
+                            <dd>{{ selected.conti.enabled ? 'Sí' : 'No' }}</dd>
+                        </div>
+                        <template v-if="selected.conti.enabled">
+                            <div>
+                                <dt>Límite por día</dt>
+                                <dd>{{ credits(selected.conti.daily_credits) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Límite por semana</dt>
+                                <dd>{{ credits(selected.conti.weekly_credits) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Modelos</dt>
+                                <dd>{{ contiModels(selected.conti) }}</dd>
+                            </div>
+                        </template>
+                        <div>
+                            <dt>Gastó</dt>
+                            <dd>{{ creditFormat.format(Number(selected.conti.used_today)) }} hoy · {{ creditFormat.format(Number(selected.conti.used_week)) }} esta semana</dd>
+                        </div>
+                    </dl>
+                </template>
             </template>
 
             <template #actions>
@@ -291,6 +328,14 @@ function cancelInvitation() {
                         <dd>{{ selectedInvitation.expires_at ? fullDate(selectedInvitation.expires_at) : '—' }}</dd>
                     </div>
                 </dl>
+
+                <template v-if="selectedInvitation.conti">
+                    <h4 class="block-title">Conti al aceptar</h4>
+                    <p v-if="!selectedInvitation.conti.enabled" class="muted small">No va a poder usarlo.</p>
+                    <p v-else class="muted small">
+                        Por día: {{ credits(selectedInvitation.conti.daily_credits) }} · Por semana: {{ credits(selectedInvitation.conti.weekly_credits) }} · Modelos: {{ contiModels(selectedInvitation.conti) }}
+                    </p>
+                </template>
 
                 <h4 class="block-title">Permisos al aceptar</h4>
                 <p v-if="!screensCount(selectedInvitation.access)" class="muted small">Sin permisos: solo va a ver el Panel.</p>

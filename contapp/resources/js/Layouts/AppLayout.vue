@@ -6,8 +6,8 @@ import { closeConti, conti, toggleConti } from '../Utils/contiChat';
 import { useNewsSeen } from '../Utils/newsSeen';
 import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
-    BookOpenIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
-    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon, SparklesIcon,
+    BookOpenIcon, BotIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
+    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon,
     SunIcon, TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
 
@@ -662,7 +662,7 @@ function toggleGroup(item) {
 
         <div class="nav-backdrop" @click="navOpen = false" />
 
-        <div class="app-main" :class="{ 'conti-docked': contiEnabled && conti.open }">
+        <div class="app-main" :class="{ 'conti-docked': contiEnabled && conti.open, 'has-conti-fab': contiEnabled }">
             <header class="topbar">
                 <div class="topbar-heading">
                     <button
@@ -706,21 +706,6 @@ function toggleGroup(item) {
                     </button>
 
                     <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
-
-                    <!-- Conti, el asistente (Components/Conti/ContiPanel.vue). -->
-                    <button
-                        v-if="contiEnabled"
-                        type="button"
-                        class="btn btn-ghost conti-trigger"
-                        :class="{ 'is-open': conti.open }"
-                        aria-controls="conti-panel"
-                        :aria-expanded="conti.open"
-                        title="Conti, el asistente"
-                        @click="toggleConti"
-                    >
-                        <SparklesIcon />
-                        <span class="conti-label">Conti</span>
-                    </button>
 
                     <button
                         v-if="user"
@@ -807,11 +792,33 @@ function toggleGroup(item) {
 
             <FeedbackPanel v-if="user" :open="feedbackOpen" @close="feedbackOpen = false" />
 
-            <footer v-if="page.props.license" class="app-footer">
-                <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
-                <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
-                <span class="app-footer-meta">CONTAPP {{ CONTAPP_VERSION }} · © {{ currentYear }}</span>
-            </footer>
+            <!-- El pie, y encima Conti, el asistente (Components/Conti/
+                 ContiPanel.vue): un botón flotante en la esquina inferior
+                 derecha. Va anclado al pie y no a la ventana: así queda
+                 justo arriba de él, mida lo que mida. Con un panel de la
+                 derecha abierto (Conti o «Comentarios y noticias») no se
+                 muestra: el panel ocupa ese lugar. -->
+            <div class="app-bottom">
+                <button
+                    v-if="contiEnabled"
+                    v-show="!conti.open && !feedbackOpen"
+                    type="button"
+                    class="conti-fab"
+                    aria-controls="conti-panel"
+                    :aria-expanded="conti.open"
+                    title="Conti, el asistente"
+                    aria-label="Abrir Conti, el asistente"
+                    @click="toggleConti"
+                >
+                    <BotIcon :size="26" />
+                </button>
+
+                <footer v-if="page.props.license" class="app-footer">
+                    <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
+                    <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
+                    <span class="app-footer-meta">CONTAPP {{ CONTAPP_VERSION }} · © {{ currentYear }}</span>
+                </footer>
+            </div>
         </div>
     </div>
 </template>
@@ -1313,15 +1320,53 @@ function toggleGroup(item) {
     border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
 }
 
-/* Conti: con su nombre a la vista, que es como la gente lo va a buscar. */
-.conti-trigger {
-    gap: 0.35rem;
-    padding-inline: 0.65rem;
+/* Conti: el botón flotante, en la esquina inferior derecha, justo arriba
+   del pie. Por debajo de los paneles de la derecha (25), del menú en el
+   teléfono (30 y 40) y de los modales (50). */
+.app-bottom {
+    position: relative;
+    flex-shrink: 0;
 }
 
-.conti-trigger.is-open {
-    background: var(--color-primary-soft);
-    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+.conti-fab {
+    position: absolute;
+    right: 1.5rem;
+    bottom: calc(100% + 1rem);
+    z-index: 24;
+    display: inline-grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.conti-fab:hover {
+    background: var(--color-primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+}
+
+.conti-fab:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .conti-fab { transition: none; }
+    .conti-fab:hover { transform: none; }
+}
+
+/* Lo último de la página se puede subir por encima del botón: si no, al
+   final de un formulario largo taparía «Guardar». */
+.app-main.has-conti-fab .content {
+    padding-bottom: 5.75rem;
 }
 
 /* Hay una noticia que todavía no se vio. */
@@ -1508,8 +1553,6 @@ function toggleGroup(item) {
     .topbar-actions { gap: 0.35rem; }
     .company-select { max-width: 8rem; }
     .logout-btn { width: 2.25rem; padding: 0; }
-    .conti-trigger { width: 2.25rem; padding: 0; }
-    .conti-label,
     .logout-label {
         position: absolute;
         width: 1px;
@@ -1520,6 +1563,8 @@ function toggleGroup(item) {
         white-space: nowrap;
     }
     .content { padding: 0.75rem; }
+    .app-main.has-conti-fab .content { padding-bottom: 5rem; }
+    .conti-fab { right: 1rem; width: 3.25rem; height: 3.25rem; }
     .flash { margin: 0.75rem 0.75rem 0; }
     .app-footer { padding: 0.5rem 0.75rem; }
     .app-footer-meta { margin-left: 0; }

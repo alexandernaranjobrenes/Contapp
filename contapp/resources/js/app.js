@@ -3,6 +3,7 @@ import { createInertiaApp, router } from '@inertiajs/vue3';
 import { LUCIDE_CONTEXT } from '@lucide/vue';
 import CompanySwitchHost from './Components/CompanySwitchHost.vue';
 import ConfirmHost from './Components/ConfirmHost.vue';
+import ContiActionModal from './Components/Conti/ContiActionModal.vue';
 import ContiPanel from './Components/Conti/ContiPanel.vue';
 import ToastHost from './Components/ToastHost.vue';
 // Botón ocupado mientras dura la operación que disparó, también en las
@@ -40,8 +41,9 @@ createInertiaApp({
         // página, no adentro: la confirmación de confirmAction(), la ventana
         // del cambio de compañía y los avisos siguen a la vista aunque la
         // acción termine en otra página. El chat de Conti, igual: la
-        // conversación sigue abierta al pasar de pantalla.
-        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ConfirmHost), h(CompanySwitchHost), h(ToastHost)] });
+        // conversación sigue abierta al pasar de pantalla, y el modal para
+        // confirmar lo que preparó se abre encima de cualquiera.
+        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ContiActionModal), h(ConfirmHost), h(CompanySwitchHost), h(ToastHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada

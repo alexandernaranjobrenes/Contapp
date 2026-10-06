@@ -5,7 +5,7 @@ namespace App\Domains\Conti\Support;
 use JsonSerializable;
 
 /**
- * Lo que Conti nunca ve: la última revisión de todo lo que devuelve su API.
+ * Lo que Conti nunca ve: la última revisión de todo lo que devuelven sus herramientas.
  *
  * Cada consulta ya arma sus filas con una lista explícita de campos
  * (ContiResourceCatalog), así que un dato sensible no debería llegar hasta

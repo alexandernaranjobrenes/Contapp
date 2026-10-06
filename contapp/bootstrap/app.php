@@ -10,8 +10,6 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
-        // Solo la API de Conti, el asistente (routes/api.php).
-        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -40,7 +38,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'can-manage-company' => \App\Http\Middleware\EnsureCanManageCompany::class,
             'module-access' => \App\Http\Middleware\EnsureModuleAccess::class,
             'screen-access' => \App\Http\Middleware\EnsureScreenAccess::class,
-            'conti-token' => \App\Http\Middleware\AuthenticateContiToken::class,
         ]);
 
         // Sin esto, un guest golpeando una ruta auth:propietario cae al
@@ -64,7 +61,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*')
                 || $request->hasHeader('X-Contapp-Download')
-                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*'),
+                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*'),
         );
 
         // Una acción de Inertia (guardar, eliminar, contabilizar…) que

@@ -14,6 +14,9 @@ import { requestJson } from './http';
 
 const MAX_MESSAGES = 60;
 const SLOW_MS = 15000;
+// Las respuestas en las que ContiChatController explica qué pasó.
+const OWN_REASON_STATUSES = [403, 409, 429, 502, 503];
+const GENERIC_MESSAGES = ['Too Many Attempts.', 'Service Unavailable', 'Server Error', 'This action is unauthorized.'];
 
 export const conti = reactive({
     open: false,
@@ -21,7 +24,15 @@ export const conti = reactive({
     slow: false,
     key: null,
     sessionId: null,
-    messages: [], // { id, role: 'user' | 'conti' | 'error', text, retry? }
+    messages: [], // { id, role: 'user' | 'conti' | 'notice' | 'error', text, retry? }
+    // Lo que Conti preparó y la persona está revisando en el modal
+    // (ContiActionModal.vue): su uuid, o null.
+    review: null,
+    // Lo que muestra el panel: la conversación, o «Modelo y consumo»
+    // (ContiSettings.vue).
+    view: 'chat',
+    // El modelo recién elegido, hasta que la página traiga el nuevo.
+    modelName: null,
 });
 
 function newSessionId() {
@@ -66,6 +77,8 @@ export function useConversation(userId, companyId) {
     conti.messages = saved.messages;
     conti.sending = false;
     conti.slow = false;
+    conti.review = null;
+    conti.view = 'chat';
 }
 
 export function newConversation() {
@@ -80,6 +93,16 @@ export function toggleConti() {
 
 export function closeConti() {
     conti.open = false;
+    // Al volver a abrirlo, la conversación.
+    conti.view = 'chat';
+}
+
+export function showContiSettings() {
+    conti.view = 'settings';
+}
+
+export function showContiChat() {
+    conti.view = 'chat';
 }
 
 /**
@@ -115,10 +138,36 @@ export async function sendToConti(text, screen = null) {
 
     if (result.ok) {
         conti.messages.push({ id: newId(), role: 'conti', text: result.data.respuesta });
+        // Un límite de uso va por encima del 80 %.
+        if (result.data.aviso) conti.messages.push({ id: newId(), role: 'notice', text: result.data.aviso });
     } else {
-        conti.messages.push({ id: newId(), role: 'error', text: result.errors?.mensaje ?? result.message, retry: message });
+        // El motivo que da Conti («Se alcanzó el límite diario…», «Conti no
+        // está disponible…»); los textos genéricos de Laravel, en inglés, no.
+        const own = result.data?.message;
+        const reason = OWN_REASON_STATUSES.includes(result.status) && own && !GENERIC_MESSAGES.includes(own) ? own : null;
+        // Sin Conti en la licencia, o sin cupo: reintentar no cambia nada.
+        const final = reason !== null && [403, 429].includes(result.status);
+        conti.messages.push({ id: newId(), role: 'error', text: result.errors?.mensaje ?? reason ?? result.message, retry: final ? null : message });
     }
 
+    persist();
+}
+
+/**
+ * El enlace para confirmar algo que Conti preparó se abre en un modal, encima
+ * de la pantalla en que se está: no hay que irse de ella para decidir.
+ */
+export function openContiAction(uuid) {
+    conti.review = uuid;
+}
+
+export function closeContiAction() {
+    conti.review = null;
+}
+
+/** Cómo quedó lo que Conti preparó, como nota en la conversación. */
+export function noteInConversation(text) {
+    conti.messages.push({ id: newId(), role: 'notice', text });
     persist();
 }
 

@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ScreenPermissionsEditor from '../../Components/ScreenPermissionsEditor.vue';
+import ContiAccessFields from '../../Components/Conti/ContiAccessFields.vue';
 import { ArrowLeftIcon, MailIcon } from '@lucide/vue';
 
 /**
@@ -10,6 +11,9 @@ import { ArrowLeftIcon, MailIcon } from '@lucide/vue';
  * pone su correo, su rol y sus permisos por pantalla del menú. Le llega un
  * correo para aceptar; si no tiene cuenta en CONTAPP, ahí elige su nombre y
  * su contraseña. Quien invita nunca pone la contraseña de nadie.
+ *
+ * El Superusuario además decide lo de Conti (ContiAccessFields.vue): si va a
+ * poder usarlo, sus límites y sus modelos. A nadie más le llega «conti».
  */
 const props = defineProps({
     grantableRoleTypes: { type: Array, default: () => [] },
@@ -18,6 +22,7 @@ const props = defineProps({
     quota: { type: Object, default: null },
     sections: { type: Array, required: true },
     expiresInDays: { type: Number, required: true },
+    conti: { type: Object, default: null },
 });
 
 const ROLE_LABELS = { admin: 'Administrador', user: 'Usuario' };
@@ -26,6 +31,7 @@ const form = useForm({
     email: '',
     role_type: props.grantableRoleTypes[0] ?? '',
     permissions: Object.fromEntries(props.sections.flatMap((s) => s.screens.map((sc) => [sc.key, 'none']))),
+    ...(props.conti ? { conti: { enabled: true, daily_credits: '', weekly_credits: '', models: [...props.conti.current.models] } } : {}),
 });
 
 // ¿El correo ya tiene cuenta en CONTAPP? Solo para avisar qué va a pasar.
@@ -122,6 +128,8 @@ function submit() {
                 <p v-if="form.errors.permissions" class="error permissions-error">{{ form.errors.permissions }}</p>
 
                 <ScreenPermissionsEditor v-model="form.permissions" :sections="sections" />
+
+                <ContiAccessFields v-if="conti" v-model="form.conti" :options="conti" :errors="form.errors" />
 
                 <div class="form-actions">
                     <Link :href="route('users.index')" class="btn btn-ghost">Cancelar</Link>

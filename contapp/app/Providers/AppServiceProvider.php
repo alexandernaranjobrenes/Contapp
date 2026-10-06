@@ -8,16 +8,13 @@ use App\Domains\Billing\Contracts\HaciendaSigner;
 use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaSigner;
 use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaTransport;
-use App\Domains\Conti\Services\ContiTokenService;
 use App\Domains\Conti\Support\ContiContext;
 use App\Domains\Core\Models\Role;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Models\User;
-use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,8 +27,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CurrentCompany::class);
 
-        // A nombre de quién consulta Conti, durante una petición a su API
-        // (AuthenticateContiToken). Por petición: nunca se arrastra a otra.
+        // A nombre de quién consulta Conti mientras responde un mensaje
+        // (ContiChatController). Por petición: nunca se arrastra a otra.
         $this->app->scoped(ContiContext::class);
 
         $this->app->bind(BccrExchangeRateClient::class, BccrSoapExchangeRateClient::class);
@@ -64,16 +61,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('feedback-write', fn (Request $request) => Limit::perMinute(10)->by((string) ($request->user()?->id ?? $request->ip())));
         RateLimiter::for('feedback-vote', fn (Request $request) => Limit::perMinute(60)->by((string) ($request->user()?->id ?? $request->ip())));
 
-        // Conti (CLAUDE.md secc. 32): los mensajes de una persona, y las
-        // consultas que el agente hace a su nombre mientras le responde.
+        // Conti (CLAUDE.md secc. 32): los mensajes de una persona. El consumo
+        // real lo limitan los créditos de su licencia (ContiUsageService).
         RateLimiter::for('conti-chat', fn (Request $request) => Limit::perMinute(12)->by((string) ($request->user()?->id ?? $request->ip())));
-        RateLimiter::for('conti-api', fn (Request $request) => Limit::perMinute(120)->by((string) ($request->user()?->id ?? $request->ip())));
-
-        // Al cerrar sesión, los pases de Conti de esa persona dejan de servir.
-        Event::listen(Logout::class, function (Logout $event) {
-            if ($event->user instanceof User) {
-                app(ContiTokenService::class)->revokeForUser($event->user->id);
-            }
-        });
     }
 }

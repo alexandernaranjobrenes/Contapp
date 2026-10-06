@@ -56,6 +56,9 @@ class EnforceLicenseGracePeriod
         // (conti.actions.confirm) sigue bloqueado acá. Descartarlo, no.
         'conti.messages.store',
         'conti.actions.discard',
+        // El modelo con que Conti le responde es de la persona, no de la
+        // compañía.
+        'conti.settings.model',
     ];
 
     public function handle(Request $request, Closure $next): Response

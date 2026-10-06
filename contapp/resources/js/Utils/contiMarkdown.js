@@ -25,7 +25,15 @@ function isInternal(href) {
     }
 }
 
+// El enlace para confirmar lo que Conti preparó es siempre de CONTAPP. Si el
+// modelo le inventó un dominio («https://app.contapp.run/conti/acciones/…»),
+// se le quita: si no, se abriría en otra pestaña, contra un sitio que no existe.
+const ACTION_HREF = /^(?:(?:https?:\/\/)?[^/\s]+)?(\/conti\/acciones\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+
 function link(href, label) {
+    const action = href.match(ACTION_HREF);
+    if (action) return `<a href="${action[1]}" data-internal="1">${label}</a>`;
+
     if (!/^https?:\/\//i.test(href) && !(href.startsWith('/') && !href.startsWith('//'))) return label;
 
     return isInternal(href)

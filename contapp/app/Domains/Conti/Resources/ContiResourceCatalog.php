@@ -5,7 +5,7 @@ namespace App\Domains\Conti\Resources;
 use App\Domains\Conti\Support\ContiContext;
 
 /**
- * Todo lo que Conti puede consultar, por clave (GET /api/conti/datos/{clave}).
+ * Todo lo que Conti puede consultar, por clave (la herramienta «consultar»).
  *
  * Agregar un conjunto es definirlo en el archivo de su módulo: con qué
  * pantallas se ve, su consulta y sus campos. Un test revisa que cada uno

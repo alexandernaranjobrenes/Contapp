@@ -21,15 +21,17 @@ use Throwable;
 /**
  * Lo que Conti guarda, en dos tiempos (CLAUDE.md secc. 32):
  *
- * 1. Preparar (API de Conti): valida, resuelve los códigos y lo prueba en
- *    seco —corre la operación de verdad dentro de una transacción que se
- *    deshace—, así un período cerrado o un asiento que no cuadra se dicen
- *    antes de molestar a la persona. Queda pendiente, sin escribir nada.
+ * 1. Preparar (la herramienta «preparar_accion» de Conti): valida, resuelve
+ *    los códigos y lo prueba en seco —corre la operación de verdad dentro de
+ *    una transacción que se deshace—, así un período cerrado o un asiento
+ *    que no cuadra se dicen antes de molestar a la persona. Queda pendiente,
+ *    sin escribir nada.
  * 2. Confirmar (CONTAPP, con la sesión de la persona): vuelve a revisar sus
  *    permisos y la licencia, lo prepara de nuevo con los datos de ese momento
  *    y, solo si sale exactamente lo mismo que se le mostró, lo guarda.
  *
- * El agente nunca puede confirmar: no tiene la sesión de la persona.
+ * El modelo nunca puede confirmar: no tiene ninguna herramienta para eso.
+ * Solo el clic de la persona en la pantalla de confirmación guarda.
  */
 class ContiActionService
 {
@@ -150,11 +152,8 @@ class ContiActionService
             },
             'estado_texto' => PendingAction::STATUSES[$status] ?? $status,
             'resumen' => $pending->summary,
-            // Con la dirección de CONTAPP (APP_URL), no con la que usó el
-            // agente para llegar a la API: puede ser una dirección interna.
-            'enlace_para_confirmar' => $status === 'pending'
-                ? rtrim((string) config('app.url'), '/').route('conti.actions.show', $pending->uuid, false)
-                : null,
+            // Una ruta de CONTAPP: el chat la abre ahí mismo, sin recargar.
+            'enlace_para_confirmar' => $status === 'pending' ? route('conti.actions.show', $pending->uuid, false) : null,
             'vence' => $pending->localTime($pending->expires_at),
             'resultado' => $pending->result,
             'error' => $pending->error,

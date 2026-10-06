@@ -24,9 +24,9 @@ require_once __DIR__.'/helpers.php';
 | Lo que Conti guarda: preparar y confirmar
 |--------------------------------------------------------------------------
 |
-| Conti prepara (API, con el pase del agente) y la persona confirma en
-| CONTAPP (con su sesión). Nada se escribe al preparar; al confirmar se
-| vuelve a revisar todo.
+| Conti prepara (con su herramienta, a nombre de la persona) y la persona
+| confirma en CONTAPP (con su sesión). Nada se escribe al preparar; al
+| confirmar se vuelve a revisar todo.
 |
 */
 
@@ -34,14 +34,8 @@ function contiPartnerFixture(array $levels = ['business_partners.partners' => 'r
 {
     $f = contiUser($levels);
     $f['account'] = ChartOfAccount::factory()->create(['company_id' => $f['company']->id, 'code' => '1-01-02-001', 'description_es' => 'Clientes locales']);
-    $f['headers'] = contiHeaders(contiToken($f['user'], $f['company']));
 
     return $f;
-}
-
-function contiPrepare(array $f, string $action, array $data)
-{
-    return test()->postJson('/api/conti/acciones', ['accion' => $action, 'datos' => $data], $f['headers']);
 }
 
 function partnersOf(Company $company)
@@ -58,7 +52,7 @@ it('preparar no guarda nada: deja la acción pendiente, con su resumen y el enla
         ->assertJsonPath('estado', 'pendiente')
         ->assertJsonPath('resumen.titulo', 'Crear el socio C-100 — Ferretería Central');
 
-    expect($response->json('enlace_para_confirmar'))->toBe(rtrim(config('app.url'), '/').'/conti/acciones/'.$response->json('id'))
+    expect($response->json('enlace_para_confirmar'))->toBe('/conti/acciones/'.$response->json('id'))
         ->and(partnersOf($f['company'])->count())->toBe(0)
         ->and(ContiAction::first()->status)->toBe('pending');
 });
@@ -78,9 +72,9 @@ it('al confirmar en CONTAPP se guarda con su usuario, y el agente ve el resultad
         ->and($partner->gl_account_id)->toBe($f['account']->id)
         ->and($partner->partner_since->format('Y-m-d'))->toBe(now()->format('Y-m-d'));
 
-    $this->getJson("/api/conti/acciones/{$uuid}", $f['headers'])
-        ->assertJsonPath('estado', 'guardado')
-        ->assertJsonPath('resultado.mensaje', 'Socio C-100 creado.');
+    $status = contiActionStatus($f, $uuid);
+    expect($status['estado'])->toBe('guardado')
+        ->and($status['resultado']['mensaje'])->toBe('Socio C-100 creado.');
 });
 
 it('confirmar dos veces guarda una sola', function () {
@@ -149,7 +143,7 @@ it('vencida, ya no se puede confirmar', function () {
     $this->actingAs($f['user'])->post(route('conti.actions.confirm', $uuid));
 
     expect(partnersOf($f['company'])->count())->toBe(0);
-    $this->getJson("/api/conti/acciones/{$uuid}", $f['headers'])->assertJsonPath('estado', 'vencido');
+    expect(contiActionStatus($f, $uuid)['estado'])->toBe('vencido');
 });
 
 it('descartada, no se guarda', function () {
@@ -187,12 +181,73 @@ it('la pantalla de confirmación muestra el resumen', function () {
             ->where('action.other_company', false));
 });
 
+it('el modal del chat lo revisa y lo confirma en JSON, sin salir de la pantalla', function () {
+    $f = contiPartnerFixture();
+    $uuid = contiPrepare($f, 'crear_socio', ['codigo' => 'C-100', 'nombre' => 'Ferretería Central', 'tipo' => 'cliente', 'cuenta_control' => '1-01-02-001'])->json('id');
+
+    $this->actingAs($f['user'])->getJson(route('conti.actions.show', $uuid))
+        ->assertOk()
+        ->assertJsonPath('action.status', 'pending')
+        ->assertJsonPath('action.summary.titulo', 'Crear el socio C-100 — Ferretería Central')
+        ->assertJsonPath('action.other_company', false);
+
+    $this->actingAs($f['user'])->postJson(route('conti.actions.confirm', $uuid))
+        ->assertOk()
+        ->assertJsonPath('action.status', 'confirmed')
+        ->assertJsonPath('action.result.mensaje', 'Socio C-100 creado.');
+
+    expect(partnersOf($f['company'])->count())->toBe(1);
+});
+
+it('el modal descarta en JSON, y lo que falla al confirmar vuelve con el motivo', function () {
+    $f = contiPartnerFixture();
+    $discard = contiPrepare($f, 'crear_socio', ['codigo' => 'C-100', 'nombre' => 'X', 'tipo' => 'cliente', 'cuenta_control' => '1-01-02-001'])->json('id');
+    $fail = contiPrepare($f, 'crear_socio', ['codigo' => 'C-200', 'nombre' => 'Y', 'tipo' => 'cliente', 'cuenta_control' => '1-01-02-001'])->json('id');
+    BusinessPartner::factory()->create(['company_id' => $f['company']->id, 'code' => 'C-200']);
+
+    $this->actingAs($f['user'])->postJson(route('conti.actions.discard', $discard))
+        ->assertOk()
+        ->assertJsonPath('action.status', 'discarded');
+
+    $response = $this->actingAs($f['user'])->postJson(route('conti.actions.confirm', $fail))
+        ->assertOk()
+        ->assertJsonPath('action.status', 'failed');
+
+    expect($response->json('action.error'))->toContain('ya está en uso')
+        ->and(partnersOf($f['company'])->count())->toBe(1);
+});
+
+it('desde el modal, lo de otra compañía no se decide y lo de otra persona no existe', function () {
+    $f = contiPartnerFixture();
+    $uuid = contiPrepare($f, 'crear_socio', ['codigo' => 'C-100', 'nombre' => 'X', 'tipo' => 'cliente', 'cuenta_control' => '1-01-02-001'])->json('id');
+
+    $second = Company::factory()->create(['trade_name' => 'Otra S.A.']);
+    $second->users()->attach($f['user']->id);
+
+    $this->actingAs($f['user'])->withSession(['current_company_id' => $second->id])
+        ->getJson(route('conti.actions.show', $uuid))
+        ->assertOk()
+        ->assertJsonPath('action.other_company', true);
+
+    $this->actingAs($f['user'])->withSession(['current_company_id' => $second->id])
+        ->postJson(route('conti.actions.confirm', $uuid))
+        ->assertStatus(409)
+        ->assertJsonPath('message', fn ($message) => str_contains($message, 'cambiá a esa compañía'));
+
+    ['user' => $other] = contiUser(['business_partners.partners' => 'read_write'], $f['company']);
+    $this->actingAs($other)->getJson(route('conti.actions.show', $uuid))->assertNotFound();
+    $this->actingAs($other)->postJson(route('conti.actions.discard', $uuid))->assertNotFound();
+
+    expect(partnersOf($f['company'])->count())->toBe(0)
+        ->and(ContiAction::first()->status)->toBe('pending');
+});
+
 it('con la licencia vencida se consulta, pero no se prepara nada para guardar', function () {
     $f = contiPartnerFixture();
     $license = License::factory()->expired()->create(['superuser_id' => $f['user']->id]);
     $f['company']->update(['license_id' => $license->id]);
 
-    $this->getJson('/api/conti/datos/socios', $f['headers'])->assertOk();
+    expect(contiTools($f['user'], $f['company'])->run('consultar', ['consulta' => 'socios']))->not->toHaveKey('error');
     contiPrepare($f, 'crear_socio', ['codigo' => 'C-100', 'nombre' => 'X', 'tipo' => 'cliente', 'cuenta_control' => '1-01-02-001'])
         ->assertForbidden();
 });
@@ -214,7 +269,6 @@ function contiJournalFixture(): array
     $f['income'] = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '4-01-001', 'account_type' => 'income', 'normal_balance' => 'credit']);
     $f['receivable'] = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-02-001', 'requires_business_partner' => true]);
     $f['type'] = DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'TRB']);
-    $f['headers'] = contiHeaders(contiToken($f['user'], $company));
 
     return $f;
 }

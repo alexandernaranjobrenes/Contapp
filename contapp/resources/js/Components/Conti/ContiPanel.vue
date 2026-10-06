@@ -1,17 +1,19 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { RotateCcwIcon, SendHorizontalIcon, SparklesIcon, XIcon } from '@lucide/vue';
-import { closeConti, conti, newConversation, retryConti, sendToConti, useConversation } from '../../Utils/contiChat';
+import { BotIcon, GaugeIcon, RotateCcwIcon, SendHorizontalIcon, XIcon } from '@lucide/vue';
+import ContiSettings from './ContiSettings.vue';
+import {
+    closeConti, conti, newConversation, openContiAction, retryConti, sendToConti, showContiChat, showContiSettings, useConversation,
+} from '../../Utils/contiChat';
 import { renderMarkdown } from '../../Utils/contiMarkdown';
 
 /**
  * El chat con Conti, el asistente (CLAUDE.md secc. 32). Lo abre el botón
- * «Conti» de la barra superior (AppLayout.vue).
+ * flotante del robot, en la esquina inferior derecha (AppLayout.vue).
  *
  * Va montado al lado de la página (app.js), no adentro: la conversación y el
- * panel abierto siguen al pasar de pantalla, que es justo lo que pasa al
- * tocar el enlace para confirmar algo que Conti preparó.
+ * panel abierto siguen al pasar de pantalla.
  *
  * Se despliega a la derecha, debajo de la barra, como «Comentarios y
  * noticias». No se cierra al tocar fuera: se puede seguir trabajando en la
@@ -21,6 +23,14 @@ const page = usePage();
 
 const enabled = computed(() => Boolean(page.props.conti?.enabled && page.props.auth?.user));
 const userName = computed(() => (page.props.auth?.user?.name ?? '').split(' ')[0]);
+// El modelo con que le responde: el recién elegido, o el que trae la página.
+const modelName = computed(() => conti.modelName ?? page.props.conti?.model ?? null);
+const inSettings = computed(() => conti.view === 'settings');
+
+function toggleSettings() {
+    if (inSettings.value) showContiChat();
+    else showContiSettings();
+}
 const companyName = computed(() => {
     const company = (page.props.companies ?? []).find((c) => String(c.id) === String(page.props.currentCompanyId));
     return company ? (company.trade_name || company.legal_name) : 'tu compañía';
@@ -93,8 +103,20 @@ function scrollToEnd() {
 
 watch(() => [conti.messages.length, conti.sending], scrollToEnd);
 
-// Un enlace de CONTAPP (por ejemplo, el de confirmar lo que Conti preparó)
-// se abre acá mismo, sin recargar; uno de afuera, en otra pestaña.
+// De vuelta a la conversación: al final, y listo para escribir.
+watch(() => conti.view, (view) => {
+    if (view !== 'chat') return;
+    nextTick(() => {
+        list.value?.scrollTo({ top: list.value.scrollHeight });
+        input.value?.focus();
+    });
+});
+
+const ACTION_LINK = /^\/conti\/acciones\/([A-Za-z0-9-]+)\/?$/;
+
+// Un enlace de CONTAPP se abre acá mismo, sin recargar; uno de afuera, en
+// otra pestaña. El de confirmar lo que Conti preparó, en un modal encima de
+// la pantalla en que se está (ContiActionModal.vue): no hay que irse de ella.
 function onMessageClick(event) {
     const anchor = event.target.closest?.('a[data-internal]');
     if (!anchor) return;
@@ -102,6 +124,11 @@ function onMessageClick(event) {
 
     event.preventDefault();
     const url = new URL(anchor.href, window.location.origin);
+    const review = url.pathname.match(ACTION_LINK);
+    if (review) {
+        openContiAction(review[1]);
+        return;
+    }
     router.visit(url.pathname + url.search + url.hash);
 }
 
@@ -148,12 +175,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             aria-label="Conti, el asistente de CONTAPP"
         >
             <header class="conti-head">
-                <span class="conti-avatar" aria-hidden="true"><SparklesIcon :size="18" /></span>
+                <span class="conti-avatar" aria-hidden="true"><BotIcon :size="18" /></span>
                 <div class="conti-title">
                     <strong>Conti</strong>
-                    <span>Asistente de CONTAPP</span>
+                    <span>{{ inSettings ? 'Modelo y consumo' : (modelName ? `Asistente de CONTAPP · ${modelName}` : 'Asistente de CONTAPP') }}</span>
                 </div>
                 <button
+                    type="button"
+                    class="conti-icon-btn"
+                    :class="{ 'is-active': inSettings }"
+                    title="Modelo y consumo"
+                    aria-label="Modelo y consumo"
+                    :aria-pressed="inSettings"
+                    @click="toggleSettings"
+                >
+                    <GaugeIcon :size="17" />
+                </button>
+                <button
+                    v-show="!inSettings"
                     type="button"
                     class="conti-icon-btn"
                     title="Nueva conversación"
@@ -168,7 +207,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                 </button>
             </header>
 
-            <div ref="list" class="conti-messages" aria-live="polite" @click="onMessageClick">
+            <!-- «Modelo y consumo»: se vuelve a pedir cada vez que se abre. -->
+            <ContiSettings v-if="inSettings" />
+
+            <div v-show="!inSettings" ref="list" class="conti-messages" aria-live="polite" @click="onMessageClick">
                 <div v-if="!conti.messages.length" class="conti-welcome">
                     <div class="bubble from-conti">
                         <p>¡Hola{{ userName ? `, ${userName}` : '' }}! Soy Conti, el asistente de CONTAPP.</p>
@@ -189,9 +231,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                     <div v-if="message.role === 'user'" class="bubble from-user">{{ message.text }}</div>
                     <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapa todo antes de dar formato -->
                     <div v-else-if="message.role === 'conti'" class="bubble from-conti markdown" v-html="renderMarkdown(message.text)" />
+                    <p v-else-if="message.role === 'notice'" class="conti-notice">{{ message.text }}</p>
                     <div v-else class="bubble is-error" role="alert">
                         <p>{{ message.text }}</p>
-                        <button type="button" class="btn btn-ghost btn-sm" :disabled="conti.sending" @click="retryConti(message.retry)">
+                        <button v-if="message.retry" type="button" class="btn btn-ghost btn-sm" :disabled="conti.sending" @click="retryConti(message.retry)">
                             Reintentar
                         </button>
                     </div>
@@ -203,7 +246,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                 </div>
             </div>
 
-            <form class="conti-compose" @submit.prevent="send()">
+            <form v-show="!inSettings" class="conti-compose" @submit.prevent="send()">
                 <label for="conti-input" class="sr-only">Tu mensaje para Conti</label>
                 <textarea
                     id="conti-input"
@@ -218,7 +261,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                     <SendHorizontalIcon :size="18" />
                 </button>
             </form>
-            <p class="conti-note">Conti puede equivocarse: revisá lo importante. Nada se guarda sin tu confirmación.</p>
+            <p v-show="!inSettings" class="conti-note">Conti puede equivocarse: revisá lo importante. Nada se guarda sin tu confirmación.</p>
         </aside>
     </Transition>
 </template>
@@ -298,6 +341,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
 .conti-icon-btn:hover:not(:disabled) {
     background: var(--color-surface-alt);
     color: var(--color-text);
+}
+
+/* «Modelo y consumo» abierto. El color, mezclado con el del texto: el
+   primario solo, en oscuro, casi no se ve sobre su fondo. */
+.conti-icon-btn.is-active {
+    background: var(--color-primary-soft);
+    color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
 }
 
 .conti-icon-btn:disabled {
@@ -422,6 +472,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
 .markdown :deep(th) {
     font-weight: 700;
     background: var(--color-surface-alt);
+}
+
+/* El aviso de que un límite de uso va por encima del 80 %. */
+.conti-notice {
+    align-self: center;
+    margin: 0;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
+    font-size: 0.76rem;
+    text-align: center;
 }
 
 .conti-welcome {

@@ -32,7 +32,7 @@ require_once __DIR__.'/helpers.php';
 /** Prepara y confirma; devuelve la acción ya decidida. */
 function contiRun(array $f, string $action, array $data): ContiAction
 {
-    $response = test()->postJson('/api/conti/acciones', ['accion' => $action, 'datos' => $data], $f['headers']);
+    $response = contiPrepare($f, $action, $data);
     $response->assertCreated();
 
     test()->actingAs($f['user'])->post(route('conti.actions.confirm', $response->json('id')));
@@ -42,10 +42,7 @@ function contiRun(array $f, string $action, array $data): ContiAction
 
 function contiSuperFixture(): array
 {
-    $f = contiUser([], null, true);
-    $f['headers'] = contiHeaders(contiToken($f['user'], $f['company']));
-
-    return $f;
+    return contiUser([], null, true);
 }
 
 function withoutScope(string $model)
@@ -59,7 +56,7 @@ it('actualizar un socio cambia solo lo pedido y muestra el antes y el después',
     $account = ChartOfAccount::factory()->create(['company_id' => $f['company']->id]);
     BusinessPartner::factory()->create(['company_id' => $f['company']->id, 'code' => 'C-001', 'name' => 'Viejo', 'credit_limit' => 100, 'gl_account_id' => $account->id]);
 
-    $prepared = test()->postJson('/api/conti/acciones', ['accion' => 'actualizar_socio', 'datos' => ['socio' => 'C-001', 'nombre' => 'Nuevo', 'plazo_dias' => 45]], $f['headers'])
+    $prepared = contiPrepare($f, 'actualizar_socio', ['socio' => 'C-001', 'nombre' => 'Nuevo', 'plazo_dias' => 45])
         ->assertCreated();
 
     expect(collect($prepared->json('resumen.datos'))->pluck('valor', 'campo')->all())
@@ -154,8 +151,8 @@ it('en planillas: anotar, registrar un movimiento del período y registrar vacac
         ->and((float) withoutScope(VacationMovement::class)->where('type', 'taken')->first()->days)->toBe(-2.0);
 
     // Un concepto por horas sin horas, y un disfrute que deja el saldo en negativo, no se preparan.
-    test()->postJson('/api/conti/acciones', ['accion' => 'registrar_movimiento_planilla', 'datos' => ['periodo' => $period->id, 'empleado' => 'E-001', 'concepto' => 'HEX', 'monto' => 1000]], $f['headers'])
+    contiPrepare($f, 'registrar_movimiento_planilla', ['periodo' => $period->id, 'empleado' => 'E-001', 'concepto' => 'HEX', 'monto' => 1000])
         ->assertStatus(422)->assertJsonValidationErrors(['horas']);
-    test()->postJson('/api/conti/acciones', ['accion' => 'registrar_vacaciones', 'datos' => ['empleado' => 'E-001', 'tipo' => 'disfrute', 'dias' => 10]], $f['headers'])
+    contiPrepare($f, 'registrar_vacaciones', ['empleado' => 'E-001', 'tipo' => 'disfrute', 'dias' => 10])
         ->assertStatus(422)->assertJsonValidationErrors(['dias']);
 });

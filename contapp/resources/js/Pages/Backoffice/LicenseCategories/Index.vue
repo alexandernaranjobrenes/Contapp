@@ -27,7 +27,16 @@ const modalTitle = computed(() => (mode.value === 'create' ? 'Nueva categoría' 
 
 const DEFAULTS = {
     name: '', max_companies: 1, max_admins: 3, max_users: 10, duration_months: 12, description: '', is_active: true,
+    // Conti (CLAUDE.md secc. 32): con qué nace cada licencia de la categoría.
+    ai_enabled: false, ai_daily_credits: '', ai_weekly_credits: '', ai_user_daily_credits: '',
 };
+
+// Créditos con coma decimal y sin ceros de más; vacío es sin límite.
+const creditFormat = new Intl.NumberFormat('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+function credits(value) {
+    return value === null || value === undefined || value === '' ? 'sin límite' : creditFormat.format(Number(value));
+}
 
 const form = useForm({ ...DEFAULTS });
 
@@ -71,6 +80,10 @@ function startEdit() {
         duration_months: category.duration_months,
         description: category.description ?? '',
         is_active: category.is_active,
+        ai_enabled: Boolean(category.ai_enabled),
+        ai_daily_credits: category.ai_daily_credits ?? '',
+        ai_weekly_credits: category.ai_weekly_credits ?? '',
+        ai_user_daily_credits: category.ai_user_daily_credits ?? '',
     });
     mode.value = 'edit';
 }
@@ -191,6 +204,14 @@ function destroy() {
                         <dt>Descripción</dt>
                         <dd>{{ selected.description || '—' }}</dd>
                     </div>
+                    <div class="full">
+                        <dt>Conti (asistente de IA)</dt>
+                        <dd v-if="selected.ai_enabled">
+                            Activado · por día {{ credits(selected.ai_daily_credits) }} · por semana {{ credits(selected.ai_weekly_credits) }}
+                            · por persona al día {{ credits(selected.ai_user_daily_credits) }}
+                        </dd>
+                        <dd v-else class="muted">Desactivado</dd>
+                    </div>
                 </dl>
                 <p v-if="selected.licenses_count" class="hint">
                     Ya tiene licencias emitidas: no se puede eliminar. Si ya no se ofrece, desactivala al editarla.
@@ -233,6 +254,30 @@ function destroy() {
                     <span v-if="form.errors.description" class="error">{{ form.errors.description }}</span>
                 </div>
                 <label class="check"><input v-model="form.is_active" type="checkbox"> Activa (se ofrece al emitir licencias)</label>
+
+                <h3 class="section-title ai-title">Conti (asistente de IA)</h3>
+                <p class="hint ai-intro">
+                    Con estos valores nace cada licencia nueva de la categoría; después se ajustan licencia por licencia. Cambiarlos acá
+                    no toca las licencias ya emitidas.
+                </p>
+                <label class="check"><input v-model="form.ai_enabled" type="checkbox"> Incluye Conti</label>
+                <div v-if="form.ai_enabled" class="field-row quota-row">
+                    <div class="field">
+                        <label for="category-ai-daily">Créditos por día</label>
+                        <input id="category-ai-daily" v-model="form.ai_daily_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="form.errors.ai_daily_credits" class="error">{{ form.errors.ai_daily_credits }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="category-ai-weekly">Créditos por semana</label>
+                        <input id="category-ai-weekly" v-model="form.ai_weekly_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="form.errors.ai_weekly_credits" class="error">{{ form.errors.ai_weekly_credits }}</span>
+                    </div>
+                    <div class="field">
+                        <label for="category-ai-user">Por persona al día</label>
+                        <input id="category-ai-user" v-model="form.ai_user_daily_credits" type="number" min="0" step="0.01" placeholder="Sin límite">
+                        <span v-if="form.errors.ai_user_daily_credits" class="error">{{ form.errors.ai_user_daily_credits }}</span>
+                    </div>
+                </div>
             </form>
 
             <template #actions>
@@ -274,4 +319,6 @@ th, td { text-align: left; padding: 0.55rem 1rem; border-top: 1px solid var(--co
 /* Los tres cupos son números cortos: caben de a tres por línea incluso en
    un teléfono. */
 .quota-row .field { min-width: 5.5rem; }
+.ai-title { margin-top: 1.25rem; }
+.ai-intro { margin: 0 0 0.6rem; font-size: 0.78rem; color: var(--color-text-muted); }
 </style>

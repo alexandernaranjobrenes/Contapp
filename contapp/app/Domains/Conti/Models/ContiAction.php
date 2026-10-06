@@ -11,8 +11,8 @@ use Illuminate\Support\Carbon;
 /**
  * Algo que Conti preparó para guardar y que espera la confirmación de la
  * persona (ContiActionService). Se busca siempre por persona y compañía, sin
- * el CompanyScope: la API de Conti y la pantalla de confirmación llegan por
- * caminos distintos y cada uno lo filtra de forma explícita.
+ * el CompanyScope: las herramientas de Conti y la pantalla de confirmación
+ * llegan por caminos distintos y cada uno lo filtra de forma explícita.
  */
 class ContiAction extends Model
 {
