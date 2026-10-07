@@ -482,10 +482,14 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 **Regla:** Conti es el chat que abre el botón flotante del robot (`BotIcon`), en la esquina inferior derecha. El agente está en el código (`app/Domains/Conti/Agent`) y usa la API de OpenAI. Consulta y prepara a nombre de la persona, con sus permisos por pantalla, en su compañía activa. Nunca ve datos sensibles y nunca escribe sin que la persona confirme en CONTAPP. Se activa por licencia, con límites de uso.
 
 - **El camino de un mensaje:** `ContiPanel.vue` → `POST /conti/mensajes` (`ContiChatController`) → `ContiUsageService::blockFor()` (¿la licencia lo tiene?, ¿queda cupo?) → `ContiAgent::reply()` → OpenAI (`OpenAiClient`, Chat Completions con herramientas).
-  - El agente da vueltas, hasta `conti.max_iterations`, pidiendo herramientas de `ContiToolbox`: `manual`, `contexto`, `consultar`, `reporte`, `preparar_accion` y `estado_accion`.
+  - El agente da vueltas, hasta `conti.max_iterations`, pidiendo herramientas de `ContiToolbox`: `manual`, `contexto`, `consultar`, `reporte`, `formulario`, `preparar_accion`, `preguntar` y `estado_accion`.
+  - `formulario` y `preguntar` terminan el turno: devuelven `{interaccion}`, que va directo al chat y no al modelo. Lo que la persona conteste o envíe llega después.
   - Las herramientas corren dentro de CONTAPP con el `ContiContext` del mensaje (persona, compañía, modo de gracia). No hay API ni pase: el modelo solo pide, y CONTAPP decide qué devuelve.
 - **El prompt:** `resources/conti/instrucciones.md`, más un bloque armado en cada mensaje: quién es la persona, la compañía, la pantalla, la fecha, las consultas, reportes y acciones que tiene permitidos, y el índice del manual. El manual de uso (`resources/conti/manual.md`) no va entero: el modelo busca la sección con la herramienta `manual` (`ContiManual`).
 - **Los permisos** los decide `ContiContext::authorize()` con `ScreenAccessService`: consultar pide Lectura en la pantalla del menú; preparar, Lectura y escritura. Una licencia vencida deja consultar y no preparar.
+  - **Conti los conoce antes de responder:** el prompt trae en cada mensaje «Permisos de esta persona» (`ContiAgent::permissions`), por sección del menú y con las secciones sin ningún acceso.
+  - **El manual avisa:** marca con `sin_acceso` cada sección que trata de una pantalla a la que no tiene acceso (`ContiToolbox::manualFor`).
+  - **Primero el permiso:** las instrucciones le piden decirlo de entrada, sin pedir datos ni guiar por una pantalla a la que no puede entrar.
 - **El hilo de la conversación** queda en la caché (`conti:history:{persona}:{compañía}:{sesión}`, los últimos 16 mensajes, 6 horas). Guarda solo el texto, nunca los datos que devolvieron las herramientas, y no queda en la base de datos.
   - El pedido del chat no escribe la sesión (`NullSessionHandler`): tarda varios segundos, y al terminar pisaría lo que la persona cambió mientras tanto, como la compañía activa.
 - **Consumo y límites** (`ContiUsageService`, tabla `conti_usage`):
@@ -517,13 +521,55 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Guardar:** cada acción es una clase (`app/Domains/Conti/Actions`, registrada en `ContiActionCatalog`). Se valida y se resuelven los códigos con los mismos campos y reglas que el controlador de la pantalla, y se usan sus servicios, no se reimplementan. `ContiActionService`:
   - **prepara**: valida, prueba en seco (ejecuta dentro de una transacción que se deshace) y deja la acción pendiente 30 minutos;
   - **confirma** solo desde CONTAPP, con la sesión de su dueño y en su compañía: revisa otra vez permisos y licencia, vuelve a preparar y guarda solo si el resultado es idéntico (hash del payload) a lo que se mostró. El modelo no tiene ninguna herramienta para confirmar.
-- **Una acción nueva** necesita: la clase con `prepare()`/`execute()`, su lugar en `ContiActionCatalog`, una prueba de punta a punta en `tests/Feature/Conti`, y una línea en la sección 1.13 de `resources/conti/manual.md`.
-- **El botón** es flotante, redondo y con el robot, en la esquina inferior derecha (`.conti-fab` en `AppLayout.vue`). No va en la barra superior (secc. 24).
+- **Una acción nueva** necesita:
+  - la clase con `prepare()`/`execute()` y su `form()`: los mismos campos de `fields()`, con su tipo (`BaseContiAction::field`); una prueba lo compara;
+  - su lugar en `ContiActionCatalog`;
+  - una prueba de punta a punta en `tests/Feature/Conti`;
+  - una línea en la sección 1.13 de `resources/conti/manual.md`.
+- **Formularios y preguntas en el chat** (`ContiForm.vue`, `ContiQuestions.vue`):
+  - Para registrar o editar, Conti muestra el formulario de la acción con lo que sabe precargado (`ContiFormService::build`; al editar, también los valores actuales, sin datos sensibles).
+  - Los campos «buscar» sugieren mientras se escribe: `GET /conti/opciones`, de las consultas de Conti y con los permisos de la persona; sin permiso, quedan como texto.
+  - Al enviarlo (`POST /conti/formularios`, `ContiFormController`) se prepara la acción con las mismas validaciones, sin pasar por el modelo ni gastar créditos. Los errores vuelven campo por campo, también por línea (`lineas.0.cuenta`).
+  - **Sugerencias de CONTAPP** (`ContiAction::suggest`): el formulario llega con lo que se puede deducir de cómo se viene trabajando en la compañía:
+    - el código que sigue al último (cuentas de esa clase, socios de ese tipo);
+    - la cuenta de control, la moneda y el plazo que más usan los demás socios;
+    - el tipo de documento de los asientos manuales;
+    - la última tasa de cambio, la planilla abierta, la lista de precios predeterminada, la cuenta de banco que más se usa.
+
+    Van marcadas «Sugerido», con su motivo, y nunca pisan lo que dijo la persona. Al cambiar un campo con `recalcula` (la clase de una cuenta, el tipo de un socio), se vuelven a pedir (`POST /conti/formularios/sugerencias`).
+  - **El formulario, a la primera:** si el mensaje pide registrar o editar algo (`ContiAgent::asksToRecord`, por las palabras) y la persona puede registrar algo, la primera vuelta va con `tool_choice` «required». Sin esto, el modelo a veces contestaba con una lista de datos que necesitaba.
+  - Para que la persona elija, Conti pregunta con opciones (una o varias, y siempre «Otra»); la respuesta va como su próximo mensaje.
+  - El hilo (`ContiHistory`) anota lo que se mostró y lo que se envió, para que Conti lo entienda en el mensaje siguiente.
+- **Cómo piensa Conti:** `resources/conti/instrucciones.md` tiene una tabla «Dónde buscar» (qué reporte o consulta contesta cada tipo de pregunta, y dónde no buscar) y criterios contables para leer los datos. Una consulta o un reporte nuevo que contesta preguntas frecuentes va también en esa tabla.
+- **El botón** es flotante, redondo y con el robot, en la esquina inferior derecha (`.conti-dial` y `.conti-fab` en `AppLayout.vue`). No va en la barra superior (secc. 24).
+  - Se abre en dos opciones más chicas: «Chat» (arriba) y «Escanear» (a la izquierda). Con el mouse, al pasar por encima; en pantalla táctil, al tocarlo. Se cierra al salir, al tocar fuera o con Escape.
+  - Se usan `pointerenter`/`pointerleave` solo con `pointerType === 'mouse'`: al tocar, el teléfono también manda «pasó por encima» antes del clic, y el botón se abría y cerraba de una vez.
   - Va anclado justo arriba del pie, mida lo que mida.
   - Se oculta mientras hay un panel de la derecha abierto.
   - `.content` deja lugar abajo para que no tape lo último de la página, como «Guardar».
+- **Escanear un documento** (`ContiScanModal.vue` → `ContiScanController` / `ContiScanPhoneController` → `ContiScanService`):
+  - **Qué se registra:** se elige primero, de `conti.scanner.actions`: asiento de una factura, orden de compra de una cotización, socio nuevo o aplicar un pago. Solo aparecen las acciones en las que la persona tiene Lectura y escritura, y ninguna con la licencia en modo de gracia.
+  - **¿Hay cámara aquí?** `canCaptureHere()` (`Utils/contiScan.js`) pide pantalla táctil y una cámara (`enumerateDevices`, que no pide permiso).
+    - Con cámara: se fotografía ahí mismo (`<input capture="environment">`).
+    - Si no: un QR para el teléfono (`qrcode-generator`, en el navegador), y la opción de subir la imagen desde la computadora.
+  - **El QR** es un pase de un solo uso:
+    - Es un token al azar; en la caché se guarda su hash (`conti:scan:token:{sha256}`), nunca el token.
+    - Vence a los 10 minutos y admite 3 intentos.
+    - Queda atado a la persona, la compañía y la acción. Al leer se revisan de nuevo, con los permisos de ese momento: que la persona esté activa y en la compañía, la licencia y su acceso a Conti.
+    - La página del teléfono (`resources/views/conti/scan.blade.php`, Blade suelto sin Vite ni Inertia) no inicia sesión ni muestra nada de la compañía.
+    - La dirección usa `IP_SCANNER` (`conti.scanner.ip`) si está, con el esquema y el puerto de `APP_URL`, para probar con el teléfono en la red local. En producción queda vacía y se usa `APP_URL`.
+  - **Las fotos no se guardan:** se leen en memoria (`$file->get()`) y van a OpenAI como data URL. No pasan por `Storage`, ni por la base de datos, ni por la caché. Las sube el teléfono, ya achicadas a 1600px en JPEG: hasta 3, de 6 MB cada una, solo imágenes.
+  - **La lectura:** pasa por `ContiUsageService::blockFor()` y cuenta en el consumo como un mensaje. Usa el modelo de la persona, si está entre los que tiene permitidos, y `response_format` con un esquema estricto armado de los campos del formulario. Los campos «buscar» se resuelven contra las consultas de Conti (el proveedor, primero por cédula); si no hay una sola coincidencia exacta, el campo queda vacío y va una nota.
+  - **Después, el formulario de siempre:** llega al chat (`pushForm`), con los campos leídos marcados «Del documento» y la nota «revisá cada dato». La persona corrige a mano, lo envía, y viene la ventana de confirmación habitual. La computadora recibe el formulario consultando el estado cada 2,5 segundos, y se entrega una sola vez.
+- **Dictar por voz** (el micrófono al lado de «Enviar», `Utils/speechInput.js`):
+  - La voz se convierte en texto en el navegador (Web Speech API, es-CR): no pasa por el modelo de Conti ni gasta créditos, y a CONTAPP no le llega audio.
+  - El texto va apareciendo en el campo y queda ahí para revisarlo: nunca se envía solo.
+  - El permiso del micrófono lo pide el navegador recién al tocar el botón.
+  - Sin soporte (Firefox) el botón no aparece. En Chrome y Edge, la voz la reconocen los servidores de Google o Microsoft.
 - **El panel** (`ContiPanel.vue`) va al lado de la página (`app.js`) para que la conversación siga al navegar. Ocupa el lugar de «Comentarios y noticias» (abrir uno cierra el otro), y en pantallas de 1100px o más corre el contenido a la izquierda para no tapar nada. Las respuestas se pasan a HTML con `contiMarkdown.js`, que escapa todo antes de dar formato.
-- **Confirmar sin salir de la pantalla:** el enlace del chat (`/conti/acciones/{uuid}`) abre `ContiActionModal.vue` encima de la pantalla en que se está (montado en `app.js`, como el panel). Pide y decide en JSON contra `ContiActionController`, que atiende igual a la pantalla `Conti/Action.vue`: esa queda para el enlace abierto en otra pestaña o recargado. Las dos muestran el resumen con `ContiActionDetails.vue`.
+- **La ventana para confirmar se abre sola:** lo que se prepara (por el formulario o por `preparar_accion`) abre `ContiActionModal.vue` encima de la pantalla en que se está (montado en `app.js`, como el panel), y queda una tarjeta en el chat para volver a abrirla. Al modelo no le llega ningún enlace, así que no tiene nada que mostrar ni que inventar.
+  - La ventana pide y decide en JSON contra `ContiActionController`, que atiende igual a la pantalla `Conti/Action.vue` (para un enlace viejo abierto en otra pestaña). Las dos muestran el resumen con `ContiActionDetails.vue`.
+  - «Corregir» (`POST /conti/acciones/{uuid}/corregir`) descarta lo preparado y lo devuelve al chat como formulario, con los mismos datos.
   - Al confirmar, la pantalla de atrás se recarga (`router.reload()`) para que se vea lo guardado.
   - La conversación anota cómo quedó: confirmado, descartado o por qué no se guardó.
   - El enlace es una ruta relativa, y el modelo a veces le inventa un dominio («https://app.contapp.run/conti/…»). `ContiAgent::tidyLinks()` se lo quita a la respuesta, y `contiMarkdown.js` también, para lo que ya estaba guardado en el chat.

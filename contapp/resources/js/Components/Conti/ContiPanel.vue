@@ -1,12 +1,15 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
-import { BotIcon, GaugeIcon, RotateCcwIcon, SendHorizontalIcon, XIcon } from '@lucide/vue';
+import { BotIcon, ClipboardCheckIcon, GaugeIcon, MicIcon, RotateCcwIcon, SendHorizontalIcon, XIcon } from '@lucide/vue';
+import ContiForm from './ContiForm.vue';
+import ContiQuestions from './ContiQuestions.vue';
 import ContiSettings from './ContiSettings.vue';
 import {
-    closeConti, conti, newConversation, openContiAction, retryConti, sendToConti, showContiChat, showContiSettings, useConversation,
+    closeConti, conti, markAnswered, newConversation, openContiAction, retryConti, sendToConti, showContiChat, showContiSettings, useConversation,
 } from '../../Utils/contiChat';
 import { renderMarkdown } from '../../Utils/contiMarkdown';
+import { useSpeechInput } from '../../Utils/speechInput';
 
 /**
  * El chat con Conti, el asistente (CLAUDE.md secc. 32). Lo abre el botón
@@ -61,6 +64,17 @@ const panel = ref(null);
 
 const canSend = computed(() => draft.value.trim() !== '' && !conti.sending);
 
+// Dictar en vez de escribir (speechInput.js): la voz se vuelve texto en el
+// campo, y la persona lo revisa y lo envía. Al terminar, el foco vuelve al
+// campo para corregir o mandar con Enter.
+const {
+    supported: canDictate,
+    listening,
+    error: dictationError,
+    toggle: toggleDictation,
+    cancel: cancelDictation,
+} = useSpeechInput(draft, { onEnd: () => nextTick(() => input.value?.focus()) });
+
 /** La pantalla en la que está la persona: Conti la usa de contexto. */
 function currentScreen() {
     const title = document.title.replace(/\s+—\s+CONTAPP$/, '');
@@ -73,8 +87,18 @@ function currentScreen() {
     return name ? `${title} [${name}]` : title;
 }
 
+// Lo que eligió en unas preguntas de Conti va como su próximo mensaje.
+function answer(message, respuestas) {
+    markAnswered(message, respuestas);
+    const lines = respuestas.map((r) => `- ${r.pregunta}: ${[...r.elegidas, ...(r.otra ? [r.otra] : [])].join(', ')}`);
+    send(`Mis respuestas:\n${lines.join('\n')}`);
+}
+
 async function send(text = draft.value) {
     if (!text.trim() || conti.sending) return;
+    // Si todavía estaba dictando, se corta: lo que se envía es lo que se ve.
+    cancelDictation();
+    dictationError.value = '';
     if (text === draft.value) draft.value = '';
     await sendToConti(text, currentScreen());
 }
@@ -148,6 +172,7 @@ function onWindowKeydown(event) {
 }
 
 watch(() => conti.open, (open) => {
+    if (!open) cancelDictation();
     if (open) {
         window.addEventListener('keydown', onWindowKeydown);
         nextTick(() => {
@@ -232,6 +257,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                     <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapa todo antes de dar formato -->
                     <div v-else-if="message.role === 'conti'" class="bubble from-conti markdown" v-html="renderMarkdown(message.text)" />
                     <p v-else-if="message.role === 'notice'" class="conti-notice">{{ message.text }}</p>
+                    <ContiQuestions
+                        v-else-if="message.role === 'questions'"
+                        :message="message"
+                        :disabled="conti.sending"
+                        @answer="(respuestas) => answer(message, respuestas)"
+                    />
+                    <ContiForm v-else-if="message.role === 'form'" :message="message" />
+                    <!-- Algo preparado: la ventana para confirmar se abrió sola; desde acá se vuelve a abrir. -->
+                    <div v-else-if="message.role === 'action'" class="conti-action-card">
+                        <ClipboardCheckIcon :size="16" aria-hidden="true" />
+                        <span>{{ message.titulo }}</span>
+                        <button type="button" class="btn btn-ghost btn-sm" @click="openContiAction(message.actionId)">Revisar y confirmar</button>
+                    </div>
                     <div v-else class="bubble is-error" role="alert">
                         <p>{{ message.text }}</p>
                         <button v-if="message.retry" type="button" class="btn btn-ghost btn-sm" :disabled="conti.sending" @click="retryConti(message.retry)">
@@ -254,13 +292,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
                     v-model="draft"
                     rows="1"
                     maxlength="4000"
-                    placeholder="Escribile a Conti…"
+                    :placeholder="listening ? 'Te escucho… hablá y después revisá el texto' : 'Escribile a Conti…'"
                     @keydown="onKeydown"
                 />
+                <button
+                    v-if="canDictate"
+                    type="button"
+                    class="conti-mic"
+                    :class="{ 'is-listening': listening }"
+                    :aria-pressed="listening"
+                    :aria-label="listening ? 'Dejar de dictar' : 'Dictar por voz'"
+                    :title="listening ? 'Dejar de dictar' : 'Dictar por voz'"
+                    :disabled="conti.sending"
+                    @click="toggleDictation"
+                >
+                    <MicIcon :size="18" />
+                </button>
                 <button type="submit" class="conti-send" :disabled="!canSend" aria-label="Enviar" title="Enviar">
                     <SendHorizontalIcon :size="18" />
                 </button>
             </form>
+            <p v-if="dictationError && !inSettings" class="conti-dictation-error" role="alert">{{ dictationError }}</p>
             <p v-show="!inSettings" class="conti-note">Conti puede equivocarse: revisá lo importante. Nada se guarda sin tu confirmación.</p>
         </aside>
     </Transition>
@@ -474,6 +526,31 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
     background: var(--color-surface-alt);
 }
 
+/* Lo que Conti preparó para confirmar. */
+.conti-action-card {
+    align-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: var(--color-primary-soft);
+    font-size: 0.82rem;
+}
+
+.conti-action-card svg {
+    color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+}
+
+.conti-action-card span {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
 /* El aviso de que un límite de uso va por encima del 80 %. */
 .conti-notice {
     align-self: center;
@@ -584,6 +661,52 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
     cursor: default;
 }
 
+/* Dictar por voz: mientras escucha, en rojo y latiendo. */
+.conti-mic {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.conti-mic:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+    color: var(--color-text);
+}
+
+.conti-mic:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.conti-mic.is-listening {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+    color: #fff;
+    animation: conti-mic-pulse 1.4s ease-out infinite;
+}
+
+@keyframes conti-mic-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-danger) 45%, transparent); }
+    70% { box-shadow: 0 0 0 0.5rem color-mix(in srgb, var(--color-danger) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.conti-dictation-error {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.1rem 0.9rem 0.3rem;
+    background: var(--color-surface);
+    font-size: 0.74rem;
+    color: var(--color-danger);
+}
+
 .conti-note {
     flex-shrink: 0;
     margin: 0;
@@ -610,7 +733,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
         transition: none;
     }
 
-    .dots i {
+    .dots i,
+    .conti-mic.is-listening {
         animation: none;
     }
 }

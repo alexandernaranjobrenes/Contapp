@@ -11,6 +11,7 @@ use App\Domains\BusinessPartners\Services\ApplyPaymentService;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Un cobro o un pago aplicado a una partida abierta, como «Aplicar pago» en
@@ -48,6 +49,37 @@ final class ApplyPaymentAction extends BaseContiAction
             'monto' => 'monto a aplicar; por defecto el saldo completo de la partida',
             'fecha' => 'AAAA-MM-DD; por defecto hoy',
         ];
+    }
+
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('partida', 'Partida abierta', 'buscar', ['requerido' => true, 'fuente' => 'partidas-abiertas']),
+            $this->field('cuenta_pago', 'Cuenta de banco o caja', 'buscar', ['requerido' => true, 'fuente' => 'cuentas', 'filtros' => ['acepta_movimientos' => 'sí']]),
+            $this->field('monto', 'Monto a aplicar', 'monto', ['ayuda' => 'Vacío: el saldo completo de la partida.']),
+            $this->field('fecha', 'Fecha', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+        ];
+    }
+
+    /** La cuenta de banco o caja que más movimientos tiene. */
+    public function suggest(array $values, Company $company): array
+    {
+        if ($this->given($values, 'cuenta_pago')) {
+            return [];
+        }
+
+        $cash = ChartOfAccount::where('is_cash_account', true)->where('accepts_posting', true)->where('is_active', true)->pluck('code', 'id');
+
+        if ($cash->isEmpty()) {
+            return [];
+        }
+
+        $busiest = DB::table('journal_details')->whereIn('account_id', $cash->keys())
+            ->select('account_id', DB::raw('count(*) as total'))->groupBy('account_id')->orderByDesc('total')->first();
+        $id = $busiest->account_id ?? $cash->keys()->first();
+        $account = ChartOfAccount::find($id);
+
+        return ['cuenta_pago' => $this->suggestion($account?->code, "Es la cuenta de banco o caja que más se usa: {$account?->code} {$account?->description_es}.")];
     }
 
     public function prepare(array $input, Company $company, User $user): PreparedAction

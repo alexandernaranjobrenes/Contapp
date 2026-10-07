@@ -24,7 +24,10 @@ export const conti = reactive({
     slow: false,
     key: null,
     sessionId: null,
-    messages: [], // { id, role: 'user' | 'conti' | 'notice' | 'error', text, retry? }
+    // { id, role, … }. role: 'user' | 'conti' | 'notice' | 'error' (con text),
+    // 'questions' (preguntas con opciones, ContiQuestions.vue), 'form' (un
+    // formulario, ContiForm.vue) o 'action' (algo preparado para confirmar).
+    messages: [],
     // Lo que Conti preparó y la persona está revisando en el modal
     // (ContiActionModal.vue): su uuid, o null.
     review: null,
@@ -137,9 +140,24 @@ export async function sendToConti(text, screen = null) {
     conti.slow = false;
 
     if (result.ok) {
-        conti.messages.push({ id: newId(), role: 'conti', text: result.data.respuesta });
+        const { respuesta, interaccion, acciones, aviso } = result.data;
+
+        if (respuesta) conti.messages.push({ id: newId(), role: 'conti', text: respuesta });
+
+        // Lo que Conti le pide a la persona: elegir entre opciones o completar
+        // un formulario, ahí mismo en el chat.
+        if (interaccion?.tipo === 'preguntas') {
+            conti.messages.push({ id: newId(), role: 'questions', preguntas: interaccion.preguntas, respuestas: null });
+        } else if (interaccion?.tipo === 'formulario') {
+            pushForm(interaccion.formulario, false);
+        }
+
+        // Lo que preparó: la ventana para confirmarlo se abre sola.
+        for (const action of acciones ?? []) addActionCard(action);
+        if (acciones?.length) openContiAction(acciones.at(-1).id);
+
         // Un límite de uso va por encima del 80 %.
-        if (result.data.aviso) conti.messages.push({ id: newId(), role: 'notice', text: result.data.aviso });
+        if (aviso) conti.messages.push({ id: newId(), role: 'notice', text: aviso });
     } else {
         // El motivo que da Conti («Se alcanzó el límite diario…», «Conti no
         // está disponible…»); los textos genéricos de Laravel, en inglés, no.
@@ -163,6 +181,70 @@ export function openContiAction(uuid) {
 
 export function closeContiAction() {
     conti.review = null;
+}
+
+/** Algo preparado para confirmar, como tarjeta en la conversación: vuelve a abrir la ventana. */
+function addActionCard(action) {
+    conti.messages.push({ id: newId(), role: 'action', actionId: action.id, titulo: action.titulo });
+}
+
+/**
+ * Un formulario en la conversación (de Conti, o el de «Corregir»). Los
+ * valores viven en el mensaje: si se pasa a otra pantalla, lo escrito sigue.
+ */
+export function pushForm(formulario, save = true) {
+    conti.messages.push({
+        id: newId(),
+        role: 'form',
+        formulario,
+        valores: JSON.parse(JSON.stringify(formulario.valores ?? {})),
+        // Lo que sugirió CONTAPP según cómo se viene trabajando, y lo que se
+        // leyó de un documento escaneado: campo => { valor, motivo, origen? }.
+        sugeridos: {
+            ...(formulario.sugeridos ?? {}),
+            ...Object.fromEntries(Object.entries(formulario.leidos ?? {})
+                .map(([campo, valor]) => [campo, { valor, motivo: 'Leído del documento.', origen: 'documento' }])),
+        },
+        // Lo que Conti avisa al leer un documento (lo que no encontró…).
+        nota: formulario.nota ?? null,
+        enviado: null,
+    });
+    conti.view = 'chat';
+    conti.open = true;
+    if (save) persist();
+}
+
+/**
+ * Envía un formulario del chat (ContiFormController). Si se preparó, la
+ * ventana para confirmar se abre sola. Devuelve los errores de validación,
+ * campo por campo («lineas.0.cuenta»), para mostrarlos junto a cada uno.
+ */
+export async function submitContiForm(message) {
+    const result = await requestJson(window.route('conti.forms.submit'), {
+        method: 'POST',
+        body: { accion: message.formulario.accion, datos: message.valores, sesion: conti.sessionId },
+    });
+
+    if (!result.ok) {
+        return {
+            errors: result.status === 422 ? (result.data?.errors ?? {}) : {},
+            message: result.status === 422 ? null : (result.data?.message && [403, 404, 409].includes(result.status) ? result.data.message : result.message),
+        };
+    }
+
+    // El formulario enviado queda como la tarjeta de lo preparado: desde ahí
+    // se vuelve a abrir la ventana.
+    message.enviado = result.data.accion;
+    openContiAction(result.data.accion.id);
+    persist();
+
+    return { errors: {}, message: null };
+}
+
+/** La persona eligió en unas preguntas de Conti: quedan respondidas. */
+export function markAnswered(message, respuestas) {
+    message.respuestas = respuestas;
+    persist();
 }
 
 /** Cómo quedó lo que Conti preparó, como nota en la conversación. */

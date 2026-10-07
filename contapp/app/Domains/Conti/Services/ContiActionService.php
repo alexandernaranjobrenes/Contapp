@@ -21,7 +21,8 @@ use Throwable;
 /**
  * Lo que Conti guarda, en dos tiempos (CLAUDE.md secc. 32):
  *
- * 1. Preparar (la herramienta «preparar_accion» de Conti): valida, resuelve
+ * 1. Preparar (la herramienta «preparar_accion» de Conti, o el formulario
+ *    que la persona envía en el chat): valida, resuelve
  *    los códigos y lo prueba en seco —corre la operación de verdad dentro de
  *    una transacción que se deshace—, así un período cerrado o un asiento
  *    que no cuadra se dicen antes de molestar a la persona. Queda pendiente,
@@ -152,8 +153,9 @@ class ContiActionService
             },
             'estado_texto' => PendingAction::STATUSES[$status] ?? $status,
             'resumen' => $pending->summary,
-            // Una ruta de CONTAPP: el chat la abre ahí mismo, sin recargar.
-            'enlace_para_confirmar' => $status === 'pending' ? route('conti.actions.show', $pending->uuid, false) : null,
+            // Sin enlace: CONTAPP le abre la ventana a la persona (el modelo
+            // no tiene nada que copiar ni que inventar).
+            'confirmacion' => $status === 'pending' ? 'CONTAPP le abrió a la persona la ventana para revisarlo y confirmarlo.' : null,
             'vence' => $pending->localTime($pending->expires_at),
             'resultado' => $pending->result,
             'error' => $pending->error,

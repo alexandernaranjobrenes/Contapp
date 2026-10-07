@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Domains\Conti\Actions\ContiActionCatalog;
 use App\Domains\Conti\Models\ContiAction;
 use App\Domains\Conti\Services\ContiActionService;
+use App\Domains\Conti\Services\ContiFormService;
 use App\Domains\Conti\Support\ContiContext;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -73,6 +75,34 @@ class ContiActionController extends Controller
         }
 
         return back()->with('success', 'Descartado: no se guardó nada.');
+    }
+
+    /**
+     * «Corregir»: lo preparado se descarta y vuelve al chat como formulario,
+     * con los mismos datos, para cambiar lo que haga falta y enviarlo de
+     * nuevo.
+     */
+    public function revise(Request $request, ContiActionService $service, ContiFormService $forms, ContiContext $context, CurrentCompany $currentCompany, string $uuid): JsonResponse
+    {
+        $pending = $this->find($request, $uuid);
+
+        if ($other = $this->otherCompany($pending)) {
+            return response()->json(['message' => $other], 409);
+        }
+
+        if ($pending->effectiveStatus() !== 'pending') {
+            return response()->json(['message' => 'Esto ya no está pendiente: no se puede corregir. Pedile a Conti que lo prepare de nuevo.'], 409);
+        }
+
+        $company = Company::with('license')->findOrFail($currentCompany->id());
+        $context->set($request->user(), $company, $currentCompany->isInGracePeriod());
+
+        // Primero el formulario (corta si ya no tiene el permiso); después se
+        // descarta lo preparado.
+        $form = $forms->build($context, $pending->action, $pending->input ?? []);
+        $service->discard($pending, $request->user());
+
+        return response()->json(['formulario' => $form]);
     }
 
     /** Lo que la persona ve de la acción, en el modal o en la pantalla. */

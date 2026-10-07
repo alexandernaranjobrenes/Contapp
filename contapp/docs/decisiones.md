@@ -3,6 +3,129 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-07 — Escanear un documento con Conti para registrarlo
+
+**Pedido del usuario:** el botón de Conti se abre en dos opciones, el chat y escanear. Al escanear, en el teléfono se usa la cámara ahí mismo; en la computadora, o sin cámara, aparece un QR para fotografiar con el teléfono. La IA lee el documento para el registro elegido. Cuidar la autenticación, no guardar ninguna foto en la base de datos, mostrar el formulario para corregir a mano antes de la confirmación habitual. Para probar, la IP local del `.env` (`IP_SCANNER`).
+
+- **Cuatro registros** (aceptados por el usuario): asiento de una factura, orden de compra de una cotización, socio nuevo, aplicar un pago. Solo los que la persona puede registrar; con la licencia en modo de gracia, ninguno.
+- **El teléfono entra con un pase, no con la sesión:**
+  - El QR lleva un token de un solo uso, de 10 minutos y 3 intentos, atado a la persona, la compañía y la acción. La caché guarda su hash, no el token.
+  - Al leer se revisa todo de nuevo con lo de ese momento: persona activa y en la compañía, permisos, licencia, acceso y cupo de Conti. Si le quitaron el permiso en esos minutos, no lee.
+  - La página del teléfono es un Blade suelto: no inicia sesión ni muestra nada de la compañía.
+  - Alternativas descartadas: pedir que inicie sesión en el teléfono (más fricción, y la contraseña en un teléfono ajeno), o un enlace largo sin vencimiento.
+- **Las fotos no se guardan:** se leen en memoria, van a OpenAI y se descartan. No pasan por `Storage`, por la base ni por la caché; una prueba lo verifica con `Storage::fake`. OpenAI puede retener lo enviado hasta 30 días según su política para la API, como cualquier mensaje de Conti.
+- **El formulario primero, como pidió el usuario:** lo leído llega al formulario del chat marcado «Del documento», con una nota para revisar. Lo que no se encuentra con una coincidencia exacta (un proveedor, un artículo) queda vacío con su nota: no se adivina. Después, la confirmación de siempre.
+- **El QR se arma en el navegador** (`qrcode-generator`, sin dependencias): la dirección con el pase no pasa por ningún servicio externo.
+- **La lectura gasta créditos**, como un mensaje, con el modelo de la persona y sus límites.
+- **Arreglado al probar en el navegador:**
+  - en el teléfono, tocar el botón lo abría y cerraba de una vez: el teléfono avisa «pasó por encima» antes del clic. Ahora el «pasar por encima» se toma solo de un mouse.
+  - en la página del teléfono, el `display` de las tarjetas le ganaba a `hidden`, y «Listo» se veía desde el principio.
+- **Verificado** en el navegador, con un OpenAI simulado y un usuario temporal:
+  - el botón con el mouse, el teclado y el tacto;
+  - el QR con la IP local, y el teléfono, sin sesión, que sube la foto;
+  - el formulario que llega solo a la computadora, y el QR ya usado, que no sirve;
+  - el teléfono con cámara, que lee ahí mismo;
+  - la imagen subida desde la computadora, hasta la ventana de confirmación (descartada).
+
+---
+## 2026-10-07 — Dictarle a Conti: la voz se vuelve texto en el navegador
+
+**Pedido del usuario:** un botón de micrófono al lado del campo del chat, para hablar en vez de escribir. No se le manda audio a la IA: antes se pasa la voz a texto. El permiso del micrófono se pide solo al tocar el botón.
+
+- **El reconocimiento de voz del navegador (Web Speech API) y no la transcripción de OpenAI:**
+  - es gratis y no gasta créditos de Conti;
+  - a CONTAPP no le llega audio, solo el texto que la persona envía.
+  - En contra: Firefox no lo tiene (ahí el botón no aparece), y Chrome y Edge reconocen la voz en los servidores de Google o Microsoft.
+  - Si hiciera falta en todos los navegadores, la alternativa es la transcripción de OpenAI, con costo en créditos.
+- **El texto queda en el campo para revisarlo,** como se acordó con el usuario: un error de reconocimiento no se manda solo. Lo dictado se suma a lo que ya estaba escrito, con mayúscula al empezar una oración.
+- **Se detiene solo con el silencio**, o tocando de nuevo. Si se envía o se cierra el chat mientras escucha, se corta: lo que se envía es lo que se ve.
+- **Los errores dicen qué hacer**, en el chat: el permiso negado (desde el candado), sin micrófono, sin conexión, no te escuché.
+- **Verificado** en el navegador con un reconocimiento simulado (el micrófono real no se puede usar en una prueba automática):
+  - el texto mientras se habla y al terminar, sin enviarse;
+  - lo dictado sumado a lo escrito;
+  - el permiso negado;
+  - un navegador sin dictado, sin el botón;
+  - teléfono y oscuro.
+
+---
+## 2026-10-07 — Conti revisa los permisos de la persona antes de responder
+
+**Pedido del usuario:** una persona sin acceso a Planillas le pidió a Conti registrar un empleado, y Conti le pidió los datos y la guio paso a paso. Recién cuando la persona preguntó si tenía acceso, Conti se dio cuenta de que no. Conti tiene que hacer ese análisis antes de responder.
+
+- **Los permisos van en el prompt de cada mensaje** («Permisos de esta persona»), por sección del menú, con el nivel de cada pantalla y las secciones sin ningún acceso.
+  - Antes solo estaban las consultas, reportes y acciones permitidas, que no alcanzan para preguntas de cómo se hace algo en una pantalla.
+  - Y la herramienta `contexto` el modelo tenía que acordarse de pedirla.
+- **El manual avisa en cada sección** si es de una pantalla, o de un módulo entero, al que la persona no tiene acceso (`sin_acceso`). Así, aunque el modelo vaya directo al manual para explicar, el aviso le llega junto con los pasos.
+- **Las instrucciones lo ponen primero:**
+  - decirlo de entrada, sin pedir datos, sin formulario y sin guiar como si pudiera;
+  - explicarlo igual solo si lo pide, aclarando que necesita el permiso.
+- **Lo que Conti no puede registrar** (un empleado nuevo, una factura) se dice como tal: no se piden datos «para el formulario» de algo que no tiene formulario. Si la persona tiene permiso, se le explica cómo hacerlo en la pantalla.
+- **Verificado:**
+  - 2 pruebas nuevas (el prompt de una persona con permisos limitados y del Superusuario; el aviso del manual); las 90 de Conti pasan.
+  - Con un Administrador real de la compañía «prueba», sin acceso a Planillas, el prompt dice «Sin ningún acceso: …, Planillas…». El manual marca la sección de Empleados.
+
+---
+## 2026-10-07 — El formulario sale a la primera, y CONTAPP lo completa según cómo se viene trabajando
+
+**Pedido del usuario:**
+- con el modelo real, al pedir «registrá una cuenta contable» Conti respondía con una lista de datos que necesitaba, y el formulario aparecía recién varios mensajes después;
+- además, quería que el formulario llegara más completo, según cómo se viene trabajando en el sistema.
+
+- **El primer paso es obligatoriamente una herramienta** (`tool_choice` «required» en la primera vuelta) cuando el mensaje pide registrar o editar algo y la persona puede registrar algo. Las instrucciones ya lo pedían y el modelo no siempre hacía caso: así no tiene cómo contestar con una lista de preguntas.
+  - Se decide por las palabras del mensaje (`ContiAgent::asksToRecord`). Si se equivoca, el costo es una herramienta de más: el manual ante un «¿cómo registro…?», o una consulta.
+- **Las sugerencias las calcula CONTAPP, no el modelo** (`ContiAction::suggest`). El modelo no conoce los patrones de la compañía y, si los adivina, los inventa. CONTAPP los saca de los datos:
+  - el código que sigue al último;
+  - la cuenta de control y el plazo más usados;
+  - el tipo de documento de los asientos manuales;
+  - la última tasa;
+  - la planilla abierta.
+
+  Las instrucciones le dicen al modelo que no los calcule y que se ocupe de lo que nombró la persona: buscar las cuentas, el socio, armar las líneas.
+- **Cada sugerencia dice por qué** («La usan 5 de los 6 clientes»), va marcada y deja de estarlo si la persona la cambia. Nunca pisa lo que dijo la persona ni lo que ya escribió.
+- **Se recalculan al cambiar un campo clave** (la clase de una cuenta, el tipo de un socio o de tasa), con un pedido liviano que no pasa por el modelo.
+- **Las listas aceptan lo que dice la persona:** el modelo manda «cliente» o «Gastos» y la lista va por clave («client», «expense»). Antes, ese campo quedaba vacío.
+- **Verificado:**
+  - 2 pruebas nuevas, más el caso de las listas; las 88 de Conti pasan.
+  - En el navegador, con un OpenAI simulado que anotaba lo que recibía:
+    - «registrá una cuenta contable» llegó con la herramienta obligatoria y salió el formulario;
+    - al elegir «Gastos» se sugirió 6-02-01-01-006;
+    - «agregá el cliente Ferretería Central» llegó con CLI-007, «Clientes locales», colones y 30 días, cada uno con su motivo.
+  - Los datos de prueba se borraron y el `.env` quedó como estaba.
+
+---
+## 2026-10-07 — Conti pregunta con opciones, registra con formularios en el chat y abre sola la ventana para confirmar
+
+**Pedido del usuario:**
+- que Conti busque con criterio contable, como la persona que lleva el sistema de la empresa;
+- que al registrar o editar siempre aparezca la ventana de confirmación, porque seguía mostrando el enlace;
+- que pregunte con opciones de selección única o múltiple, como Claude;
+- que para registrar o editar presente un formulario en el chat, precargado, sin tener que mandar los datos en otro mensaje.
+
+Siempre con los permisos y los límites de la persona y con la validación de siempre.
+
+- **Al modelo no le llega el enlace:** `preparar_accion` le devuelve que la ventana ya se abrió, y el chat la abre con el id que trae la respuesta (`acciones`). Pedirle al modelo que no muestre el enlace no alcanzaba; si no lo tiene, no lo puede mostrar ni inventar.
+- **Un formulario por acción, tipado** (`form()` en cada clase, con `BaseContiAction::field`): texto, monto, fecha, opciones, sí/no, búsqueda y líneas. Es la misma lista de campos que `fields()`; una prueba lo compara para que no se separen.
+- **El formulario se envía sin pasar por el modelo** (`ContiFormController`): no gasta créditos, y la validación es la de `prepare()`, con los errores junto a cada campo y a cada línea. El modelo se entera por el hilo (`ContiHistory`).
+- **`preparar_accion` sigue, para cuando ya están todos los datos:** con un pedido completo, un formulario en el medio sería un paso de más. Cualquiera de los dos caminos termina en la ventana, y «Corregir» vuelve al formulario.
+- **Preguntas y formulario terminan el turno del modelo:** lo que la persona contesta llega como su próximo mensaje («Mis respuestas: …»). No hay que sostener una llamada abierta esperando, y el hilo lo cuenta igual que una conversación.
+- **Las sugerencias de los campos de búsqueda salen de las mismas consultas de Conti,** con los permisos de la persona. Sin permiso para esa consulta, el campo queda como texto y el código se valida igual al enviar.
+- **El criterio contable va en las instrucciones:**
+  - una tabla «Dónde buscar» por tipo de pregunta (resultados, situación, bancos, CxC, CxP, IVA, inventario, planilla…), con dónde no tiene sentido buscar;
+  - criterios para leer los datos: naturaleza de las cuentas, socios en CxC y CxP, moneda extranjera;
+  - empezar por el reporte que resume y bajar al detalle solo si hace falta.
+- **Conti no elimina registros:** ninguna acción borra, y las instrucciones explican cómo hacerlo en la pantalla (o anularlo, si está contabilizado). Borrar desde el chat queda fuera hasta decidirlo aparte.
+- **Verificado:**
+  - 11 pruebas nuevas en `ContiFormTest`; las 86 de Conti pasan.
+  - En el navegador, con un OpenAI simulado:
+    - el formulario precargado, el error de un campo y la ventana que se abre sola;
+    - «Corregir» de vuelta al formulario y la confirmación;
+    - las preguntas de opción única, múltiple y «Otra»;
+    - la ventana sin enlaces en el texto;
+    - el asiento con sugerencias de cuentas y el aviso de que no cuadra;
+    - teléfono y oscuro.
+  - Los datos de prueba se borraron y el `.env` quedó como estaba.
+
+---
 ## 2026-10-06 — El Superusuario reparte el cupo de Conti entre las personas de su licencia
 
 **Pedido del usuario:** que solo el Superusuario, al crear o editar Administradores y Usuarios, elija si pueden usar Conti, sus límites (sin pasar los de la licencia) y los modelos permitidos. El consumo es compartido: si alguien gasta todo, ni el Superusuario puede usarlo; el Superusuario reparte.

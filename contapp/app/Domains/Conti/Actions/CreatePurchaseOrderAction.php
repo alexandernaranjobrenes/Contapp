@@ -44,6 +44,23 @@ final class CreatePurchaseOrderAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('proveedor', 'Proveedor', 'buscar', ['requerido' => true, 'fuente' => 'socios']),
+            $this->field('fecha', 'Fecha', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+            $this->field('fecha_esperada', 'Fecha esperada', 'fecha'),
+            $this->field('descripcion', 'Descripción', 'texto'),
+            $this->field('lineas', 'Artículos', 'lineas', ['requerido' => true, 'minimo' => 1, 'columnas' => [
+                $this->field('articulo', 'Artículo', 'buscar', ['requerido' => true, 'fuente' => 'articulos']),
+                $this->field('cantidad', 'Cantidad', 'numero', ['requerido' => true]),
+                $this->field('costo', 'Costo por unidad', 'monto'),
+                $this->field('almacen', 'Almacén', 'buscar', ['fuente' => 'almacenes', 'defecto' => Warehouse::where('is_default', true)->value('code'), 'ayuda' => 'De entrada, el predeterminado.']),
+                $this->field('descripcion', 'Descripción', 'texto', ['avanzado' => true]),
+            ]]),
+        ];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $input['fecha'] = ($input['fecha'] ?? '') !== '' ? $input['fecha'] : now()->format('Y-m-d');

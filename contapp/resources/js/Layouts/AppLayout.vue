@@ -3,11 +3,12 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3';
 import { startCompanySwitch } from '../Utils/companySwitch';
 import { closeConti, conti, toggleConti } from '../Utils/contiChat';
+import { openScanner } from '../Utils/contiScan';
 import { useNewsSeen } from '../Utils/newsSeen';
 import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
     BookOpenIcon, BotIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
-    MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, SettingsIcon,
+    MessageCircleIcon, MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, ScanLineIcon, SettingsIcon,
     SunIcon, TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
 
@@ -449,11 +450,14 @@ onMounted(() => {
 
     narrowQuery?.addEventListener('change', onNarrowChange);
     window.addEventListener('keydown', closeNavOnEscape);
+    document.addEventListener('pointerdown', onOutsideDial);
 });
 
 onBeforeUnmount(() => {
     narrowQuery?.removeEventListener('change', onNarrowChange);
     window.removeEventListener('keydown', closeNavOnEscape);
+    document.removeEventListener('pointerdown', onOutsideDial);
+    clearTimeout(dialTimer);
 });
 
 function toggleSidebar() {
@@ -481,6 +485,48 @@ const { hasUnseen: hasUnseenNews } = useNewsSeen();
 // abrir uno cierra el otro.
 const contiEnabled = computed(() => Boolean(page.props.conti?.enabled));
 watch(feedbackOpen, (open) => { if (open) closeConti(); });
+
+// El botón de Conti se abre en dos (CLAUDE.md secc. 32): el chat y escanear
+// un documento. Con el mouse, al pasar por encima; en una pantalla táctil, al
+// tocarlo. Se cierra al salir (con una pausa, para llegar a las opciones), al
+// tocar fuera o con Escape.
+const dial = ref(null);
+const dialOpen = ref(false);
+let dialTimer = null;
+
+// Solo con un mouse de verdad: al tocar, el teléfono también avisa que «pasó
+// por encima» justo antes del clic, y lo abriría y cerraría de una vez.
+function openDial(event) {
+    if (event.pointerType !== 'mouse') return;
+    clearTimeout(dialTimer);
+    dialOpen.value = true;
+}
+
+function closeDialSoon(event) {
+    if (event.pointerType !== 'mouse') return;
+    clearTimeout(dialTimer);
+    dialTimer = setTimeout(() => { dialOpen.value = false; }, 350);
+}
+
+function onDialClick(event) {
+    // Con el mouse ya se abrió al pasar: el clic no lo vuelve a cerrar.
+    if (event.pointerType === 'mouse' && dialOpen.value) return;
+    dialOpen.value = !dialOpen.value;
+}
+
+function openContiChat() {
+    dialOpen.value = false;
+    if (!conti.open) toggleConti();
+}
+
+function openContiScanner() {
+    dialOpen.value = false;
+    openScanner();
+}
+
+function onOutsideDial(event) {
+    if (dialOpen.value && !dial.value?.contains(event.target)) dialOpen.value = false;
+}
 watch(() => conti.open, (open) => { if (open) feedbackOpen.value = false; });
 
 const LICENSE_STATUS_LABELS = {
@@ -799,19 +845,50 @@ function toggleGroup(item) {
                  derecha abierto (Conti o «Comentarios y noticias») no se
                  muestra: el panel ocupa ese lugar. -->
             <div class="app-bottom">
-                <button
+                <div
                     v-if="contiEnabled"
                     v-show="!conti.open && !feedbackOpen"
-                    type="button"
-                    class="conti-fab"
-                    aria-controls="conti-panel"
-                    :aria-expanded="conti.open"
-                    title="Conti, el asistente"
-                    aria-label="Abrir Conti, el asistente"
-                    @click="toggleConti"
+                    ref="dial"
+                    class="conti-dial"
+                    :class="{ 'is-open': dialOpen }"
+                    @pointerenter="openDial"
+                    @pointerleave="closeDialSoon"
+                    @keydown.escape="dialOpen = false"
                 >
-                    <BotIcon :size="26" />
-                </button>
+                    <button
+                        type="button"
+                        class="conti-dial-option is-chat"
+                        :tabindex="dialOpen ? 0 : -1"
+                        :aria-hidden="!dialOpen"
+                        aria-controls="conti-panel"
+                        aria-label="Abrir el chat de Conti"
+                        @click="openContiChat"
+                    >
+                        <MessageCircleIcon :size="20" />
+                        <span class="conti-dial-label">Chat</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="conti-dial-option is-scan"
+                        :tabindex="dialOpen ? 0 : -1"
+                        :aria-hidden="!dialOpen"
+                        aria-label="Escanear un documento"
+                        @click="openContiScanner"
+                    >
+                        <ScanLineIcon :size="20" />
+                        <span class="conti-dial-label">Escanear</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="conti-fab"
+                        :aria-expanded="dialOpen"
+                        title="Conti, el asistente"
+                        aria-label="Conti, el asistente"
+                        @click="onDialClick"
+                    >
+                        <BotIcon :size="26" />
+                    </button>
+                </div>
 
                 <footer v-if="page.props.license" class="app-footer">
                     <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
@@ -1328,11 +1405,82 @@ function toggleGroup(item) {
     flex-shrink: 0;
 }
 
-.conti-fab {
+.conti-dial {
     position: absolute;
     right: 1.5rem;
     bottom: calc(100% + 1rem);
     z-index: 24;
+    width: 3.5rem;
+    height: 3.5rem;
+}
+
+/* Las dos opciones salen del botón: el chat arriba, escanear a la izquierda. */
+.conti-dial-option {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: inline-grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin: -1.375rem 0 0 -1.375rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    background: var(--color-surface);
+    color: color-mix(in srgb, var(--color-primary) 75%, var(--color-text));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.4);
+    transition: transform .18s ease, opacity .18s ease, background .15s ease;
+}
+
+.conti-dial.is-open .conti-dial-option {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.conti-dial.is-open .conti-dial-option.is-chat {
+    transform: translate(0, -4.1rem);
+}
+
+.conti-dial.is-open .conti-dial-option.is-scan {
+    transform: translate(-4.1rem, 0);
+    transition-delay: .04s;
+}
+
+.conti-dial-option:hover,
+.conti-dial-option:focus-visible {
+    background: var(--color-primary-soft);
+    outline: none;
+}
+
+/* El nombre de cada opción, a su izquierda. */
+.conti-dial-label {
+    position: absolute;
+    right: calc(100% + 0.45rem);
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease;
+}
+
+.conti-dial-option:hover .conti-dial-label,
+.conti-dial-option:focus-visible .conti-dial-label {
+    opacity: 1;
+}
+
+.conti-fab {
+    position: relative;
+    z-index: 1;
     display: inline-grid;
     place-items: center;
     width: 3.5rem;
@@ -1359,8 +1507,16 @@ function toggleGroup(item) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .conti-fab { transition: none; }
+    .conti-fab,
+    .conti-dial-option { transition: none; }
     .conti-fab:hover { transform: none; }
+}
+
+/* En una pantalla táctil no hay «pasar por encima»: los nombres, siempre. */
+@media (hover: none) {
+    .conti-dial.is-open .conti-dial-label {
+        opacity: 1;
+    }
 }
 
 /* Lo último de la página se puede subir por encima del botón: si no, al
@@ -1564,7 +1720,8 @@ function toggleGroup(item) {
     }
     .content { padding: 0.75rem; }
     .app-main.has-conti-fab .content { padding-bottom: 5rem; }
-    .conti-fab { right: 1rem; width: 3.25rem; height: 3.25rem; }
+    .conti-dial { right: 1rem; width: 3.25rem; height: 3.25rem; }
+    .conti-fab { width: 3.25rem; height: 3.25rem; }
     .flash { margin: 0.75rem 0.75rem 0; }
     .app-footer { padding: 0.5rem 0.75rem; }
     .app-footer-meta { margin-left: 0; }

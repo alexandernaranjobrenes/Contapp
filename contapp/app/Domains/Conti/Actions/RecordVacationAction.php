@@ -49,6 +49,20 @@ final class RecordVacationAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('empleado', 'Trabajador', 'buscar', ['requerido' => true, 'fuente' => 'empleados']),
+            $this->field('tipo', 'Tipo', 'opciones', ['requerido' => true, 'opciones' => self::TYPES]),
+            $this->field('dias', 'Días', 'numero', ['requerido' => true, 'ayuda' => 'En un ajuste, negativo para rebajar.']),
+            $this->field('fecha', 'Fecha', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+            $this->field('desde', 'Desde', 'fecha'),
+            $this->field('hasta', 'Hasta', 'fecha'),
+            $this->field('monto', 'Monto pagado', 'monto', ['ayuda' => 'En un pago.']),
+            $this->field('notas', 'Notas', 'texto', ['ayuda' => 'En un ajuste, el motivo.']),
+        ];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $input['fecha'] = ($input['fecha'] ?? '') !== '' ? $input['fecha'] : now()->format('Y-m-d');

@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\Currency;
 use App\Domains\BusinessPartners\Models\BpCategory;
+use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Conti\Resources\ContiFilters;
 use App\Domains\Core\Models\Company;
 use App\Domains\Inventory\Models\PriceList;
@@ -43,6 +44,75 @@ abstract class BusinessPartnerAction extends BaseContiAction
             'limite_credito' => 'monto (opcional)',
             'plazo_dias' => 'plazo de pago en días (opcional)',
         ];
+    }
+
+    /**
+     * El formulario de un socio. Al editar, nada es obligatorio: lo que queda
+     * vacío no cambia.
+     */
+    protected function partnerForm(Company $company, bool $editing = false): array
+    {
+        $required = ! $editing;
+
+        return [
+            $this->field('codigo', 'Código', 'texto', ['requerido' => $required, 'ayuda' => 'Formato x-xxx, ej. C-001.']),
+            $this->field('nombre', 'Nombre o razón social', 'texto', ['requerido' => $required]),
+            $this->field('tipo', 'Tipo', 'opciones', ['requerido' => $required, 'opciones' => self::TYPES, 'recalcula' => ! $editing]),
+            $this->field('cuenta_control', 'Cuenta de control (CxC o CxP)', 'buscar', ['requerido' => $required, 'fuente' => 'cuentas', 'filtros' => ['acepta_movimientos' => 'sí']]),
+            $this->field('moneda', 'Moneda', 'opciones', ['opciones' => $this->currencyOptions($company)]),
+            $this->field('plazo_dias', 'Plazo de pago (días)', 'numero'),
+            $this->field('limite_credito', 'Límite de crédito', 'monto'),
+            $this->field('cedula', 'Cédula física o jurídica', 'texto', $editing ? ['ayuda' => 'Vacía: queda como está.'] : []),
+            $this->field('categoria', 'Categoría', 'buscar', ['fuente' => 'categorias-socios', 'avanzado' => true]),
+            $this->field('lista_precios', 'Lista de precios', 'buscar', ['fuente' => 'listas-precios', 'avanzado' => true, 'ayuda' => 'Vacía: la predeterminada.']),
+            $this->field('centro_costo', 'Centro de costo', 'buscar', ['fuente' => 'centros-costo', 'avanzado' => true]),
+            $this->field('encargado', 'Persona encargada', 'texto', ['avanzado' => true]),
+            $this->field('codigo_actividad', 'Código de actividad económica', 'texto', ['avanzado' => true]),
+            $this->field('socio_desde', 'Socio desde', 'fecha', ['avanzado' => true, 'defecto' => $editing ? null : 'hoy']),
+        ];
+    }
+
+    /**
+     * Lo que tienen los demás socios de ese tipo: el código que sigue al
+     * último, la cuenta de control, la moneda y el plazo que más se usan.
+     */
+    protected function partnerSuggestions(array $values): array
+    {
+        if (! $this->given($values, 'tipo')) {
+            return [];
+        }
+
+        $type = ContiFilters::keyFor((string) $values['tipo'], self::TYPES);
+
+        if (! array_key_exists($type, self::TYPES)) {
+            return [];
+        }
+
+        $label = ['client' => 'clientes', 'supplier' => 'proveedores', 'both' => 'socios de tipo ambos'][$type];
+        $same = BusinessPartner::where('type', $type);
+        $out = [];
+
+        if (! $this->given($values, 'codigo') && ($last = (clone $same)->latest('created_at')->latest('id')->value('code'))) {
+            $out['codigo'] = $this->suggestion(
+                $this->nextCode($last, fn (string $code) => BusinessPartner::where('code', $code)->exists()),
+                "Sigue a {$last}, el último de los {$label}.",
+            );
+        }
+
+        if (! $this->given($values, 'cuenta_control') && ($common = $this->mostCommon($same, 'gl_account_id'))) {
+            $account = ChartOfAccount::find($common[0]);
+            $out['cuenta_control'] = $this->suggestion($account?->code, "La usan {$common[1]} de los {$common[2]} {$label}: {$account?->code} {$account?->description_es}.");
+        }
+
+        if (! $this->given($values, 'moneda') && ($common = $this->mostCommon($same, 'currency_id'))) {
+            $out['moneda'] = $this->suggestion(Currency::find($common[0])?->code, "La tienen {$common[1]} de los {$common[2]} {$label}.");
+        }
+
+        if (! $this->given($values, 'plazo_dias') && ($common = $this->mostCommon($same, 'payment_terms_days'))) {
+            $out['plazo_dias'] = $this->suggestion($common[0], "El plazo más común entre los {$label} ({$common[1]} de {$common[2]}).");
+        }
+
+        return $out;
     }
 
     /**

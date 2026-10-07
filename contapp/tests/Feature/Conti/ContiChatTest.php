@@ -62,7 +62,7 @@ it('el modelo usa una herramienta, recibe el resultado y responde; el consumo qu
         ->and($first['messages'][0]['content'])->toContain('Te llamás **Conti**')
         ->and($first['messages'][0]['content'])->toContain("Persona: {$f['user']->name} (Superusuario)")
         ->and($first['messages'][0]['content'])->toContain('socios (Socios de negocio)')
-        ->and(collect($first['tools'])->pluck('function.name')->all())->toBe(['manual', 'contexto', 'consultar', 'reporte', 'preparar_accion', 'estado_accion']);
+        ->and(collect($first['tools'])->pluck('function.name')->all())->toBe(['manual', 'contexto', 'consultar', 'reporte', 'formulario', 'preparar_accion', 'preguntar', 'estado_accion']);
 
     // El resultado de la herramienta le llegó al modelo en la segunda vuelta.
     $toolMessage = collect($requests[1]['messages'])->firstWhere('role', 'tool');

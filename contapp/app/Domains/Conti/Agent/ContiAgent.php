@@ -11,6 +11,8 @@ use App\Domains\Conti\Resources\ContiResource;
 use App\Domains\Conti\Resources\ContiResourceCatalog;
 use App\Domains\Conti\Services\ContiModelService;
 use App\Domains\Conti\Support\ContiContext;
+use App\Domains\Core\Support\ScreenCatalog;
+use Illuminate\Support\Str;
 
 /**
  * Conti: el ciclo con el modelo de OpenAI (CLAUDE.md secc. 32).
@@ -28,6 +30,11 @@ use App\Domains\Conti\Support\ContiContext;
  * El modelo es el que eligió la persona (ContiModelService). A los que razonan
  * se les pide un razonamiento corto y se les deja escribir más: lo que
  * piensan cuenta como salida.
+ *
+ * Si el mensaje pide registrar o editar algo, en la primera vuelta el modelo
+ * tiene que usar una herramienta (tool_choice «required»): sin esto, a veces
+ * contestaba con una lista de datos que necesitaba en vez de mostrar el
+ * formulario.
  */
 class ContiAgent
 {
@@ -56,6 +63,7 @@ class ContiAgent
 
         $usage = new AgentUsage($model);
         $maxIterations = max(1, (int) config('conti.max_iterations', 6));
+        $mustUseTool = $this->asksToRecord($message);
 
         try {
             for ($iteration = 1; $iteration <= $maxIterations; $iteration++) {
@@ -63,7 +71,11 @@ class ContiAgent
                     'model' => $model,
                     'messages' => $messages,
                     'tools' => $this->tools->definitions(),
-                    'tool_choice' => $iteration === $maxIterations ? 'none' : 'auto',
+                    'tool_choice' => match (true) {
+                        $iteration === $maxIterations => 'none',
+                        $iteration === 1 && $mustUseTool => 'required',
+                        default => 'auto',
+                    },
                     'max_completion_tokens' => $reasons
                         ? (int) config('conti.max_output_tokens_reasoning', 4000)
                         : (int) config('conti.max_output_tokens', 1500),
@@ -85,6 +97,7 @@ class ContiAgent
                     return new AgentReply(
                         $text !== '' ? $text : 'No tengo una respuesta para eso. ¿Podés decirlo de otra forma?',
                         $usage,
+                        actions: $this->tools->prepared(),
                     );
                 }
 
@@ -98,6 +111,17 @@ class ContiAgent
                         ? $this->tools->run((string) ($call['function']['name'] ?? ''), $arguments)
                         : ['error' => 'Los parámetros no son un JSON válido.', 'codigo' => 422];
 
+                    // Un formulario o preguntas para la persona: termina el
+                    // turno. Lo que conteste llega en su próximo mensaje.
+                    if (isset($result['interaccion'])) {
+                        return new AgentReply(
+                            $this->tidyLinks(trim((string) ($answer['content'] ?? ''))),
+                            $usage,
+                            $result['interaccion'],
+                            $this->tools->prepared(),
+                        );
+                    }
+
                     $messages[] = ['role' => 'tool', 'tool_call_id' => $call['id'] ?? '', 'content' => $this->encode($result)];
                 }
             }
@@ -105,7 +129,7 @@ class ContiAgent
             throw $e->withUsage($usage);
         }
 
-        return new AgentReply('Necesité demasiados pasos para responder eso. ¿Podés hacer la pregunta más concreta?', $usage);
+        return new AgentReply('Necesité demasiados pasos para responder eso. ¿Podés hacer la pregunta más concreta?', $usage, actions: $this->tools->prepared());
     }
 
     /**
@@ -114,6 +138,60 @@ class ContiAgent
      * veces le inventa un dominio («https://app.contapp.run/conti/…»): con
      * eso el enlace se abre en otra pestaña, contra un sitio que no existe.
      */
+    /**
+     * Sus permisos por pantalla, por sección del menú, y las secciones a las
+     * que no tiene ningún acceso. Van en cada mensaje: antes de guiar a
+     * alguien o de pedirle datos, Conti tiene que saber si puede hacerlo.
+     */
+    public function permissions(): string
+    {
+        if ($this->context->isSuperAdmin()) {
+            return '- Es el Superusuario: tiene acceso a todas las pantallas.';
+        }
+
+        $levels = $this->context->levels();
+        $lines = [];
+        $blocked = [];
+
+        foreach (ScreenCatalog::sections() as $section) {
+            $allowed = collect($section['screens'])
+                ->filter(fn (array $screen) => ($levels[$screen['key']] ?? 'none') !== 'none')
+                ->map(fn (array $screen) => $screen['label'].' ('.($levels[$screen['key']] === 'read_write' ? 'lectura y escritura' : 'solo lectura').')');
+
+            if ($allowed->isEmpty()) {
+                $blocked[] = $section['label'];
+
+                continue;
+            }
+
+            $lines[] = "- {$section['label']}: ".$allowed->implode(', ').'.';
+        }
+
+        if ($blocked !== []) {
+            $lines[] = '- Sin ningún acceso: '.implode(', ', $blocked).'.';
+        }
+
+        $lines[] = '- Lo que no está en esta lista no lo puede ver ni hacer: ni en la pantalla ni con tu ayuda.';
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * ¿Pide registrar, crear, editar o cambiar algo, y la persona puede
+     * registrar algo? Por las palabras: si se equivoca, el modelo solo usa
+     * una herramienta de más (el manual, una consulta).
+     */
+    public function asksToRecord(string $message): bool
+    {
+        if ($this->context->inGrace() || ContiActionCatalog::availableTo($this->context) === []) {
+            return false;
+        }
+
+        $text = Str::lower(Str::ascii($message));
+
+        return preg_match('/\b(registr|crea|crear|cree|agreg|anad|anot|ingres|carg|da de alta|dar de alta|alta de|edit|modific|cambi|actualiz|aplic|contabiliz|asent|hace un asiento|hac[ae]me)\w*/', $text) === 1;
+    }
+
     public function tidyLinks(string $text): string
     {
         return (string) preg_replace(
@@ -148,6 +226,7 @@ class ContiAgent
                     ? '- La licencia está vencida (modo de gracia): se puede consultar, pero no preparar nada para guardar.'
                     : '- La licencia está vigente.',
             ]),
+            "## Permisos de esta persona (revisalos antes de responder)\n".$this->permissions(),
             "## Lo que esta persona puede usar\n"
                 .'- Consultas: '.($resources ? implode(', ', $resources) : $none).".\n"
                 .'- Reportes: '.($reports ? implode(', ', $reports) : $none).".\n"

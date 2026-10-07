@@ -921,12 +921,16 @@ function submitSchedule() {
                 </thead>
                 <tbody>
                     <template v-for="(line, index) in form.lines" :key="index">
+                    <!-- El aire entre una línea y la otra (solo en escritorio). -->
+                    <tr class="line-gap" aria-hidden="true"><td colspan="6"></td></tr>
                     <tr
-                        :class="{ 'active-row': index === activeLineIndex }"
+                        class="line-row"
+                        :class="[index % 2 ? 'is-odd' : 'is-even', { 'active-row': index === activeLineIndex, 'is-last': !showSecondary(line) }]"
                         @focusin="setActiveLine(index)"
                     >
                         <td class="account-cell">
                             <div class="mode-toggle">
+                                <span class="line-number" :title="`Línea ${index + 1}`">{{ index + 1 }}</span>
                                 <span v-if="line.electronic_key" class="key-indicator" title="Esta línea tiene una clave numérica electrónica asociada"><KeyRoundIcon :size="14" /></span>
                                 <button
                                     type="button"
@@ -1007,7 +1011,11 @@ function submitSchedule() {
                             </div>
                         </td>
                     </tr>
-                    <tr v-if="showSecondary(line)" class="secondary-row" :class="{ 'active-row': index === activeLineIndex }">
+                    <tr
+                        v-if="showSecondary(line)"
+                        class="secondary-row"
+                        :class="[index % 2 ? 'is-odd' : 'is-even', { 'active-row': index === activeLineIndex }]"
+                    >
                         <td colspan="6">
                             <div class="secondary-grid">
                                 <div class="field-inline">
@@ -1472,6 +1480,141 @@ function submitSchedule() {
 .detail-btn.active {
     background: var(--color-primary-soft);
     color: var(--color-primary);
+}
+
+/* El número de la línea, para no perderse en un asiento largo. */
+.line-number {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface);
+    font-size: 0.68rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+}
+
+.active-row .line-number {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary, #fff);
+}
+
+/*
+    En la tabla (escritorio), cada línea —su fila y, si está abierto, su
+    detalle— es una tarjeta: con su borde, sus esquinas redondeadas y aire
+    entre una y otra (las filas .line-gap), como en el teléfono. Los fondos se
+    alternan por línea, y la que se está editando lleva su color y una barra
+    a la izquierda. En tarjetas (≤ 1024px) eso ya lo hace .table-responsive.
+
+    border-collapse: separate, porque las esquinas redondeadas de una celda
+    no se dibujan con collapse.
+*/
+@media screen and (min-width: 1025px) {
+    .lines-table-wrap {
+        --line-border: color-mix(in srgb, var(--color-text-muted) 35%, var(--color-border));
+        border: 0;
+        border-radius: 0;
+    }
+
+    .lines-table {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .lines-table thead th {
+        border-top: 0;
+    }
+
+    .lines-table thead th:first-child {
+        border-radius: var(--radius-md) 0 0 var(--radius-md);
+    }
+
+    .lines-table thead th:last-child {
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+
+    .lines-table tbody tr.line-gap > td {
+        height: 0.55rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    .lines-table tbody tr.line-row > td,
+    .lines-table tbody tr.secondary-row > td {
+        border-top: 0;
+        background: var(--color-surface);
+    }
+
+    .lines-table tbody tr.line-row > td {
+        border-top: 1px solid var(--line-border);
+    }
+
+    .lines-table tbody tr.line-row > td:first-child {
+        border-left: 1px solid var(--line-border);
+        border-top-left-radius: var(--radius-md);
+    }
+
+    .lines-table tbody tr.line-row > td:last-child {
+        border-right: 1px solid var(--line-border);
+        border-top-right-radius: var(--radius-md);
+    }
+
+    .lines-table tbody tr.line-row.is-last > td {
+        border-bottom: 1px solid var(--line-border);
+    }
+
+    .lines-table tbody tr.line-row.is-last > td:first-child {
+        border-bottom-left-radius: var(--radius-md);
+    }
+
+    .lines-table tbody tr.line-row.is-last > td:last-child {
+        border-bottom-right-radius: var(--radius-md);
+    }
+
+    .lines-table tbody tr.secondary-row > td {
+        border: 1px solid var(--line-border);
+        border-top: 0;
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+    }
+
+    .lines-table tbody tr.is-odd > td {
+        background: var(--color-surface-alt);
+    }
+
+    .lines-table tbody tr.line-row:hover > td,
+    .lines-table tbody tr.line-row:hover + tr.secondary-row > td {
+        background: color-mix(in srgb, var(--color-border) 45%, var(--color-surface-alt));
+    }
+
+    .lines-table tbody tr.active-row > td,
+    .lines-table tbody tr.line-row.active-row:hover > td,
+    .lines-table tbody tr.line-row.active-row:hover + tr.secondary-row > td {
+        border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+        background: var(--color-primary-soft);
+    }
+
+    .lines-table tbody tr.active-row > td:first-child {
+        box-shadow: inset 3px 0 0 var(--color-primary);
+    }
+
+    .lines-table tfoot td {
+        border-top: 0;
+        padding-top: 0.75rem;
+    }
+}
+
+/* En tarjetas, el aire entre líneas ya lo pone la grilla. */
+@media screen and (max-width: 1024px) {
+    .lines-table tbody tr.line-gap {
+        display: none;
+    }
 }
 
 .account-cell {

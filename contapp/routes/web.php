@@ -8,6 +8,9 @@ use App\Http\Controllers\CompanyDetailsController;
 use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\ContiActionController;
 use App\Http\Controllers\ContiChatController;
+use App\Http\Controllers\ContiFormController;
+use App\Http\Controllers\ContiScanController;
+use App\Http\Controllers\ContiScanPhoneController;
 use App\Http\Controllers\ContiSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\CompanyInvitationAcceptanceController;
@@ -136,6 +139,17 @@ Route::post('license-invitation/{token}', [LicenseInvitationAcceptanceController
     ->middleware('throttle:10,1')
     ->name('license-invitation.accept');
 
+// El QR para escanear un documento con el teléfono (ContiScanService): una
+// página sin sesión que solo sirve para subir las fotos de ese escaneo. Lo
+// que la protege es el pase del QR: de un solo uso, vence en minutos y solo
+// deja subir fotos, que se leen a nombre de quien generó el QR.
+Route::get('conti/escanear/{token}', [ContiScanPhoneController::class, 'show'])
+    ->middleware('throttle:30,1')
+    ->name('conti.phone.show');
+Route::post('conti/escanear/{token}', [ContiScanPhoneController::class, 'upload'])
+    ->middleware('throttle:10,1')
+    ->name('conti.phone.upload');
+
 // El enlace del correo de una invitación a trabajar en una compañía
 // (CompanyInvitationService). Igual que el de una licencia: sin el
 // middleware de invitados, porque quien ya tiene cuenta puede abrirlo con
@@ -202,10 +216,23 @@ Route::middleware('auth')->group(function () {
     //   descarta. Es el único camino por el que Conti guarda algo.
     // - ajustes: «Modelo y consumo» en el chat: el modelo de OpenAI que
     //   eligió la persona y lo que gastó (JSON).
+    // - formularios: el formulario que Conti muestra en el chat se envía
+    //   acá; se prepara la acción y el chat abre la ventana para confirmarla.
+    //   opciones: las sugerencias de sus campos de búsqueda.
     Route::post('conti/mensajes', [ContiChatController::class, 'store'])->middleware('throttle:conti-chat')->name('conti.messages.store');
     Route::get('conti/acciones/{uuid}', [ContiActionController::class, 'show'])->name('conti.actions.show');
     Route::post('conti/acciones/{uuid}/confirmar', [ContiActionController::class, 'confirm'])->name('conti.actions.confirm');
     Route::post('conti/acciones/{uuid}/descartar', [ContiActionController::class, 'discard'])->name('conti.actions.discard');
+    Route::post('conti/acciones/{uuid}/corregir', [ContiActionController::class, 'revise'])->name('conti.actions.revise');
+    Route::post('conti/formularios', [ContiFormController::class, 'submit'])->middleware('throttle:conti-forms')->name('conti.forms.submit');
+    Route::get('conti/opciones', [ContiFormController::class, 'options'])->middleware('throttle:conti-lookup')->name('conti.forms.options');
+    // - escaneos: un documento fotografiado, leído por la IA, llena el
+    //   formulario. Con QR desde la computadora, o ahí mismo en el teléfono.
+    Route::get('conti/escaneos/acciones', [ContiScanController::class, 'actions'])->name('conti.scan.actions');
+    Route::post('conti/escaneos/sesiones', [ContiScanController::class, 'start'])->middleware('throttle:conti-forms')->name('conti.scan.start');
+    Route::get('conti/escaneos/sesiones/{id}', [ContiScanController::class, 'status'])->middleware('throttle:conti-lookup')->name('conti.scan.status');
+    Route::post('conti/escaneos', [ContiScanController::class, 'read'])->middleware('throttle:conti-chat')->name('conti.scan.read');
+    Route::post('conti/formularios/sugerencias', [ContiFormController::class, 'suggest'])->middleware('throttle:conti-lookup')->name('conti.forms.suggest');
     Route::get('conti/ajustes', [ContiSettingsController::class, 'show'])->name('conti.settings.show');
     Route::put('conti/ajustes/modelo', [ContiSettingsController::class, 'updateModel'])->name('conti.settings.model');
 

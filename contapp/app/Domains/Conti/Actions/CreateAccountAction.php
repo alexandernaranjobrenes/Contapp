@@ -49,6 +49,64 @@ final class CreateAccountAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('codigo', 'Código', 'texto', ['requerido' => true]),
+            $this->field('nombre', 'Nombre', 'texto', ['requerido' => true]),
+            $this->field('clase', 'Clase', 'opciones', ['requerido' => true, 'opciones' => ChartOfAccount::ACCOUNT_TYPES, 'recalcula' => true]),
+            $this->field('moneda', 'Moneda', 'opciones', ['opciones' => ChartOfAccount::CURRENCY_MODES, 'defecto' => 'local']),
+            $this->field('acepta_movimientos', 'Cuenta hoja (acepta movimientos)', 'si_no', ['defecto' => true]),
+            $this->field('exige_socio', 'Exige socio de negocio (CxC/CxP)', 'si_no', ['defecto' => false]),
+            $this->field('monetaria', 'Cuenta monetaria (elegible para bancos)', 'si_no', ['defecto' => false]),
+            $this->field('exige_norma_reparto', 'Exige norma de reparto', 'si_no', ['defecto' => false]),
+            $this->field('activa', 'Activa', 'si_no', ['defecto' => true]),
+            $this->field('clasificacion_iva', 'Clasificación IVA', 'opciones', ['opciones' => ChartOfAccount::TAX_CLASSIFICATIONS, 'defecto' => 'none', 'avanzado' => true]),
+            $this->field('indicador_impuesto', 'Indicador de impuesto', 'buscar', ['fuente' => 'indicadores-impuesto', 'avanzado' => true]),
+            $this->field('nombre_ingles', 'Nombre en inglés', 'texto', ['avanzado' => true]),
+        ];
+    }
+
+    /**
+     * El código que sigue al de la última cuenta de esa clase, en el mismo
+     * grupo donde se viene trabajando, y la clasificación de IVA que tienen
+     * las demás.
+     */
+    public function suggest(array $values, Company $company): array
+    {
+        if (! $this->given($values, 'clase')) {
+            return [];
+        }
+
+        $type = ContiFilters::keyFor((string) $values['clase'], ChartOfAccount::ACCOUNT_TYPES);
+
+        if (! array_key_exists($type, ChartOfAccount::ACCOUNT_TYPES)) {
+            return [];
+        }
+
+        $label = ChartOfAccount::ACCOUNT_TYPES[$type];
+        $leaves = ChartOfAccount::where('account_type', $type)->where('accepts_posting', true);
+        $latest = (clone $leaves)->latest('created_at')->latest('id')->first();
+        $out = [];
+
+        if ($latest !== null && ! $this->given($values, 'codigo')) {
+            $last = (clone $leaves)->where('parent_id', $latest->parent_id)->orderByDesc('code')->value('code');
+            $parent = $latest->parent_id ? ChartOfAccount::find($latest->parent_id) : null;
+            $out['codigo'] = $this->suggestion(
+                $this->nextCode($last, fn (string $code) => ChartOfAccount::where('code', $code)->exists()),
+                "Sigue a {$last}, la última cuenta de {$label}".($parent ? " dentro de {$parent->code} {$parent->description_es}" : '').'.',
+            );
+        }
+
+        $common = $this->given($values, 'clasificacion_iva') ? null : $this->mostCommon($leaves, 'tax_classification');
+
+        if ($common !== null && $common[0] !== 'none') {
+            $out['clasificacion_iva'] = $this->suggestion($common[0], "La tienen {$common[1]} de las {$common[2]} cuentas de {$label}.");
+        }
+
+        return $out;
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $this->validate($input, [

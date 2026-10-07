@@ -43,7 +43,7 @@ function partnersOf(Company $company)
     return BusinessPartner::withoutGlobalScope(CompanyScope::class)->where('company_id', $company->id);
 }
 
-it('preparar no guarda nada: deja la acción pendiente, con su resumen y el enlace para confirmar', function () {
+it('preparar no guarda nada: deja la acción pendiente, con su resumen, y sin enlace (CONTAPP abre la ventana)', function () {
     $f = contiPartnerFixture();
 
     $response = contiPrepare($f, 'crear_socio', [
@@ -52,7 +52,8 @@ it('preparar no guarda nada: deja la acción pendiente, con su resumen y el enla
         ->assertJsonPath('estado', 'pendiente')
         ->assertJsonPath('resumen.titulo', 'Crear el socio C-100 — Ferretería Central');
 
-    expect($response->json('enlace_para_confirmar'))->toBe('/conti/acciones/'.$response->json('id'))
+    expect($response->json('confirmacion'))->toContain('le abrió a la persona la ventana')
+        ->and(json_encode($response->json()))->not->toContain('/conti/acciones/')
         ->and(partnersOf($f['company'])->count())->toBe(0)
         ->and(ContiAction::first()->status)->toBe('pending');
 });

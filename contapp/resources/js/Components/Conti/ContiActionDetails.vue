@@ -72,7 +72,7 @@ const resultLink = computed(() => {
         <!-- Pendiente: la persona decide. -->
         <p v-if="pending" class="hint">
             Revisalo antes de confirmar: se guarda con tu usuario, igual que si lo hicieras desde la pantalla, y con las mismas
-            validaciones. Si algo no está bien, descartalo y pedile a Conti que lo corrija.
+            validaciones. Si algo no está bien, tocá «Corregir» para cambiarlo, o descartalo.
         </p>
 
         <!-- Ya se decidió. -->

@@ -1,10 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { CircleCheckIcon } from '@lucide/vue';
+import { CircleCheckIcon, PencilLineIcon } from '@lucide/vue';
 import DetailModal from '../DetailModal.vue';
 import ContiActionDetails from './ContiActionDetails.vue';
-import { closeContiAction, conti, noteInConversation } from '../../Utils/contiChat';
+import { closeContiAction, conti, noteInConversation, pushForm } from '../../Utils/contiChat';
 import { requestJson } from '../../Utils/http';
 
 /**
@@ -61,6 +61,31 @@ watch(() => conti.review, (uuid) => {
     decideError.value = '';
     if (uuid) load();
 });
+
+/**
+ * «Corregir»: lo preparado se descarta y vuelve al chat como formulario, con
+ * los mismos datos, para cambiar lo que haga falta y enviarlo de nuevo.
+ */
+async function revise() {
+    if (busy.value || !action.value) return;
+
+    const uuid = action.value.uuid;
+    busy.value = 'revise';
+    decideError.value = '';
+
+    const result = await requestJson(window.route('conti.actions.revise', uuid), { method: 'POST' });
+
+    if (conti.review !== uuid) return;
+    busy.value = null;
+
+    if (!result.ok) {
+        decideError.value = result.status === 404 ? NOT_FOUND : ([403, 409].includes(result.status) && result.data?.message) || result.message;
+        return;
+    }
+
+    closeContiAction();
+    pushForm(result.data.formulario);
+}
 
 async function decide(kind) {
     if (busy.value || !action.value) return;
@@ -125,6 +150,14 @@ async function decide(kind) {
                     :aria-busy="busy === 'discard'"
                     @click="decide('discard')"
                 >Descartar</button>
+                <button
+                    type="button"
+                    class="btn btn-ghost"
+                    :disabled="action.other_company || busy !== null"
+                    :data-busy="busy === 'revise' ? '' : null"
+                    :aria-busy="busy === 'revise'"
+                    @click="revise"
+                ><PencilLineIcon /> Corregir</button>
                 <button
                     type="button"
                     class="btn btn-primary"

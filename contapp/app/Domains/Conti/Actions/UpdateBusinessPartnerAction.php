@@ -30,6 +30,50 @@ final class UpdateBusinessPartnerAction extends BusinessPartnerAction
             + ['estado' => 'activo | inactivo'];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('socio', 'Socio que se cambia', 'buscar', ['requerido' => true, 'fuente' => 'socios']),
+            ...$this->partnerForm($company, true),
+            $this->field('estado', 'Estado', 'opciones', ['opciones' => ['active' => 'Activo', 'inactive' => 'Inactivo']]),
+        ];
+    }
+
+    /**
+     * Los valores actuales del socio, para cambiar sobre ellos. La cédula no:
+     * es un dato sensible, y vacía queda como está.
+     */
+    public function formValues(array $values, Company $company): array
+    {
+        $partner = ($values['socio'] ?? '') !== '' ? BusinessPartner::where('code', $values['socio'])->first() : null;
+
+        if ($partner === null) {
+            return $values;
+        }
+
+        $partner->loadMissing(['glAccount:id,code', 'category:id,code', 'costCenter:id,code', 'priceList:id,code', 'currency:id,code']);
+
+        $current = array_filter([
+            'codigo' => $partner->code,
+            'nombre' => $partner->name,
+            'tipo' => $partner->type,
+            'encargado' => $partner->contact_name,
+            'codigo_actividad' => $partner->economic_activity_code,
+            'socio_desde' => $partner->partner_since?->format('Y-m-d'),
+            'categoria' => $partner->category?->code,
+            'centro_costo' => $partner->costCenter?->code,
+            'cuenta_control' => $partner->glAccount?->code,
+            'moneda' => $partner->currency?->code,
+            'lista_precios' => $partner->priceList?->code,
+            'limite_credito' => $partner->credit_limit,
+            'plazo_dias' => $partner->payment_terms_days,
+            'estado' => $partner->status,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        // Lo que mandó el agente va encima de lo actual.
+        return [...$current, ...$values];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $partner = $this->byCode(BusinessPartner::class, $input['socio'] ?? null, 'socio', 'un socio');

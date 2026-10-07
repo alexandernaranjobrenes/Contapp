@@ -43,6 +43,18 @@ final class AddEmployeeNoteAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('empleado', 'Trabajador', 'buscar', ['requerido' => true, 'fuente' => 'empleados']),
+            $this->field('categoria', 'Categoría', 'opciones', ['requerido' => true, 'opciones' => EmployeeNote::CATEGORIES]),
+            $this->field('titulo', 'Título', 'texto', ['requerido' => true]),
+            $this->field('detalle', 'Detalle', 'texto_largo', ['requerido' => true]),
+            $this->field('fecha', 'Fecha del hecho', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+            $this->field('confidencial', 'Confidencial', 'si_no', ['defecto' => false, 'ayuda' => 'Solo la ve quien tiene permiso sobre las anotaciones confidenciales.']),
+        ];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $input['fecha'] = ($input['fecha'] ?? '') !== '' ? $input['fecha'] : now()->format('Y-m-d');

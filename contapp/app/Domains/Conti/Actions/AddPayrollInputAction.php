@@ -47,6 +47,30 @@ final class AddPayrollInputAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('periodo', 'Período de planilla', 'buscar', ['requerido' => true, 'fuente' => 'periodos-planilla', 'ayuda' => 'Uno abierto: los calculados o cerrados no admiten movimientos.']),
+            $this->field('empleado', 'Trabajador', 'buscar', ['requerido' => true, 'fuente' => 'empleados']),
+            $this->field('concepto', 'Concepto', 'buscar', ['requerido' => true, 'fuente' => 'conceptos-planilla']),
+            $this->field('monto', 'Monto', 'monto', ['ayuda' => 'Si el concepto se digita por monto.']),
+            $this->field('horas', 'Horas', 'numero', ['ayuda' => 'Si el concepto se paga por horas.']),
+            $this->field('notas', 'Notas', 'texto'),
+        ];
+    }
+
+    /** La planilla abierta más reciente. */
+    public function suggest(array $values, Company $company): array
+    {
+        if ($this->given($values, 'periodo')) {
+            return [];
+        }
+
+        $open = PayrollPeriod::orderByDesc('start_date')->limit(24)->get()->first(fn (PayrollPeriod $period) => $period->isRecalculable());
+
+        return $open ? ['periodo' => $this->suggestion($open->id, "Es la planilla abierta más reciente: {$open->name}.")] : [];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $this->validate($input, [

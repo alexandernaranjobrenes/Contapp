@@ -126,7 +126,7 @@ Se ven en el pie de página y en el selector de compañía:
 - Para convertir, CONTAPP usa el **último tipo de cambio registrado en o antes de la fecha de contabilización**. Sin tipo de cambio cargado, no se puede contabilizar (ver la sección 3.1).
 
 ### 1.13 Conti, el asistente
-- Se abre con el botón redondo del robot, en la esquina inferior derecha de la pantalla. El panel queda a la derecha y la conversación sigue al pasar de una pantalla a otra. «Nueva conversación» (la flecha circular) empieza de cero.
+- El botón redondo del robot, en la esquina inferior derecha, se abre en dos al pasar el mouse por encima (o al tocarlo en el teléfono): **«Chat»** y **«Escanear»**. El panel del chat queda a la derecha y la conversación sigue al pasar de una pantalla a otra. «Nueva conversación» (la flecha circular) empieza de cero.
 - Hay una conversación por compañía: al cambiar de compañía, Conti habla de la nueva.
 - Conti ve solo lo que la persona puede ver según sus permisos, y nunca correos, teléfonos ni datos personales.
 - **Lo que Conti puede preparar para guardar**, si la persona tiene Lectura y escritura en esa pantalla:
@@ -140,7 +140,25 @@ Se ven en el pie de página y en el selector de compañía:
   - anotar en la bitácora de un trabajador;
   - registrar un movimiento de planilla (horas extra, bonos, rebajos) en un período abierto;
   - registrar vacaciones (disfrute, pago o ajuste).
-- **Nada se guarda sin confirmar.** Conti deja un enlace que abre una ventana encima de la pantalla en que se está, sin salir de ella. Ahí se ve el resumen y se toca «Confirmar y guardar» o «Descartar». Se guarda con el usuario de la persona y con las mismas validaciones que la pantalla correspondiente, y la pantalla de atrás se actualiza. El enlace vence a los 30 minutos. Abierto en otra pestaña, lleva a la pantalla «Confirmar lo que preparó Conti», con lo mismo.
+- **Para registrar o editar, Conti muestra un formulario en el chat**, con lo que ya sabe precargado. Se completa ahí mismo; en los campos de código (cuentas, socios, artículos…) aparecen sugerencias al escribir. En un asiento, abajo de las líneas se ve si cuadran los débitos y los créditos.
+- **Los campos marcados «Sugerido»** los completa CONTAPP según cómo se viene trabajando en la compañía: el código que sigue al último, la cuenta de control que usan los demás clientes, el tipo de documento de siempre, la última tasa de cambio… Debajo de cada uno dice por qué. Se pueden cambiar como cualquier otro campo.
+- **Nada se guarda sin confirmar.** Al enviar el formulario (o cuando Conti ya tenía todos los datos), se abre sola una ventana encima de la pantalla en que se está, con el resumen:
+  - «Confirmar y guardar» lo guarda, con el usuario de la persona y las mismas validaciones que la pantalla correspondiente; la pantalla de atrás se actualiza.
+  - «Corregir» lo devuelve al chat como formulario para cambiar lo que haga falta.
+  - «Descartar» no guarda nada.
+  En el chat queda una tarjeta para volver a abrir la ventana. Vence a los 30 minutos.
+- **Dictar en vez de escribir:** el botón del micrófono, al lado de «Enviar», convierte la voz en texto (en Chrome, Edge y Safari; Firefox no lo tiene).
+  - La primera vez, el navegador pide permiso para usar el micrófono; si se negó, se vuelve a dar desde el candado de la barra de direcciones.
+  - El texto aparece en el campo mientras se habla y queda ahí para revisarlo o corregirlo: se envía con «Enviar» o Enter, nunca solo.
+  - Se detiene solo al dejar de hablar, o tocando el micrófono de nuevo.
+- **Escanear un documento** («Escanear», en el botón de Conti): Conti lee una foto del documento y llena el formulario.
+  - Primero se elige qué registrar: una factura de gasto o compra (asiento), una cotización o pedido a un proveedor (orden de compra), los datos de un cliente o proveedor nuevo, o un comprobante de pago (aplicar el pago). Solo aparece lo que la persona puede registrar con sus permisos.
+  - En el teléfono se abre la cámara ahí mismo. En la computadora aparece un código QR: se escanea con la cámara del teléfono, se toma la foto (hasta 3 páginas) y se envía. El formulario aparece solo en la computadora. El código sirve una sola vez y por 10 minutos, y en el teléfono no hace falta iniciar sesión. También se puede subir una imagen que ya esté en la computadora.
+  - Lo leído del documento va marcado «Del documento». Lo que Conti no encontró en CONTAPP (un proveedor o un artículo que no está registrado) queda vacío, con una nota arriba: hay que buscarlo o crearlo primero.
+  - Revisá cada dato y corregí lo que haga falta antes de enviarlo; después viene la ventana de confirmación de siempre.
+  - Las fotos no se guardan en CONTAPP: se leen y se descartan. Leer un documento gasta créditos, como un mensaje.
+  - En el teléfono, el documento completo, de frente y con buena luz se lee mejor.
+- **Cuando Conti necesita que elijas** (un período, entre dos cuentas parecidas…), te muestra opciones para tocar, de una o varias, y siempre podés escribir otra respuesta.
 - Para cualquier otra cosa (facturar, mover inventario, cerrar períodos, calcular planillas…), Conti explica cómo hacerlo en la pantalla.
 - Con la licencia vencida, Conti responde y consulta, pero no prepara nada para guardar.
 - **Conti es parte de la licencia.** El equipo de CONTAPP lo activa o lo desactiva para cada licencia, y le puede poner límites de uso en créditos: por día y por semana para toda la licencia (todas sus compañías y personas juntas), y por persona al día. Si la licencia no lo tiene, el botón Conti no aparece.

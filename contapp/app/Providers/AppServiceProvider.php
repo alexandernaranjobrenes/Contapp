@@ -64,5 +64,9 @@ class AppServiceProvider extends ServiceProvider
         // Conti (CLAUDE.md secc. 32): los mensajes de una persona. El consumo
         // real lo limitan los créditos de su licencia (ContiUsageService).
         RateLimiter::for('conti-chat', fn (Request $request) => Limit::perMinute(12)->by((string) ($request->user()?->id ?? $request->ip())));
+        // Los formularios del chat no llaman al modelo: enviarlos (con algún
+        // error de validación de por medio) y buscar mientras se escribe.
+        RateLimiter::for('conti-forms', fn (Request $request) => Limit::perMinute(30)->by((string) ($request->user()?->id ?? $request->ip())));
+        RateLimiter::for('conti-lookup', fn (Request $request) => Limit::perMinute(120)->by((string) ($request->user()?->id ?? $request->ip())));
     }
 }

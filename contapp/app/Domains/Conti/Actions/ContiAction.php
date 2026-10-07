@@ -31,6 +31,31 @@ interface ContiAction
     public function fields(): array;
 
     /**
+     * El formulario que se le muestra a la persona en el chat
+     * (ContiFormService): los mismos campos de fields(), con su tipo, su
+     * etiqueta y si son obligatorios. Ver BaseContiAction::field().
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function form(Company $company): array;
+
+    /**
+     * Lo que se precarga en el formulario además de lo que mandó el agente
+     * (al editar algo, sus valores actuales). Nunca datos sensibles.
+     */
+    public function formValues(array $values, Company $company): array;
+
+    /**
+     * Lo que CONTAPP sugiere para los campos vacíos, según cómo se viene
+     * trabajando en la compañía (el código que sigue, la cuenta que más se
+     * usa…). Campo => ['valor' => …, 'motivo' => por qué]. Se recalcula
+     * cuando cambia un campo marcado con «recalcula».
+     *
+     * @return array<string, array{valor: string, motivo: string}|null>
+     */
+    public function suggest(array $values, Company $company): array;
+
+    /**
      * Valida y resuelve lo que mandó el agente. Corta con 422 si algo no
      * sirve, diciendo qué.
      */

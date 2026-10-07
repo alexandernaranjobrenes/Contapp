@@ -43,6 +43,43 @@ final class RecordExchangeRateAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('fecha', 'Fecha', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+            $this->field('tipo', 'Tipo', 'opciones', ['requerido' => true, 'opciones' => self::TYPES, 'defecto' => 'reference', 'recalcula' => true]),
+            $this->field('tasa', 'Tasa (colones por 1 unidad)', 'numero', ['requerido' => true]),
+            $this->field('bloquear', 'Bloquearla', 'si_no', ['defecto' => false, 'ayuda' => 'Bloqueada, la sincronización con el BCCR no la sobrescribe.']),
+        ];
+    }
+
+    /** La última tasa de ese tipo registrada hasta esa fecha, para partir de ahí. */
+    public function suggest(array $values, Company $company): array
+    {
+        if ($this->given($values, 'tasa') || ! $company->foreign_currency_id) {
+            return [];
+        }
+
+        $type = $this->given($values, 'tipo') ? ContiFilters::keyFor((string) $values['tipo'], self::TYPES) : 'reference';
+
+        if (! array_key_exists($type, self::TYPES)) {
+            return [];
+        }
+
+        $date = $this->given($values, 'fecha') ? (string) $values['fecha'] : now(config('conti.timezone'))->format('Y-m-d');
+        $last = ExchangeRate::where('currency_id', $company->foreign_currency_id)->where('rate_type', $type)
+            ->whereDate('rate_date', '<=', $date)->orderByDesc('rate_date')->first();
+
+        if ($last === null) {
+            return [];
+        }
+
+        return ['tasa' => $this->suggestion(
+            rtrim(rtrim((string) $last->rate, '0'), '.'),
+            'La última de '.mb_strtolower(self::TYPES[$type]).' registrada, del '.date('d/m/Y', strtotime((string) $last->rate_date)).'. Revisala contra la del BCCR.',
+        )];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $this->validate($input, [

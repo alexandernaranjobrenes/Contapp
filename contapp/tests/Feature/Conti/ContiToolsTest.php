@@ -2,6 +2,7 @@
 
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Conti\Agent\ContiAgent;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeNote;
 
@@ -138,4 +139,41 @@ it('una herramienta que no existe vuelve como error, sin romper nada', function 
     ['user' => $user, 'company' => $company] = contiUser([], null, true);
 
     expect(contiTools($user, $company)->run('borrar_todo', [])['codigo'])->toBe(404);
+});
+
+it('Conti tiene a la vista los permisos de la persona, y las secciones a las que no tiene acceso', function () {
+    ['user' => $user, 'company' => $company] = contiUser(['accounting.cost_centers' => 'read_write', 'business_partners.partners' => 'read']);
+    contiTools($user, $company);
+
+    $prompt = app(ContiAgent::class)->systemPrompt(null);
+
+    expect($prompt)->toContain('## Permisos de esta persona')
+        ->toContain('- Centros de costo y cambiario: Centros de costo (lectura y escritura).')
+        ->toContain('Socios de negocio (solo lectura)')
+        ->toMatch('/- Sin ningún acceso: .*Planillas/')
+        ->toContain('no lo puede ver ni hacer');
+
+    ['user' => $owner, 'company' => $other] = contiUser([], null, true);
+    contiTools($owner, $other);
+    expect(app(ContiAgent::class)->systemPrompt(null))->toContain('Es el Superusuario: tiene acceso a todas las pantallas.');
+});
+
+it('el manual avisa cuando una sección es de una pantalla a la que la persona no tiene acceso', function () {
+    ['user' => $user, 'company' => $company] = contiUser(['accounting.cost_centers' => 'read_write']);
+
+    $result = contiTools($user, $company)->run('manual', ['tema' => 'registrar empleado planilla']);
+    $flagged = collect($result['secciones'])->filter(fn (array $s) => isset($s['sin_acceso']));
+
+    expect($flagged)->not->toBeEmpty()
+        ->and($flagged->first()['sin_acceso'])->toContain('NO tiene acceso a ninguna pantalla de Planillas');
+
+    // Lo que sí puede usar no lleva aviso.
+    $allowed = contiTools($user, $company)->run('manual', ['tema' => 'centros de costo']);
+    $costCenters = collect($allowed['secciones'])->first(fn (array $s) => str_contains($s['seccion'], 'Centros de costo (Centros de costo y cambiario → Centros de costo)'));
+    expect($costCenters)->not->toBeNull()
+        ->and($costCenters)->not->toHaveKey('sin_acceso');
+
+    ['user' => $owner, 'company' => $other] = contiUser([], null, true);
+    $all = contiTools($owner, $other)->run('manual', ['tema' => 'registrar empleado planilla']);
+    expect(collect($all['secciones'])->filter(fn (array $s) => isset($s['sin_acceso'])))->toBeEmpty();
 });

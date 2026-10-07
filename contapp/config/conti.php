@@ -93,4 +93,28 @@ return [
     // Desde qué porcentaje de un límite se avisa en el chat.
     'warning_percent' => 80,
 
+    /*
+    | Escanear un documento para registrarlo (ContiScanService): la IA lee
+    | la foto y llena el formulario. Las fotos nunca se guardan.
+    |
+    | - ip: la dirección de la computadora en la red local, para que el
+    |   teléfono pueda abrir el QR en desarrollo (IP_SCANNER). Vacía, el QR
+    |   usa APP_URL. Se le agregan el esquema y el puerto de APP_URL.
+    | - minutes: cuánto vale el QR (un solo uso).
+    | - actions: lo que se puede registrar desde un documento, y cómo se le
+    |   presenta a la persona. Solo se ofrece lo que sus permisos le dejan.
+    */
+    'scanner' => [
+        'ip' => env('IP_SCANNER'),
+        'minutes' => 10,
+        'max_photos' => 3,
+        'max_kb' => 6144,
+        'actions' => [
+            'crear_asiento' => ['title' => 'Una factura de gasto o compra', 'description' => 'Arma el asiento con el gasto, el IVA y el proveedor.'],
+            'crear_orden_compra' => ['title' => 'Una cotización o pedido a un proveedor', 'description' => 'Arma la orden de compra con sus artículos.'],
+            'crear_socio' => ['title' => 'Los datos de un cliente o proveedor nuevo', 'description' => 'De una factura, una tarjeta o una constancia.'],
+            'aplicar_pago' => ['title' => 'Un comprobante de pago o transferencia', 'description' => 'Lo aplica a la factura que se pagó.'],
+        ],
+    ],
+
 ];

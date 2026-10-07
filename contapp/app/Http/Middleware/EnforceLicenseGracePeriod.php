@@ -59,6 +59,9 @@ class EnforceLicenseGracePeriod
         // El modelo con que Conti le responde es de la persona, no de la
         // compañía.
         'conti.settings.model',
+        // Las fotos del QR: la licencia que cuenta es la de la compañía del
+        // escaneo, y esa la revisa ContiScanService (no la del teléfono).
+        'conti.phone.upload',
     ];
 
     public function handle(Request $request, Closure $next): Response

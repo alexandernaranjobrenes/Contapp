@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Conti\Agent\AgentReply;
 use App\Domains\Conti\Agent\ContiAgent;
 use App\Domains\Conti\Agent\ContiAgentException;
+use App\Domains\Conti\Models\ContiAction;
 use App\Domains\Conti\Services\ContiAccessService;
 use App\Domains\Conti\Services\ContiModelService;
 use App\Domains\Conti\Services\ContiUsageService;
 use App\Domains\Conti\Support\ContiContext;
+use App\Domains\Conti\Support\ContiHistory;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Session\NullSessionHandler;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * POST /conti/mensajes: lo que la persona le escribe a Conti desde el chat de
@@ -25,6 +27,9 @@ use Illuminate\Support\Facades\Cache;
  *    el modelo que ella eligió (ContiModelService).
  * 3. Registra lo consumido —también si el modelo falló a la mitad: OpenAI
  *    lo cobra igual— y avisa si algún límite va por encima del 80 %.
+ * 4. Devuelve, además del texto, lo que la persona tiene que hacer en el
+ *    chat (un formulario o preguntas con opciones) y lo que quedó preparado:
+ *    el chat le abre la ventana para confirmarlo.
  *
  * La conversación se recuerda en caché unas horas, por persona, compañía y
  * conversación del chat. Nunca en la base: solo se guarda el consumo.
@@ -68,8 +73,7 @@ class ContiChatController extends Controller
         $context->set($user, $company, $currentCompany->isInGracePeriod());
         @set_time_limit(180);
 
-        $historyKey = "conti:history:{$user->id}:{$company->id}:{$validated['sesion']}";
-        $history = Cache::get($historyKey, []);
+        $history = ContiHistory::get($user->id, $company->id, $validated['sesion']);
 
         try {
             $reply = $agent->reply($history, $validated['mensaje'], $validated['pantalla'] ?? null, $models->forUser($user, $access->allowedModels($user, $company)));
@@ -83,17 +87,51 @@ class ContiChatController extends Controller
 
         $usage->record($user, $company, $reply->usage);
 
-        $history = array_slice([
-            ...$history,
+        ContiHistory::append(
+            $user->id,
+            $company->id,
+            $validated['sesion'],
             ['role' => 'user', 'content' => $validated['mensaje']],
-            ['role' => 'assistant', 'content' => $reply->text],
-        ], -max(2, (int) config('conti.history_messages', 16)));
-
-        Cache::put($historyKey, $history, now()->addMinutes((int) config('conti.history_minutes', 360)));
+            ['role' => 'assistant', 'content' => $this->remembered($reply)],
+        );
 
         return response()->json([
             'respuesta' => $reply->text,
+            'interaccion' => $reply->interaction,
+            'acciones' => array_map(fn (ContiAction $pending) => [
+                'id' => $pending->uuid,
+                'titulo' => $pending->summary['titulo'] ?? $pending->action,
+            ], $reply->actions),
             'aviso' => $usage->warningFor($user, $company),
         ]);
+    }
+
+    /**
+     * Lo que se recuerda de la respuesta: el texto y, entre paréntesis, lo
+     * que la persona vio además —el formulario, las preguntas, lo
+     * preparado—, para que el mensaje siguiente se entienda.
+     */
+    private function remembered(AgentReply $reply): string
+    {
+        $notes = [];
+
+        if (($reply->interaction['tipo'] ?? null) === 'formulario') {
+            $form = $reply->interaction['formulario'];
+            $filled = collect($form['valores'])->filter(fn ($v) => is_string($v) && $v !== '')
+                ->map(fn ($v, $k) => "{$k}: ".mb_substr($v, 0, 60))->take(12)->implode('; ');
+            $notes[] = "(Le mostré el formulario «{$form['titulo']}» ({$form['accion']})".($filled !== '' ? " con {$filled}" : '').'.)';
+        }
+
+        if (($reply->interaction['tipo'] ?? null) === 'preguntas') {
+            $questions = collect($reply->interaction['preguntas'])->map(fn (array $q) => $q['pregunta'].' Opciones: '
+                .collect($q['opciones'])->pluck('etiqueta')->implode(' / ').($q['multiple'] ? ' (varias)' : ''));
+            $notes[] = '(Le pregunté: '.$questions->implode(' | ').')';
+        }
+
+        foreach ($reply->actions as $pending) {
+            $notes[] = '(Preparé «'.($pending->summary['titulo'] ?? $pending->action)."» (id {$pending->uuid}): CONTAPP le abrió la ventana para confirmarlo.)";
+        }
+
+        return trim($reply->text."\n\n".implode("\n", $notes));
     }
 }

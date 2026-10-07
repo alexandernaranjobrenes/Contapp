@@ -6,6 +6,7 @@ use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostAllocationRule;
 use App\Domains\Accounting\Models\JournalDetail;
+use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Conti\Resources\AccountingResources;
@@ -58,6 +59,55 @@ final class CreateJournalEntryAction extends BaseContiAction
             'lineas' => 'lista de líneas: {cuenta: código | socio: código, debito, credito, moneda (CRC|USD, por defecto la local), '
                 .'descripcion, norma_reparto: código, vencimiento: AAAA-MM-DD (abre partida del socio), documento_referencia, clave_electronica (50 dígitos)}',
         ];
+    }
+
+    public function form(Company $company): array
+    {
+        $currencies = $this->currencyOptions($company);
+
+        return [
+            $this->field('tipo_documento', 'Tipo de documento', 'buscar', ['requerido' => true, 'fuente' => 'tipos-documento']),
+            $this->field('fecha_contabilizacion', 'Fecha de contabilización', 'fecha', ['requerido' => true, 'defecto' => 'hoy', 'ayuda' => 'Fija el período y el tipo de cambio.']),
+            $this->field('descripcion', 'Descripción', 'texto'),
+            $this->field('modo', 'Al confirmar', 'opciones', [
+                'opciones' => ['preliminar' => 'Dejarlo preliminar (se revisa antes de contabilizar)', 'contabilizar' => 'Contabilizarlo'],
+                'defecto' => 'preliminar',
+            ]),
+            $this->field('lineas', 'Líneas', 'lineas', ['requerido' => true, 'minimo' => 2, 'columnas' => [
+                $this->field('cuenta', 'Cuenta', 'buscar', ['fuente' => 'cuentas', 'filtros' => ['acepta_movimientos' => 'sí']]),
+                $this->field('socio', 'O un socio', 'buscar', ['fuente' => 'socios', 'ayuda' => 'Para las cuentas que exigen socio (CxC, CxP).']),
+                $this->field('debito', 'Débito', 'monto'),
+                $this->field('credito', 'Crédito', 'monto'),
+                $this->field('descripcion', 'Descripción', 'texto'),
+                $this->field('moneda', 'Moneda', 'opciones', ['opciones' => $currencies, 'avanzado' => true]),
+                $this->field('norma_reparto', 'Norma de reparto', 'buscar', ['fuente' => 'normas-reparto', 'avanzado' => true]),
+                $this->field('vencimiento', 'Vencimiento', 'fecha', ['avanzado' => true, 'ayuda' => 'Con socio: abre una partida que vence ese día.']),
+                $this->field('documento_referencia', 'Documento de referencia', 'texto', ['avanzado' => true]),
+                $this->field('clave_electronica', 'Clave electrónica (50 dígitos)', 'texto', ['avanzado' => true]),
+            ]]),
+            $this->field('fecha_documento', 'Fecha del documento', 'fecha', ['avanzado' => true, 'ayuda' => 'Vacía: la de contabilización.']),
+            $this->field('tipo_cambio', 'Tipo de cambio', 'numero', ['avanzado' => true, 'ayuda' => 'Solo al contabilizar, y solo para este asiento.']),
+        ];
+    }
+
+    /** El tipo de documento que más se usa en los asientos manuales. */
+    public function suggest(array $values, Company $company): array
+    {
+        if ($this->given($values, 'tipo_documento')) {
+            return [];
+        }
+
+        $usable = DocumentType::where('status', 'active')->where('generates_journal', true)
+            ->where('is_opening_type', false)->where('is_reconciliation_type', false)->where('is_closing_type', false);
+        $common = $this->mostCommon(JournalEntry::where('source_module', 'contable')->whereIn('document_type_id', (clone $usable)->pluck('id')), 'document_type_id');
+
+        if ($common !== null) {
+            return ['tipo_documento' => $this->suggestion(DocumentType::find($common[0])?->code, "Es el que más se usa en los asientos manuales ({$common[1]} de {$common[2]}).")];
+        }
+
+        $type = (clone $usable)->where('origin_module', 'contable')->orderBy('code')->first();
+
+        return $type ? ['tipo_documento' => $this->suggestion($type->code, "Es el tipo de documento contable de la compañía: {$type->name}.")] : [];
     }
 
     public function prepare(array $input, Company $company, User $user): PreparedAction

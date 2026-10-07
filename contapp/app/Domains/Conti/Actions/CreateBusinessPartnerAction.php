@@ -28,6 +28,16 @@ final class CreateBusinessPartnerAction extends BusinessPartnerAction
         return $this->partnerFields();
     }
 
+    public function form(Company $company): array
+    {
+        return $this->partnerForm($company);
+    }
+
+    public function suggest(array $values, Company $company): array
+    {
+        return $this->partnerSuggestions($values);
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         // Como en la pantalla: sin fecha, el socio arranca hoy.

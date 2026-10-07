@@ -39,6 +39,29 @@ final class UpdatePricesAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('lista', 'Lista de precios', 'buscar', ['requerido' => true, 'fuente' => 'listas-precios']),
+            $this->field('precios', 'Precios', 'lineas', ['requerido' => true, 'minimo' => 1, 'columnas' => [
+                $this->field('articulo', 'Artículo', 'buscar', ['requerido' => true, 'fuente' => 'articulos']),
+                $this->field('precio', 'Precio', 'monto', ['ayuda' => 'Vacío: lo quita de la lista.']),
+            ]]),
+        ];
+    }
+
+    /** La lista de precios predeterminada. */
+    public function suggest(array $values, Company $company): array
+    {
+        if ($this->given($values, 'lista')) {
+            return [];
+        }
+
+        $default = PriceList::where('is_default', true)->first();
+
+        return $default ? ['lista' => $this->suggestion($default->code, "Es la lista de precios predeterminada: {$default->name}.")] : [];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $this->validate($input, [

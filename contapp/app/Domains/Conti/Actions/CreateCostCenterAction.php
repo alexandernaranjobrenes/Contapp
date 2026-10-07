@@ -40,6 +40,17 @@ final class CreateCostCenterAction extends BaseContiAction
         ];
     }
 
+    public function form(Company $company): array
+    {
+        return [
+            $this->field('codigo', 'Código', 'texto', ['requerido' => true, 'ayuda' => 'No se puede cambiar después.']),
+            $this->field('nombre', 'Nombre', 'texto', ['requerido' => true]),
+            $this->field('vigente_desde', 'Vigente desde', 'fecha', ['requerido' => true, 'defecto' => 'hoy']),
+            $this->field('vigente_hasta', 'Vigente hasta', 'fecha'),
+            $this->field('activo', 'Activo', 'si_no', ['defecto' => true]),
+        ];
+    }
+
     public function prepare(array $input, Company $company, User $user): PreparedAction
     {
         $input['vigente_desde'] = ($input['vigente_desde'] ?? '') !== '' ? $input['vigente_desde'] : now()->format('Y-m-d');
