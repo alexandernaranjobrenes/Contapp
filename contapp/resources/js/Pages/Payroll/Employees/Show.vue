@@ -5,7 +5,7 @@ import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
 import { confirmAction } from '../../../Utils/confirm';
 import { formatMoney } from '../../../Utils/money';
-import { ArrowLeftIcon, PlusIcon, UploadIcon } from '@lucide/vue';
+import { ArrowLeftIcon, PlusIcon, Trash2Icon, UploadIcon } from '@lucide/vue';
 
 const props = defineProps({
     employee: { type: Object, required: true },
@@ -17,6 +17,8 @@ const props = defineProps({
     costCenters: { type: Array, default: () => [] },
     notes: { type: Array, default: () => [] },
     noteCategories: { type: Object, default: () => ({}) },
+    // Formatos y peso de la foto (EmployeeController::photoHints).
+    photoRules: { type: Object, default: () => ({ accept: 'image/jpeg,image/png', formats: 'JPG o PNG', max_megabytes: 4 }) },
 });
 
 const page = usePage();
@@ -33,6 +35,17 @@ function pickPhoto(event) {
         preserveScroll: true,
         forceFormData: true,
         onFinish: () => { if (photoInput.value) photoInput.value.value = ''; },
+    });
+}
+
+// La foto se borra también del bucket (EmployeePhotoService).
+function removePhoto() {
+    confirmAction({
+        title: 'Quitar foto',
+        message: `La foto de ${props.employee.full_name} se borra.`,
+        confirmLabel: 'Quitar',
+        danger: true,
+        onConfirm: () => router.delete(route('employees.photo.destroy', props.employee.id), { preserveScroll: true }),
     });
 }
 
@@ -115,10 +128,13 @@ const noteClass = {
                 <img v-if="employee.photo_url" :src="employee.photo_url" class="photo" alt="">
                 <div v-else class="photo photo-empty">{{ employee.first_name?.[0] }}{{ employee.last_name1?.[0] }}</div>
 
-                <label class="btn btn-ghost file-btn">
-                    <UploadIcon /> {{ employee.photo_url ? 'Cambiar foto' : 'Subir foto' }}
-                    <input ref="photoInput" type="file" accept="image/*" class="file-input" @change="pickPhoto">
+                <label class="btn btn-ghost file-btn" :class="{ disabled: photoForm.processing }">
+                    <UploadIcon /> {{ photoForm.processing ? 'Subiendo…' : employee.photo_url ? 'Cambiar foto' : 'Subir foto' }}
+                    <input ref="photoInput" type="file" :accept="photoRules.accept" class="file-input" :disabled="photoForm.processing" @change="pickPhoto">
                 </label>
+                <button v-if="employee.photo_url" type="button" class="btn btn-ghost btn-sm btn-danger-text" @click="removePhoto">
+                    <Trash2Icon /> Quitar foto
+                </button>
                 <span v-if="photoForm.errors.photo" class="error">{{ photoForm.errors.photo }}</span>
             </div>
 

@@ -181,6 +181,10 @@ Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (
   - **Al aceptar se vuelve a revisar** que quien invitó todavía pueda dar ese rol y esos permisos.
   - No hay forma de vincular una cuenta sin su aceptación.
 - **Los permisos son por pantalla del menú lateral**, con tres niveles: sin acceso, lectura, y lectura y escritura (secc. 29, `ScreenCatalog`).
+  - **Perfiles para precargarlos** (Contador, Vendedor…), al invitar y al editar: tarjetas que se tocan, no un select (`PermissionProfilePicker.vue`; el ícono de cada uno, por su clave). Los define `config/permission_profiles.php` por rol, con un nivel por sección y, si hace falta, por pantalla; `PermissionProfiles` los pasa a un nivel por pantalla.
+  - No se guardan ni viajan al servidor: se guardan los permisos que quedan, con las validaciones de siempre.
+  - Se recortan a lo que puede dar quien edita (`max_level`). Uno del que no puede dar nada se ofrece deshabilitado.
+  - Una pantalla nueva en `ScreenCatalog` queda sin acceso en todos los perfiles hasta que se agregue a propósito. Una prueba revisa que las claves de los perfiles existan.
 - **Solo el Superusuario cambia el rol** de alguien, de Usuario a Administrador o al revés, en la compañía activa (`PermissionGrantService::changeRole`). Se respeta el cupo de la licencia, y los permisos por pantalla no cambian.
 - **Suspender, reactivar y desactivar le avisan a la persona por correo**, con las compañías afectadas (`UserLifecycleService`). Si el correo falla, el cambio igual se hace y el mensaje lo dice.
 - **La contraseña tiene que ser de la persona.** Una cuenta creada antes por un Superusuario o un Administrador nació con la contraseña que ellos le pusieron (`users.password_chosen_at` nulo). No puede activar una licencia hasta elegir la suya con el enlace que llega a su correo; si no, quien la creó podría entrar a la compañía nueva. Las que entran por invitación eligen la suya.
@@ -575,3 +579,82 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - El enlace es una ruta relativa, y el modelo a veces le inventa un dominio («https://app.contapp.run/conti/…»). `ContiAgent::tidyLinks()` se lo quita a la respuesta, y `contiMarkdown.js` también, para lo que ya estaba guardado en el chat.
 - **Sin `OPENAI_API_KEY`**, o con la licencia sin Conti, el botón no aparece. El modelo sale de `OPENAI_MODEL` (por defecto `gpt-4.1-mini`); uno nuevo se agrega a `conti.pricing` con su precio, para que el consumo salga bien.
 - **Las pruebas** no tocan OpenAI: usan `Http::fake` con `openAiReply()` (`tests/Feature/Conti/helpers.php`), y las herramientas se prueban directo con `contiTools()`. Para probar en el navegador sin gastar, sirve un OpenAI simulado en el contenedor de Node, apuntado con `OPENAI_BASE_URL`.
+
+## 33. CÓDIGOS DE BARRAS: SE DIBUJAN, SE ESCANEAN, SE GENERAN Y SE IMPRIMEN
+
+**Regla:** el código de barras de un artículo se ve dibujado, como lo va a leer un lector, y es de un solo artículo en la compañía.
+
+- **Dibujarlo** (`Utils/barcode.js` con JsBarcode, `BarcodePreview.vue`), en el formulario mientras se escribe y en la ficha:
+  - 13, 12 u 8 dígitos con el verificador bien: EAN-13, UPC-A o EAN-8.
+  - Con el verificador mal: se avisa (casi siempre es un número mal tecleado), se dibuja como Code 128 y se deja guardar.
+  - Cualquier otro texto: Code 128.
+  - Siempre negro sobre blanco, también en el tema oscuro.
+- **Solo ASCII imprimible** (sin tildes ni ñ: no hay código que las lleve), en la ficha y en la carga masiva.
+- **Uno por artículo:** `ItemBarcodeService::owner`. Lo validan la ficha y la carga masiva (ni dos filas con el mismo, ni el de otro artículo que no viene en el archivo). El buscador de Artículos también busca por código de barras, así que un lector USB en el buscador da con el artículo.
+- **Generar** (`GET items-next-barcode`, Lectura y escritura):
+  - Un EAN-13 interno con prefijo 200 (GS1 reserva 200–299 para uso dentro del negocio), el que sigue al último de la serie en la compañía.
+  - Solo lo propone: queda al guardar el artículo.
+- **Escanear, como el escaneo de documentos de Conti** (secc. 32). `canCaptureHere()` (`Utils/camera.js`, compartido con Conti) decide:
+  - **En un teléfono o una tableta con cámara, ahí mismo** (`BarcodeScanner.vue`, ZXing con `import()` dinámico, solo códigos 1D).
+    - Video en vivo cuando hay `getUserMedia` (https o localhost). Si no (http en la red local, sin cámara, sin permiso), con una foto (`capture="environment"`), achicada antes de leerla.
+    - El video prueba liviano cuadro por cuadro; «try harder» solo en la foto: en cada cuadro trababa la página.
+    - Si se cierra o se lee antes de que la cámara termine de abrir, al abrir se apaga sola.
+  - **En una computadora, un QR para el teléfono** (`BarcodePhoneLink.vue` → `ItemBarcodeScanController` → `BarcodeScanService`), con «Usar esta computadora» (su cámara o una foto) y, desde ahí, «Usar el teléfono».
+    - El QR lleva un pase de un solo uso que vence a los 10 minutos. En la caché se guarda su hash (`barcode:scan:token:{sha256}`), y queda atado a la persona y la compañía. El código se entrega una sola vez a quien generó el QR.
+    - La dirección sale de `PhoneLink` (la misma de Conti: `IP_SCANNER` en desarrollo).
+    - **La página del teléfono** (`ItemBarcodePhoneController`, `resources/views/inventory/barcode-scan.blade.php`) es un Blade suelto, sin sesión ni Vite, como la de Conti. Lee el código ahí mismo y manda solo el texto, validado como en la ficha. «Enviar a la computadora» pide confirmarlo antes.
+    - **ZXing en esa página** va como archivo versionado en `public/vendor/zxing/zxing-browser.min.js`: en desarrollo el teléfono no llega al servidor de Vite. Al actualizar `@zxing/browser`, `npm run vendor:zxing` lo vuelve a copiar.
+    - `barcode-phone.store` está exento del modo de gracia: no escribe nada, y si el teléfono tiene una sesión abierta, su compañía no es la del escaneo.
+  - Va dentro del formulario, no en otro modal: dos modales se pelean el Escape y el foco.
+  - Ninguna imagen sale del dispositivo: se lee en el navegador.
+- **Etiquetas** (`items/{item}/labels`, Lectura, `Inventory/Items/Labels.vue`): una página sin el menú, como el comprobante de pago.
+  - Rollo de 50 × 25 mm (una por hoja), carta de 30 (3 × 10, Avery 5160) o A4 de 24 (3 × 8, 70 × 37 mm), en milímetros reales.
+  - El tamaño de la hoja va en un `@page` que se escribe en el `<head>` (no se puede en un estilo con scope).
+- **Para probar la cámara sin cámara:** Chrome con `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`. Con `--use-file-for-fake-video-capture=archivo.mjpeg` (JPEG de una etiqueta repetidos) se prueba que lea en vivo.
+
+## 34. IMÁGENES EN EL BUCKET: UNA POR DUEÑO, CON NOMBRE FIJO, Y SIN BASURA
+
+**Regla:** toda imagen que sube la gente va al disco `filesystems.media` (`MediaStorage`, el bucket `contapp` de Cloudflare R2), con una ruta fija por dueño. La anterior nunca queda.
+
+- **Rutas:**
+  - foto de perfil: `users/profile_{id}.{ext}`;
+  - logo: `companies/user_owner_{dueño}/company_logo_{compañía}.{ext}`;
+  - foto de un empleado: `companies/employee_photos/company_{compañía}/{nombre}_{id}.{ext}` (el nombre, con `Str::slug(…, '_')`).
+- **Se vuelven a codificar antes de guardarse** (`UploadedImage`, `ProfilePhoto`, `CompanyLogo`): derechas, del tamaño que se usa (las fotos, cuadradas de 512 px) y sin metadatos. Una foto de teléfono trae el GPS, y las direcciones son públicas.
+- **Sin basura en el bucket:**
+  - Al reemplazar, la misma ruta pisa a la anterior. Si cambió el formato o la ruta, la anterior se borra recién con la nueva guardada: si la subida falla, se conserva la que había.
+  - Al quitarla, o al eliminar a su dueño (un empleado), se borra.
+- **La foto del empleado** (`EmployeePhotoService`) se elige en el formulario de crear y editar (`Payroll/Employees/Index.vue`) y en la ficha completa.
+  - Si cambia el nombre, se muda a su ruta nueva (`MediaStorage::move`). Las de antes (`employees/{compañía}/{azar}.jpg`) se acomodan la próxima vez que se guarda al empleado.
+  - La dirección lleva `?v={updated_at}`, porque la ruta no cambia al reemplazarla.
+- **Un formulario con archivo al editar** (`useCrudModal`) va como POST con `_method=put`: PHP no lee un PUT multipart. Sin archivo, sigue siendo PUT.
+- **En desarrollo, `MEDIA_DISK` puede ser el bucket real.** Una prueba en el navegador que sube imágenes las deja ahí: hay que verificar que la carpeta quede limpia. Los tests usan `Storage::fake`.
+
+## 35. LA BITÁCORA: TODO LO QUE CAMBIA, SOLA, SIN QUE CADA PANTALLA SE ACUERDE
+
+**Regla:** Administración → Bitácora es el historial de todo lo que se hace en la compañía y quién lo hace. Se arma sola: una pantalla nueva no tiene que anotar nada.
+
+- **Cómo se anota** (`ActivityRecorder`, enganchado en `AppServiceProvider`):
+  - Escucha cada `eloquent.created/updated/deleted` de lo que está en `AuditCatalog::MODELS`, con lo de antes y lo de después.
+  - Lo de un mismo pedido (compañía, persona, ruta) queda en **una** fila de `audit_logs`, con `action = 'activity'`, la ruta, la pantalla, el registro principal (`subject`) y los registros que tocó (`changes`). Se escribe al terminar el pedido (`terminating`).
+  - Solo lo confirmado: cada cambio se suma con `DB::afterCommit`, así que lo que se deshizo en una transacción no aparece.
+  - El mismo registro varias veces en un pedido es un solo cambio (creado y después editado = creado con lo último).
+  - Si anotar falla, se reporta y sigue: la Bitácora nunca frena el trabajo.
+- **Quién:**
+  - Una persona con sesión en la compañía.
+  - Un proceso automático dentro de `ActivityRecorder::asSystem()`: hoy, los comandos de registros programados y del tipo de cambio del BCCR. Aparece como «Sistema».
+  - No se anotan el backoffice (tiene su propia bitácora), los seeders ni las migraciones.
+- **Inicios y cierres de sesión** (eventos `Login`/`Logout`, solo del guard `web`; los del backoffice, guard `propietario`, no): uno en cada compañía en la que la persona está activa.
+- **`AuditCatalog`:**
+  - MODELS trae cada modelo con su nombre en español, si es línea o derivado (no encabeza la fila) y su pantalla.
+  - IGNORED trae lo que no va, con el motivo: lo que ya anota su propia acción (usuarios, permisos, la compañía), lo de CONTAPP y el backoffice.
+  - **Un modelo nuevo va en una de las dos listas**: una prueba lo exige.
+  - Nunca se guardan los campos con `password`, `token`, `secret`, `api_key` ni `security_code`, ni los `$hidden`. Las cuentas bancarias, con los últimos cuatro dígitos.
+- **Cómo se lee** (`ActivityLogService`, `ActivityLog/Index.vue`):
+  - De a 15, más nuevas primero; «Ver más» pide las siguientes con `?before={id}` (índice `company_id, id`).
+  - En palabras: el verbo de la ruta (`post` → «contabilizó», `void` → «anuló»…) o el del registro; «con Conti» si vino de Conti. Las referencias se muestran por su nombre, no por su id.
+- **Quién la ve** (`can-manage-company`):
+  - El Superusuario, todo.
+  - Un Administrador, solo las filas de las pantallas que tiene (`screen`) o sin pantalla (usuarios, compañía, sesiones), y no lo que es solo del Superusuario (el acceso a Conti, la licencia).
+- **Las acciones que ya se anotaban a mano** (`user_created`, `permission_change`, `company.logo_updated`…) siguen igual y se muestran con su frase (`ActivityLogService::LEGACY`).
+- **En las pruebas**, lo que crean las factories antes de la acción queda en su propia fila: `freshActivity()` (en `ActivityLogTest`) la limpia.

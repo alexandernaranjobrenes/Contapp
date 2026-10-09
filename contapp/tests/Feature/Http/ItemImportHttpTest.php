@@ -364,3 +364,31 @@ it('avisa cuando el archivo no tiene filas con datos', function () {
 
     expect(implode('|', session('importErrors')))->toContain('no tiene filas con datos');
 });
+
+it('un código de barras es de un solo artículo: ni repetido en el archivo ni el de otro artículo', function () {
+    $f = itemImportFixture();
+    Item::factory()->create(['company_id' => $f['company']->id, 'code' => 'VIEJO', 'barcode' => '7501234567893']);
+
+    importItems([
+        itemRow(['codigo' => 'A-1', 'codigo_barras' => '2000000000015']),
+        itemRow(['codigo' => 'A-2', 'codigo_barras' => '2000000000015']),
+        itemRow(['codigo' => 'A-3', 'codigo_barras' => '7501234567893']),
+    ]);
+
+    $errors = implode('|', session('importErrors'));
+    expect($errors)->toContain('Fila 3: el código de barras 2000000000015 está repetido en el archivo')
+        ->and($errors)->toContain('Fila 4: el código de barras 7501234567893 ya lo tiene el artículo VIEJO')
+        ->and(Item::where('company_id', $f['company']->id)->count())->toBe(1);
+
+    // El artículo que ya lo tenía puede venir en el archivo con el suyo.
+    importItems([itemRow(['codigo' => 'VIEJO', 'codigo_barras' => '7501234567893'])])->assertSessionHasNoErrors();
+    expect(session('importErrors'))->toBeNull();
+});
+
+it('rechaza un código de barras con tildes o ñ: no se puede dibujar', function () {
+    itemImportFixture();
+
+    importItems([itemRow(['codigo_barras' => 'PIÑA-01'])]);
+
+    expect(implode('|', session('importErrors')))->toContain('con tildes o ñ no se puede dibujar');
+});

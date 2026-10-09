@@ -3,6 +3,128 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-09 — La Bitácora: el historial de todo, en Administración
+
+**Pedido del usuario:** en Administración, una «Bitácora» con el historial de movimientos de la compañía y quién los hizo. La ven solo el Superusuario y los Administradores. Carga los 15 más recientes y «Ver más» trae 15 más, para no cargar al servidor. Tiene que ser de TODO.
+
+**Decidido con el usuario:**
+- Un Administrador ve solo lo de las pantallas a las que tiene acceso: uno sin Planillas no ve cambios de salarios.
+- Cada movimiento muestra qué cambió, antes y después.
+- Se incluyen los inicios y cierres de sesión.
+
+- **Automática y no anotada a mano.** Hasta ahora solo se anotaban unas 20 acciones administrativas (usuarios, permisos, la compañía); asientos, artículos, facturas, inventario y planillas no dejaban rastro. Agregar una línea de auditoría en cada uno de los 260 puntos que escriben, y acordarse en cada pantalla nueva, no escala. Escuchar los eventos de Eloquent sí: cubre todo lo que pasa por los modelos.
+- **«De todo» se mantiene con una prueba.** Cada modelo está en `AuditCatalog::MODELS` (con su nombre en español y su pantalla) o en `IGNORED` (con el motivo). Un modelo nuevo sin clasificar hace fallar la prueba.
+- **Una fila por acción, no por registro.** Crear un asiento con 20 líneas es «creó el asiento AS-5», con las líneas agrupadas adentro, no 21 filas. Lo de un pedido se junta por compañía, persona y ruta, y se escribe al terminar.
+- **Solo lo que de verdad pasó:** se suma después del commit (`DB::afterCommit`). Una transacción que se deshace no deja rastro falso.
+- **No se duplica lo que ya se anotaba:** usuarios, permisos, invitaciones y la compañía siguen con su anotación propia, que es más precisa, y se muestran con su frase.
+- **Lo que no se anota:**
+  - el backoffice, que tiene su propia bitácora;
+  - los seeders y las migraciones;
+  - el consumo de Conti y lo que Conti solo prepara. Lo que se confirma queda, «con Conti».
+  - Los procesos automáticos del día, sí: a nombre de «Sistema».
+- **Privacidad:**
+  - nunca se guardan contraseñas, claves ni tokens;
+  - las cuentas bancarias, con los últimos cuatro dígitos;
+  - los textos largos, recortados.
+- **Lo que no capta:** los cambios hechos con el constructor de consultas (`DB::table()->update`, borrados masivos). Hoy son los derivados de un documento (las existencias por almacén) o acciones que ya tienen su anotación propia (el estado de un usuario).
+- **Verificado en el navegador** con un Administrador de prueba con solo Inventario:
+  - crear, editar y eliminar artículos;
+  - el inicio de sesión;
+  - las acciones que ya estaban en la base, en palabras;
+  - «Ver cambios» (antes y después; en un alta, una sola columna con la unidad por su nombre);
+  - «Ver 15 más» hasta «No hay movimientos más antiguos»;
+  - teléfono y oscuro.
+
+---
+## 2026-10-09 — La foto del empleado al crearlo y editarlo, en R2 y sin basura
+
+**Pedido del usuario:** al crear o editar un empleado, poder agregarle una foto. Va a Cloudflare R2 como `contapp\companies\employee_photos\company_{id}\{nombre}_{id}.{ext}`. Si se cambia o se elimina, la vieja tiene que borrarse del bucket, para que no se acumule basura.
+
+- **`contapp` es el bucket.** La clave es `companies/employee_photos/company_{compañía}/{nombre}_{id}.{ext}`, junto al logo de la compañía (`companies/user_owner_…`). El nombre va sin tildes ni espacios (`jose_perez_mora_15.jpg`): una clave con tildes complica las direcciones.
+- **Ya existía la foto, desde la ficha completa,** con nombre al azar (`employees/{compañía}/{azar}.jpg`) y guardada tal cual llegaba. Ahora:
+  - Una ruta fija por empleado, normalizada como la foto de perfil: cuadrada de 512 px y sin metadatos, porque la dirección es pública y una foto de teléfono trae el GPS.
+  - La anterior se borra al cambiarla de formato, al quitarla y **al eliminar al empleado**. Antes, eliminar al empleado dejaba su foto en el bucket.
+  - **Si cambia el nombre, la foto se muda** a la ruta nueva, para que la ruta siga diciendo de quién es. Las fotos de antes se acomodan la próxima vez que se guarda al empleado: no hizo falta un comando para migrarlas.
+- **Con la ruta fija, la dirección no cambia al reemplazarla:** va con `?v={updated_at}` para que el navegador no muestre la anterior.
+- **Si la foto no se puede guardar al crear,** el empleado queda creado igual y se avisa. Hacer fallar todo dejaría el modal abierto y, al reintentar, el código ya existiría.
+- **`useCrudModal` manda POST con `_method=put` cuando hay un archivo:** PHP no lee un PUT multipart. Sin archivo no cambia nada para las demás pantallas.
+- **Verificado contra el bucket real** (es el disco de desarrollo), con un empleado de prueba:
+  - crearlo con foto: queda `tmp_foto_1.jpg`, de 512 px, y la ficha la muestra desde R2;
+  - cambiarla a PNG: la JPG se borró;
+  - cambiarle el nombre: se mudó;
+  - quitarla, y eliminar al empleado con foto: se borraron.
+  - Al terminar, `companies/employee_photos/` quedó vacío.
+
+---
+## 2026-10-08 — Escanear el código de barras con el teléfono, como el escaneo de Conti
+
+**Pedido del usuario:** al escanear, ver si se hace con el dispositivo actual o con otro: en la computadora, un QR para vincular el celular. Que funcione igual que el escaneo de documentos de Conti.
+
+- **La misma decisión que Conti** (`canCaptureHere`, ahora en `Utils/camera.js` para los dos):
+  - Teléfono o tableta con cámara: ahí mismo.
+  - Computadora: el QR, con «Usar esta computadora» y, desde ahí, «Usar el teléfono».
+- **La misma seguridad que Conti:** pase de un solo uso, 10 minutos, hash en la caché, atado a la persona y la compañía, y entregado una sola vez a quien lo pidió. La página del teléfono no inicia sesión ni muestra más que la compañía y el artículo.
+- **Distinto de Conti: el código se lee en el teléfono, no en el servidor.**
+  - No hay un lector de códigos de barras confiable en PHP.
+  - Pedírselo a la IA gastaría créditos para algo que ZXing hace gratis.
+  - Así viaja solo el texto, no imágenes.
+  - Antes de mandarlo, el teléfono muestra el código leído, para confirmarlo.
+- **ZXing como archivo versionado en `public/vendor`,** no por Vite: en desarrollo el teléfono no llega al servidor de Vite («localhost» es el propio teléfono), y en https tampoco haría falta. Se descartó cargarlo de un CDN, para no depender de un tercero en tiempo de ejecución. `npm run vendor:zxing` lo copia de `node_modules`.
+- **La dirección del QR, compartida** (`PhoneLink`), sin cambiar la de Conti.
+- **Verificado en el navegador:**
+  - en la computadora sale el QR, y se va y se vuelve con «Usar esta computadora» y «Usar el teléfono»;
+  - un teléfono por la IP de la red local (http) lee de una foto y lo manda, y la computadora lo recibe sola;
+  - el QR usado ya no sirve;
+  - un teléfono con conexión segura lo lee en vivo (cámara simulada que filmaba una etiqueta);
+  - en el teléfono, dentro de la aplicación, se abre la cámara ahí mismo, sin QR.
+
+---
+## 2026-10-08 — Códigos de barras reales en los artículos
+
+**Pedido del usuario:** que en «Código de barras», al crear o editar un artículo, aparezcan los códigos de barras reales. Elegido entre las opciones: verlo dibujado, escanearlo con la cámara, generar uno para el artículo e imprimir etiquetas.
+
+- **Se dibuja en el navegador (JsBarcode),** sin pasar por el servidor. El tipo sale del texto: EAN-13, UPC-A o EAN-8 si es un código de producto con el verificador bien; si no, Code 128.
+  - Un verificador mal se avisa y no bloquea: casi siempre es un error de tecleo, pero un código interno de 13 dígitos podría no ser EAN.
+- **Generar: EAN-13 interno con prefijo 200,** el rango que GS1 reserva para uso dentro del negocio. No choca con el código de ningún producto real.
+  - Es secuencial por compañía (el que sigue al último de la serie), para que se puedan rastrear.
+  - No sirve para venderle a otro comercio: para eso se compra un código GS1, y el manual lo dice.
+- **Un código de barras, un artículo, en la compañía** (en la ficha y en la carga masiva). Antes era texto libre. Con el lector y la generación, uno repetido hace que el lector dé con el artículo equivocado. En la base local no había ninguno, así que no rompe datos existentes.
+- **Solo ASCII imprimible:** con tildes o ñ no hay código de barras que se pueda dibujar.
+- **Escanear con ZXing en el navegador,** cargado recién al abrir la cámara (no pesa en el resto de la aplicación). La imagen no sale del dispositivo.
+  - Video en vivo donde el navegador deja (https o localhost). Si no, con una foto: en http por la red local `getUserMedia` no existe.
+  - Un lector USB ya funcionaba (escribe como un teclado). Ahora también encuentra el artículo desde el buscador.
+- **Etiquetas en una página para imprimir,** como el comprobante de pago, y no un PDF del servidor: no hace falta una librería de PHP para dibujar códigos, y el diálogo de impresión ya convierte a PDF.
+  - Rollo de 50 × 25 mm, carta de 30 o A4 de 24.
+  - Sin precio: el precio depende de la lista y la moneda, y no se pidió.
+- **Arreglado al probar en el navegador** (con una cámara simulada, y una que «filmaba» una etiqueta y la leyó en vivo):
+  - Con «try harder» en cada cuadro del video, la página se trababa. Ahora es solo para la foto.
+  - Si se leía una foto antes de que la cámara terminara de abrir, la cámara quedaba leyendo sin el panel. Ahora se apaga sola.
+- **Verificado en el navegador:**
+  - escribir un EAN bueno, uno con el verificador mal y uno con ñ;
+  - generar, guardar, buscar por el código y la ficha con el dibujo;
+  - las etiquetas en rollo y en carta (PDF con 30 + 2);
+  - leer de una foto de la propia etiqueta, y que no deje repetirlo;
+  - teléfono y oscuro.
+
+---
+## 2026-10-07 — Perfiles para precargar los permisos al invitar y al editar
+
+**Pedido del usuario:** al invitar a alguien, elegir un rol predeterminado (Contador, Vendedor…) que precargue los permisos. Por ejemplo, un Vendedor con Facturación completa e Inventario en lectura. No se guarda en la base de datos: es solo una ayuda. También en «Editar permisos».
+
+- **En un archivo de configuración y no en una tabla** (`config/permission_profiles.php`): no se guarda nada, y cambiarlos es cambiar código revisado. Si algún día cada licencia quisiera los suyos, ahí sí haría falta una tabla.
+- **Por rol:**
+  - Administrador: Administrador general, Contador general, Gerente.
+  - Usuario: Contador, Asistente de contabilidad, Vendedor, Comprador, Bodeguero, Encargado de planillas, Tesorería, Auditor.
+  - Los aprobó el usuario.
+- **Un nivel por sección, y por pantalla cuando hace falta** (el Asistente: Registros con escritura y el resto de Contabilidad en lectura). Un reporte llega hasta Lectura.
+- **No escala privilegios:** se recorta a lo que puede dar quien edita, igual que el editor. El servidor valida igual que siempre: el perfil ni siquiera se envía.
+- **Tarjetas, no un select** (lo pidió el usuario después de verlo): cada perfil con su ícono y lo que da, a la vista sin abrir nada. La elegida queda marcada; las que no se pueden dar, deshabilitadas con el motivo. Son botones con `aria-pressed`, y se usan con el teclado.
+- **El selector no recuerda el perfil:** muestra el perfil que calza con los permisos de abajo. Si se cambia algo a mano, pasa solo a «Personalizado»; en «Editar permisos», una persona que tiene exactamente los de un perfil lo muestra.
+- **Arreglado al probar en el navegador**, con un Administrador de acceso parcial:
+  - Un perfil del que quien edita no puede dar nada quedaba igual a «sin permisos» y aparecía elegido al abrir. Ahora se ofrece deshabilitado, con el motivo.
+  - Recortados, dos perfiles podían quedar iguales (Bodeguero y Comprador para quien solo tiene Inventario en lectura) y se mostraba el primero. Ahora gana el que se eligió.
+
+---
 ## 2026-10-07 — Escanear un documento con Conti para registrarlo
 
 **Pedido del usuario:** el botón de Conti se abre en dos opciones, el chat y escanear. Al escanear, en el teléfono se usa la cámara ahí mismo; en la computadora, o sin cámara, aparece un QR para fotografiar con el teléfono. La IA lee el documento para el registro elegido. Cuidar la autenticación, no guardar ninguna foto en la base de datos, mostrar el formulario para corregir a mano antes de la confirmación habitual. Para probar, la IP local del `.env` (`IP_SCANNER`).

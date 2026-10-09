@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "vendor:zxing": "node -e \"require('fs').copyFileSync('node_modules/@zxing/browser/umd/zxing-browser.min.js', 'public/vendor/zxing/zxing-browser.min.js')\""
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^6.0.0",
@@ -16,6 +17,9 @@
     "dependencies": {
         "@inertiajs/vue3": "^2.0.0",
         "@lucide/vue": "^1.48.0",
+        "@zxing/browser": "^0.2.1",
+        "@zxing/library": "^0.23.0",
+        "jsbarcode": "^3.12.3",
         "qrcode-generator": "^2.0.4",
         "vue": "^3.5.13"
     }

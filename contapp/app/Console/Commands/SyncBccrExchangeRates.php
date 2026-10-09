@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domains\Banking\Services\SyncBccrExchangeRatesService;
+use App\Domains\Core\Services\ActivityRecorder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -12,11 +13,12 @@ use Illuminate\Support\Carbon;
 #[Description('Sincroniza el tipo de cambio de referencia del BCCR (USD) para todas las compañías activas')]
 class SyncBccrExchangeRates extends Command
 {
-    public function handle(SyncBccrExchangeRatesService $service): int
+    public function handle(SyncBccrExchangeRatesService $service, ActivityRecorder $activity): int
     {
         $date = $this->option('date') ? Carbon::parse($this->option('date')) : Carbon::today();
 
-        $results = $service->syncForAllCompanies($date);
+        // En la Bitácora de cada compañía, a nombre de «Sistema».
+        $results = $activity->asSystem(fn () => $service->syncForAllCompanies($date));
 
         $synced = count(array_filter($results));
         $skipped = count($results) - $synced;

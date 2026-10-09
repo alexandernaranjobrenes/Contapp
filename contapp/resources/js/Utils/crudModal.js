@@ -82,12 +82,27 @@ export function useCrudModal({ records, defaults, toForm, store, update, storePa
             return;
         }
 
-        form.transform(updatePayload ?? ((data) => data)).put(update(selected.value), {
+        const payload = updatePayload ?? ((data) => data);
+        const visit = {
             preserveScroll: true,
             onSuccess: () => { mode.value = 'details'; },
             ...options,
-        });
+        };
+
+        // Con un archivo (la foto de un empleado), PHP no lee un PUT
+        // multipart: va como POST con _method=put, que Laravel toma como PUT.
+        // Sin archivos, igual que siempre.
+        if (hasFiles(form.data())) {
+            form.transform((data) => ({ ...payload(data), _method: 'put' })).post(update(selected.value), visit);
+            return;
+        }
+
+        form.transform(payload).put(update(selected.value), visit);
     }
 
     return { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdit, cancelForm, submit };
+}
+
+function hasFiles(data) {
+    return Object.values(data).some((value) => value instanceof Blob);
 }

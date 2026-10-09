@@ -14,8 +14,9 @@ use Throwable;
  *
  * Viven en el disco que diga `filesystems.media` —el bucket de Cloudflare R2,
  * o el disco público local— y esta es la única clase que lo nombra. En la
- * base se guarda la ruta relativa («employees/7/abc.jpg»), igual en cualquier
- * disco, así que cambiar de disco es copiar los archivos, sin tocar la base.
+ * base se guarda la ruta relativa («companies/employee_photos/company_3/ana_mora_7.jpg»),
+ * igual en cualquier disco, así que cambiar de disco es copiar los archivos,
+ * sin tocar la base.
  *
  * ── Un disco remoto no es una carpeta ───────────────────────────────────
  *
@@ -57,6 +58,21 @@ class MediaStorage
     {
         try {
             return (bool) $this->disk()->put($path, $contents);
+        } catch (Throwable $e) {
+            report($e);
+
+            return false;
+        }
+    }
+
+    /**
+     * Cambia un archivo de ruta (en un bucket: lo copia y borra el original).
+     * False si no se pudo: el archivo sigue donde estaba.
+     */
+    public function move(string $from, string $to): bool
+    {
+        try {
+            return (bool) $this->disk()->move($from, $to);
         } catch (Throwable $e) {
             report($e);
 

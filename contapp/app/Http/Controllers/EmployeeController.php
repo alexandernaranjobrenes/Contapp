@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Core\Support\MediaStorage;
+use App\Domains\Core\Support\ProfilePhoto;
 use App\Domains\Payroll\Models\Department;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
@@ -13,15 +14,20 @@ use App\Domains\Payroll\Models\EmployeeNote;
 use App\Domains\Payroll\Models\JobPosition;
 use App\Domains\Payroll\Models\PersonnelAction;
 use App\Domains\Payroll\Models\VacationMovement;
+use App\Domains\Payroll\Services\EmployeePhotoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class EmployeeController extends Controller
 {
-    public function __construct(private readonly MediaStorage $media) {}
+    public function __construct(
+        private readonly MediaStorage $media,
+        private readonly EmployeePhotoService $photos,
+    ) {}
 
     public function index(): Response
     {
@@ -43,6 +49,7 @@ class EmployeeController extends Controller
                 ->whereIn('account_type', ['expense', 'cost_of_sales'])
                 ->orderBy('code')->get(['id', 'code', 'description_es']),
             'options' => $this->options(),
+            'photoRules' => $this->photoHints(),
         ]);
     }
 
@@ -152,6 +159,7 @@ class EmployeeController extends Controller
                 ])->values(),
             'noteCategories' => EmployeeNote::CATEGORIES,
             'options' => $this->options(),
+            'photoRules' => $this->photoHints(),
             'costCenters' => CostCenter::where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
         ]);
@@ -159,7 +167,10 @@ class EmployeeController extends Controller
 
     public function store(Request $request, CurrentCompany $currentCompany): RedirectResponse
     {
-        $validated = $request->validate($this->rules($currentCompany->id()));
+        $validated = $request->validate(
+            [...$this->rules($currentCompany->id()), 'photo' => $this->photoRule(required: false)],
+            $this->photoMessages(),
+        );
 
         $employee = Employee::create([
             ...$this->normalize($validated),
@@ -182,6 +193,12 @@ class EmployeeController extends Controller
             'reason' => 'Contratación',
         ]);
 
+        // La foto va después: su ruta lleva el id del empleado. Si no se
+        // pudo guardar, el empleado queda creado igual y se avisa.
+        if ($photoError = $this->savePhoto($employee, $request)) {
+            return back()->with('error', "Empleado {$employee->code} creado, pero sin foto: {$photoError}");
+        }
+
         return back()->with('success', "Empleado {$employee->code} creado.");
     }
 
@@ -189,45 +206,55 @@ class EmployeeController extends Controller
     {
         $model = Employee::findOrFail($employee);
 
-        $validated = $request->validate($this->rules($currentCompany->id(), $model->id));
+        $validated = $request->validate(
+            [
+                ...$this->rules($currentCompany->id(), $model->id),
+                'photo' => $this->photoRule(required: false),
+                'remove_photo' => ['boolean'],
+            ],
+            $this->photoMessages(),
+        );
 
         $model->update($this->normalize($validated));
+
+        // Una foto nueva reemplaza a la anterior; «Quitar foto» la borra; y si
+        // no se tocó, sigue al nombre (si cambió, se muda de ruta).
+        if ($request->hasFile('photo')) {
+            if ($photoError = $this->savePhoto($model, $request)) {
+                return back()->with('error', "Empleado {$model->code} actualizado, pero la foto no: {$photoError}");
+            }
+        } elseif ($validated['remove_photo'] ?? false) {
+            $this->photos->remove($model);
+        } else {
+            $this->photos->followName($model);
+        }
 
         return back()->with('success', "Empleado {$model->code} actualizado.");
     }
 
     /**
-     * La fotografía. Va al disco de imágenes (MediaStorage) con dirección
-     * pública porque se muestra en pantalla y en el comprobante de pago; no
-     * lleva dato sensible que justifique servirla a través de una ruta
-     * autenticada.
+     * La fotografía, desde la ficha completa (EmployeePhotoService). Va al
+     * disco de imágenes con dirección pública porque se muestra en pantalla y
+     * en el comprobante de pago; sin los metadatos de la foto original.
      */
     public function photo(Request $request, int $employee): RedirectResponse
     {
         $model = Employee::findOrFail($employee);
 
-        $request->validate([
-            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
-        ]);
+        $request->validate(['photo' => $this->photoRule(required: true)], $this->photoMessages());
 
-        $path = $this->media->store($request->file('photo'), "employees/{$model->company_id}");
-
-        if ($path === null) {
-            return back()->withErrors([
-                'photo' => 'No se pudo guardar la fotografía. Probá de nuevo en un momento.',
-            ]);
+        if ($error = $this->savePhoto($model, $request)) {
+            return back()->withErrors(['photo' => $error]);
         }
 
-        $previous = $model->photo_path;
-
-        $model->update(['photo_path' => $path]);
-
-        // La anterior se borra: dejarla acumularía una foto por cada cambio
-        // de cada empleado, y ninguna vuelve a usarse. Recién ahora, con la
-        // nueva ya guardada: si la subida falla, la ficha conserva su foto.
-        $this->media->delete($previous);
-
         return back()->with('success', 'Fotografía actualizada.');
+    }
+
+    public function destroyPhoto(int $employee): RedirectResponse
+    {
+        $this->photos->remove(Employee::findOrFail($employee));
+
+        return back()->with('success', 'Fotografía quitada.');
     }
 
     public function destroy(int $employee): RedirectResponse
@@ -244,9 +271,53 @@ class EmployeeController extends Controller
             ]);
         }
 
+        $photo = $model->photo_path;
         $model->delete();
+        // Sin empleado, su foto es basura en el bucket.
+        $this->photos->forget($photo);
 
         return back()->with('success', 'Empleado eliminado.');
+    }
+
+    /** Guarda la foto que vino en el pedido, si vino. Null si salió bien o no había. */
+    private function savePhoto(Employee $employee, Request $request): ?string
+    {
+        return $request->hasFile('photo') ? $this->photos->replace($employee, $request->file('photo')) : null;
+    }
+
+    /** @return list<string> */
+    private function photoRule(bool $required): array
+    {
+        return [
+            $required ? 'required' : 'nullable',
+            'image',
+            'mimes:'.implode(',', ProfilePhoto::extensions()),
+            'max:'.ProfilePhoto::MAX_KILOBYTES,
+            // El tope es por memoria: para recortarla hay que abrirla entera.
+            'dimensions:min_width=100,min_height=100,max_width=6000,max_height=6000',
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function photoMessages(): array
+    {
+        return [
+            'photo.image' => 'El archivo tiene que ser una imagen en '.ProfilePhoto::formatsLabel().'.',
+            'photo.mimes' => 'La foto tiene que estar en '.ProfilePhoto::formatsLabel().'.',
+            'photo.max' => 'La foto no puede pesar más de '.intdiv(ProfilePhoto::MAX_KILOBYTES, 1024).' MB.',
+            'photo.dimensions' => 'La foto tiene que medir entre 100 y 6000 píxeles de lado.',
+            'photo.uploaded' => 'No se pudo subir la foto. Probá con un archivo más liviano.',
+        ];
+    }
+
+    /** Lo que la pantalla necesita para el selector de la foto. */
+    private function photoHints(): array
+    {
+        return [
+            'accept' => implode(',', ProfilePhoto::mimeTypes()),
+            'formats' => ProfilePhoto::formatsLabel(),
+            'max_megabytes' => intdiv(ProfilePhoto::MAX_KILOBYTES, 1024),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -286,7 +357,9 @@ class EmployeeController extends Controller
             'is_ccss_exempt' => (bool) $employee->is_ccss_exempt,
             'is_pensioner' => (bool) $employee->is_pensioner,
             'status' => $employee->status,
-            'photo_url' => $this->media->url($employee->photo_path),
+            // Con la fecha de la ficha: la foto se reemplaza sin cambiar de
+            // nombre, y sin ella el navegador mostraría la anterior.
+            'photo_url' => $this->media->versionedUrl($employee->photo_path, $employee->updated_at),
             // La jornada ordinaria que le corresponde: es el umbral a partir
             // del cual una hora es extra, y no es el mismo para todos.
             'ordinary_hours' => Employee::ORDINARY_HOURS[$employee->journey_type] ?? null,
@@ -415,7 +488,8 @@ class EmployeeController extends Controller
     private function normalize(array $validated): array
     {
         return [
-            ...$validated,
+            // La foto no es un campo de la ficha: la guarda EmployeePhotoService.
+            ...Arr::except($validated, ['photo', 'remove_photo']),
             'has_spouse_credit' => $validated['has_spouse_credit'] ?? false,
             'is_income_tax_exempt' => $validated['is_income_tax_exempt'] ?? false,
             'is_ccss_exempt' => $validated['is_ccss_exempt'] ?? false,

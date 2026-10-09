@@ -17,9 +17,12 @@ class AuditLog extends Model
 {
     public $timestamps = false;
 
+    /** La fila de la Bitácora que junta todo lo que cambió en un pedido (ActivityRecorder). */
+    public const ACTIVITY = 'activity';
+
     protected $fillable = [
-        'company_id', 'user_id', 'propietario_id', 'action', 'auditable_type', 'auditable_id',
-        'old_values', 'new_values', 'ip_address', 'created_at',
+        'company_id', 'user_id', 'propietario_id', 'action', 'route', 'screen', 'auditable_type', 'auditable_id',
+        'subject', 'old_values', 'new_values', 'changes', 'ip_address', 'created_at',
     ];
 
     protected function casts(): array
@@ -27,6 +30,7 @@ class AuditLog extends Model
         return [
             'old_values' => 'array',
             'new_values' => 'array',
+            'changes' => 'array',
             'created_at' => 'datetime',
         ];
     }

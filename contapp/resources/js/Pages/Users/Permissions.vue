@@ -2,6 +2,7 @@
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ScreenPermissionsEditor from '../../Components/ScreenPermissionsEditor.vue';
+import PermissionProfilePicker from '../../Components/PermissionProfilePicker.vue';
 import ContiAccessFields from '../../Components/Conti/ContiAccessFields.vue';
 import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
 
@@ -12,10 +13,13 @@ import { ArrowLeftIcon, CheckIcon } from '@lucide/vue';
  *
  * El Superusuario además ve y cambia lo de Conti (ContiAccessFields.vue): si
  * puede usarlo, sus límites y sus modelos.
+ *
+ * Un perfil de su rol (Contador, Vendedor…) precarga los permisos; no se envía.
  */
 const props = defineProps({
     targetUser: { type: Object, required: true },
     sections: { type: Array, required: true },
+    profiles: { type: Array, default: () => [] },
     conti: { type: Object, default: null },
 });
 
@@ -41,6 +45,8 @@ function submit() {
             <p class="user-line">Permisos de <strong>{{ targetUser.name }}</strong> ({{ targetUser.email }})</p>
 
             <form @submit.prevent="submit">
+                <PermissionProfilePicker v-model="form.permissions" :profiles="profiles" :sections="sections" />
+
                 <h3>Permisos</h3>
                 <p class="hint">
                     Por cada opción del menú. «Lectura» deja consultar y exportar; «Lectura y escritura», además crear,
@@ -63,7 +69,7 @@ function submit() {
 
 <style scoped>
 .user-line { font-size: 0.88rem; margin: 0 0 0.6rem; }
-h3 { font-size: 0.88rem; margin: 1rem 0 0.25rem; }
+h3 { font-size: 0.88rem; margin: 1.25rem 0 0.25rem; }
 .form-card { padding: 1.25rem 1.5rem; }
 .hint { font-size: 0.78rem; margin: 0 0 0.6rem; }
 .error { color: var(--color-danger); font-size: 0.78rem; margin: 0 0 0.6rem; }

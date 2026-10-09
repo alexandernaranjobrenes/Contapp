@@ -220,6 +220,8 @@ const nav = computed(() => {
     }
     if (page.props.auth?.user?.can_manage_company) {
         adminChildren.push({ label: 'Apariencia', href: route('appearance.edit'), match: ['appearance.*'] });
+        // La Bitácora (CLAUDE.md secc. 35): Superusuario y Administradores.
+        adminChildren.push({ label: 'Bitácora', href: route('activity-log.index'), match: ['activity-log.*'] });
     }
     if (page.props.auth?.user?.is_super_admin) {
         adminChildren.push({ label: 'Agregar compañía', href: route('companies.create'), match: ['companies.*'] });

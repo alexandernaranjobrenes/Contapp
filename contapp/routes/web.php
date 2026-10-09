@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountingReportsController;
 use App\Http\Controllers\AccountReconciliationController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AgingController;
 use App\Http\Controllers\CompanyAppearanceController;
 use App\Http\Controllers\CompanyDetailsController;
@@ -60,6 +61,8 @@ use App\Http\Controllers\InventoryDocumentController;
 use App\Http\Controllers\InventoryReportController;
 use App\Http\Controllers\InventoryValuationController;
 use App\Http\Controllers\InventoryWriteDownController;
+use App\Http\Controllers\ItemBarcodePhoneController;
+use App\Http\Controllers\ItemBarcodeScanController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemGroupController;
 use App\Http\Controllers\ItemLotController;
@@ -149,6 +152,16 @@ Route::get('conti/escanear/{token}', [ContiScanPhoneController::class, 'show'])
 Route::post('conti/escanear/{token}', [ContiScanPhoneController::class, 'upload'])
     ->middleware('throttle:10,1')
     ->name('conti.phone.upload');
+
+// Lo mismo para el código de barras de un artículo (BarcodeScanService): el
+// teléfono lo lee ahí mismo y manda solo el texto, a la computadora que
+// generó el QR.
+Route::get('escanear-codigo/{token}', [ItemBarcodePhoneController::class, 'show'])
+    ->middleware('throttle:30,1')
+    ->name('barcode-phone.show');
+Route::post('escanear-codigo/{token}', [ItemBarcodePhoneController::class, 'store'])
+    ->middleware('throttle:20,1')
+    ->name('barcode-phone.store');
 
 // El enlace del correo de una invitación a trabajar en una compañía
 // (CompanyInvitationService). Igual que el de una licencia: sin el
@@ -341,6 +354,7 @@ Route::middleware('auth')->group(function () {
         Route::get('price-lists/{priceList}/prices', [PriceListController::class, 'prices'])->name('price-lists.prices');
         Route::get('price-lists-for-customer', [PriceListController::class, 'forCustomer'])->name('price-lists.for-customer');
         Route::get('items/{item}/kardex', [InventoryDocumentController::class, 'kardex'])->name('items.kardex');
+        Route::get('items/{item}/labels', [ItemController::class, 'labels'])->name('items.labels');
         Route::get('gl-determinations', [GlDeterminationController::class, 'index'])->name('gl-determinations.index');
         Route::get('inventory-movements', [InventoryDocumentController::class, 'index'])->name('inventory-movements.index');
         Route::get('inventory-movements/create', [InventoryDocumentController::class, 'create'])->name('inventory-movements.create');
@@ -414,6 +428,11 @@ Route::middleware('auth')->group(function () {
 
         Route::post('items', [ItemController::class, 'store'])->name('items.store');
         Route::post('items-import', [ItemController::class, 'import'])->name('items.import');
+        // Solo propone el código: queda cuando se guarda el artículo.
+        Route::get('items-next-barcode', [ItemController::class, 'nextBarcode'])->name('items.next-barcode');
+        // Escanearlo con el teléfono desde la computadora: el QR y si ya llegó.
+        Route::post('items-barcode-scans', [ItemBarcodeScanController::class, 'start'])->middleware('throttle:20,1')->name('items.barcode-scans.start');
+        Route::get('items-barcode-scans/{id}', [ItemBarcodeScanController::class, 'status'])->middleware('throttle:120,1')->name('items.barcode-scans.status');
 
         Route::post('bills-of-materials', [BillOfMaterialController::class, 'store'])->name('bills-of-materials.store');
         Route::put('bills-of-materials/{billOfMaterial}', [BillOfMaterialController::class, 'update'])->name('bills-of-materials.update');
@@ -549,6 +568,7 @@ Route::middleware('auth')->group(function () {
         Route::post('employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::put('employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
         Route::post('employees/{employee}/photo', [EmployeeController::class, 'photo'])->name('employees.photo');
+        Route::delete('employees/{employee}/photo', [EmployeeController::class, 'destroyPhoto'])->name('employees.photo.destroy');
         // La bitácora del funcionario vive dentro de su ficha, que es donde
         // se consulta: no tiene pantalla propia.
         Route::post('employees/{employee}/notes', [EmployeeNoteController::class, 'store'])->name('employee-notes.store');
@@ -873,6 +893,10 @@ Route::middleware('auth')->group(function () {
         // quitarlo es solo del Superusuario: lo comprueba el controlador.
         Route::post('appearance/logo', [CompanyLogoController::class, 'update'])->name('appearance.logo.update');
         Route::delete('appearance/logo', [CompanyLogoController::class, 'destroy'])->name('appearance.logo.destroy');
+
+        // La Bitácora (CLAUDE.md secc. 35): de a 15, y «Ver más».
+        Route::get('activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
+        Route::get('activity-log/more', [ActivityLogController::class, 'more'])->middleware('throttle:60,1')->name('activity-log.more');
     });
 
     Route::middleware('can-manage-users')->group(function () {

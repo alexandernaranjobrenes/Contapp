@@ -10,13 +10,18 @@ use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaSigner;
 use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaTransport;
 use App\Domains\Conti\Support\ContiContext;
 use App\Domains\Core\Models\Role;
+use App\Domains\Core\Services\ActivityRecorder;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Models\User;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +31,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(CurrentCompany::class);
+
+        // La Bitácora (CLAUDE.md secc. 35): junta lo de cada pedido y lo
+        // escribe al terminar.
+        $this->app->singleton(ActivityRecorder::class);
 
         // A nombre de quién consulta Conti mientras responde un mensaje
         // (ContiChatController). Por petición: nunca se arrastra a otra.
@@ -68,5 +77,24 @@ class AppServiceProvider extends ServiceProvider
         // error de validación de por medio) y buscar mientras se escribe.
         RateLimiter::for('conti-forms', fn (Request $request) => Limit::perMinute(30)->by((string) ($request->user()?->id ?? $request->ip())));
         RateLimiter::for('conti-lookup', fn (Request $request) => Limit::perMinute(120)->by((string) ($request->user()?->id ?? $request->ip())));
+
+        // La Bitácora de la compañía (ActivityRecorder, CLAUDE.md secc. 35):
+        // todo lo que se crea, cambia o borra, y quién entra y sale.
+        Event::listen(['eloquent.created: *', 'eloquent.updated: *', 'eloquent.deleted: *'], function (string $event, array $payload) {
+            app(ActivityRecorder::class)->record($payload[0], Str::between($event, 'eloquent.', ':'));
+        });
+        // Solo las sesiones de la compañía: las del backoffice (guard
+        // «propietario») tienen su propia bitácora.
+        Event::listen(Login::class, function (Login $event) {
+            if ($event->guard === 'web' && $event->user instanceof User) {
+                app(ActivityRecorder::class)->session('login', $event->user);
+            }
+        });
+        Event::listen(Logout::class, function (Logout $event) {
+            if ($event->guard === 'web' && $event->user instanceof User) {
+                app(ActivityRecorder::class)->session('logout', $event->user);
+            }
+        });
+        $this->app->terminating(fn () => app(ActivityRecorder::class)->flush());
     }
 }

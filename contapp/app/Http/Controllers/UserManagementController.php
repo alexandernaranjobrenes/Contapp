@@ -13,6 +13,7 @@ use App\Domains\Core\Services\ScreenAccessService;
 use App\Domains\Core\Services\UserLifecycleService;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Core\Support\MediaStorage;
+use App\Domains\Core\Support\PermissionProfiles;
 use App\Domains\Core\Support\ScreenCatalog;
 use App\Domains\Licensing\Exceptions\LicenseQuotaExceededException;
 use App\Models\User;
@@ -121,6 +122,8 @@ class UserManagementController extends Controller
                 'pending_users' => $pending['user'] ?? 0,
             ] : null,
             'sections' => $this->screenTree($service->grantableScreenLevels($grantor, $company->id)),
+            // Para precargar los permisos; no se guardan (config/permission_profiles.php).
+            'profiles' => PermissionProfiles::forRoles($grantableRoleTypes),
             'expiresInDays' => CompanyInvitationService::EXPIRES_IN_DAYS,
             'conti' => $conti->canConfigure($grantor, $company) ? $conti->form($company) : null,
         ]);
@@ -203,13 +206,15 @@ class UserManagementController extends Controller
         $grantor = request()->user();
 
         abort_unless($service->canManage($grantor, $target, $company->id), 403);
+        $roleType = $target->roleTypeFor($company->id);
 
         return Inertia::render('Users/Permissions', [
-            'targetUser' => $target->only(['id', 'name', 'email']),
+            'targetUser' => $target->only(['id', 'name', 'email']) + ['role_type' => $roleType],
             'sections' => $this->screenTree(
                 $service->grantableScreenLevels($grantor, $company->id),
                 $screens->levelsFor($target, $company->id),
             ),
+            'profiles' => $roleType ? PermissionProfiles::for($roleType) : [],
             'conti' => $conti->canConfigure($grantor, $company) ? $conti->form($company, $target) : null,
         ]);
     }

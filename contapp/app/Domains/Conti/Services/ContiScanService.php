@@ -13,6 +13,7 @@ use App\Domains\Conti\Support\ContiContext;
 use App\Domains\Conti\Support\ContiHistory;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Core\Support\PhoneLink;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -115,23 +116,10 @@ class ContiScanService
         return ['id' => $id, 'url' => $this->phoneUrl($token), 'minutos' => $minutes];
     }
 
-    /**
-     * La dirección del QR. En desarrollo, con la IP de la computadora en la
-     * red local (conti.scanner.ip) en vez de «localhost», que el teléfono no
-     * puede abrir; con el esquema y el puerto de APP_URL.
-     */
+    /** La dirección del QR (PhoneLink: en desarrollo, con la IP de la red local). */
     public function phoneUrl(string $token): string
     {
-        $path = route('conti.phone.show', $token, false);
-        $ip = config('conti.scanner.ip');
-
-        if (blank($ip)) {
-            return rtrim((string) config('app.url'), '/').$path;
-        }
-
-        $app = parse_url((string) config('app.url'));
-
-        return ($app['scheme'] ?? 'http').'://'.$ip.(isset($app['port']) ? ':'.$app['port'] : '').$path;
+        return PhoneLink::url('conti.phone.show', $token);
     }
 
     /** El escaneo de un QR, si todavía espera las fotos. */

@@ -61,7 +61,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*')
                 || $request->hasHeader('X-Contapp-Download')
-                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload'),
+                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload', 'items.barcode-scans.*', 'items.next-barcode', 'barcode-phone.store', 'activity-log.more'),
         );
 
         // Una acción de Inertia (guardar, eliminar, contabilizar…) que

@@ -1,12 +1,12 @@
 <script setup>
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onBeforeUnmount, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
 import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 import { formatMoney } from '../../../Utils/money';
-import { PencilIcon, PlusIcon, TriangleAlertIcon, UserIcon } from '@lucide/vue';
+import { PencilIcon, PlusIcon, Trash2Icon, TriangleAlertIcon, UploadIcon, UserIcon } from '@lucide/vue';
 
 const props = defineProps({
     employees: { type: Array, default: () => [] },
@@ -15,6 +15,8 @@ const props = defineProps({
     positionOptions: { type: Array, default: () => [] },
     expenseAccounts: { type: Array, default: () => [] },
     options: { type: Object, required: true },
+    // Formatos y peso de la foto (EmployeeController::photoHints).
+    photoRules: { type: Object, default: () => ({ accept: 'image/jpeg,image/png', formats: 'JPG o PNG', max_megabytes: 4 }) },
 });
 
 const page = usePage();
@@ -58,6 +60,10 @@ const blank = {
     is_pensioner: false,
     status: 'active',
     notes: '',
+    // La foto no es un campo de la ficha: una nueva reemplaza a la que había,
+    // y «Quitar» la borra (EmployeePhotoService, en el bucket).
+    photo: null,
+    remove_photo: false,
 };
 
 const search = ref('');
@@ -108,6 +114,39 @@ const modalTitle = computed(() => {
     if (mode.value === 'create') return 'Nuevo empleado';
     return selected.value ? `${selected.value.code} — ${selected.value.full_name}` : '';
 });
+
+// --- la foto: se elige acá y se guarda con el empleado ---
+
+const photoObjectUrl = ref(null);
+
+// La vista previa de la elegida, hasta guardar.
+watch(() => form.photo, (file) => {
+    if (photoObjectUrl.value) URL.revokeObjectURL(photoObjectUrl.value);
+    photoObjectUrl.value = file ? URL.createObjectURL(file) : null;
+});
+onBeforeUnmount(() => { if (photoObjectUrl.value) URL.revokeObjectURL(photoObjectUrl.value); });
+
+const photoPreview = computed(() => photoObjectUrl.value
+    ?? (mode.value === 'edit' && ! form.remove_photo ? selected.value?.photo_url ?? null : null));
+
+const initialsOf = (first, last) => `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+
+function pickPhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (! file) return;
+
+    form.photo = file;
+    form.remove_photo = false;
+    form.clearErrors('photo');
+}
+
+// Sin foto: la elegida se descarta y, si ya tenía una, se borra al guardar.
+function removePhoto() {
+    form.photo = null;
+    form.remove_photo = mode.value === 'edit' && !! selected.value?.photo_url;
+    form.clearErrors('photo');
+}
 
 function destroy() {
     const employee = selected.value;
@@ -275,6 +314,10 @@ const monthlyBase = computed(() => props.employees
                 </span>
             </template>
 
+            <div v-if="selected && mode === 'details' && selected.photo_url" class="detail-photo">
+                <img :src="selected.photo_url" class="photo" :alt="`Foto de ${selected.full_name}`">
+            </div>
+
             <dl v-if="selected && mode === 'details'" class="detail-list">
                 <div>
                     <dt>Identificación</dt>
@@ -320,6 +363,28 @@ const monthlyBase = computed(() => props.employees
 
             <form v-if="mode === 'create' || (selected && mode === 'edit')" id="employee-form" @submit.prevent="submit">
                 <h3 class="section-title">Identidad</h3>
+
+                <div class="photo-field">
+                    <img v-if="photoPreview" :src="photoPreview" class="photo" alt="Foto del empleado">
+                    <div v-else class="photo photo-empty" aria-hidden="true">{{ initialsOf(form.first_name, form.last_name1) || '—' }}</div>
+                    <div class="photo-controls">
+                        <span class="photo-label">Foto (opcional)</span>
+                        <div class="photo-buttons">
+                            <label class="btn btn-ghost btn-sm file-btn">
+                                <UploadIcon /> {{ photoPreview ? 'Cambiar foto' : 'Agregar foto' }}
+                                <input type="file" :accept="photoRules.accept" class="file-input" aria-label="Foto del empleado" @change="pickPhoto">
+                            </label>
+                            <button v-if="photoPreview" type="button" class="btn btn-ghost btn-sm btn-danger-text" @click="removePhoto">
+                                <Trash2Icon /> Quitar
+                            </button>
+                        </div>
+                        <span class="muted small">
+                            {{ photoRules.formats }}, hasta {{ photoRules.max_megabytes }} MB. Se guarda cuadrada, sin los datos de
+                            ubicación que trae una foto del teléfono.
+                        </span>
+                        <span v-if="form.errors.photo" class="error">{{ form.errors.photo }}</span>
+                    </div>
+                </div>
 
                 <div class="field-row">
                     <div class="field">
@@ -640,4 +705,60 @@ table { font-size: 0.85rem; }
     display: block;
     font-variant-numeric: tabular-nums;
 }
+
+/* La foto: en la ficha del modal y en el formulario. */
+.photo {
+    flex-shrink: 0;
+    width: 6rem;
+    height: 6rem;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+}
+
+.photo-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    background: var(--color-surface-alt);
+}
+
+.detail-photo {
+    margin-bottom: 0.75rem;
+}
+
+.photo-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.photo-controls {
+    flex: 1 1 16rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.photo-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.photo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.photo-controls .error { color: var(--color-danger); font-size: 0.78rem; }
 </style>

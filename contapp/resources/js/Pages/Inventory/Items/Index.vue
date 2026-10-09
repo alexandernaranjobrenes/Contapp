@@ -1,9 +1,14 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
-import { DownloadIcon, PencilIcon, PlusIcon, UploadIcon } from '@lucide/vue';
+import { ref, computed, watch } from 'vue';
+import { DownloadIcon, PencilIcon, PlusIcon, PrinterIcon, ScanBarcodeIcon, UploadIcon, WandSparklesIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
+import BarcodePreview from '../../../Components/BarcodePreview.vue';
+import BarcodeScanner from '../../../Components/BarcodeScanner.vue';
+import BarcodePhoneLink from '../../../Components/BarcodePhoneLink.vue';
+import { canCaptureHere } from '../../../Utils/camera';
+import { requestJson } from '../../../Utils/http';
 import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
@@ -145,6 +150,54 @@ const selectedAccounts = computed(() => {
         .map(([key, label]) => ({ key, label, account: accountLabels.value[own[key]] ?? own[key] }));
 });
 
+// --- código de barras: escanearlo o generar uno interno ---
+// (ItemBarcodeService). Se dibuja con BarcodePreview mientras se escribe.
+//
+// Escanear es como el escaneo de documentos de Conti (CLAUDE.md secc. 33):
+// en un teléfono o una tableta con cámara, ahí mismo (BarcodeScanner); en una
+// computadora, un QR para hacerlo con el teléfono (BarcodePhoneLink), con la
+// opción de usar la cámara o una foto de la computadora.
+
+const scanMode = ref(null); // null | 'here' | 'phone'
+const onPhoneDevice = ref(false);
+const generating = ref(false);
+const barcodeError = ref('');
+
+// Al cerrar o cambiar de modo, la cámara y el QR se apagan y no vuelven solos.
+watch([modalOpen, mode], () => {
+    scanMode.value = null;
+    barcodeError.value = '';
+});
+
+async function toggleScan() {
+    if (scanMode.value) {
+        scanMode.value = null;
+        return;
+    }
+    onPhoneDevice.value = await canCaptureHere();
+    scanMode.value = onPhoneDevice.value ? 'here' : 'phone';
+}
+
+function onScanned(code) {
+    scanMode.value = null;
+    form.barcode = code;
+    form.clearErrors('barcode');
+}
+
+async function generateBarcode() {
+    generating.value = true;
+    barcodeError.value = '';
+    const result = await requestJson(route('items.next-barcode'));
+    generating.value = false;
+
+    if (!result.ok) {
+        barcodeError.value = result.data?.message ?? 'No se pudo generar el código. Probá de nuevo en un momento.';
+        return;
+    }
+    form.barcode = result.data.barcode;
+    form.clearErrors('barcode');
+}
+
 function destroy() {
     const item = selected.value;
 
@@ -201,7 +254,7 @@ function onFileSelected(e) {
                 <input
                     v-model="search"
                     type="search"
-                    placeholder="Buscar código o nombre..."
+                    placeholder="Buscar código, nombre o código de barras..."
                     aria-label="Buscar artículo"
                     @input="onSearchInput"
                 >
@@ -354,7 +407,10 @@ function onFileSelected(e) {
                     </div>
                     <div>
                         <dt>Código de barras</dt>
-                        <dd>{{ selected.barcode || '—' }}</dd>
+                        <dd>
+                            <BarcodePreview v-if="selected.barcode" :value="selected.barcode" compact />
+                            <template v-else>—</template>
+                        </dd>
                     </div>
                     <div>
                         <dt>Indicador de impuesto</dt>
@@ -415,11 +471,6 @@ function onFileSelected(e) {
                     </div>
 
                     <div class="field">
-                        <label for="item-barcode">Código de barras (opcional)</label>
-                        <input id="item-barcode" v-model="form.barcode" type="text">
-                    </div>
-
-                    <div class="field">
                         <label for="item-tax">Indicador de impuesto (opcional)</label>
                         <select id="item-tax" v-model="form.tax_rate_id">
                             <option value="">— Ninguno —</option>
@@ -436,6 +487,57 @@ function onFileSelected(e) {
                             <option value="active">Activo</option>
                             <option value="inactive">Inactivo</option>
                         </select>
+                    </div>
+
+                    <!-- El código de barras: escrito, escaneado o generado, y dibujado abajo. -->
+                    <div class="field span-full barcode-field">
+                        <label for="item-barcode">Código de barras (opcional)</label>
+                        <div class="barcode-input">
+                            <input
+                                id="item-barcode"
+                                v-model="form.barcode"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                placeholder="Escribilo, escanealo o generá uno"
+                                @input="form.clearErrors('barcode')"
+                            >
+                            <button type="button" class="btn btn-ghost" :aria-expanded="scanMode !== null" @click="toggleScan">
+                                <ScanBarcodeIcon /> Escanear
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-ghost"
+                                :disabled="generating || !!form.barcode"
+                                :data-busy="generating ? '' : null"
+                                :aria-busy="generating"
+                                :title="form.barcode ? 'Borrá el código actual para generar otro' : 'Un código interno, que ningún otro artículo tiene'"
+                                @click="generateBarcode"
+                            >
+                                <WandSparklesIcon /> Generar
+                            </button>
+                        </div>
+                        <span v-if="form.errors.barcode" class="error">{{ form.errors.barcode }}</span>
+                        <span v-if="barcodeError" class="error">{{ barcodeError }}</span>
+                        <p class="hint small">
+                            Con un lector USB, hacé clic en el campo y escaneá. «Generar» crea un código interno (empieza
+                            en 200, el rango reservado para uso dentro del negocio) para lo que no trae uno de fábrica.
+                        </p>
+                        <BarcodeScanner
+                            v-if="scanMode === 'here'"
+                            :phone-option="!onPhoneDevice"
+                            @detected="onScanned"
+                            @use-phone="scanMode = 'phone'"
+                            @close="scanMode = null"
+                        />
+                        <BarcodePhoneLink
+                            v-else-if="scanMode === 'phone'"
+                            :label="form.name || form.code || ''"
+                            @detected="onScanned"
+                            @use-here="scanMode = 'here'"
+                            @close="scanMode = null"
+                        />
+                        <BarcodePreview :value="form.barcode" />
                     </div>
                 </div>
 
@@ -569,6 +671,14 @@ function onFileSelected(e) {
                     <Link v-if="selected.tracks_lots" :href="route('item-lots.index', selected.id)" class="btn btn-ghost">Lotes</Link>
                     <Link v-if="selected.tracks_serials" :href="route('item-serials.index', selected.id)" class="btn btn-ghost">Series</Link>
                     <Link v-if="selected.is_inventory_item" :href="route('reorder.levels', selected.id)" class="btn btn-ghost">Niveles</Link>
+                    <a
+                        v-if="selected.barcode"
+                        :href="route('items.labels', selected.id)"
+                        target="_blank"
+                        rel="noopener"
+                        class="btn btn-ghost"
+                        title="Etiquetas con el código de barras, para imprimir"
+                    ><PrinterIcon /> Etiquetas</a>
                     <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
                 </template>
                 <template v-else-if="modalOpen">
@@ -586,6 +696,12 @@ function onFileSelected(e) {
 table { font-size: 0.85rem; }
 .code-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-variant-numeric: tabular-nums; }
 .cabys-input { font-variant-numeric: tabular-nums; }
+
+/* El código de barras: el campo con sus dos botones, y el dibujo abajo. */
+.barcode-field { gap: 0.45rem; }
+.barcode-input { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.barcode-input input { flex: 1 1 14rem; max-width: 24rem; font-variant-numeric: tabular-nums; }
+.barcode-field .hint.small { margin: 0; }
 .hint.small { margin-top: 0.1rem; }
 
 /* La ficha del artículo, en el modal ancho: tres columnas de datos. */

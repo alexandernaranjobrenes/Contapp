@@ -62,46 +62,49 @@ it('guarda la fotografía en el disco de imágenes y no en la carpeta de la apli
         'photo' => UploadedFile::fake()->image('foto.jpg', 200, 200),
     ])->assertSessionHasNoErrors();
 
-    $path = $employee->fresh()->photo_path;
+    $employee->refresh();
+    $path = $employee->photo_path;
 
-    expect($path)->toStartWith("employees/{$employee->company_id}/");
+    expect($path)->toBe("companies/employee_photos/company_{$employee->company_id}/foto_grafia_{$employee->id}.jpg");
 
     Storage::disk('s3')->assertExists($path);
     expect(Storage::disk('public')->allFiles())->toBe([]);
 
-    // La pantalla recibe la dirección que da ese mismo disco.
+    // La pantalla recibe la dirección que da ese mismo disco, con la fecha
+    // de la ficha para que el navegador no muestre una anterior.
     $this->get(route('employees.show', $employee->id))
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->where('employee.photo_url', Storage::disk('s3')->url($path)));
+        ->assertInertia(fn ($page) => $page->where('employee.photo_url', Storage::disk('s3')->url($path).'?v='.$employee->updated_at->getTimestamp()));
 });
 
-it('borra la fotografía anterior al reemplazarla', function () {
+it('al reemplazarla queda una sola fotografía en el disco', function () {
     $employee = mediaEmployee();
 
-    $this->post(route('employees.photo', $employee->id), ['photo' => UploadedFile::fake()->image('uno.jpg')]);
+    $this->post(route('employees.photo', $employee->id), ['photo' => UploadedFile::fake()->image('uno.jpg', 200, 200)]);
     $first = $employee->fresh()->photo_path;
 
-    $this->post(route('employees.photo', $employee->id), ['photo' => UploadedFile::fake()->image('dos.jpg')]);
+    // Otro formato: otra ruta, y la anterior se borra.
+    $this->post(route('employees.photo', $employee->id), ['photo' => UploadedFile::fake()->image('dos.png', 200, 200)]);
     $second = $employee->fresh()->photo_path;
 
-    expect($second)->not->toBe($first);
-
+    expect($second)->toEndWith('.png');
     Storage::disk('s3')->assertMissing($first);
     Storage::disk('s3')->assertExists($second);
+    expect(Storage::disk('s3')->allFiles())->toBe([$second]);
 });
 
 it('conserva la fotografía que había si la nueva no se pudo guardar', function () {
     $employee = mediaEmployee();
     $employee->update(['photo_path' => 'employees/1/anterior.jpg']);
 
-    // El bucket no responde: store() devuelve null y no se borra nada.
+    // El bucket no responde: put() devuelve false y no se borra nada.
     $this->mock(MediaStorage::class, function ($mock) {
-        $mock->shouldReceive('store')->once()->andReturnNull();
+        $mock->shouldReceive('put')->once()->andReturnFalse();
         $mock->shouldNotReceive('delete');
     });
 
     $this->post(route('employees.photo', $employee->id), [
-        'photo' => UploadedFile::fake()->image('foto.jpg'),
+        'photo' => UploadedFile::fake()->image('foto.jpg', 200, 200),
     ])->assertSessionHasErrors('photo');
 
     expect($employee->fresh()->photo_path)->toBe('employees/1/anterior.jpg');

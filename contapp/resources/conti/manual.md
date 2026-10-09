@@ -53,8 +53,14 @@ Se ven en el pie de página y en el selector de compañía:
 - **Invitar a una persona:**
   1. Tocá «Crear nuevo».
   2. Escribí el «Correo» y elegí el «Rol».
-  3. Marcá los permisos de cada opción del menú.
-  4. Tocá «Enviar invitación».
+  3. Si querés, tocá una de las tarjetas de «Perfil» para precargar los permisos (ver abajo).
+  4. Marcá o ajustá los permisos de cada opción del menú.
+  5. Tocá «Enviar invitación».
+- **Perfiles** (al invitar y en «Editar permisos»): una tarjeta por puesto, con lo que da. Al tocarla se precargan los permisos, para no marcarlos uno por uno, y queda marcada. Después se ajustan a mano. El perfil no se guarda, solo los permisos.
+  - Para Administradores: Administrador general, Contador general, Gerente.
+  - Para Usuarios: Contador, Asistente de contabilidad, Vendedor, Comprador, Bodeguero, Encargado de planillas, Tesorería (cobros y pagos), Auditor.
+  - Nunca dan más de lo que puede dar quien invita: lo que no puede dar queda con menos acceso, y lo avisa. Un perfil del que no puede dar nada aparece deshabilitado.
+  - «Deshacer» vuelve a los permisos de antes de elegirlo. Si se cambia algún permiso a mano, el perfil pasa a «Personalizado».
 - La persona recibe un correo con un enlace que **vence en 7 días**:
   - Si **no tiene cuenta**, al aceptar elige su nombre y su contraseña: quien invita no tiene que inventarle una.
   - Si **ya tiene cuenta**, la compañía se suma a las que ya ve, con su misma contraseña.
@@ -174,6 +180,17 @@ Se ven en el pie de página y en el selector de compañía:
   - Cada persona elige con qué modelo de OpenAI le responde Conti. Los más capaces (GPT-4.1, GPT-5) razonan o analizan mejor, pero gastan más créditos por mensaje; GPT-4.1 nano es el más económico. La elección es personal: no cambia la de las demás personas.
   - Ahí mismo se ve lo que gastó la persona hoy, esta semana y este mes (tokens, créditos y mensajes), y sus límites con cuánto lleva usado.
 - Conti no guarda el texto de la conversación en la base de datos: la recuerda unas horas para seguir el hilo, y «Nueva conversación» la empieza de cero.
+
+### 1.14 Bitácora (Administración → Bitácora)
+- **El historial de todo lo que se hizo en la compañía y quién lo hizo**: cada registro que se crea, se edita o se elimina, en cualquier pantalla, más los inicios y cierres de sesión.
+  - Lo que hacen los procesos automáticos (los registros programados de cada día) aparece a nombre de «Sistema».
+  - Lo que se hace con Conti dice «con Conti».
+- La ven el **Superusuario**, que ve todo, y los **Administradores**, que ven lo de las pantallas a las que tienen acceso. Un Administrador sin Planillas, por ejemplo, no ve los cambios de salarios.
+- Cada movimiento dice quién, qué («creó el asiento AS-0005»), cuándo, en qué pantalla y desde qué IP.
+  - **«Ver cambios»** lo despliega con cada campo: en un cambio, lo de antes y lo de después; en un alta o una baja, el valor.
+  - Lo que hizo un documento junto (un asiento con sus líneas) es un solo movimiento, con las líneas agrupadas adentro.
+- Muestra los 15 más recientes; **«Ver 15 más»** trae los siguientes.
+- Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus últimos cuatro dígitos.
 
 ---
 
@@ -420,6 +437,18 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
 ### 6.2 Catálogos
 - **Artículos**:
   - Datos: «Código», «Nombre», «Grupo», «Unidad de medida», «Código de barras», «Indicador de impuesto» y «Estado».
+  - **Código de barras:** al escribirlo se ve dibujado debajo, como lo va a leer un lector.
+    - Si es el código del producto (EAN-13, EAN-8 o UPC) y el último dígito no calza, avisa: casi siempre es un número mal escrito.
+    - «Escanear», como el escaneo de documentos de Conti:
+      - En el teléfono o la tableta, abre la cámara ahí mismo y lo lee solo.
+      - En la computadora, muestra un código QR: se escanea con la cámara del teléfono, se abre una página que lee el código de barras, y con «Enviar a la computadora» aparece solo en el campo. El QR sirve una sola vez y por 10 minutos, y en el teléfono no hace falta iniciar sesión.
+      - «Usar esta computadora» lo hace con la cámara de la computadora o con una foto.
+      - Si no se puede usar la cámara en vivo, deja tomar o subir una foto del código.
+    - Con un lector USB, basta con hacer clic en el campo y escanear.
+    - «Generar», para lo que no trae código de fábrica: crea uno interno que empieza en 200 (el rango reservado para uso dentro del negocio), sin repetir. Sirve para las etiquetas y los lectores propios; para venderle a otro comercio hace falta un código GS1.
+    - Un código de barras es de un solo artículo en la compañía; no admite tildes ni ñ.
+    - El buscador de Artículos también encuentra por código de barras.
+  - **Etiquetas** (botón en la ficha del artículo, si tiene código de barras): se elige el papel (rollo de 50 × 25 mm, hoja carta de 30 o A4 de 24), la cantidad y si llevan el código y el nombre. Al imprimir, escala 100 % y sin márgenes.
   - «Lleva inventario»: desmarcado, es un **servicio**, que se compra o vende sin kardex ni costo. «Se compra» y «Se vende».
   - «Maneja lotes»: cada movimiento exige un número de lote. «Maneja números de serie»: una serie por unidad.
   - «Mínimo de existencia» y «Máximo»: alimentan la sugerencia de compra. En cero, no hay control de reorden.
@@ -636,6 +665,10 @@ Se configuran antes de facturar:
 
 ### 8.2 Empleados (Planillas → Empleados)
 - **Identificación:** «Código», «Tipo de identificación», «Número», nombre y apellidos, fecha de nacimiento, correo y teléfono.
+- **Foto (opcional):** se agrega al crear o editar al empleado, o desde su ficha completa.
+  - Acepta JPG o PNG de hasta 4 MB, y se guarda cuadrada, sin los datos de ubicación que trae una foto del teléfono.
+  - «Cambiar foto» reemplaza a la anterior y «Quitar» la borra; la anterior no queda guardada en ningún lado.
+  - Sale en la ficha y en el comprobante de pago.
 - **Asignación:** «Fecha de ingreso», «Departamento», «Puesto», «Centro de costo» y «Cuenta de gasto» (opcional).
 - **Condiciones laborales:**
   - «Tipo de contrato».

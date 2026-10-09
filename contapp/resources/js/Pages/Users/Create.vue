@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ScreenPermissionsEditor from '../../Components/ScreenPermissionsEditor.vue';
+import PermissionProfilePicker from '../../Components/PermissionProfilePicker.vue';
 import ContiAccessFields from '../../Components/Conti/ContiAccessFields.vue';
 import { ArrowLeftIcon, MailIcon } from '@lucide/vue';
 
@@ -11,6 +12,8 @@ import { ArrowLeftIcon, MailIcon } from '@lucide/vue';
  * pone su correo, su rol y sus permisos por pantalla del menú. Le llega un
  * correo para aceptar; si no tiene cuenta en CONTAPP, ahí elige su nombre y
  * su contraseña. Quien invita nunca pone la contraseña de nadie.
+ *
+ * Un perfil del rol (Contador, Vendedor…) precarga los permisos; no se envía.
  *
  * El Superusuario además decide lo de Conti (ContiAccessFields.vue): si va a
  * poder usarlo, sus límites y sus modelos. A nadie más le llega «conti».
@@ -21,6 +24,8 @@ const props = defineProps({
     // servidor para el pie de página (HandleInertiaRequests).
     quota: { type: Object, default: null },
     sections: { type: Array, required: true },
+    // Por rol: para precargar los permisos (PermissionProfilePicker.vue).
+    profiles: { type: Object, default: () => ({}) },
     expiresInDays: { type: Number, required: true },
     conti: { type: Object, default: null },
 });
@@ -119,6 +124,13 @@ function submit() {
                         <p v-if="form.errors.role_type" class="error">{{ form.errors.role_type }}</p>
                     </div>
                 </div>
+
+                <PermissionProfilePicker
+                    v-model="form.permissions"
+                    :profiles="profiles[form.role_type] ?? []"
+                    :sections="sections"
+                    id="invite-profile"
+                />
 
                 <h3>Permisos</h3>
                 <p class="hint">

@@ -12,10 +12,12 @@ use App\Domains\Inventory\Models\ItemGroup;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\UnitOfMeasure;
 use App\Domains\Inventory\Services\GlDeterminationScopeService;
+use App\Domains\Inventory\Services\ItemBarcodeService;
 use App\Domains\Inventory\Services\ItemBulkImporter;
 use App\Domains\Inventory\Services\ItemTemplateExporter;
 use App\Domains\Inventory\Support\ItemFiscalConsistency;
 use App\Domains\Tax\Models\TaxRate;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -52,7 +54,8 @@ class ItemController extends Controller
             ->when($filters['search'] !== null, function ($query) use ($filters) {
                 $term = '%'.$filters['search'].'%';
 
-                $query->where(fn ($q) => $q->where('code', 'like', $term)->orWhere('name', 'like', $term));
+                // También por código de barras: un lector en el buscador da con el artículo.
+                $query->where(fn ($q) => $q->where('code', 'like', $term)->orWhere('name', 'like', $term)->orWhere('barcode', 'like', $term));
             })
             ->when($filters['item_group_id'] !== null, fn ($q) => $q->where('item_group_id', $filters['item_group_id']))
             ->when($filters['status'] !== null, fn ($q) => $q->where('status', $filters['status']))
@@ -91,10 +94,14 @@ class ItemController extends Controller
     {
         $companyId = $currentCompany->id();
 
-        $validated = $request->validate($this->rules($companyId));
+        $validated = $request->validate($this->rules($companyId), $this->messages());
 
         if (Item::where('company_id', $companyId)->where('code', $validated['code'])->exists()) {
             return back()->withErrors(['code' => "Ya existe un artículo con el código {$validated['code']}."])->withInput();
+        }
+
+        if ($error = $this->barcodeTakenError($companyId, $validated['barcode'] ?? null)) {
+            return back()->withErrors(['barcode' => $error])->withInput();
         }
 
         if ($error = $this->reorderLevelsError($validated)) {
@@ -128,8 +135,13 @@ class ItemController extends Controller
         $item = Item::findOrFail($item);
 
         $validated = $request->validate(
-            collect($this->rules($currentCompany->id()))->except('code')->all()
+            collect($this->rules($currentCompany->id()))->except('code')->all(),
+            $this->messages(),
         );
+
+        if ($error = $this->barcodeTakenError($currentCompany->id(), $validated['barcode'] ?? null, $item->id)) {
+            return back()->withErrors(['barcode' => $error])->withInput();
+        }
 
         // Con ?? false igual que en normalize(): la regla es 'boolean' y no
         // 'required', así que un checkbox ausente no llega al array validado
@@ -183,6 +195,29 @@ class ItemController extends Controller
         $item->delete();
 
         return back()->with('success', "Artículo {$item->code} eliminado.");
+    }
+
+    /**
+     * Un código de barras interno para el artículo que no trae uno de fábrica
+     * (ItemBarcodeService). Solo lo propone: queda cuando se guarda el artículo.
+     */
+    public function nextBarcode(CurrentCompany $currentCompany, ItemBarcodeService $barcodes): JsonResponse
+    {
+        return response()->json(['barcode' => $barcodes->next($currentCompany->id())]);
+    }
+
+    /**
+     * Etiquetas con el código de barras para imprimir: una página sin el menú,
+     * como el comprobante de pago. La cantidad y el formato se eligen ahí.
+     */
+    public function labels(int $item, CurrentCompany $currentCompany): Response
+    {
+        $item = Item::findOrFail($item);
+
+        return Inertia::render('Inventory/Items/Labels', [
+            'item' => $item->only(['id', 'code', 'name', 'barcode']),
+            'company' => Company::findOrFail($currentCompany->id())->only(['name']),
+        ]);
     }
 
     /**
@@ -258,7 +293,8 @@ class ItemController extends Controller
                 'required',
                 Rule::exists('units_of_measure', 'id')->where('company_id', $companyId),
             ],
-            'barcode' => ['nullable', 'string', 'max:255'],
+            // Solo lo que se puede dibujar como código de barras (ItemBarcodeService).
+            'barcode' => ['nullable', 'string', 'max:255', 'regex:/^[\x20-\x7E]+$/'],
             'is_inventory_item' => ['boolean'],
             'is_sales_item' => ['boolean'],
             'is_purchase_item' => ['boolean'],
@@ -316,6 +352,26 @@ class ItemController extends Controller
             isset($validated['tax_rate_id']) ? (int) $validated['tax_rate_id'] : null,
             $validated['iva_rate_code'] ?? null,
         );
+    }
+
+    /** Un código de barras es de un solo artículo: el lector tiene que dar con uno. */
+    private function barcodeTakenError(int $companyId, ?string $barcode, ?int $itemId = null): ?string
+    {
+        if ($barcode === null || $barcode === '') {
+            return null;
+        }
+
+        $owner = app(ItemBarcodeService::class)->owner($companyId, $barcode, $itemId);
+
+        return $owner ? "El código de barras {$barcode} ya lo tiene el artículo {$owner->code} — {$owner->name}." : null;
+    }
+
+    /** @return array<string, string> */
+    private function messages(): array
+    {
+        return [
+            'barcode.regex' => 'El código de barras solo admite letras sin tilde, números y símbolos comunes: con tildes o ñ no se puede dibujar.',
+        ];
     }
 
     private function reorderLevelsError(array $validated): ?string

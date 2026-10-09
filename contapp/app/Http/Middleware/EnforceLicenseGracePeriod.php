@@ -62,6 +62,10 @@ class EnforceLicenseGracePeriod
         // Las fotos del QR: la licencia que cuenta es la de la compañía del
         // escaneo, y esa la revisa ContiScanService (no la del teléfono).
         'conti.phone.upload',
+        // El código de barras desde el teléfono: no escribe nada, lo deja
+        // para la computadora (BarcodeScanService). Si el teléfono tiene una
+        // sesión abierta, su compañía no es la del escaneo.
+        'barcode-phone.store',
     ];
 
     public function handle(Request $request, Closure $next): Response

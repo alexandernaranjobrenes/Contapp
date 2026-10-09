@@ -17,29 +17,9 @@ export function closeScanner() {
     scanner.open = false;
 }
 
-/**
- * ¿Se pueden tomar las fotos acá? Un teléfono o una tableta (pantalla táctil)
- * con cámara: se abre la cámara ahí mismo. Una computadora, o un dispositivo
- * sin cámara: el QR para escanear con el teléfono.
- *
- * La cámara se averigua sin pedir permiso: la lista de dispositivos dice si
- * hay una, aunque sin nombre. Si el navegador no la da, en un teléfono se
- * asume que sí (el campo de la foto abre la cámara igual).
- */
-export async function canCaptureHere() {
-    const touch = window.matchMedia?.('(pointer: coarse)').matches && (navigator.maxTouchPoints ?? 0) > 0;
-
-    if (!touch) return false;
-
-    try {
-        const devices = await navigator.mediaDevices?.enumerateDevices?.();
-        if (Array.isArray(devices) && devices.length) return devices.some((device) => device.kind === 'videoinput');
-    } catch {
-        // Sin la lista: se asume que sí.
-    }
-
-    return true;
-}
+// ¿Se pueden tomar las fotos acá, o con el teléfono? Compartido con los
+// códigos de barras: vive en Utils/camera.js.
+export { canCaptureHere } from './camera';
 
 /**
  * La foto achicada a 1600 px por el lado más largo, en JPEG: sube rápido y la

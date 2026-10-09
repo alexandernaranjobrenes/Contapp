@@ -104,6 +104,8 @@ class ItemBulkImporter
             $validRows[$code] = $this->mapToAttributes($data, $groups, $uoms, $taxRates);
         }
 
+        array_push($errors, ...$this->barcodeErrors($validRows, $seenCodes, $company));
+
         if ($errors !== []) {
             return new ItemImportResult(0, 0, $errors);
         }
@@ -208,6 +210,52 @@ class ItemBulkImporter
     }
 
     /**
+     * Un código de barras es de un solo artículo, como en la ficha: ni dos
+     * filas con el mismo, ni uno que ya tiene otro artículo que no viene en
+     * el archivo.
+     *
+     * @param  array<string, array>  $validRows  código => atributos
+     * @param  array<string, int>  $lineNumbers  código => fila
+     * @return string[]
+     */
+    private function barcodeErrors(array $validRows, array $lineNumbers, Company $company): array
+    {
+        $errors = [];
+        $byBarcode = [];
+
+        foreach ($validRows as $code => $attributes) {
+            $barcode = $attributes['barcode'] ?? null;
+            if ($barcode === null) {
+                continue;
+            }
+
+            if (isset($byBarcode[$barcode])) {
+                $errors[] = "Fila {$lineNumbers[$code]}: el código de barras {$barcode} está repetido en el archivo (ya lo tiene el artículo {$byBarcode[$barcode]}).";
+
+                continue;
+            }
+
+            $byBarcode[$barcode] = $code;
+        }
+
+        if ($byBarcode === []) {
+            return $errors;
+        }
+
+        $taken = Item::where('company_id', $company->id)
+            ->whereIn('barcode', array_keys($byBarcode))
+            ->whereNotIn('code', array_keys($validRows))
+            ->get(['code', 'barcode']);
+
+        foreach ($taken as $other) {
+            $code = $byBarcode[$other->barcode];
+            $errors[] = "Fila {$lineNumbers[$code]}: el código de barras {$other->barcode} ya lo tiene el artículo {$other->code}.";
+        }
+
+        return $errors;
+    }
+
+    /**
      * @return string[]
      */
     private function validateRow(
@@ -223,12 +271,15 @@ class ItemBulkImporter
             'codigo' => ['required', 'string', 'max:40'],
             'nombre' => ['required', 'string', 'max:255'],
             'unidad' => ['required', 'string'],
-            'codigo_barras' => ['nullable', 'string', 'max:255'],
+            // Igual que en la ficha: solo lo que se puede dibujar (ItemBarcodeService).
+            'codigo_barras' => ['nullable', 'string', 'max:255', 'regex:/^[\x20-\x7E]+$/'],
             'minimo' => ['nullable', 'numeric', 'min:0'],
             'maximo' => ['nullable', 'numeric', 'min:0'],
             'cabys' => ['nullable', 'string', 'size:13', 'regex:/^\d{13}$/'],
             'unidad_hacienda' => ['nullable', Rule::in(array_keys(FiscalCatalogs::UNITS))],
             'tarifa_iva' => ['nullable', Rule::in(array_keys(FiscalCatalogs::IVA_RATES))],
+        ], [
+            'codigo_barras.regex' => 'el código de barras solo admite letras sin tilde, números y símbolos comunes: con tildes o ñ no se puede dibujar.',
         ]);
 
         $errors = [];
