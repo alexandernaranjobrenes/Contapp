@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Core\Support\ProfilePhoto;
@@ -12,8 +13,10 @@ use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\EmployeeDeduction;
 use App\Domains\Payroll\Models\EmployeeNote;
 use App\Domains\Payroll\Models\JobPosition;
+use App\Domains\Payroll\Models\PayrollEntry;
 use App\Domains\Payroll\Models\PersonnelAction;
 use App\Domains\Payroll\Models\VacationMovement;
+use App\Domains\Payroll\Services\EmployeeBankChangeService;
 use App\Domains\Payroll\Services\EmployeePhotoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,19 +27,36 @@ use Inertia\Response;
 
 class EmployeeController extends Controller
 {
+    /** El primer código, si todavía no hay empleados (CodeRules). */
+    private const FIRST_CODE = 'EMP-0001';
+
+    /** Por qué el código de un empleado ya no se cambia. */
+    private const CODE_LOCKED = 'el empleado ya tiene planillas calculadas';
+
+    /** Los empleados con planilla (su código ya es fijo), por id. @var array<int, true> */
+    private array $withPayroll = [];
+
     public function __construct(
         private readonly MediaStorage $media,
         private readonly EmployeePhotoService $photos,
+        private readonly EmployeeBankChangeService $bankChanges,
     ) {}
 
     public function index(): Response
     {
-        $employees = Employee::with(['costCenter:id,code,name'])
+        $employees = Employee::with(['costCenter:id,code,name', 'bankChangeRequestedBy:id,name'])
             ->orderBy('code')
             ->get();
 
+        $this->withPayroll = array_fill_keys(
+            PayrollEntry::whereIn('employee_id', $employees->pluck('id'))->distinct()->pluck('employee_id')->all(),
+            true,
+        );
+
         return Inertia::render('Payroll/Employees/Index', [
             'employees' => $employees->map(fn (Employee $e) => $this->row($e))->values(),
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(Employee::query(), self::FIRST_CODE),
             'costCenters' => CostCenter::where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
             // El catálogo va con el centro de costo de cada departamento: la
@@ -62,7 +82,8 @@ class EmployeeController extends Controller
      */
     public function show(int $employee): Response
     {
-        $model = Employee::with(['costCenter:id,code,name'])->findOrFail($employee);
+        $model = Employee::with(['costCenter:id,code,name', 'bankChangeRequestedBy:id,name'])->findOrFail($employee);
+        $this->withPayroll = $model->entries()->exists() ? [$model->id => true] : [];
 
         $vacations = VacationMovement::where('employee_id', $model->id)
             ->orderByDesc('movement_date')->orderByDesc('id')
@@ -70,17 +91,6 @@ class EmployeeController extends Controller
 
         return Inertia::render('Payroll/Employees/Show', [
             'employee' => $this->row($model) + [
-                'birth_date' => $model->birth_date?->format('Y-m-d'),
-                'gender' => $model->gender,
-                'nationality' => $model->nationality,
-                'address' => $model->address,
-                'ccss_number' => $model->ccss_number,
-                'contract_type' => $model->contract_type,
-                'weekly_hours' => (float) $model->weekly_hours,
-                'bank_name' => $model->bank_name,
-                'notes' => $model->notes,
-                'termination_reason' => $model->termination_reason,
-                'salary_expense_account_id' => $model->salary_expense_account_id,
                 'hourly_rate' => $model->hourlyRate(),
                 'daily_rate' => $model->dailyRate(),
                 'monthly_salary' => $model->monthlySalary(),
@@ -215,7 +225,13 @@ class EmployeeController extends Controller
             $this->photoMessages(),
         );
 
-        $model->update($this->normalize($validated));
+        // El código es fijo desde la primera planilla (CodeRules).
+        CodeRules::ensureUnchanged($model->entries()->exists() ? self::CODE_LOCKED : null, $model->code, $validated['code']);
+
+        // La cuenta bancaria no se cambia acá: la cambia el Superusuario, o
+        // queda pendiente de su aprobación (EmployeeBankChangeService).
+        $model->update(Arr::except($this->normalize($validated), ['bank_name', 'bank_account']));
+        $bank = $this->bankChanges->request($model, $request->user(), $validated['bank_name'] ?? null, $validated['bank_account'] ?? null);
 
         // Una foto nueva reemplaza a la anterior; «Quitar foto» la borra; y si
         // no se tocó, sigue al nombre (si cambió, se muda de ruta).
@@ -229,7 +245,34 @@ class EmployeeController extends Controller
             $this->photos->followName($model);
         }
 
-        return back()->with('success', "Empleado {$model->code} actualizado.");
+        return back()->with('success', $bank === 'pending'
+            ? "Empleado {$model->code} actualizado. El cambio de cuenta bancaria queda pendiente: lo tiene que aprobar el Superusuario, y mientras tanto se paga a la cuenta anterior."
+            : "Empleado {$model->code} actualizado.");
+    }
+
+    /** El Superusuario aprueba el cambio de cuenta bancaria pendiente. */
+    public function approveBankChange(Request $request, int $employee, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $model = $this->pendingBankChange($request, $employee, $currentCompany);
+        $this->bankChanges->approve($model);
+
+        return back()->with('success', "Cuenta bancaria de {$model->code} actualizada: la planilla ya la usa.");
+    }
+
+    /** El Superusuario rechaza el cambio de cuenta bancaria pendiente: sigue la anterior. */
+    public function rejectBankChange(Request $request, int $employee, CurrentCompany $currentCompany): RedirectResponse
+    {
+        $model = $this->pendingBankChange($request, $employee, $currentCompany);
+        $this->bankChanges->reject($model);
+
+        return back()->with('success', "Cambio de cuenta de {$model->code} rechazado: sigue la cuenta anterior.");
+    }
+
+    private function pendingBankChange(Request $request, int $employee, CurrentCompany $currentCompany): Employee
+    {
+        abort_unless($request->user()->isSuperAdmin($currentCompany->id()), 403, 'Solo el Superusuario aprueba o rechaza un cambio de cuenta bancaria.');
+
+        return Employee::findOrFail($employee);
     }
 
     /**
@@ -350,7 +393,20 @@ class EmployeeController extends Controller
             'base_salary' => $employee->base_salary,
             'weekly_salary_divisor' => (int) ($employee->weekly_salary_divisor ?: Employee::DEFAULT_WEEKLY_DIVISOR),
             'payment_method' => $employee->payment_method,
+            'bank_name' => $employee->bank_name,
             'bank_account' => $employee->bank_account,
+            // Todo lo que edita el formulario tiene que venir acá: el de la
+            // lista se llena con esta fila, y lo que faltara se guardaba vacío.
+            'birth_date' => $employee->birth_date?->format('Y-m-d'),
+            'gender' => $employee->gender,
+            'nationality' => $employee->nationality,
+            'address' => $employee->address,
+            'ccss_number' => $employee->ccss_number,
+            'contract_type' => $employee->contract_type,
+            'weekly_hours' => (float) $employee->weekly_hours,
+            'notes' => $employee->notes,
+            'termination_reason' => $employee->termination_reason,
+            'salary_expense_account_id' => $employee->salary_expense_account_id,
             'has_spouse_credit' => (bool) $employee->has_spouse_credit,
             'children_credit_count' => $employee->children_credit_count,
             'is_income_tax_exempt' => (bool) $employee->is_income_tax_exempt,
@@ -360,6 +416,16 @@ class EmployeeController extends Controller
             // Con la fecha de la ficha: la foto se reemplaza sin cambiar de
             // nombre, y sin ella el navegador mostraría la anterior.
             'photo_url' => $this->media->versionedUrl($employee->photo_path, $employee->updated_at),
+            // El código es fijo desde la primera planilla (CodeRules).
+            'code_locked' => isset($this->withPayroll[$employee->id]),
+            // El cambio de cuenta que espera la aprobación del Superusuario
+            // (EmployeeBankChangeService). Mientras tanto se paga a la anterior.
+            'pending_bank' => $employee->hasPendingBankChange() ? [
+                'bank_name' => $employee->pending_bank_name,
+                'bank_account' => $employee->pending_bank_account,
+                'requested_by' => $employee->bankChangeRequestedBy?->name,
+                'requested_at' => $employee->bank_change_requested_at?->format('Y-m-d H:i'),
+            ] : null,
             // La jornada ordinaria que le corresponde: es el umbral a partir
             // del cual una hora es extra, y no es el mismo para todos.
             'ordinary_hours' => Employee::ORDINARY_HOURS[$employee->journey_type] ?? null,

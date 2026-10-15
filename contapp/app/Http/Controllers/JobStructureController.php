@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\CostCenter;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Payroll\Models\Department;
 use App\Domains\Payroll\Models\JobPosition;
@@ -24,8 +25,11 @@ class JobStructureController extends Controller
     public function index(): Response
     {
         return Inertia::render('Payroll/JobStructure/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextDepartmentCode' => CodeRules::following(Department::query()),
+            'nextPositionCode' => CodeRules::following(JobPosition::query()),
             'departments' => Department::with('costCenter:id,code,name')
-                ->withCount('employees')
+                ->withCount(['employees', 'positions'])
                 ->orderBy('code')
                 ->get()
                 ->map(fn (Department $d) => [
@@ -36,6 +40,8 @@ class JobStructureController extends Controller
                     'cost_center' => $d->costCenter?->code,
                     'status' => $d->status,
                     'employees_count' => $d->employees_count,
+                    // Con gente o puestos adentro, el código queda fijo (CodeRules).
+                    'code_locked' => $d->employees_count > 0 || $d->positions_count > 0,
                 ])->values(),
             'positions' => JobPosition::with('department:id,code,name')
                 ->withCount('employees')
@@ -54,6 +60,7 @@ class JobStructureController extends Controller
                     'description' => $p->description,
                     'status' => $p->status,
                     'employees_count' => $p->employees_count,
+                    'code_locked' => $p->employees_count > 0,
                 ])->values(),
             'costCenters' => CostCenter::where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
@@ -77,7 +84,10 @@ class JobStructureController extends Controller
     {
         $model = Department::findOrFail($department);
 
-        $model->update($request->validate($this->departmentRules($currentCompany->id(), $model->id)));
+        $validated = $request->validate($this->departmentRules($currentCompany->id(), $model->id));
+        CodeRules::ensureUnchanged($model->codeLockReason(), $model->code, $validated['code']);
+
+        $model->update($validated);
 
         return back()->with('success', "Departamento {$model->code} actualizado.");
     }
@@ -123,7 +133,10 @@ class JobStructureController extends Controller
     {
         $model = JobPosition::findOrFail($position);
 
-        $model->update($request->validate($this->positionRules($currentCompany->id(), $model->id)));
+        $validated = $request->validate($this->positionRules($currentCompany->id(), $model->id));
+        CodeRules::ensureUnchanged($model->codeLockReason(), $model->code, $validated['code']);
+
+        $model->update($validated);
 
         return back()->with('success', "Puesto {$model->code} actualizado.");
     }

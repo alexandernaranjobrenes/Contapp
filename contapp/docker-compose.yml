@@ -26,6 +26,28 @@ services:
     networks:
       - contapp
 
+  # Las tareas programadas de routes/console.php: el tipo de cambio del BCCR
+  # de cada día, los registros programados. `schedule:work` hace lo que el
+  # cron de un servidor: correr el programador cada minuto.
+  #
+  # Usa la imagen de `app` (contapp-app, la que construye ese servicio) y no
+  # su entrypoint: las migraciones y la caché de rutas ya las hace `app` al
+  # arrancar, y hacerlas dos veces a la vez se pisaría.
+  scheduler:
+    image: contapp-app
+    container_name: contapp_scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: ["php", "artisan", "schedule:work"]
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro
+      - contapp_vendor:/var/www/html/vendor
+    depends_on:
+      - app
+    networks:
+      - contapp
+
   nginx:
     image: nginx:stable-alpine
     container_name: contapp_nginx

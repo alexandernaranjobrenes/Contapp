@@ -95,4 +95,29 @@ class ChartOfAccount extends Model
     {
         return $this->belongsTo(TaxRate::class);
     }
+
+    /**
+     * De esas cuentas, las que ya no pueden cambiar su código (CodeRules):
+     * las que tienen asientos (también borradores) o saldo inicial. Para una
+     * lista, en dos consultas.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, true>
+     */
+    public static function withMovements(array $ids): array
+    {
+        return array_fill_keys([
+            ...JournalDetail::whereIn('account_id', $ids)->distinct()->pluck('account_id')->all(),
+            ...OpeningBalance::whereIn('account_id', $ids)->distinct()->pluck('account_id')->all(),
+        ], true);
+    }
+
+    /** Por qué su código ya no se cambia, o null si todavía se puede. */
+    public function codeLockReason(): ?string
+    {
+        $moved = JournalDetail::where('account_id', $this->id)->exists()
+            || OpeningBalance::where('account_id', $this->id)->exists();
+
+        return $moved ? 'la cuenta ya tiene asientos o saldo inicial' : null;
+    }
 }

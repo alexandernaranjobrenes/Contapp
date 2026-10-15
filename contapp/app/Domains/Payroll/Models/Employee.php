@@ -5,6 +5,7 @@ namespace App\Domains\Payroll\Models;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Core\Concerns\BelongsToCompany;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -102,7 +103,23 @@ class Employee extends Model
             'base_salary' => 'decimal:2',
             'weekly_hours' => 'decimal:2',
             'weekly_salary_divisor' => 'integer',
+            'bank_change_requested_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Quién pidió el cambio de cuenta bancaria que espera la aprobación del
+     * Superusuario (EmployeeBankChangeService). Los campos pending_* no son
+     * fillable: solo los escribe ese servicio.
+     */
+    public function bankChangeRequestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'bank_change_requested_by');
+    }
+
+    public function hasPendingBankChange(): bool
+    {
+        return $this->bank_change_requested_at !== null;
     }
 
     protected function serializeDate(\DateTimeInterface $date): string

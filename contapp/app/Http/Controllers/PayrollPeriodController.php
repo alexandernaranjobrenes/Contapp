@@ -207,6 +207,19 @@ class PayrollPeriodController extends Controller
             ])->withInput();
         }
 
+        // En orden y sin saltos (CodeRules): el que sigue al último del año.
+        // El primero del año puede ser cualquiera (una compañía que empieza a
+        // usar CONTAPP a mitad de año).
+        $last = PayrollPeriod::where('year', $validated['year'])->where('frequency', $validated['frequency'])->max('number');
+
+        if ($last !== null && (int) $validated['number'] > $last + 1) {
+            $next = $last + 1;
+
+            return back()->withErrors([
+                'number' => "El período que sigue es el {$next} de {$validated['year']}: no se puede saltar al {$validated['number']}.",
+            ])->withInput();
+        }
+
         // Dos períodos de la misma frecuencia que se traslapan pagarían dos
         // veces los mismos días. Se revisa acá porque el motor, que trabaja
         // un período a la vez, no tiene forma de verlo.

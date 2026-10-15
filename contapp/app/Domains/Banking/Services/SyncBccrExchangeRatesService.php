@@ -13,14 +13,21 @@ use App\Domains\Core\Scopes\CompanyScope;
  * que esté enlazado en el contenedor, ej. un fake en tests) y guarda el
  * resultado como exchange_rates.source = 'bccr_api'. Idempotente: correr dos
  * veces el mismo día no duplica filas (updateOrCreate por company+currency+fecha+tipo).
+ *
+ * Si el BCCR no se puede consultar (BccrUnavailableException: sin token,
+ * token vencido, caído), la excepción sigue de largo: sería igual para todas
+ * las compañías, y quien llama dice qué pasó.
  */
 class SyncBccrExchangeRatesService
 {
-    public function __construct(private readonly BccrExchangeRateClient $client)
-    {
-    }
+    public function __construct(private readonly BccrExchangeRateClient $client) {}
 
-    public function syncForCompany(Company $company, \DateTimeInterface $date): ?ExchangeRate
+    /**
+     * La tasa de referencia de ese día para la compañía. Con $onlyMissing
+     * (ponerse al día con días anteriores) solo se crea la que falta: una
+     * que ya existe, del BCCR o corregida a mano, no se toca ni se consulta.
+     */
+    public function syncForCompany(Company $company, \DateTimeInterface $date, bool $onlyMissing = false): ?ExchangeRate
     {
         if (! $company->foreign_currency_id) {
             return null;
@@ -29,12 +36,6 @@ class SyncBccrExchangeRatesService
         $currency = Currency::find($company->foreign_currency_id);
 
         if (! $currency) {
-            return null;
-        }
-
-        $rate = $this->client->fetchRate($currency->code, $date);
-
-        if ($rate === null) {
             return null;
         }
 
@@ -49,15 +50,21 @@ class SyncBccrExchangeRatesService
             ->whereDate('rate_date', $date->format('Y-m-d'))
             ->first();
 
-        if ($existing) {
-            // Una fila bloqueada (is_locked) es una corrección manual
-            // deliberada: el sync automático nunca la pisa. La edición
-            // manual explícita (ExchangeRateController::store) sí puede,
-            // porque ahí el usuario decide a propósito.
-            if ($existing->is_locked) {
-                return $existing;
-            }
+        // Una fila bloqueada (is_locked) es una corrección manual deliberada:
+        // el sync automático nunca la pisa, y ni hace falta preguntar. La
+        // edición manual explícita (ExchangeRateController::store) sí puede,
+        // porque ahí el usuario decide a propósito.
+        if ($existing && ($existing->is_locked || $onlyMissing)) {
+            return $existing;
+        }
 
+        $rate = $this->client->fetchRate($currency->code, $date);
+
+        if ($rate === null) {
+            return null;
+        }
+
+        if ($existing) {
             $existing->update([
                 'rate' => $rate,
                 'source' => 'bccr_api',
@@ -80,14 +87,14 @@ class SyncBccrExchangeRatesService
     /**
      * @return array<int, ExchangeRate|null> keyed by company id
      */
-    public function syncForAllCompanies(\DateTimeInterface $date): array
+    public function syncForAllCompanies(\DateTimeInterface $date, bool $onlyMissing = false): array
     {
         $results = [];
 
         Company::withoutGlobalScope(CompanyScope::class)
             ->where('status', 'active')
-            ->each(function (Company $company) use ($date, &$results) {
-                $results[$company->id] = $this->syncForCompany($company, $date);
+            ->each(function (Company $company) use ($date, $onlyMissing, &$results) {
+                $results[$company->id] = $this->syncForCompany($company, $date, $onlyMissing);
             });
 
         return $results;

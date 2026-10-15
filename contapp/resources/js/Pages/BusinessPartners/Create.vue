@@ -1,5 +1,6 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { watch } from 'vue';
 import { ArrowLeftIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
@@ -11,10 +12,13 @@ const props = defineProps({
     costCenters: { type: Array, default: () => [] },
     priceLists: { type: Array, default: () => [] },
     today: { type: String, required: true },
+    // El código que sigue en cada tipo (CodeRules): se propone, y se puede
+    // cambiar solo ahora; después queda fijo.
+    nextCodes: { type: Object, default: () => ({}) },
 });
 
 const form = useForm({
-    code: '',
+    code: props.nextCodes.client ?? '',
     name: '',
     type: 'client',
     tax_id: '',
@@ -30,6 +34,12 @@ const form = useForm({
     price_list_id: null,
     credit_limit: '',
     payment_terms_days: '',
+});
+
+// Si cambia el tipo y el código sigue siendo el propuesto, se propone el del
+// tipo nuevo (CLI-, PRV-…); lo que escribió la persona no se toca.
+watch(() => form.type, (type, previous) => {
+    if (form.code === '' || form.code === (props.nextCodes[previous] ?? '')) form.code = props.nextCodes[type] ?? '';
 });
 
 function submit() {
@@ -48,8 +58,9 @@ function submit() {
         <form class="card form-card" @submit.prevent="submit">
             <div class="form-grid">
                 <div class="field">
-                    <label for="code">Código (x-xxx)</label>
-                    <input id="code" v-model="form.code" type="text" placeholder="C-001" required>
+                    <label for="code">Código</label>
+                    <input id="code" v-model="form.code" type="text" placeholder="CLI-0001" required>
+                    <span class="hint small">Lo propone CONTAPP según el tipo. Podés cambiarlo ahora; después queda fijo.</span>
                     <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 

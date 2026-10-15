@@ -7,6 +7,8 @@ use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\Currency;
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Core\Services\ScreenAccessService;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Http\RedirectResponse;
@@ -50,6 +52,11 @@ class BusinessPartnerController extends Controller
             'priceLists' => PriceList::where('status', 'active')->orderBy('code')
                 ->get(['id', 'code', 'name', 'currency_id']),
             'today' => now()->format('Y-m-d'),
+            // El código que sigue en cada tipo (CodeRules): se propone, y se
+            // puede cambiar solo al crear.
+            'nextCodes' => collect(array_keys(BusinessPartner::FIRST_CODES))
+                ->mapWithKeys(fn (string $type) => [$type => BusinessPartner::nextCode($type)])
+                ->all(),
         ]);
     }
 
@@ -65,7 +72,11 @@ class BusinessPartnerController extends Controller
 
         $partner = BusinessPartner::create([...$validated, 'status' => $validated['status'] ?? 'active']);
 
-        return redirect()->route('business-partners.open-items', $partner)
+        // A sus partidas, si la persona puede verlas (Cobros y pagos es otro
+        // permiso, CLAUDE.md secc. 36); si no, a la lista de socios.
+        $canSeeOpenItems = app(ScreenAccessService::class)->allows($request->user(), $companyId, 'business_partners.open_items', 'read');
+
+        return redirect()->route($canSeeOpenItems ? 'business-partners.open-items' : 'business-partners.index', $canSeeOpenItems ? $partner : [])
             ->with('success', "Socio {$partner->code} creado.");
     }
 
@@ -93,6 +104,7 @@ class BusinessPartnerController extends Controller
     {
         $partner = BusinessPartner::findOrFail($businessPartner);
         $validated = $this->validated($request, $currentCompany->id(), $partner->id);
+        CodeRules::ensureUnchanged(BusinessPartner::CODE_LOCKED, $partner->code, $validated['code']);
 
         $partner->update($validated);
 

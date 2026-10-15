@@ -127,8 +127,8 @@ it('edita el protocolo de control de socio de negocio de un tipo de documento', 
     expect($dt->fresh()->bp_line_requirement)->toBe('either');
 });
 
-it('respeta un consecutivo inicial indicado al crear', function () {
-    logInAsCompanyUser();
+it('respeta un consecutivo inicial indicado al crear por el Superusuario', function () {
+    logInAsCompanyUser(null, ['is_super_admin' => true]);
 
     $this->post(route('document-types.store'), [
         'code' => 'FVE',
@@ -140,6 +140,19 @@ it('respeta un consecutivo inicial indicado al crear', function () {
     ])->assertSessionHasNoErrors();
 
     expect(DocumentType::where('code', 'FVE')->sole()->next_consecutive)->toBe(501);
+});
+
+it('solo el Superusuario define un consecutivo inicial distinto de 1 (CLAUDE.md secc. 36)', function () {
+    logInAsCompanyUser();
+    $data = ['code' => 'FVE', 'name' => 'Factura de venta', 'origin_module' => 'ventas', 'currency_mode' => 'libre', 'status' => 'active'];
+
+    $this->post(route('document-types.store'), [...$data, 'starting_consecutive' => 501])
+        ->assertSessionHasErrors(['starting_consecutive' => 'Solo el Superusuario puede definir un consecutivo inicial distinto de 1.']);
+    expect(DocumentType::where('code', 'FVE')->exists())->toBeFalse();
+
+    // Arrancar en 1 lo puede cualquiera.
+    $this->post(route('document-types.store'), [...$data, 'starting_consecutive' => 1])->assertSessionHasNoErrors();
+    expect(DocumentType::where('code', 'FVE')->sole()->next_consecutive)->toBe(1);
 });
 
 it('rechaza un código que no sean exactamente 3 letras', function () {

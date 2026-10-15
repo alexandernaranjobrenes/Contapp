@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Http\RedirectResponse;
@@ -27,11 +28,16 @@ class BpCategoryController extends Controller
     public function index(): Response
     {
         return Inertia::render('BusinessPartners/Categories', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(BpCategory::query()),
             'categories' => BpCategory::with('priceList:id,code,name')
+                ->withCount('businessPartners')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'price_list_id'])
                 ->map(fn (BpCategory $c) => [
                     ...$c->only(['id', 'code', 'name', 'price_list_id']),
+                    // Con socios adentro, el código queda fijo (CodeRules).
+                    'code_locked' => $c->business_partners_count > 0,
                     'price_list' => $c->priceList === null
                         ? null
                         : $c->priceList->code.' — '.$c->priceList->name,
@@ -75,6 +81,8 @@ class BpCategoryController extends Controller
             // su uso original de solo agrupar reportes.
             'price_list_id' => ['nullable', 'integer', Rule::exists('price_lists', 'id')->where('company_id', $companyId)],
         ]);
+
+        CodeRules::ensureUnchanged($category->codeLockReason(), $category->code, $validated['code']);
 
         $category->update($validated);
 

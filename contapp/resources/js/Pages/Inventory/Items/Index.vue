@@ -13,6 +13,8 @@ import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     items: { type: Object, required: true },
     filters: { type: Object, default: () => ({}) },
     itemGroups: { type: Array, default: () => [] },
@@ -246,7 +248,7 @@ function onFileSelected(e) {
                     <UploadIcon /> {{ importForm.processing ? 'Subiendo...' : 'Importar XLSX' }}
                     <input ref="fileInput" type="file" accept=".xlsx" :disabled="importForm.processing" @change="onFileSelected">
                 </label>
-                <button type="button" class="btn btn-primary" :disabled="!unitsOfMeasure.length" @click="openCreate()">
+                <button type="button" class="btn btn-primary" :disabled="!unitsOfMeasure.length" @click="openCreate({ code: nextCode ?? '' })">
                     <PlusIcon /> Crear nuevo
                 </button>
             </div>

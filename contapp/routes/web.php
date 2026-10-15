@@ -4,15 +4,6 @@ use App\Http\Controllers\AccountingReportsController;
 use App\Http\Controllers\AccountReconciliationController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AgingController;
-use App\Http\Controllers\CompanyAppearanceController;
-use App\Http\Controllers\CompanyDetailsController;
-use App\Http\Controllers\CompanyLogoController;
-use App\Http\Controllers\ContiActionController;
-use App\Http\Controllers\ContiChatController;
-use App\Http\Controllers\ContiFormController;
-use App\Http\Controllers\ContiScanController;
-use App\Http\Controllers\ContiScanPhoneController;
-use App\Http\Controllers\ContiSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\CompanyInvitationAcceptanceController;
 use App\Http\Controllers\Auth\LicenseActivationController;
@@ -36,8 +27,17 @@ use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\CommercialFollowUpController;
 use App\Http\Controllers\CommercialInteractionController;
 use App\Http\Controllers\CommercialProfileController;
+use App\Http\Controllers\CompanyAppearanceController;
+use App\Http\Controllers\CompanyDetailsController;
+use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\CompanyProvisioningController;
 use App\Http\Controllers\CompanySwitchController;
+use App\Http\Controllers\ContiActionController;
+use App\Http\Controllers\ContiChatController;
+use App\Http\Controllers\ContiFormController;
+use App\Http\Controllers\ContiScanController;
+use App\Http\Controllers\ContiScanPhoneController;
+use App\Http\Controllers\ContiSettingsController;
 use App\Http\Controllers\CostAllocationRuleController;
 use App\Http\Controllers\CostAllocationRuleReportController;
 use App\Http\Controllers\CostCenterController;
@@ -569,6 +569,9 @@ Route::middleware('auth')->group(function () {
         Route::put('employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
         Route::post('employees/{employee}/photo', [EmployeeController::class, 'photo'])->name('employees.photo');
         Route::delete('employees/{employee}/photo', [EmployeeController::class, 'destroyPhoto'])->name('employees.photo.destroy');
+        // El cambio de cuenta bancaria pendiente: solo el Superusuario (EmployeeBankChangeService).
+        Route::post('employees/{employee}/bank-change/approve', [EmployeeController::class, 'approveBankChange'])->name('employees.bank-change.approve');
+        Route::post('employees/{employee}/bank-change/reject', [EmployeeController::class, 'rejectBankChange'])->name('employees.bank-change.reject');
         // La bitácora del funcionario vive dentro de su ficha, que es donde
         // se consulta: no tiene pantalla propia.
         Route::post('employees/{employee}/notes', [EmployeeNoteController::class, 'store'])->name('employee-notes.store');
@@ -675,6 +678,8 @@ Route::middleware('auth')->group(function () {
         Route::get('business-partners/{businessPartner}/edit', [BusinessPartnerController::class, 'edit'])->name('business-partners.edit');
         Route::get('business-partners/{businessPartner}/open-items', [OpenItemController::class, 'index'])
             ->name('business-partners.open-items');
+        // Cobros y pagos: su propia pantalla (business_partners.open_items).
+        Route::get('open-items', [OpenItemController::class, 'overview'])->name('open-items.index');
     });
 
     Route::middleware('module-access:business_partners,read_write')->group(function () {

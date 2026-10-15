@@ -25,6 +25,8 @@ use App\Domains\Payroll\Models\PayrollConcept;
 use App\Domains\Payroll\Models\PayrollPeriod;
 use App\Domains\Tax\Models\TaxRate;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -96,6 +98,14 @@ class ActivityLogService
         'user.password_reset' => 'restableció su contraseña',
     ];
 
+    /** Lo que no es de una pantalla, como se elige en el filtro «Documento». */
+    private const OTHER_DOCUMENTS = [
+        'sessions' => 'Sesiones',
+        'users' => 'Usuarios y permisos',
+        'company' => 'Compañía',
+        'account' => 'Mi cuenta',
+    ];
+
     private const LEVELS = ['none' => 'Sin acceso', 'read' => 'Lectura', 'read_write' => 'Lectura y escritura'];
 
     /** Los estados, en palabras. */
@@ -149,21 +159,28 @@ class ActivityLogService
 
     /**
      * Las filas que ve esta persona, antes de $before (la última que ya
-     * tiene en pantalla).
+     * tiene en pantalla), con los filtros de la pantalla: from y to (fechas
+     * AAAA-MM-DD, las dos incluidas), document (una de documents()) y search
+     * (el número, código o nombre del registro).
      *
+     * @param  array{from?: ?string, to?: ?string, document?: ?string, search?: ?string}  $filters
      * @return array{entries: list<array>, has_more: bool}
      */
-    public function page(User $viewer, int $companyId, ?int $before = null): array
+    public function page(User $viewer, int $companyId, ?int $before = null, array $filters = []): array
     {
         $query = AuditLog::query()
             ->where('company_id', $companyId)
             ->whereNull('propietario_id')
             ->when($before, fn ($q) => $q->where('id', '<', $before))
+            ->when($filters['from'] ?? null, fn ($q, string $from) => $q->where('created_at', '>=', Carbon::parse($from)->startOfDay()))
+            ->when($filters['to'] ?? null, fn ($q, string $to) => $q->where('created_at', '<', Carbon::parse($to)->addDay()->startOfDay()))
+            ->when($filters['document'] ?? null, fn ($q, string $document) => $this->whereDocument($q, $document))
+            ->when($filters['search'] ?? null, fn ($q, string $search) => $this->whereSearch($q, $search))
             ->orderByDesc('id');
 
-        if (! $viewer->isSuperAdmin($companyId)) {
-            $allowed = array_keys(array_filter($this->screens->levelsFor($viewer, $companyId), fn (string $level) => $level !== 'none'));
+        $allowed = $this->allowedScreens($viewer, $companyId);
 
+        if ($allowed !== null) {
             $query->where(fn ($q) => $q->whereNull('screen')->orWhereIn('screen', $allowed))
                 ->whereNotIn('action', self::SUPERUSER_ONLY);
         }
@@ -181,6 +198,91 @@ class ActivityLogService
             'entries' => $rows->map(fn (AuditLog $row) => $this->present($row, $users))->values()->all(),
             'has_more' => $hasMore,
         ];
+    }
+
+    /**
+     * Lo que se puede elegir en el filtro «Documento»: las pantallas donde se
+     * registra algo (no los reportes) a las que la persona tiene acceso, por
+     * sección, y lo de Administración, que no es de una pantalla.
+     *
+     * @return list<array{label: string, options: list<array{value: string, label: string}>}>
+     */
+    public function documents(User $viewer, int $companyId): array
+    {
+        $allowed = $this->allowedScreens($viewer, $companyId);
+        $recorded = array_flip(array_column(AuditCatalog::MODELS, 4));
+        $groups = [];
+
+        foreach (ScreenCatalog::sections() as $section) {
+            $options = collect($section['screens'])
+                ->filter(fn (array $screen) => (! $screen['read_only'] || isset($recorded[$screen['key']]))
+                    && ($allowed === null || in_array($screen['key'], $allowed, true)))
+                ->map(fn (array $screen) => ['value' => $screen['key'], 'label' => $screen['label']])
+                ->values()
+                ->all();
+
+            if ($options !== []) {
+                $groups[] = ['label' => $section['label'], 'options' => $options];
+            }
+        }
+
+        $groups[] = [
+            'label' => 'Administración',
+            'options' => collect(self::OTHER_DOCUMENTS)->map(fn (string $label, string $value) => compact('value', 'label'))->values()->all(),
+        ];
+
+        return $groups;
+    }
+
+    /** @return list<string> Los valores de documents(), para validar el filtro. */
+    public function documentKeys(User $viewer, int $companyId): array
+    {
+        return collect($this->documents($viewer, $companyId))->flatMap(fn (array $group) => array_column($group['options'], 'value'))->all();
+    }
+
+    /** Las pantallas que la persona puede ver; null si las ve todas (el Superusuario). */
+    private function allowedScreens(User $viewer, int $companyId): ?array
+    {
+        if ($viewer->isSuperAdmin($companyId)) {
+            return null;
+        }
+
+        return array_keys(array_filter($this->screens->levelsFor($viewer, $companyId), fn (string $level) => $level !== 'none'));
+    }
+
+    /**
+     * Un documento es una pantalla (su clave) o una de OTHER_DOCUMENTS: lo
+     * que se anotaba antes de la Bitácora, que no tiene pantalla. Las mismas
+     * cuatro que muestra legacySection().
+     */
+    private function whereDocument(Builder $query, string $document): void
+    {
+        $legacy = fn (Builder $q) => $q->whereNull('screen')->where('action', '!=', AuditLog::ACTIVITY);
+
+        match ($document) {
+            'sessions' => $legacy($query)->where('action', 'like', 'auth.%'),
+            'account' => $legacy($query)->where('action', 'like', 'user.%'),
+            'company' => $legacy($query)->where(fn ($q) => $q->where('action', 'like', 'company%')->orWhere('action', 'like', 'license%')),
+            'users' => $legacy($query)
+                ->where('action', 'not like', 'auth.%')
+                ->where('action', 'not like', 'user.%')
+                ->where('action', 'not like', 'company%')
+                ->where('action', 'not like', 'license%'),
+            default => $query->where('screen', $document),
+        };
+    }
+
+    /**
+     * El número, código o nombre del registro (subject: «AS-0005», «CLI-001 —
+     * Comercial…»); en lo de usuarios, el nombre de la persona.
+     */
+    private function whereSearch(Builder $query, string $search): void
+    {
+        $like = '%'.addcslashes($search, '%_\\').'%';
+        $people = User::where('name', 'like', $like)->limit(50)->pluck('id');
+
+        $query->where(fn ($q) => $q->where('subject', 'like', $like)
+            ->when($people->isNotEmpty(), fn ($q) => $q->orWhere(fn ($q) => $q->where('auditable_type', User::class)->whereIn('auditable_id', $people))));
     }
 
     /** @param  Collection<int, User>  $users */

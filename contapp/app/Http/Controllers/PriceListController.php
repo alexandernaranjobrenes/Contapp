@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\Currency;
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\PriceList;
@@ -24,6 +25,8 @@ class PriceListController extends Controller
     public function index(): Response
     {
         return Inertia::render('Inventory/PriceLists/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(PriceList::query()),
             'priceLists' => PriceList::with('currency:id,code')
                 ->withCount('lines')
                 ->orderBy('code')

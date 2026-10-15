@@ -5,6 +5,7 @@ namespace App\Domains\Conti\Actions;
 use App\Domains\Accounting\Models\Currency;
 use App\Domains\Conti\Resources\ContiFilters;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\CodeRules;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -133,26 +134,13 @@ abstract class BaseContiAction implements ContiAction
      * El código que sigue: «CLI-006» → «CLI-007», «6-02-01-01-005» →
      * «6-02-01-01-006». Con los mismos dígitos, y el primero que esté libre.
      *
+     * Es la misma regla de las pantallas (CodeRules).
+     *
      * @param  callable(string): bool  $taken
      */
     protected function nextCode(?string $code, callable $taken): ?string
     {
-        if ($code === null || ! preg_match('/^(.*?)(\d+)$/', $code, $match)) {
-            return null;
-        }
-
-        $width = strlen($match[2]);
-        $number = (int) $match[2];
-
-        for ($try = 0; $try < 50; $try++) {
-            $candidate = $match[1].str_pad((string) ++$number, $width, '0', STR_PAD_LEFT);
-
-            if (! $taken($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
+        return CodeRules::next($code, $taken);
     }
 
     /**

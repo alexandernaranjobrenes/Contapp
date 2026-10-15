@@ -41,6 +41,15 @@ class JobPosition extends Model
     }
 
     /**
+     * Por qué su código ya no se cambia (CodeRules), o null si todavía se
+     * puede: con gente adentro, es el código de sus reportes.
+     */
+    public function codeLockReason(): ?string
+    {
+        return $this->employees()->exists() ? 'el puesto ya tiene trabajadores' : null;
+    }
+
+    /**
      * Si un salario se sale del rango previsto para el puesto.
      *
      * No es un error —hay excepciones legítimas— pero sí algo que conviene

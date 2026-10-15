@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
 import { confirmAction } from '../../../Utils/confirm';
@@ -26,11 +26,28 @@ const form = useForm({
     payment_date: '',
 });
 
+// El número que sigue en ese año y frecuencia (CodeRules): se propone, y el
+// servidor no deja saltarse uno.
+function nextNumber(year, frequency) {
+    const numbers = props.periods
+        .filter((p) => Number(p.year) === Number(year) && p.frequency === frequency)
+        .map((p) => Number(p.number));
+
+    return numbers.length ? Math.max(...numbers) + 1 : 1;
+}
+
 function openCreate() {
     form.reset();
     form.year = new Date().getFullYear();
+    form.number = nextNumber(form.year, form.frequency);
     creating.value = true;
 }
+
+watch(() => [form.year, form.frequency], ([year, frequency], [oldYear, oldFrequency] = []) => {
+    if (! creating.value) return;
+    // Si el número es el que se había propuesto, se propone el de ahora.
+    if (Number(form.number) === nextNumber(oldYear, oldFrequency)) form.number = nextNumber(year, frequency);
+});
 
 // El nombre se arma solo mientras nadie lo toque: nadie quiere escribir
 // "Marzo 2026 · 1.ª quincena" veinticuatro veces al año.
@@ -212,6 +229,7 @@ const statusClass = {
                     <div class="field">
                         <label for="period-number">Número</label>
                         <input id="period-number" v-model="form.number" type="number" min="1" max="60" required @input="syncName">
+                        <span class="hint small">El que sigue en ese año y frecuencia; no se puede saltar uno.</span>
                         <span v-if="form.errors.number" class="error">{{ form.errors.number }}</span>
                     </div>
                     <div class="field">

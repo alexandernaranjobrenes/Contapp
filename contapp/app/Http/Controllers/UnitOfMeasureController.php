@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\UnitOfMeasure;
@@ -15,6 +16,8 @@ class UnitOfMeasureController extends Controller
     public function index(): Response
     {
         return Inertia::render('Inventory/UnitsOfMeasure/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(UnitOfMeasure::query()),
             'unitsOfMeasure' => UnitOfMeasure::orderBy('code')->get([
                 'id', 'code', 'name', 'decimals', 'status',
             ]),

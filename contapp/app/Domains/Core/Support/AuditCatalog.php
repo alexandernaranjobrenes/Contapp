@@ -81,10 +81,10 @@ final class AuditCatalog
         // Socios de negocio
         Bp\BpCategory::class => ['categoría de socios', 'categorías de socios', 'f', false, 'business_partners.categories'],
         Bp\BpFamily::class => ['familia de socios', 'familias de socios', 'f', false, 'business_partners.categories'],
-        Bp\BpOpenItem::class => ['partida abierta', 'partidas abiertas', 'f', true, 'business_partners.partners'],
-        Bp\BpOpenItemReconciliation::class => ['conciliación de partidas', 'conciliaciones de partidas', 'f', false, 'business_partners.partners'],
-        Bp\BpOpenItemReconciliationLine::class => ['línea de conciliación de partidas', 'líneas de conciliación de partidas', 'f', true, 'business_partners.partners'],
-        Bp\BpPaymentApplication::class => ['aplicación de pago', 'aplicaciones de pago', 'f', true, 'business_partners.partners'],
+        Bp\BpOpenItem::class => ['partida abierta', 'partidas abiertas', 'f', true, 'business_partners.open_items'],
+        Bp\BpOpenItemReconciliation::class => ['conciliación de partidas', 'conciliaciones de partidas', 'f', false, 'business_partners.open_items'],
+        Bp\BpOpenItemReconciliationLine::class => ['línea de conciliación de partidas', 'líneas de conciliación de partidas', 'f', true, 'business_partners.open_items'],
+        Bp\BpPaymentApplication::class => ['aplicación de pago', 'aplicaciones de pago', 'f', true, 'business_partners.open_items'],
         Bp\BusinessPartner::class => ['socio de negocio', 'socios de negocio', 'm', false, 'business_partners.partners'],
 
         // Configuración de la compañía

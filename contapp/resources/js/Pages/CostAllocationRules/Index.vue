@@ -9,6 +9,8 @@ import { confirmAction } from '../../Utils/confirm';
 const props = defineProps({
     rules: { type: Array, default: () => [] },
     costCenters: { type: Array, default: () => [] },
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
 });
 
 const page = usePage();
@@ -68,7 +70,7 @@ function fillForm(values) {
 }
 
 function openCreate() {
-    fillForm({ code: '', name: '', valid_from: today, valid_until: '', is_active: true, lines: [emptyLine(), emptyLine()] });
+    fillForm({ code: props.nextCode ?? '', name: '', valid_from: today, valid_until: '', is_active: true, lines: [emptyLine(), emptyLine()] });
     selectedId.value = null;
     mode.value = 'create';
 }

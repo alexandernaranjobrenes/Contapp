@@ -3,15 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\GlDetermination;
-use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\Warehouse;
+use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,6 +21,8 @@ class WarehouseController extends Controller
     public function index(GlDeterminationScopeService $scopes): Response
     {
         return Inertia::render('Inventory/Warehouses/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(Warehouse::query()),
             'warehouses' => Warehouse::orderBy('code')->get([
                 'id', 'code', 'name', 'address', 'is_default', 'uses_bins', 'status',
             ]),

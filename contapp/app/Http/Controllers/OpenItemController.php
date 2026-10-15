@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Accounting\Models\Currency;
 use App\Domains\Accounting\Services\PostJournalService;
 use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
@@ -29,6 +30,41 @@ class OpenItemController extends Controller
      * controlador es inmune a ese problema, porque el controlador siempre
      * corre después de todo el pipeline de middleware.
      */
+    /**
+     * Cobros y pagos (su propia pantalla, CLAUDE.md secc. 36): los socios con
+     * partidas abiertas, para entrar a aplicarles cobros y pagos sin tener que
+     * pasar por la ficha del socio.
+     */
+    public function overview(): Response
+    {
+        $rows = BpOpenItem::query()
+            ->whereHas('businessPartner')
+            ->where('status', '!=', 'closed')
+            ->selectRaw('business_partner_id, currency_id, count(*) as items, sum(balance) as balance, min(due_date) as next_due')
+            ->groupBy('business_partner_id', 'currency_id')
+            ->get();
+
+        $partners = BusinessPartner::whereIn('id', $rows->pluck('business_partner_id')->unique())
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type']);
+        $currencies = Currency::whereIn('id', $rows->pluck('currency_id')->unique())->pluck('code', 'id');
+
+        return Inertia::render('BusinessPartners/OpenItemsOverview', [
+            'partners' => $partners->map(fn (BusinessPartner $partner) => [
+                'id' => $partner->id,
+                'code' => $partner->code,
+                'name' => $partner->name,
+                'type' => $partner->type,
+                'balances' => $rows->where('business_partner_id', $partner->id)->map(fn ($row) => [
+                    'currency' => $currencies[$row->currency_id] ?? '',
+                    'items' => (int) $row->items,
+                    'balance' => (string) $row->balance,
+                    'next_due' => $row->next_due ? substr((string) $row->next_due, 0, 10) : null,
+                ])->values(),
+            ])->values(),
+        ]);
+    }
+
     public function index(int $businessPartner): Response
     {
         $businessPartner = BusinessPartner::findOrFail($businessPartner);

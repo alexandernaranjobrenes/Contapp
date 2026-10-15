@@ -17,6 +17,8 @@ const props = defineProps({
     options: { type: Object, required: true },
     // Formatos y peso de la foto (EmployeeController::photoHints).
     photoRules: { type: Object, default: () => ({ accept: 'image/jpeg,image/png', formats: 'JPG o PNG', max_megabytes: 4 }) },
+    // El código que sigue (CodeRules): se propone al crear.
+    nextCode: { type: String, default: null },
 });
 
 const page = usePage();
@@ -114,6 +116,34 @@ const modalTitle = computed(() => {
     if (mode.value === 'create') return 'Nuevo empleado';
     return selected.value ? `${selected.value.code} — ${selected.value.full_name}` : '';
 });
+
+const isSuperAdmin = computed(() => !! page.props.auth?.user?.is_super_admin);
+
+// El código es fijo desde la primera planilla (CodeRules).
+const codeLocked = computed(() => mode.value === 'edit' && !! selected.value?.code_locked);
+
+// «BAC ••••1234»: la cuenta, con los últimos cuatro dígitos a la vista.
+function bankLabel(bank) {
+    const account = bank?.bank_account ?? '';
+    if (! account) return 'sin cuenta';
+    return [bank.bank_name, account.length > 4 ? `••••${account.slice(-4)}` : account].filter(Boolean).join(' ');
+}
+
+// Aprobar o rechazar el cambio de cuenta pendiente: solo el Superusuario.
+function decideBank(decision) {
+    const employee = selected.value;
+    const approve = decision === 'approve';
+
+    confirmAction({
+        title: approve ? 'Aprobar el cambio de cuenta' : 'Rechazar el cambio de cuenta',
+        message: approve
+            ? `Desde ahora a ${employee.full_name} se le paga a ${bankLabel(employee.pending_bank)}. Verificá antes que la cuenta sea de esa persona.`
+            : `${employee.full_name} sigue cobrando en la cuenta actual.`,
+        confirmLabel: approve ? 'Aprobar' : 'Rechazar',
+        danger: ! approve,
+        onConfirm: () => router.post(route(approve ? 'employees.bank-change.approve' : 'employees.bank-change.reject', employee.id), {}, { preserveScroll: true }),
+    });
+}
 
 // --- la foto: se elige acá y se guarda con el empleado ---
 
@@ -220,7 +250,7 @@ const monthlyBase = computed(() => props.employees
             <div class="view-actions">
                 <Link :href="route('payroll-periods.index')" class="btn btn-ghost">Períodos de planilla</Link>
                 <Link :href="route('payroll-settings.index')" class="btn btn-ghost">Configuración</Link>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+                <button type="button" class="btn btn-primary" @click="openCreate({ code: nextCode ?? '' })"><PlusIcon /> Crear nuevo</button>
             </div>
             <div class="view-filters">
                 <input v-model="search" type="search" placeholder="Buscar por código, nombre, cédula o puesto" aria-label="Buscar empleado">
@@ -361,6 +391,22 @@ const monthlyBase = computed(() => props.employees
                 </div>
             </dl>
 
+            <!-- Un cambio de cuenta que espera al Superusuario (EmployeeBankChangeService). -->
+            <div v-if="selected && mode === 'details' && selected.pending_bank" class="bank-pending" role="status">
+                <p>
+                    <strong>Cambio de cuenta bancaria pendiente.</strong>
+                    {{ selected.pending_bank.requested_by ?? 'Alguien' }} pidió cambiarla de
+                    {{ bankLabel({ bank_name: selected.bank_name, bank_account: selected.bank_account }) }} a
+                    <strong>{{ bankLabel(selected.pending_bank) }}</strong> ({{ selected.pending_bank.requested_at }}).
+                    Mientras no se apruebe, se le paga a la cuenta actual.
+                </p>
+                <div v-if="isSuperAdmin" class="bank-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" @click="decideBank('reject')">Rechazar</button>
+                    <button type="button" class="btn btn-primary btn-sm" @click="decideBank('approve')">Aprobar el cambio</button>
+                </div>
+                <p v-else class="muted small">Lo tiene que aprobar el Superusuario.</p>
+            </div>
+
             <form v-if="mode === 'create' || (selected && mode === 'edit')" id="employee-form" @submit.prevent="submit">
                 <h3 class="section-title">Identidad</h3>
 
@@ -389,7 +435,9 @@ const monthlyBase = computed(() => props.employees
                 <div class="field-row">
                     <div class="field">
                         <label>Código</label>
-                        <input v-model="form.code" type="text" maxlength="20" required>
+                        <input v-model="form.code" type="text" maxlength="20" required :disabled="codeLocked">
+                        <span v-if="codeLocked" class="muted small">No se puede cambiar: ya tiene planillas calculadas.</span>
+                        <span v-else-if="mode === 'create'" class="muted small">Lo propone CONTAPP. Queda fijo desde su primera planilla.</span>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">
@@ -566,6 +614,15 @@ const monthlyBase = computed(() => props.employees
                         <span class="muted small">Sin esto no entra al archivo de pago y hay que transferirle a mano.</span>
                     </div>
                 </div>
+                <!-- Cambiar la cuenta de alguien es lo que más se cuida (EmployeeBankChangeService). -->
+                <p v-if="mode === 'edit' && ! isSuperAdmin && form.payment_method === 'transferencia'" class="bank-note">
+                    Si cambiás el banco o la cuenta, el cambio queda pendiente hasta que lo apruebe el Superusuario; mientras
+                    tanto se le paga a la cuenta actual.
+                </p>
+                <p v-if="mode === 'edit' && selected?.pending_bank" class="bank-note is-pending">
+                    Ya hay un cambio pendiente: {{ bankLabel(selected.pending_bank) }}, pedido por
+                    {{ selected.pending_bank.requested_by ?? 'otra persona' }}.
+                </p>
 
                 <h3 class="section-title">Impuesto y cargas sociales</h3>
 
@@ -700,6 +757,37 @@ table { font-size: 0.85rem; }
 }
 
 .warn-text { color: var(--color-warning); font-size: 0.8rem; }
+
+/* El cambio de cuenta bancaria que espera al Superusuario. */
+.bank-pending {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 1rem;
+    margin-top: 0.9rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-warning-soft);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+.bank-pending p { margin: 0; flex: 1 1 22rem; }
+.bank-actions { display: flex; gap: 0.5rem; }
+
+.bank-note {
+    margin: -0.25rem 0 0.75rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+
+.bank-note.is-pending {
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-warning-soft);
+    color: var(--color-text);
+}
 
 .rate-hint {
     display: block;

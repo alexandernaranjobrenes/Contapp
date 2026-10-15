@@ -6,11 +6,14 @@ import { PencilIcon, PlusIcon, RefreshCwIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DetailModal from '../../Components/DetailModal.vue';
 import { confirmAction } from '../../Utils/confirm';
+import { fullDate, timeAgo } from '../../Utils/relativeTime';
 
 const props = defineProps({
     rates: { type: Array, default: () => [] },
     foreignCurrency: { type: Object, default: null },
     bccrConfigured: { type: Boolean, default: false },
+    // La última sincronización automática: { ok, date, message, at }, o null si no ha corrido.
+    bccrLastSync: { type: Object, default: null },
     today: { type: String, required: true },
 });
 
@@ -99,16 +102,42 @@ const currencyLabel = computed(() => props.foreignCurrency ? `${props.foreignCur
                     <span>Fecha a sincronizar</span>
                     <input v-model="syncForm.date" type="date" required>
                 </label>
-                <button type="submit" class="btn btn-ghost" :disabled="syncForm.processing">
+                <button
+                    type="submit"
+                    class="btn btn-ghost"
+                    :disabled="syncForm.processing || !bccrConfigured"
+                    :data-busy="syncForm.processing ? '' : null"
+                    :aria-busy="syncForm.processing"
+                >
                     <RefreshCwIcon /> {{ syncForm.processing ? 'Consultando...' : 'Sincronizar con BCCR' }}
                 </button>
             </form>
         </div>
 
         <div v-if="!bccrConfigured" class="notice card">
-            El BCCR todavía no está configurado en este entorno (faltan <code>BCCR_EMAIL</code> / <code>BCCR_TOKEN</code> en <code>.env</code>).
-            El botón de sincronizar no va a encontrar datos hasta que se configure; mientras tanto, cargá el tipo de cambio a mano con «Crear nuevo».
+            La conexión con el BCCR no está configurada: falta su token (<code>BCCR_TOKEN</code> en <code>.env</code>). Se genera
+            gratis en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token. Mientras tanto, cargá el tipo
+            de cambio a mano con «Crear nuevo».
         </div>
+        <template v-else>
+            <p class="hint">
+                El tipo de cambio se trae solo del BCCR todos los días, a las 6:00 a. m. y a la 1:00 p. m., para todas las
+                compañías: el de referencia de venta del dólar (el que usa Hacienda), como «Referencia». «Sincronizar con BCCR»
+                trae el de otra fecha o lo reintenta. Una tasa bloqueada no se sobrescribe.
+            </p>
+            <p v-if="bccrLastSync?.ok" class="hint small last-sync">
+                Última sincronización automática:
+                <time :datetime="bccrLastSync.at" :title="fullDate(bccrLastSync.at)">{{ timeAgo(bccrLastSync.at) }}</time>.
+                {{ bccrLastSync.message }}
+            </p>
+            <div v-else-if="bccrLastSync" class="flash flash-error" role="alert">
+                La última sincronización automática
+                (<time :datetime="bccrLastSync.at" :title="fullDate(bccrLastSync.at)">{{ timeAgo(bccrLastSync.at) }}</time>)
+                no trajo el tipo de cambio: {{ bccrLastSync.message }} Mientras tanto, se puede sincronizar a mano o cargarlo con
+                «Crear nuevo».
+            </div>
+            <p v-else class="hint small last-sync">La sincronización automática todavía no ha corrido.</p>
+        </template>
         <div v-if="syncForm.errors.sync" class="flash flash-error">{{ syncForm.errors.sync }}</div>
 
         <div class="history-header">
@@ -238,6 +267,9 @@ const currencyLabel = computed(() => props.foreignCurrency ? `${props.foreignCur
     padding: 0.05rem 0.3rem;
     border-radius: 4px;
 }
+
+/* Va con el texto de arriba: es su dato. */
+.last-sync { margin-top: -0.45rem; }
 
 .history-header {
     display: flex;

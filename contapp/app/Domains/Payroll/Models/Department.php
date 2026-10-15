@@ -33,4 +33,15 @@ class Department extends Model
     {
         return $this->hasMany(Employee::class);
     }
+
+    /**
+     * Por qué su código ya no se cambia (CodeRules), o null si todavía se
+     * puede: con gente o puestos adentro, es el código de sus reportes.
+     */
+    public function codeLockReason(): ?string
+    {
+        return $this->employees()->exists() || $this->positions()->exists()
+            ? 'el departamento ya tiene trabajadores o puestos'
+            : null;
+    }
 }

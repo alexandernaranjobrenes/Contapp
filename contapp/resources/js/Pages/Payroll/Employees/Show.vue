@@ -38,6 +38,28 @@ function pickPhoto(event) {
     });
 }
 
+// «BAC ••••1234»: la cuenta, con los últimos cuatro dígitos a la vista.
+function bankLabel(bank) {
+    const account = bank?.bank_account ?? '';
+    if (! account) return 'sin cuenta';
+    return [bank.bank_name, account.length > 4 ? `••••${account.slice(-4)}` : account].filter(Boolean).join(' ');
+}
+
+// Aprobar o rechazar el cambio de cuenta pendiente: solo el Superusuario.
+function decideBank(decision) {
+    const approve = decision === 'approve';
+
+    confirmAction({
+        title: approve ? 'Aprobar el cambio de cuenta' : 'Rechazar el cambio de cuenta',
+        message: approve
+            ? `Desde ahora a ${props.employee.full_name} se le paga a ${bankLabel(props.employee.pending_bank)}. Verificá antes que la cuenta sea de esa persona.`
+            : `${props.employee.full_name} sigue cobrando en la cuenta actual.`,
+        confirmLabel: approve ? 'Aprobar' : 'Rechazar',
+        danger: ! approve,
+        onConfirm: () => router.post(route(approve ? 'employees.bank-change.approve' : 'employees.bank-change.reject', props.employee.id), {}, { preserveScroll: true }),
+    });
+}
+
 // La foto se borra también del bucket (EmployeePhotoService).
 function removePhoto() {
     confirmAction({
@@ -122,6 +144,22 @@ const noteClass = {
         </div>
 
         <div v-if="page.props.errors?.employee" class="flash flash-error">{{ page.props.errors.employee }}</div>
+
+        <!-- Un cambio de cuenta que espera al Superusuario (EmployeeBankChangeService). -->
+        <div v-if="employee.pending_bank" class="bank-pending" role="status">
+            <p>
+                <strong>Cambio de cuenta bancaria pendiente.</strong>
+                {{ employee.pending_bank.requested_by ?? 'Alguien' }} pidió cambiarla de
+                {{ bankLabel({ bank_name: employee.bank_name, bank_account: employee.bank_account }) }} a
+                <strong>{{ bankLabel(employee.pending_bank) }}</strong> ({{ employee.pending_bank.requested_at }}).
+                Mientras no se apruebe, se le paga a la cuenta actual.
+            </p>
+            <div v-if="page.props.auth?.user?.is_super_admin" class="bank-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @click="decideBank('reject')">Rechazar</button>
+                <button type="button" class="btn btn-primary btn-sm" @click="decideBank('approve')">Aprobar el cambio</button>
+            </div>
+            <p v-else class="muted small">Lo tiene que aprobar el Superusuario.</p>
+        </div>
 
         <div class="profile card">
             <div class="photo-block">
@@ -408,6 +446,24 @@ const noteClass = {
 </template>
 
 <style scoped>
+/* El cambio de cuenta bancaria que espera al Superusuario. */
+.bank-pending {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 1rem;
+    margin-bottom: 1rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-warning-soft);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+.bank-pending p { margin: 0; flex: 1 1 22rem; }
+.bank-actions { display: flex; gap: 0.5rem; }
+
 .profile {
     display: flex;
     gap: 1.5rem;

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\CostAllocationRuleLine;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\JournalDetail;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,8 @@ class CostCenterController extends Controller
     public function index(): Response
     {
         return Inertia::render('CostCenters/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(CostCenter::query()),
             'costCenters' => CostCenter::orderBy('code')->get([
                 'id', 'code', 'name', 'start_date', 'end_date', 'is_active',
             ]),

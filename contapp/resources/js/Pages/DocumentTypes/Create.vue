@@ -82,10 +82,11 @@ function submit() {
                     </select>
                 </div>
 
-                <div class="field">
+                <!-- Solo el Superusuario: arrancar en otro número es para seguir la numeración de un sistema anterior. -->
+                <div v-if="$page.props.auth?.user?.is_super_admin" class="field">
                     <label for="dt-consecutive">Consecutivo interno inicial (opcional)</label>
                     <input id="dt-consecutive" v-model="form.starting_consecutive" type="number" min="1" placeholder="1">
-                    <span class="muted small">Dejalo vacío para arrancar en 1. Una vez creado el tipo de documento, este consecutivo es automático e inalterable — no se puede volver a cambiar.</span>
+                    <span class="muted small">Dejalo vacío para arrancar en 1, o poné el siguiente al de tu sistema anterior. Una vez creado el tipo de documento, este consecutivo es automático e inalterable — no se puede volver a cambiar.</span>
                     <span v-if="form.errors.starting_consecutive" class="error">{{ form.errors.starting_consecutive }}</span>
                 </div>
 

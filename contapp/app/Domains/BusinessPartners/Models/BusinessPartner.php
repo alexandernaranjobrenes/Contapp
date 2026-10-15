@@ -6,6 +6,8 @@ use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\Currency;
 use App\Domains\Core\Concerns\BelongsToCompany;
+use App\Domains\Core\Support\CodeRules;
+use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -75,7 +77,7 @@ class BusinessPartner extends Model
      */
     public function priceList(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\Inventory\Models\PriceList::class);
+        return $this->belongsTo(PriceList::class);
     }
 
     public function openItems(): HasMany
@@ -91,5 +93,20 @@ class BusinessPartner extends Model
     public function isSupplier(): bool
     {
         return in_array($this->type, ['supplier', 'both'], true);
+    }
+
+    /** El primero de cada tipo, si todavía no hay ninguno. */
+    public const FIRST_CODES = ['client' => 'CLI-0001', 'supplier' => 'PRV-0001', 'both' => 'SOC-0001'];
+
+    /**
+     * Un socio conserva su código desde que se crea (CodeRules): es la llave
+     * de sus estados de cuenta, sus partidas y las plantillas.
+     */
+    public const CODE_LOCKED = 'un socio conserva su código desde que se crea';
+
+    /** El código que sigue para un socio nuevo de ese tipo: el siguiente al último de su tipo. */
+    public static function nextCode(string $type): ?string
+    {
+        return CodeRules::following(self::where('type', $type), self::FIRST_CODES[$type] ?? null);
     }
 }

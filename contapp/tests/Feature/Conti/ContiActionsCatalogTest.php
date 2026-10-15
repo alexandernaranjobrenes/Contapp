@@ -70,6 +70,19 @@ it('actualizar un socio cambia solo lo pedido y muestra el antes y el después',
         ->and((float) $partner->credit_limit)->toBe(100.0);
 });
 
+it('actualizar un socio no le cambia el código: es fijo desde que se crea (CLAUDE.md secc. 36)', function () {
+    $f = contiSuperFixture();
+    $account = ChartOfAccount::factory()->create(['company_id' => $f['company']->id]);
+    BusinessPartner::factory()->create(['company_id' => $f['company']->id, 'code' => 'C-001', 'name' => 'Viejo', 'gl_account_id' => $account->id]);
+
+    contiPrepare($f, 'actualizar_socio', ['socio' => 'C-001', 'codigo' => 'C-999'])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.codigo.0', 'El código no se puede cambiar: un socio conserva su código desde que se crea.');
+
+    // Mandar el mismo código junto con otro cambio no estorba.
+    contiPrepare($f, 'actualizar_socio', ['socio' => 'C-001', 'codigo' => 'C-001', 'nombre' => 'Nuevo'])->assertCreated();
+});
+
 it('registrar un tipo de cambio lo crea, o reemplaza el de esa fecha', function () {
     $f = contiSuperFixture();
 

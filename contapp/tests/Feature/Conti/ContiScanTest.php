@@ -63,9 +63,10 @@ it('ofrece registrar desde un documento solo lo que los permisos dejan', functio
     $all = $this->actingAs($f['user'])->getJson(route('conti.scan.actions'))->assertOk()->json('acciones');
     expect(array_column($all, 'accion'))->toBe(['crear_asiento', 'crear_orden_compra', 'crear_socio', 'aplicar_pago']);
 
-    // Los dos que son de la pantalla de socios.
+    // Con la ficha de socios, el socio nuevo; aplicar un pago es de Cobros y
+    // pagos, otra pantalla (separación de funciones, CLAUDE.md secc. 36).
     $mine = $this->actingAs($partners)->getJson(route('conti.scan.actions'))->assertOk()->json('acciones');
-    expect(array_column($mine, 'accion'))->toBe(['crear_socio', 'aplicar_pago']);
+    expect(array_column($mine, 'accion'))->toBe(['crear_socio']);
 
     $this->actingAs($partners)->postJson(route('conti.scan.start'), ['accion' => 'crear_asiento'])->assertForbidden();
     $this->actingAs($partners)->postJson(route('conti.scan.start'), ['accion' => 'actualizar_precios'])->assertStatus(422);

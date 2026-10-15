@@ -40,23 +40,22 @@ return [
     | BCCR — Banco Central de Costa Rica
     |--------------------------------------------------------------------------
     |
-    | Credenciales del Servicio Web de Indicadores Económicos (se solicitan
-    | gratis en https://www.bccr.fi.cr, sección "Servicios Web"). Sin ellas,
-    | BccrSoapExchangeRateClient no puede autenticar y SyncBccrExchangeRatesService
-    | simplemente no encontrará tipo de cambio para la fecha (source queda
-    | manual hasta que se configuren).
+    | El tipo de cambio sale de la API de indicadores económicos del BCCR
+    | (SDDE), ver BccrSddeExchangeRateClient. El token se genera gratis en el
+    | sitio de Indicadores Económicos del BCCR (registrarse, y en Mi perfil →
+    | Generar token). Sin token, «Sincronizar con BCCR» no está disponible y
+    | los tipos de cambio se cargan a mano.
     |
-    | 'indicator_usd_venta' es el número de indicador BCCR para el tipo de
-    | cambio de referencia de venta del dólar; confirmar el código vigente en
-    | la documentación de BCCR antes de producción (suele ser el 317, pero el
-    | Banco lo ha reordenado en el pasado).
+    | 'indicator': 318 es el tipo de cambio de referencia de venta del dólar
+    | (el 317 es el de compra). Es el que usa Hacienda.
     |
     */
     'bccr' => [
-        'email' => env('BCCR_EMAIL'),
         'token' => env('BCCR_TOKEN'),
-        'endpoint' => env('BCCR_ENDPOINT', 'https://gee.bccr.fi.cr/Indicadores/Suscripciones/WS/wsIndicadoresEconomicos.asmx/ObtenerIndicadoresEconomicos'),
-        'indicator_usd_venta' => env('BCCR_INDICATOR_USD_VENTA', '317'),
+        'base_url' => env('BCCR_BASE_URL', 'https://apim.bccr.fi.cr/SDDE/api/Bccr.GE.SDDE.Publico.Indicadores.API'),
+        'indicator' => env('BCCR_INDICATOR', '318'),
+        // El día del BCCR: «hoy» para la sincronización automática.
+        'timezone' => 'America/Costa_Rica',
     ],
 
     /*

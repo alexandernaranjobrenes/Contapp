@@ -93,7 +93,8 @@ final class PartnerResources
             key: 'partidas-abiertas',
             label: 'Partidas abiertas (cuentas por cobrar y por pagar)',
             description: 'Facturas, saldos iniciales y notas pendientes de cobro o pago de cada socio, con su vencimiento y saldo. Por defecto solo las pendientes.',
-            screens: ['business_partners.partners'],
+            // Las ve quien aplica cobros y pagos, o quien tiene la ficha del socio.
+            screens: ['business_partners.open_items', 'business_partners.partners'],
             query: fn () => BpOpenItem::query()
                 ->whereHas('businessPartner')
                 ->with(['businessPartner:id,code,name,type', 'currency:id,code']),

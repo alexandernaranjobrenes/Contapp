@@ -8,6 +8,8 @@ import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     priceLists: { type: Array, default: () => [] },
     currencies: { type: Array, default: () => [] },
 });
@@ -79,7 +81,7 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
         <div class="view-toolbar">
             <div class="view-actions">
                 <Link :href="route('items.index')" class="btn btn-ghost">Artículos</Link>
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+                <button type="button" class="btn btn-primary" @click="openCreate({ code: nextCode ?? '' })"><PlusIcon /> Crear nuevo</button>
             </div>
         </div>
 

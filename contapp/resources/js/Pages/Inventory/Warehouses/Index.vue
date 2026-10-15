@@ -8,6 +8,8 @@ import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     accounts: { type: Array, default: () => [] },
     accountCategories: { type: Object, default: () => ({}) },
     warehouseAccounts: { type: Object, default: () => ({}) },
@@ -91,7 +93,7 @@ function destroy() {
     <AppLayout title="Almacenes">
         <div class="view-toolbar">
             <div class="view-actions">
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+                <button type="button" class="btn btn-primary" @click="openCreate({ code: nextCode ?? '' })"><PlusIcon /> Crear nuevo</button>
             </div>
             <div class="view-filters">
                 <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar almacén">

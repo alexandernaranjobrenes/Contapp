@@ -319,6 +319,16 @@ class PayrollReadinessChecker
                 );
             }
 
+            // Un cambio de cuenta que todavía no aprobó el Superusuario
+            // (EmployeeBankChangeService): se le paga a la anterior.
+            if ($employee->hasPendingBankChange()) {
+                $findings[] = $this->finding(
+                    self::WARNING, 'empleados', "{$label} tiene un cambio de cuenta bancaria pendiente",
+                    'Mientras el Superusuario no lo apruebe, la planilla y el archivo de pago usan la cuenta anterior.',
+                    'employees.show', $employee->id
+                );
+            }
+
             if (! $employee->is_ccss_exempt && blank($employee->ccss_number)) {
                 $findings[] = $this->finding(
                     self::WARNING, 'empleados', "{$label} no tiene número de asegurado",

@@ -8,6 +8,8 @@ import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     warehouse: { type: Object, required: true },
     bins: { type: Array, default: () => [] },
 });
@@ -54,7 +56,7 @@ function destroy() {
         <div class="view-toolbar">
             <Link :href="route('warehouses.index')" class="btn btn-ghost"><ArrowLeftIcon /> Almacenes</Link>
             <div class="view-actions">
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+                <button type="button" class="btn btn-primary" @click="openCreate({ code: nextCode ?? '' })"><PlusIcon /> Crear nuevo</button>
             </div>
         </div>
 

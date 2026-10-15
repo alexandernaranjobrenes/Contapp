@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Exceptions\InvalidBillOfMaterialException;
 use App\Domains\Inventory\Models\BillOfMaterial;
@@ -23,6 +24,8 @@ class BillOfMaterialController extends Controller
     public function index(): Response
     {
         return Inertia::render('Inventory/BillsOfMaterials/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(BillOfMaterial::query()),
             'billsOfMaterials' => BillOfMaterial::with('item:id,code,name')
                 ->withCount('lines')
                 ->orderBy('code')

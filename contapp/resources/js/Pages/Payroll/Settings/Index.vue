@@ -1206,7 +1206,9 @@ const accountLabel = (id) => {
                     <div class="field-row">
                         <div class="field">
                             <label>Código</label>
-                            <input v-model="rowForm.code" type="text" maxlength="30" required>
+                            <input v-model="rowForm.code" type="text" maxlength="30" required :disabled="!! editorRow">
+                            <!-- El código une las vigencias de la misma carga (CodeRules). -->
+                            <span v-if="editorRow" class="muted small">No se cambia: une las vigencias de esta carga. Para otra tasa, agregá una vigencia nueva con el mismo código.</span>
                             <span v-if="rowForm.errors.code" class="error">{{ rowForm.errors.code }}</span>
                         </div>
                         <div class="field">
@@ -1400,7 +1402,9 @@ const accountLabel = (id) => {
                     <div class="field-row">
                         <div class="field">
                             <label>Código</label>
-                            <input v-model="rowForm.code" type="text" maxlength="30" required>
+                            <input v-model="rowForm.code" type="text" maxlength="30" required :disabled="!! editorRow?.code_locked">
+                            <!-- Usado en planillas, o de los que trae CONTAPP (CodeRules). -->
+                            <span v-if="editorRow?.code_locked" class="muted small">No se cambia: ya se usó en planillas o es de los que trae CONTAPP.</span>
                             <span v-if="rowForm.errors.code" class="error">{{ rowForm.errors.code }}</span>
                         </div>
                         <div class="field">

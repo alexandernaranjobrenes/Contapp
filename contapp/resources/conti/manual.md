@@ -46,6 +46,7 @@ Se ven en el pie de página y en el selector de compañía:
   Los **reportes** solo admiten Lectura.
 - El menú muestra únicamente las opciones a las que la persona tiene acceso.
 - «Comprobantes» (consultar facturas emitidas) y «Nueva factura» (emitir) son permisos **distintos**.
+- «Socios de negocio» (la ficha del cliente o proveedor) y «Cobros y pagos» (aplicar cobros y pagos a sus partidas) también son **distintos**: quien crea proveedores no tiene por qué ser quien les paga.
 - **Administración** y **Mi cuenta** dependen del rol, no de un permiso.
 - Si alguien no ve una opción o recibe un mensaje de que no tiene permiso, tiene que pedirle el acceso a un Administrador o al Superusuario.
 
@@ -122,7 +123,11 @@ Se ven en el pie de página y en el selector de compañía:
   - exportación a Excel.
 
   Solo cuenta lo contabilizado.
-- **Los códigos no se cambian** después de crear el registro: artículos, grupos, almacenes, ubicaciones, unidades, centros de costo, tipos de documento, lotes. Si está mal, se crea otro y se inactiva el anterior.
+- **Códigos:** al crear, CONTAPP propone el que sigue al último (con el mismo formato que ya usa la compañía) y se puede cambiar en ese momento. Después:
+  - no se cambian nunca: artículos, grupos, almacenes, ubicaciones, unidades, listas de precios y de materiales, centros de costo, normas de reparto, tipos de documento, lotes, socios de negocio y cargas sociales;
+  - se pueden corregir **hasta que el registro se usa**: cuentas contables (hasta su primer asiento o saldo inicial), empleados (hasta su primera planilla), conceptos de planilla propios, categorías de socios, departamentos y puestos. Los conceptos que trae CONTAPP no se cambian.
+
+  Un código fijo se ve deshabilitado, con el motivo debajo. Si está mal, se crea otro registro y se inactiva el anterior.
 - **Lo que ya tiene movimientos no se elimina**: se inactiva.
 - **Lo contabilizado no se edita ni se borra**: se **anula**, y la anulación genera un asiento de reversión. Los registros con historial (el kardex, las anotaciones de un empleado) son de solo agregar.
 
@@ -190,6 +195,11 @@ Se ven en el pie de página y en el selector de compañía:
   - **«Ver cambios»** lo despliega con cada campo: en un cambio, lo de antes y lo de después; en un alta o una baja, el valor.
   - Lo que hizo un documento junto (un asiento con sus líneas) es un solo movimiento, con las líneas agrupadas adentro.
 - Muestra los 15 más recientes; **«Ver 15 más»** trae los siguientes.
+- **Filtros** (arriba, con «Consultar»; «Limpiar» los quita):
+  - «Desde» y «Hasta»: las dos fechas entran enteras.
+  - «Documento»: lo que se hizo en una pantalla (Registros, Artículos, Empleados…), o en Sesiones, Usuarios y permisos, Compañía o Mi cuenta. Solo aparecen las pantallas a las que la persona tiene acceso.
+  - «Número, código o nombre»: el del registro (AS-0005, CLI-001, el nombre de un artículo) o el de la persona, en lo de usuarios.
+  - «Ver 15 más» sigue con los mismos filtros.
 - Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus últimos cuatro dígitos.
 
 ---
@@ -200,6 +210,8 @@ Se ven en el pie de página y en el selector de compañía:
 - El catálogo se organiza en **8 clases**, cada una en su propio cajón: Activos, Pasivos, Patrimonio, Ingresos, Costo de Ventas, Gastos, Otros Ingresos y Otros Gastos. La **naturaleza** (débito o crédito) se deduce de la clase y no se digita.
 - Campos de una cuenta:
   - **Código**, **Tipo (clase)**, **Nombre** y **Nombre en inglés** (opcional).
+    - Al crear, se propone el código que sigue a la última cuenta hoja de esa clase, y cambia si se cambia la clase.
+    - El código se puede corregir hasta que la cuenta tiene un asiento (aunque sea un borrador) o un saldo inicial. Desde ahí queda fijo: los reportes, los libros impresos y lo que se le entregó al auditor dicen ese código.
   - **Moneda**: Local, Extranjera o Ambas.
   - **Clasificación IVA**: Ninguno, Ventas, Compras, IVA General, IVA Devengado o IVA Soportado.
   - **Indicador de impuesto vinculado** (opcional).
@@ -228,7 +240,7 @@ Se abre desde la ficha de la cuenta, con «Reconciliar». Sirve para emparejar m
   - **Código (3 letras)**: inalterable.
   - **Nombre**, **Módulo de origen** y **Moneda del documento**.
   - **Cuenta débito por defecto** y **Cuenta crédito por defecto** (opcionales).
-  - **Consecutivo interno inicial**: solo al crear. Sirve para continuar la numeración de un sistema anterior. Después nadie lo puede cambiar.
+  - **Consecutivo interno inicial**: solo al crear, y **solo el Superusuario** (a los demás no les aparece y el tipo arranca en 1). Sirve para continuar la numeración de un sistema anterior. Después nadie lo puede cambiar.
   - **Control de socio de negocio en líneas**: define qué exige cada línea con socio. Puede ser nada, una fecha de vencimiento (la línea **abre una partida** por cobrar o por pagar), una **aplicación a una partida existente**, o cualquiera de las dos.
   - **Genera asiento contable**.
   - **Exige clave numérica electrónica de Hacienda (50 dígitos)**: cada línea pide la clave del comprobante electrónico. Una misma clave no se puede repetir en la compañía.
@@ -346,6 +358,13 @@ Reglas:
 ### 3.1 Tipos de cambio (Centros de costo y cambiario → Tipos de cambio)
 - Muestra el historial reciente: «Fecha», «Tipo», «Tasa» y «Origen» (BCCR o manual).
 - **Sincronizar con el BCCR**: elegí la «Fecha a sincronizar» y tocá «Sincronizar con BCCR».
+  - Trae el **tipo de cambio de referencia de venta** del dólar que publica el Banco Central (el que usa Hacienda) y lo guarda como «Referencia», con origen BCCR. Una tasa bloqueada no se toca.
+  - El BCCR publica el de cada día la tarde anterior: una fecha más adelante todavía no está, y se carga a mano.
+  - Solo trae el del dólar. Si la moneda extranjera de la compañía es otra, se carga a mano.
+  - Necesita el token del BCCR, que configura el equipo de CONTAPP. Sin él, el botón no está disponible y la pantalla lo avisa. Si el BCCR rechaza el token (por ejemplo, porque venció), el mensaje lo dice: hay que generar uno nuevo en el sitio de Indicadores Económicos del BCCR.
+  - **Se sincroniza solo todos los días**, para todas las compañías, a las 6:00 a. m. y otra vez a la 1:00 p. m. (por si a la primera el BCCR no respondió). Si algún día no corrió, al siguiente se completan los días que faltan de la última semana, sin tocar los que ya estaban.
+  - Debajo del botón dice cuándo fue la última sincronización automática y qué tipo de cambio trajo. Si falló, lo dice en rojo, con el motivo.
+  - El botón sirve para traer el de otra fecha o para reintentar a mano.
 - **Carga o corrección manual**: «Fecha», «Tipo» (Referencia, Compra o Venta), «Tasa (₡ por 1 USD)» y «Bloquear».
   - Bloquear evita que la sincronización automática del BCCR la sobrescriba.
   - Si ya existe esa fecha y ese tipo, se **actualiza** en vez de duplicarse.
@@ -384,7 +403,7 @@ Revalúa los saldos en moneda extranjera de clientes, proveedores y cuentas al t
 
 ### 4.1 Ficha del socio (Socios de negocio → Socios de negocio)
 - Campos de la ficha:
-  - **Código (x-xxx)**.
+  - **Código**: CONTAPP propone el que sigue según el tipo (CLI-0001 para clientes, PRV-0001 para proveedores, SOC-0001 para ambos, o el formato que ya use la compañía). Se puede cambiar al crear; **después queda fijo**, porque es la llave de sus estados de cuenta y sus partidas.
   - **Tipo**: Cliente, Proveedor o Ambos.
   - **Nombre**, **Cédula**, **Correo electrónico**, **Teléfono**, **Nombre del encargado** y **Código de actividad económica**.
   - **Cliente/proveedor desde**: por defecto la fecha de hoy, pero se puede poner una fecha anterior al migrar.
@@ -393,10 +412,13 @@ Revalúa los saldos en moneda extranjera de clientes, proveedores y cuentas al t
   - **Moneda**.
   - **Lista de precios**: una propia, o «Predeterminada de la compañía».
   - **Límite de crédito** y **Plazo de pago (días)**.
-- Desde la ficha: «Editar», «Movimientos y saldo» (el mayor auxiliar del socio) y «Partidas abiertas».
+- Desde la ficha: «Editar», «Movimientos y saldo» (el mayor auxiliar del socio) y «Partidas abiertas» (si tiene el permiso de «Cobros y pagos»).
 
-### 4.2 Partidas abiertas
-Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, notas. Cada uno muestra «Documento», «Vencimiento», «Saldo» y «Estado».
+### 4.2 Cobros y pagos: partidas abiertas (Socios de negocio → Cobros y pagos)
+Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, notas.
+- **«Cobros y pagos»** lista los socios con partidas pendientes: cuántas, el saldo por moneda y el próximo vencimiento. Se busca por código o nombre, y al tocar uno se abren sus partidas.
+- Es un permiso aparte de «Socios de negocio» (separación de funciones). Al separarlo, cada persona quedó con el mismo nivel que tenía en Socios de negocio; un Administrador o el Superusuario lo ajusta en sus permisos.
+- Cada partida muestra «Documento», «Vencimiento», «Saldo» y «Estado».
 - **«Aplicar pago»**: elegí la «Cuenta de pago» (banco o caja), el «Monto» y la «Fecha», y tocá «Confirmar pago». Contabiliza el cobro o pago y lo aplica a la partida.
 - **«Reconciliar entre sí»**: cruza partidas del mismo socio; por ejemplo, una factura contra una nota de crédito.
 - **«Corregir vencimiento»**: cambia solo el vencimiento de la partida. El asiento que la originó no se modifica. Afecta a la antigüedad de saldos y a la proyección de cobros y pagos.
@@ -404,6 +426,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
 ### 4.3 Categorías de socios
 - Campos: «Código», «Nombre» y «Lista de precios que heredan sus socios» (o ninguna, y usan la predeterminada). Por ejemplo, Mayorista, Minorista o Gobierno.
 - Se le asigna una a cada socio desde su ficha.
+- El código se puede corregir mientras la categoría no tenga socios.
 
 ### 4.4 Antigüedad de saldos
 - Parámetros: «Al»; los «Socios» (clientes y proveedores, solo clientes o solo proveedores); y los «Cortes» (estándar 30/60/90 o personalizados).
@@ -639,6 +662,7 @@ Se configuran antes de facturar:
    - Los departamentos tienen un centro de costo por defecto.
    - Los puestos llevan el **código de ocupación CCSS**. El catálogo de la Caja no viene cargado.
    - El salario mínimo y máximo de referencia solo sirve para avisar.
+   - El código de un departamento se puede corregir mientras no tenga trabajadores ni puestos; el de un puesto, mientras no tenga trabajadores.
 4. **Empleados**.
 
 **Otros parámetros:**
@@ -662,9 +686,12 @@ Se configuran antes de facturar:
   - «Entra a la base de aguinaldo, vacaciones y cesantía».
 
   Marcarlas mal produce una planilla que no cuadra con la Caja.
+- **El código** es la columna de la plantilla de movimientos y queda copiado en las boletas: el de un concepto que trae CONTAPP no se cambia, y el de uno propio, solo mientras no se haya usado.
+- **El código de una carga social** (SEM, IVM…) une sus vigencias y no se cambia. Para una tasa nueva se agrega una vigencia con el mismo código.
 
 ### 8.2 Empleados (Planillas → Empleados)
 - **Identificación:** «Código», «Tipo de identificación», «Número», nombre y apellidos, fecha de nacimiento, correo y teléfono.
+  - El código lo propone CONTAPP (EMP-0001 y los que siguen). Se puede corregir hasta la primera planilla del empleado; después queda fijo, porque la plantilla de movimientos lo busca por código.
 - **Foto (opcional):** se agrega al crear o editar al empleado, o desde su ficha completa.
   - Acepta JPG o PNG de hasta 4 MB, y se guarda cuadrada, sin los datos de ubicación que trae una foto del teléfono.
   - «Cambiar foto» reemplaza a la anterior y «Quitar» la borra; la anterior no queda guardada en ningún lado.
@@ -677,6 +704,9 @@ Se configuran antes de facturar:
   - «Salario base».
   - **«Divisor del día»**, para quien cobra por semana: 6 si la semana paga los días laborados, o 7 si la semana incluye el descanso.
 - **Pago:** «Forma de pago», «Banco» y «Cuenta IBAN».
+  - **Cambiar el banco o la cuenta de un empleado ya creado lo aprueba el Superusuario.** Si lo cambia otra persona, el cambio queda **pendiente**: se le avisa al Superusuario por correo y, mientras tanto, la planilla y el archivo de pago usan la cuenta anterior. Lo demás que se haya editado sí se guarda.
+  - El Superusuario lo aprueba o lo rechaza desde la ficha del empleado. Si la cambia él, se aplica directo.
+  - La verificación previa de la planilla avisa de los cambios pendientes.
 - **Impuesto y cargas:**
   - «Hijos con crédito» y «Crédito por cónyuge».
   - «No aplicar impuesto al salario».
@@ -694,6 +724,7 @@ La ficha del empleado muestra también:
 
 ### 8.3 Períodos de planilla (Planillas → Períodos de planilla)
 - Para crear un período: «Año», «Frecuencia», «Número», «Desde», «Hasta», **«Fecha de pago»** y «Nombre». La fecha de pago manda para el asiento y para las tasas vigentes, y puede caer en el mes siguiente.
+  - El «Número» lo propone CONTAPP: el que sigue en ese año y esa frecuencia. **No se puede saltar uno.** El primero del año puede ser cualquiera, para quien empieza a usar CONTAPP a mitad de año.
 - **Estados:** **abierta → calculada → aprobada → contabilizada**. Solo se recalcula en los dos primeros.
 
 **Flujo:**
@@ -818,7 +849,8 @@ Además, desde el período de planilla se obtienen los **Comprobantes de pago** 
 - **Me equivoqué en un asiento contabilizado.** No se edita: anulalo (se crea la reversión) y registralo de nuevo, o usá «Duplicar» para partir del original. Si solo está mal el vencimiento o falta vincular el socio, eso se corrige desde la ficha del asiento.
 - **¿Por qué no puedo eliminar una cuenta, un artículo o un centro de costo?** Porque ya tiene movimientos. Inactivalo.
 - **¿Por qué no veo un menú?** Por los permisos: pedíselo a un Administrador o al Superusuario.
-- **¿Puedo cambiar un código?** No. Creá uno nuevo e inactivá el anterior.
+- **¿Puedo cambiar un código?** Depende del registro (ver «Comportamientos comunes»): una cuenta, un empleado, un concepto propio, una categoría, un departamento o un puesto se pueden corregir mientras no tengan movimientos; los demás, no. Si ya no se puede, creá uno nuevo e inactivá el anterior.
+- **Cambié la cuenta bancaria de un empleado y sigue la anterior.** Porque la tiene que aprobar el Superusuario: le llegó un correo, y en la ficha del empleado se ve el cambio pendiente.
 - **¿Cómo cargo las existencias iniciales?** En Inventario → Movimientos, con la operación «Ajuste de entrada de mercancía», con cantidades y costos.
 - **¿Por qué una factura me pide usuario y contraseña de otra persona?** Porque el precio se apartó de la lista de precios. Lo tiene que liberar un Administrador o el Superusuario.
 - **¿Por qué no se precarga el precio?** Porque el artículo no está en la lista de precios que aplica a ese cliente, o la lista no está vigente o activa.

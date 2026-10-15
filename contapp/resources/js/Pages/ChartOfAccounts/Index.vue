@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { DownloadIcon, PencilIcon, PlusIcon, ScrollTextIcon, UploadIcon } from '@lucide/vue';
 
 import AppLayout from '../../Layouts/AppLayout.vue';
@@ -12,6 +12,8 @@ const props = defineProps({
     accounts: { type: Array, default: () => [] },
     accountTypes: { type: Object, required: true },
     taxRates: { type: Array, default: () => [] },
+    // El código que sigue en cada clase (CodeRules): se propone al crear.
+    nextCodes: { type: Object, default: () => ({}) },
 });
 
 const taxRatesById = computed(() => Object.fromEntries(props.taxRates.map((r) => [r.id, r])));
@@ -121,12 +123,23 @@ function fillForm(values) {
 }
 
 // La clase de la cuenta nueva es la del cajón abierto: es donde el usuario
-// está mirando.
+// está mirando. El código, el que sigue en esa clase (se puede cambiar).
 function openCreate() {
-    fillForm({ ...DEFAULTS, account_type: openDrawer.value ?? Object.keys(props.accountTypes)[0] });
+    const type = openDrawer.value ?? Object.keys(props.accountTypes)[0];
+    fillForm({ ...DEFAULTS, account_type: type, code: props.nextCodes[type] ?? '' });
     selectedId.value = null;
     mode.value = 'create';
 }
+
+// Si cambia la clase y el código sigue siendo el propuesto, se propone el de
+// la clase nueva; lo que escribió la persona no se toca.
+watch(() => form.account_type, (type, previous) => {
+    if (mode.value !== 'create') return;
+    if (form.code === '' || form.code === (props.nextCodes[previous] ?? '')) form.code = props.nextCodes[type] ?? '';
+});
+
+// Con asientos o saldo inicial, el código de la cuenta ya no se cambia (CodeRules).
+const codeLocked = computed(() => mode.value === 'edit' && !! selected.value?.code_locked);
 
 function openAccount(account) {
     selectedId.value = account.id;
@@ -339,7 +352,9 @@ function taxRateLabel(account) {
                 <div class="form-grid">
                     <div class="field">
                         <label for="account-code">Código</label>
-                        <input id="account-code" v-model="form.code" type="text" placeholder="x-xx-xx-xx-xxx" required>
+                        <input id="account-code" v-model="form.code" type="text" placeholder="x-xx-xx-xx-xxx" required :disabled="codeLocked">
+                        <span v-if="codeLocked" class="hint small">No se puede cambiar: la cuenta ya tiene asientos o saldo inicial.</span>
+                        <span v-else-if="mode === 'create' && form.code && form.code === nextCodes[form.account_type]" class="hint small">Sigue a la última cuenta de esta clase. Podés cambiarlo.</span>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">

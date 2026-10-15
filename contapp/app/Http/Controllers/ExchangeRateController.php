@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ExchangeRate;
+use App\Domains\Banking\Exceptions\BccrUnavailableException;
 use App\Domains\Banking\Services\SyncBccrExchangeRatesService;
+use App\Domains\Banking\Support\BccrSyncStatus;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use Illuminate\Http\RedirectResponse;
@@ -29,8 +31,11 @@ class ExchangeRateController extends Controller
         return Inertia::render('ExchangeRates/Index', [
             'rates' => $rates,
             'foreignCurrency' => $company->foreignCurrency()->first(['id', 'code', 'symbol']),
-            'bccrConfigured' => filled(config('services.bccr.email')) && filled(config('services.bccr.token')),
-            'today' => now()->format('Y-m-d'),
+            'bccrConfigured' => filled(config('services.bccr.token')),
+            // La última sincronización automática (contapp:sync-bccr-rates).
+            'bccrLastSync' => BccrSyncStatus::last(),
+            // Hoy en la compañía, no en UTC: de noche en Costa Rica, en UTC ya es mañana.
+            'today' => now($company->timezone ?: config('services.bccr.timezone'))->format('Y-m-d'),
         ]);
     }
 
@@ -90,17 +95,37 @@ class ExchangeRateController extends Controller
         $company = Company::findOrFail($currentCompany->id());
 
         $validated = $request->validate(['date' => ['nullable', 'date']]);
-        $date = isset($validated['date']) ? Carbon::parse($validated['date']) : Carbon::today();
+        $date = isset($validated['date']) ? Carbon::parse($validated['date']) : Carbon::today($company->timezone ?: config('services.bccr.timezone'));
 
-        $result = $service->syncForCompany($company, $date);
+        // El BCCR publica el del dólar (colones por dólar), nada más.
+        $currency = $company->foreignCurrency()->value('code');
 
-        if ($result === null) {
+        if ($currency !== 'USD') {
             return back()->withErrors([
-                'sync' => 'El BCCR no devolvió un tipo de cambio para esa fecha. Puede ser fin de semana/feriado, que BCCR_EMAIL/BCCR_TOKEN no estén configurados, o que el servicio no esté disponible ahora mismo. Podés cargarlo a mano mientras tanto.',
+                'sync' => $currency === null
+                    ? 'La compañía no tiene configurada una moneda extranjera.'
+                    : "El BCCR publica el tipo de cambio del dólar; el de {$currency} se carga a mano con «Crear nuevo».",
             ]);
         }
 
-        return back()->with('success', "Tipo de cambio BCCR del {$date->format('Y-m-d')}: {$result->rate}.");
+        try {
+            $result = $service->syncForCompany($company, $date);
+        } catch (BccrUnavailableException $e) {
+            return back()->withErrors(['sync' => $e->getMessage().' Mientras tanto, se puede cargar a mano con «Crear nuevo».']);
+        }
+
+        if ($result === null) {
+            return back()->withErrors([
+                'sync' => "El BCCR todavía no tiene el tipo de cambio del {$date->format('d/m/Y')}: lo publica la tarde del día anterior. Para una fecha más adelante, cargalo a mano con «Crear nuevo».",
+            ]);
+        }
+
+        // Una tasa bloqueada es una corrección a mano: el BCCR no la pisa.
+        if ($result->is_locked) {
+            return back()->with('success', "El tipo de cambio del {$date->format('d/m/Y')} está bloqueado: se dejó el que tenía ({$result->rate}).");
+        }
+
+        return back()->with('success', "Tipo de cambio del BCCR del {$date->format('d/m/Y')}: {$result->rate}.");
     }
 
     public function destroy(int $exchangeRate): RedirectResponse

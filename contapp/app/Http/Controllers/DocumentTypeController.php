@@ -52,6 +52,15 @@ class DocumentTypeController extends Controller
             'code.regex' => 'El código debe ser exactamente 3 letras (ej. FVE, TRB).',
         ]);
 
+        // Arrancar en otro número sirve para seguir la numeración de un
+        // sistema anterior, y es justo lo que permitiría repetir números:
+        // solo el Superusuario (CodeRules).
+        if ((int) ($validated['starting_consecutive'] ?? 1) !== 1 && ! $request->user()->isSuperAdmin($companyId)) {
+            return back()->withErrors([
+                'starting_consecutive' => 'Solo el Superusuario puede definir un consecutivo inicial distinto de 1.',
+            ])->withInput();
+        }
+
         DocumentType::create([
             ...$validated,
             'company_id' => $companyId,

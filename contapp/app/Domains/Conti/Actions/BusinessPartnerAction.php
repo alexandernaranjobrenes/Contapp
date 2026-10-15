@@ -29,7 +29,7 @@ abstract class BusinessPartnerAction extends BaseContiAction
     protected function partnerFields(): array
     {
         return [
-            'codigo' => 'código del socio, formato x-xxx (ej. C-001)',
+            'codigo' => 'código del socio (CLI-0001, PRV-0001…); lo propone CONTAPP y no se cambia después de crearlo',
             'nombre' => 'nombre o razón social',
             'tipo' => 'cliente | proveedor | ambos',
             'cedula' => 'cédula física o jurídica (opcional)',
@@ -55,7 +55,7 @@ abstract class BusinessPartnerAction extends BaseContiAction
         $required = ! $editing;
 
         return [
-            $this->field('codigo', 'Código', 'texto', ['requerido' => $required, 'ayuda' => 'Formato x-xxx, ej. C-001.']),
+            $this->field('codigo', 'Código', 'texto', ['requerido' => $required, 'ayuda' => 'Lo propone CONTAPP según el tipo (CLI-0001, PRV-0001). Después de crear el socio no se cambia.']),
             $this->field('nombre', 'Nombre o razón social', 'texto', ['requerido' => $required]),
             $this->field('tipo', 'Tipo', 'opciones', ['requerido' => $required, 'opciones' => self::TYPES, 'recalcula' => ! $editing]),
             $this->field('cuenta_control', 'Cuenta de control (CxC o CxP)', 'buscar', ['requerido' => $required, 'fuente' => 'cuentas', 'filtros' => ['acepta_movimientos' => 'sí']]),
@@ -92,10 +92,12 @@ abstract class BusinessPartnerAction extends BaseContiAction
         $same = BusinessPartner::where('type', $type);
         $out = [];
 
-        if (! $this->given($values, 'codigo') && ($last = (clone $same)->latest('created_at')->latest('id')->value('code'))) {
+        if (! $this->given($values, 'codigo')) {
+            // El mismo que propone la pantalla (BusinessPartner::nextCode).
+            $last = (clone $same)->latest('created_at')->latest('id')->value('code');
             $out['codigo'] = $this->suggestion(
-                $this->nextCode($last, fn (string $code) => BusinessPartner::where('code', $code)->exists()),
-                "Sigue a {$last}, el último de los {$label}.",
+                BusinessPartner::nextCode($type),
+                $last ? "Sigue a {$last}, el último de los {$label}." : "Es el primero de los {$label}.",
             );
         }
 

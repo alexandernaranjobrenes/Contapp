@@ -145,7 +145,8 @@ function closeLedger() {
             <template #actions>
                 <template v-if="selected">
                     <button type="button" class="btn btn-ghost" @click="openLedger"><ScrollTextIcon /> Movimientos y saldo</button>
-                    <Link :href="route('business-partners.open-items', selected.id)" class="btn btn-ghost"><ListChecksIcon /> Partidas abiertas</Link>
+                    <!-- Cobros y pagos es otro permiso (business_partners.open_items, CLAUDE.md secc. 36). -->
+                    <Link v-if="($page.props.screenAccess?.['business_partners.open_items'] ?? 'none') !== 'none'" :href="route('business-partners.open-items', selected.id)" class="btn btn-ghost"><ListChecksIcon /> Partidas abiertas</Link>
                     <Link :href="route('business-partners.edit', selected.id)" class="btn btn-primary"><PencilIcon /> Editar</Link>
                 </template>
             </template>

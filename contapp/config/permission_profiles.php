@@ -75,12 +75,14 @@ return [
         ],
         'comprador' => [
             'label' => 'Comprador',
-            'description' => 'Órdenes de compra, facturas de proveedor, costos de importación y socios de negocio. Los artículos, solo para consultar.',
+            'description' => 'Órdenes de compra, facturas de proveedor, costos de importación y socios de negocio. Los artículos y los cobros y pagos, solo para consultar.',
             'sections' => [
                 'inventory' => 'read',
                 'business_partners' => 'read_write',
             ],
             'screens' => [
+                // Separación de funciones: quien da de alta proveedores no les aplica los pagos.
+                'business_partners.open_items' => 'read',
                 'inventory.purchase_orders' => 'read_write',
                 'inventory.reorder' => 'read_write',
                 'inventory.supplier_invoices' => 'read_write',
@@ -109,10 +111,14 @@ return [
         ],
         'tesoreria' => [
             'label' => 'Tesorería (cobros y pagos)',
-            'description' => 'Bancos y socios de negocio: conciliaciones, cobros y pagos.',
+            'description' => 'Bancos, conciliaciones, cobros y pagos. Los socios, solo para consultar.',
             'sections' => [
                 'banking' => 'read_write',
-                'business_partners' => 'read_write',
+                'business_partners' => 'read',
+            ],
+            'screens' => [
+                // Separación de funciones: quien aplica los pagos no edita la ficha del socio.
+                'business_partners.open_items' => 'read_write',
             ],
         ],
         'auditor' => [

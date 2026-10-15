@@ -49,8 +49,9 @@ function submit() {
         <form class="card form-card" @submit.prevent="submit">
             <div class="form-grid">
                 <div class="field">
-                    <label for="code">Código (x-xxx)</label>
-                    <input id="code" v-model="form.code" type="text" required>
+                    <label for="code">Código</label>
+                    <input id="code" v-model="form.code" type="text" required disabled>
+                    <span class="hint small">No se puede cambiar: es la llave de sus estados de cuenta y partidas.</span>
                     <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 

@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { BotIcon, ChevronDownIcon, HistoryIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import UserAvatar from '../../Components/UserAvatar.vue';
@@ -12,13 +12,19 @@ import { requestJson } from '../../Utils/http';
  * compañía y quién lo hizo, de lo más nuevo a lo más viejo.
  *
  * Llega con las primeras 15; «Ver más» pide las 15 siguientes, a partir de
- * la última que ya está en pantalla (ActivityLogController::more). Cada
- * movimiento se despliega con lo que cambió: antes y después.
+ * la última que ya está en pantalla (ActivityLogController::more), con los
+ * mismos filtros. Cada movimiento se despliega con lo que cambió: antes y
+ * después.
  */
 const props = defineProps({
     log: { type: Object, required: true }, // { entries, has_more }
     pageSize: { type: Number, default: 15 },
+    filters: { type: Object, default: () => ({}) }, // { from, to, document, search }: los aplicados
+    // Solo lo que la persona puede ver, por sección: [{ label, options: [{ value, label }] }]
+    documents: { type: Array, default: () => [] },
 });
+
+const page = usePage();
 
 const entries = ref([...props.log.entries]);
 const hasMore = ref(props.log.has_more);
@@ -26,13 +32,56 @@ const loading = ref(false);
 const error = ref('');
 const open = ref({});
 
+// ── Filtros ──
+const blank = { from: '', to: '', document: '', search: '' };
+const fromProps = (filters) => Object.fromEntries(Object.keys(blank).map((key) => [key, filters?.[key] ?? '']));
+const form = ref(fromProps(props.filters));
+const consulting = ref(false);
+
+// Los que están aplicados (los de la dirección), para «Ver más».
+const applied = computed(() => Object.fromEntries(
+    Object.entries(props.filters ?? {}).filter(([, value]) => value !== null && value !== ''),
+));
+const filtering = computed(() => Object.keys(applied.value).length > 0);
+const filterErrors = computed(() => Object.values(page.props.errors ?? {}));
+
+function visit(params) {
+    router.get(route('activity-log.index'), params, {
+        preserveState: true,
+        preserveScroll: true,
+        onStart: () => { consulting.value = true; },
+        onFinish: () => { consulting.value = false; },
+    });
+}
+
+function consult() {
+    visit(Object.fromEntries(Object.entries(form.value).filter(([, value]) => String(value ?? '').trim() !== '')));
+}
+
+function clearFilters() {
+    form.value = { ...blank };
+    visit({});
+}
+
+// Al consultar llega otra primera página: reemplaza a la que había.
+watch(() => props.log, (log) => {
+    entries.value = [...log.entries];
+    hasMore.value = log.has_more;
+    open.value = {};
+    error.value = '';
+});
+
+// Lo aplicado manda (por ejemplo, unas fechas al revés vuelven ordenadas).
+watch(() => props.filters, (filters) => { form.value = fromProps(filters); });
+
 async function loadMore() {
     const last = entries.value.at(-1);
     if (! last || loading.value) return;
 
     loading.value = true;
     error.value = '';
-    const result = await requestJson(`${route('activity-log.more')}?before=${last.id}`);
+    const params = new URLSearchParams({ ...applied.value, before: last.id });
+    const result = await requestJson(`${route('activity-log.more')}?${params}`);
     loading.value = false;
 
     if (! result.ok) {
@@ -57,6 +106,38 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
     <Head title="Bitácora" />
 
     <AppLayout title="Bitácora">
+        <div class="view-toolbar">
+            <form class="view-filters" @submit.prevent="consult">
+                <label class="filter-field">
+                    <span>Desde</span>
+                    <input v-model="form.from" type="date" :max="form.to || undefined">
+                </label>
+                <label class="filter-field">
+                    <span>Hasta</span>
+                    <input v-model="form.to" type="date" :min="form.from || undefined">
+                </label>
+                <label class="filter-field">
+                    <span>Documento</span>
+                    <select v-model="form.document">
+                        <option value="">Todos</option>
+                        <optgroup v-for="group in documents" :key="group.label" :label="group.label">
+                            <option v-for="option in group.options" :key="option.value" :value="option.value">{{ option.label }}</option>
+                        </optgroup>
+                    </select>
+                </label>
+                <label class="filter-field search-field">
+                    <span>Número, código o nombre</span>
+                    <input v-model="form.search" type="search" maxlength="100" placeholder="Ej. AS-0005, CLI-001 o un nombre">
+                </label>
+                <button type="submit" class="btn btn-primary" :disabled="consulting" :data-busy="consulting ? '' : null" :aria-busy="consulting">
+                    Consultar
+                </button>
+                <button v-if="filtering" type="button" class="btn btn-ghost" :disabled="consulting" @click="clearFilters">Limpiar</button>
+            </form>
+        </div>
+
+        <p v-if="filterErrors.length" class="flash flash-error" role="alert">{{ filterErrors.join(' ') }}</p>
+
         <p class="hint intro">
             Todo lo que se hizo en la compañía y quién lo hizo, de lo más reciente a lo más antiguo. Cada movimiento se
             despliega con lo que cambió. Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus
@@ -64,7 +145,9 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
         </p>
 
         <div class="card log">
-            <p v-if="! entries.length" class="muted empty">Todavía no hay movimientos registrados.</p>
+            <p v-if="! entries.length" class="muted empty">
+                {{ filtering ? 'No hay movimientos con esos filtros.' : 'Todavía no hay movimientos registrados.' }}
+            </p>
 
             <ol v-else class="timeline">
                 <li v-for="entry in entries" :key="entry.id" class="event">
@@ -149,12 +232,17 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
                     <HistoryIcon /> {{ loading ? 'Cargando…' : `Ver ${pageSize} más` }}
                 </button>
             </div>
-            <p v-else-if="entries.length" class="muted small end">No hay movimientos más antiguos.</p>
+            <p v-else-if="entries.length" class="muted small end">
+                {{ filtering ? 'No hay más movimientos con esos filtros.' : 'No hay movimientos más antiguos.' }}
+            </p>
         </div>
     </AppLayout>
 </template>
 
 <style scoped>
+/* El buscador, el filtro más usado, es también el más ancho (como en app.scss). */
+.search-field input { width: 15rem; max-width: 100%; }
+
 .intro { margin: 0 0 1rem; }
 
 .log { padding: 0.5rem 1.25rem 1rem; }
@@ -297,6 +385,8 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
 .end { text-align: center; padding-top: 0.75rem; border-top: 1px solid var(--color-border); margin: 0; }
 
 @media (max-width: 640px) {
+    .search-field input { width: 100%; }
+
     .log { padding: 0.25rem 0.85rem 0.85rem; }
 
     /* Antes y después, uno debajo del otro. */

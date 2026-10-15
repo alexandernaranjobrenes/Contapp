@@ -4,6 +4,7 @@ namespace App\Domains\Payroll\Models;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Core\Concerns\BelongsToCompany;
+use App\Domains\Payroll\Services\CostaRicaPayrollDefaults;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -58,5 +59,23 @@ class PayrollConcept extends Model
     public function entryLines(): HasMany
     {
         return $this->hasMany(PayrollEntryLine::class, 'payroll_concept_id');
+    }
+
+    /**
+     * Por qué su código ya no se cambia (CodeRules), o null si todavía se
+     * puede. El código es la columna de la plantilla de movimientos y la
+     * referencia de Conti, y las boletas guardan una copia.
+     */
+    public function codeLockReason(): ?string
+    {
+        if (in_array($this->getOriginal('code'), array_column(CostaRicaPayrollDefaults::CONCEPTS, 'code'), true)) {
+            return 'es un concepto que trae CONTAPP';
+        }
+
+        $used = $this->entryLines()->exists()
+            || PayrollInput::where('payroll_concept_id', $this->id)->exists()
+            || EmployeeRecurringInput::where('payroll_concept_id', $this->id)->exists();
+
+        return $used ? 'ya se usó en planillas o en rubros' : null;
     }
 }

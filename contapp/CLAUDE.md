@@ -652,9 +652,59 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Nunca se guardan los campos con `password`, `token`, `secret`, `api_key` ni `security_code`, ni los `$hidden`. Las cuentas bancarias, con los últimos cuatro dígitos.
 - **Cómo se lee** (`ActivityLogService`, `ActivityLog/Index.vue`):
   - De a 15, más nuevas primero; «Ver más» pide las siguientes con `?before={id}` (índice `company_id, id`).
+  - Filtros (`from`, `to`, `document`, `search` en la dirección; «Ver más» los repite):
+    - Fechas: las dos entran enteras (`created_at` desde el inicio de `from` hasta antes del día siguiente a `to`). Al revés, se ordenan.
+    - `document`: una pantalla (`screen`) o una de `OTHER_DOCUMENTS` (sesiones, usuarios, compañía, mi cuenta: lo de antes de la Bitácora, sin pantalla). `ActivityLogService::documents()` ofrece solo las pantallas que la persona ve y donde se registra algo (no los reportes). Una que no puede ver es un error de validación, no una lista vacía.
+    - `search`: el `subject` del registro («AS-0005», «CLI-001 — …»), o el nombre de la persona en lo de usuarios.
   - En palabras: el verbo de la ruta (`post` → «contabilizó», `void` → «anuló»…) o el del registro; «con Conti» si vino de Conti. Las referencias se muestran por su nombre, no por su id.
 - **Quién la ve** (`can-manage-company`):
   - El Superusuario, todo.
   - Un Administrador, solo las filas de las pantallas que tiene (`screen`) o sin pantalla (usuarios, compañía, sesiones), y no lo que es solo del Superusuario (el acceso a Conti, la licencia).
 - **Las acciones que ya se anotaban a mano** (`user_created`, `permission_change`, `company.logo_updated`…) siguen igual y se muestran con su frase (`ActivityLogService::LEGACY`).
 - **En las pruebas**, lo que crean las factories antes de la acción queda en su propia fila: `freshActivity()` (en `ActivityLogTest`) la limpia.
+
+## 36. CÓDIGOS Y CONSECUTIVOS: LOS DOCUMENTOS SE NUMERAN SOLOS; LOS DATOS MAESTROS, FIJOS DESDE SU PRIMER MOVIMIENTO
+
+**Regla:** el código es la llave con la que reconocen un registro las personas, los reportes, las plantillas de Excel, Conti y los papeles ya impresos. Por eso:
+
+- **Documentos** (asientos, comprobantes, órdenes, movimientos…): número automático, correlativo, inalterable y que nunca se reutiliza. Se anulan, no se borran. Ya era así; no se toca.
+- **Datos maestros:** CONTAPP sugiere el siguiente código al crear, la persona lo puede ajustar en ese momento, y queda fijo desde que el registro tiene movimientos.
+- **Códigos que vienen de afuera** (lote del fabricante, serie, código de barras, CAByS, actividad de Hacienda): los escribe la persona, se validan, y quedan fijos al usarse.
+
+**`CodeRules`** (`app/Domains/Core/Support`) es la única forma de hacerlo:
+- `next($código, $existe)`: el que sigue con el mismo formato («PRV-0012» → «PRV-0013»); salta los que ya existen. Null si no termina en número: el catálogo no tiene un formato que seguir.
+- `following($consulta, $primero)`: el que sigue al último creado (`latest('id')`) de esa consulta; sin ninguno, el primero de la serie. La consulta lleva el alcance de la compañía.
+- `ensureUnchanged($motivo, $actual, $pedido)`: si hay motivo y el código cambió, un error de validación en `code`: «El código no se puede cambiar: {motivo}.»
+
+**Cuándo queda fijo cada uno:**
+
+| Registro | Se sugiere | Queda fijo |
+|---|---|---|
+| Cuenta contable | El que sigue a la última hoja de esa clase, en la misma cuenta madre (`nextCodes`) | Con un asiento (también borrador) o un saldo inicial (`ChartOfAccount::codeLockReason`) |
+| Socio de negocio | `CLI-0001` / `PRV-0001` / `SOC-0001` según el tipo (`BusinessPartner::nextCode`) | Siempre, desde que se crea (`CODE_LOCKED`) |
+| Empleado | `EMP-0001` | Con su primera boleta (`payroll_entries`) |
+| Concepto de planilla | — | Si es de los que trae CONTAPP (`CostaRicaPayrollDefaults::CONCEPTS`), o si ya se usó en una boleta, un movimiento o un rubro fijo |
+| Carga social | — | Siempre: el código une sus vigencias. Un cambio de tasa es una vigencia nueva con el mismo código |
+| Indicador de impuesto propio | — | Con su primer uso (ya era así: usado, solo se le cierra la vigencia) |
+| Categoría de socios | El que sigue | Con socios adentro |
+| Departamento / puesto | El que sigue | Con trabajadores (o, el departamento, con puestos) |
+| Artículos, grupos, almacenes, ubicaciones, unidades, listas de precios y de materiales, centros de costo, normas de reparto | El que sigue (`nextCode`) | Ya eran fijos al editar |
+
+- El backend siempre valida; la pantalla deshabilita el campo con el motivo (`code_locked` en cada fila) y lo sugiere (`nextCode` / `nextCodes`). La sugerencia es solo un valor inicial: si la persona la cambia, se respeta.
+- **Conti** sigue las mismas reglas: `actualizar_socio` rechaza un código distinto, y `crear_socio` sugiere con `BusinessPartner::nextCode`.
+
+**Consecutivos:**
+- **Período de planilla:** el número que sigue al último del año y la frecuencia, sin saltos. El primero del año puede ser cualquiera (una compañía que empieza a mitad de año). No se edita después de crearlo.
+- **Consecutivo inicial de un tipo de documento:** distinto de 1, solo el Superusuario (sirve para continuar la numeración de otro sistema, y es lo que permitiría repetir números). La pantalla ni lo muestra a los demás.
+
+**La cuenta bancaria de un empleado** (`EmployeeBankChangeService`), el fraude más común de una planilla:
+- El Superusuario la cambia directo.
+- Cualquier otra persona deja el cambio **pendiente** (`pending_bank_name`, `pending_bank_account`, quién y cuándo) y al Superusuario de la licencia le llega un correo (`EmployeeBankChangeNotification`, con la cuenta enmascarada). Mientras no lo apruebe, la planilla y el archivo de pago usan la cuenta confirmada, y la verificación previa de la planilla lo advierte.
+- Aprobar o rechazar (`employees.bank-change.approve` / `reject`) es solo del Superusuario, desde la lista o la ficha completa.
+- Al crear un empleado la cuenta queda tal cual: no hay una anterior que proteger.
+
+**Separación de funciones: «Cobros y pagos» es otra pantalla** (`business_partners.open_items`):
+- Las partidas abiertas de un socio, aplicar cobros y pagos, cambiar vencimientos y reconciliar. Tiene su propia entrada en el menú (`open-items.index`: los socios con partidas pendientes).
+- Quien crea o edita proveedores no tiene por qué ser quien les aplica los pagos: Socios de negocio ya no da acceso a esto.
+- La migración que la separó le dio a cada persona el mismo nivel que tenía en Socios de negocio; el Superusuario la ajusta.
+- En Conti, `aplicar_pago` es de esta pantalla. En los perfiles de permisos, Tesorería la tiene con escritura y los socios solo para consultar.

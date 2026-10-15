@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Inventory\Models\ItemBin;
 use App\Domains\Inventory\Models\Warehouse;
 use App\Domains\Inventory\Models\WarehouseBin;
@@ -27,6 +28,8 @@ class WarehouseBinController extends Controller
             ->get(['id', 'code', 'name', 'status']);
 
         return Inertia::render('Inventory/Warehouses/Bins', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(WarehouseBin::where('warehouse_id', $warehouse->id)),
             'warehouse' => $warehouse->only(['id', 'code', 'name', 'uses_bins']),
             'bins' => $bins,
         ]);

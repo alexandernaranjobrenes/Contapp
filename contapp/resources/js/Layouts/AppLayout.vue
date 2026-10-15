@@ -170,9 +170,11 @@ const nav = computed(() => {
         },
         {
             label: 'Socios de negocio', icon: HandshakeIcon,
-            match: ['business-partners.*', 'bp-categories.*', 'reports.aging.*'],
+            match: ['business-partners.*', 'open-items.*', 'bp-categories.*', 'reports.aging.*'],
             children: [
-                { screen: 'business_partners.partners', group: 'Operación', label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.*'] },
+                { screen: 'business_partners.partners', group: 'Operación', label: 'Socios de negocio', href: route('business-partners.index'), match: ['business-partners.index', 'business-partners.create', 'business-partners.edit'] },
+                // Aplicar cobros y pagos es otro permiso que editar al socio (CLAUDE.md secc. 36).
+                { screen: 'business_partners.open_items', group: 'Operación', label: 'Cobros y pagos', href: route('open-items.index'), match: ['open-items.*', 'business-partners.open-items*'] },
                 // La antigüedad de saldos es de clientes y proveedores: su
                 // módulo es este, no contabilidad.
                 { screen: 'reports.aging', group: 'Reportes', label: 'Antigüedad de saldos', href: route('reports.aging.index'), match: ['reports.aging.*'] },

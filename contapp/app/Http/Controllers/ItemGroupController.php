@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Inventory\Models\GlDetermination;
-use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemGroup;
+use App\Domains\Inventory\Services\GlDeterminationScopeService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,8 @@ class ItemGroupController extends Controller
     public function index(GlDeterminationScopeService $scopes): Response
     {
         return Inertia::render('Inventory/ItemGroups/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(ItemGroup::query()),
             'itemGroups' => ItemGroup::orderBy('code')
                 ->withCount('items')
                 ->get(['id', 'code', 'name', 'status']),

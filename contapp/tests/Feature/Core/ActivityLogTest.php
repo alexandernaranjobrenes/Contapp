@@ -12,6 +12,7 @@ use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\UnitOfMeasure;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -204,4 +205,100 @@ it('el Superusuario ve todo; un Administrador, lo de sus pantallas; un Usuario, 
 
     ['user' => $plain] = logInAsCompanyUser($company);
     $this->actingAs($plain)->get(route('activity-log.index'))->assertForbidden();
+});
+
+/** Una fila como la deja ActivityRecorder, en esa pantalla y a esa hora. */
+function activityRow($company, User $user, string $screen, string $subject, string $at): AuditLog
+{
+    return AuditLog::create([
+        'company_id' => $company->id, 'user_id' => $user->id, 'action' => AuditLog::ACTIVITY, 'route' => null,
+        'screen' => $screen, 'auditable_type' => Item::class, 'auditable_id' => 1, 'subject' => $subject,
+        'changes' => ['records' => [['t' => Item::class, 'id' => 1, 'a' => 'created', 's' => $subject, 'f' => []]], 'omitted' => []],
+        'created_at' => Carbon::parse($at),
+    ]);
+}
+
+it('filtra por rango de fechas, por documento y por su número o nombre', function () {
+    ['user' => $super, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true]);
+    freshActivity();
+    $lucia = User::factory()->create(['name' => 'Lucía Rojas']);
+
+    activityRow($company, $super, 'inventory.items', 'ART-1 — Laptop', '2026-09-30 23:59:00');
+    activityRow($company, $super, 'inventory.items', 'ART-2 — Mouse', '2026-10-01 00:00:00');
+    activityRow($company, $super, 'accounting.journal_entries', 'AS-0005', '2026-10-05 23:59:00');
+    activityRow($company, $super, 'inventory.items', 'ART-3 — Monitor', '2026-10-06 00:00:00');
+    AuditLog::create(['company_id' => $company->id, 'user_id' => $super->id, 'action' => 'auth.login', 'auditable_type' => User::class, 'auditable_id' => $super->id, 'created_at' => Carbon::parse('2026-10-03 07:00')]);
+    AuditLog::create(['company_id' => $company->id, 'user_id' => $super->id, 'action' => 'user_created', 'auditable_type' => User::class, 'auditable_id' => $lucia->id, 'created_at' => Carbon::parse('2026-10-04 09:00')]);
+
+    $sentences = fn (array $filters) => collect($this->get(route('activity-log.index', $filters))->assertOk()->inertiaProps('log.entries'))->pluck('sentence')->all();
+
+    // Las dos fechas entran enteras.
+    expect($sentences(['from' => '2026-10-01', 'to' => '2026-10-05']))
+        ->toBe(['creó la cuenta de Lucía Rojas', 'inició sesión', 'creó el artículo AS-0005', 'creó el artículo ART-2 — Mouse']);
+
+    // Al revés se entienden igual, y la pantalla las recibe ordenadas.
+    $reversed = $this->get(route('activity-log.index', ['from' => '2026-10-05', 'to' => '2026-10-01']));
+    expect($reversed->inertiaProps('filters'))->toMatchArray(['from' => '2026-10-01', 'to' => '2026-10-05'])
+        ->and($reversed->inertiaProps('log.entries'))->toHaveCount(4);
+
+    expect($sentences(['document' => 'inventory.items']))
+        ->toBe(['creó el artículo ART-3 — Monitor', 'creó el artículo ART-2 — Mouse', 'creó el artículo ART-1 — Laptop'])
+        ->and($sentences(['document' => 'inventory.items', 'from' => '2026-10-01']))
+        ->toBe(['creó el artículo ART-3 — Monitor', 'creó el artículo ART-2 — Mouse'])
+        ->and($sentences(['document' => 'sessions']))->toBe(['inició sesión'])
+        ->and($sentences(['document' => 'users']))->toBe(['creó la cuenta de Lucía Rojas']);
+
+    // El número, código o nombre del documento; en lo de usuarios, la persona.
+    expect($sentences(['search' => 'mouse']))->toBe(['creó el artículo ART-2 — Mouse'])
+        ->and($sentences(['search' => 'AS-0005']))->toBe(['creó el artículo AS-0005'])
+        ->and($sentences(['search' => 'Lucía']))->toBe(['creó la cuenta de Lucía Rojas'])
+        ->and($sentences(['search' => '%']))->toBe([]);
+});
+
+it('«Ver más» sigue con los mismos filtros', function () {
+    ['user' => $super, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true]);
+    freshActivity();
+
+    foreach (range(1, 20) as $n) {
+        activityRow($company, $super, 'inventory.items', "ART-{$n}", '2026-10-02 10:00');
+        activityRow($company, $super, 'accounting.journal_entries', "AS-{$n}", '2026-10-02 10:00');
+    }
+
+    $first = $this->get(route('activity-log.index', ['document' => 'inventory.items']))->inertiaProps('log');
+    expect($first['entries'])->toHaveCount(15)->and($first['has_more'])->toBeTrue();
+
+    $more = $this->getJson(route('activity-log.more', ['before' => collect($first['entries'])->last()['id'], 'document' => 'inventory.items']))
+        ->assertOk()->json();
+
+    expect($more['entries'])->toHaveCount(5)
+        ->and($more['has_more'])->toBeFalse()
+        ->and(collect($more['entries'])->pluck('sentence')->every(fn (string $s) => str_contains($s, 'ART-')))->toBeTrue();
+});
+
+it('el filtro «Documento» ofrece solo lo que la persona puede ver', function () {
+    ['user' => $super, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true]);
+    freshActivity();
+    activityRow($company, $super, 'inventory.items', 'ART-1', '2026-10-02 10:00');
+    activityRow($company, $super, 'payroll.employees', 'EMP-0001 — Ana', '2026-10-02 10:00');
+
+    $values = fn ($response) => collect($response->inertiaProps('documents'))->flatMap(fn (array $group) => array_column($group['options'], 'value'))->all();
+
+    // El Superusuario, todas las pantallas donde se registra algo; los reportes, no.
+    $all = $values($this->get(route('activity-log.index')));
+    $reports = collect(ScreenCatalog::screens())->where('read_only', true)->keys()
+        ->diff(array_column(AuditCatalog::MODELS, 4));
+    expect($all)->toContain('inventory.items', 'payroll.employees', 'business_partners.open_items', 'sessions', 'users', 'company', 'account')
+        ->and(array_intersect($all, $reports->all()))->toBe([]);
+
+    $admin = activityAdmin($super, $company, ['inventory.items' => 'read']);
+    $this->actingAs($admin);
+
+    expect($values($this->get(route('activity-log.index'))))->toBe(['inventory.items', 'sessions', 'users', 'company', 'account']);
+
+    // Lo que no puede ver, ni pidiéndolo a mano.
+    $this->get(route('activity-log.index', ['document' => 'payroll.employees']))->assertSessionHasErrors(['document' => 'No tenés acceso a ese documento.']);
+    $this->getJson(route('activity-log.more', ['before' => 999999, 'document' => 'payroll.employees']))->assertStatus(422);
+
+    // Y buscando por nombre tampoco aparece lo de otra pantalla.
+    expect(collect($this->get(route('activity-log.index', ['search' => 'EMP-0001']))->inertiaProps('log.entries')))->toBeEmpty();
 });

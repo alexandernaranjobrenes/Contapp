@@ -3,6 +3,115 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-14 — El tipo de cambio del BCCR, solo, todos los días (y el programador ya corre)
+
+**Pedido del usuario:** con el token del BCCR ya funcionando, que un cron sincronice una vez al día todas las compañías, para que nadie tenga que hacerlo a mano; y cambiar el texto de la pantalla.
+
+- **El programador ahora corre de verdad: servicio `scheduler` en `docker-compose.yml`** (`php artisan schedule:work`, que corre el programador cada minuto como el cron de un servidor).
+  - Hasta hoy, `routes/console.php` declaraba tareas que nadie ejecutaba (ver 2026-08-24).
+  - Usa la imagen `contapp-app` y no su entrypoint: las migraciones y la caché de rutas las hace `app`, y hacerlas dos veces a la vez se pisaría. Corre como root, igual que `docker exec`, para poder escribir `laravel.log`.
+  - **Consecuencia:** `contapp:process-journal-schedules` (borradores de los registros programados vencidos) también empieza a correr solo cada día, como se diseñó. Solo crea borradores; en la base de desarrollo no había ninguno programado.
+  - **En un servidor de producción** hace falta lo equivalente: este servicio, o el cron `* * * * * php artisan schedule:run`.
+- **`contapp:sync-bccr-rates` dos veces al día, a las 6:00 y a las 13:00 hora de Costa Rica** (`twiceDaily` con `timezone`, `withoutOverlapping`). Repetirlo no cambia nada (la tasa del día se actualiza con el mismo valor). La segunda sirve si a las 6 el BCCR no respondió.
+- **«Hoy» es el día de Costa Rica, no el de UTC** (la aplicación corre en UTC: después de las 6 p. m. en Costa Rica, en UTC ya es mañana). Lo mismo para la fecha que propone Tipos de cambio, que ahora sale de la zona horaria de la compañía.
+- **Se completan los días que faltan** (`--catch-up`, 7 por defecto).
+  - Si el servidor estuvo apagado, esos días no se quedan con la tasa del último día que corrió.
+  - Solo se crea la que falta: una que ya existe, del BCCR o corregida a mano, no se toca ni se consulta.
+  - Se pregunta al BCCR una vez por fecha, no por compañía.
+- **Constancia de la última vez** (`BccrSyncStatus`, en la caché): Tipos de cambio muestra cuándo fue y qué tipo de cambio trajo. Si falló, lo muestra en rojo con el motivo: un token vencido se ve el mismo día, no cuando a alguien le sale una tasa vieja.
+  - El mensaje que ve cada compañía no dice cuántas compañías hay en CONTAPP: eso queda solo en la salida del comando.
+- **Verificado:**
+  - con el token real: 4 compañías con el del 14/10/2026 (₡454,56) y los 7 días anteriores completados (el BCCR también publica los fines de semana, con el del viernes);
+  - el `scheduler` corriendo, y `schedule:list` mostrando las dos horas;
+  - la pantalla, con una persona temporal, en claro y oscuro, en escritorio y teléfono.
+
+---
+## 2026-10-14 — El tipo de cambio, desde la API nueva del BCCR (SDDE)
+
+**Pedido del usuario:** incorporar la API del Banco Central de Costa Rica para el tipo de cambio («Sincronizar con BCCR» nunca había traído un dato).
+
+**Hallazgos:**
+- **El cliente anterior nunca se había probado contra el BCCR real**, y ya no podía funcionar.
+  - Llamaba al servicio web viejo (`gee.bccr.fi.cr/…/wsindicadoreseconomicos.asmx`), que hoy responde 503: el BCCR lo reemplazó en 2025 por el Sistema de Divulgación de Datos Económicos (SDDE), y retiró el sitio viejo de indicadores el 31 de octubre de 2025.
+  - Usaba el indicador **317 como si fuera el de venta: el 317 es el de compra**. El de venta es el 318.
+- **La API nueva**, según el documento oficial del BCCR «Estándar electrónico para usar el nuevo Sistema de Divulgación de Datos Económicos (SDDE)», vigente desde el 7 de abril de 2025:
+  - `GET https://apim.bccr.fi.cr/SDDE/api/Bccr.GE.SDDE.Publico.Indicadores.API/indicadoresEconomicos/{indicador}/series?fechaInicio=AAAA/MM/DD&fechaFin=AAAA/MM/DD&idioma=ES`;
+  - con `Authorization: Bearer {token}`, y responde JSON;
+  - el token se genera en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token. Ya no se usa el correo.
+
+**Decisiones:**
+- **Solo la API del BCCR** (`BccrSddeExchangeRateClient`, en lugar de `BccrSoapExchangeRateClient`, que se borró): ninguna otra fuente, como pidió el usuario. Configuración: `BCCR_TOKEN`; `BCCR_EMAIL` ya no hace falta.
+- **Se guarda una sola tasa por día, la de referencia de venta (318)**, como «Referencia».
+  - Es la que usa Hacienda para los comprobantes en dólares, y la que el cliente anterior quería traer.
+  - Una sola porque el motor contable, el diferencial cambiario y el inventario toman la última tasa de la fecha sin mirar el tipo: guardar también la de compra el mismo día haría que el asiento usara una u otra según el orden de las filas.
+- **Cada falla se dice con su motivo** (`BccrUnavailableException`): falta el token, token rechazado (401), token copiado a medias, suscripción inactiva (403), demasiadas consultas (429), sin conexión (se reintenta dos veces), el BCCR caído.
+  - Antes, todo era «no devolvió dato», y no se sabía si faltaba configurar algo o si era fin de semana.
+  - Una fecha que el BCCR todavía no publica sigue siendo null («lo publica la tarde del día anterior»).
+- **Un token con forma inválida:** probado contra el BCCR real, uno que no es un JWT no recibe 401 sino 500. Si el BCCR responde 500 y el token no tiene forma de JWT («eyJ…», tres partes), el mensaje dice que está mal copiado.
+- **Una consulta por fecha:** sincronizar todas las compañías pregunta una sola vez (el cliente recuerda la respuesta), para no gastar el límite de consultas del BCCR.
+- **Programado cada día a las 6:00** (`routes/console.php`). Antes el comando existía pero no estaba programado. Sigue haciendo falta el cron de `schedule:run` en el servidor (ver 2026-08-24); mientras tanto, el botón lo hace a mano.
+- **Sin token, el botón queda deshabilitado** y la pantalla dice dónde se genera.
+
+**Verificado:**
+- contra el BCCR real, desde el contenedor: sin token responde 401; con un token inventado con forma de JWT, 401 → «El BCCR rechazó el token…»; con uno sin forma de JWT, 500 → «no tiene la forma…»;
+- con un token válido no se pudo probar en este entorno (hay que registrarse en el BCCR): la forma de la respuesta sigue la documentación oficial y está cubierta por las pruebas con respuestas falsas.
+
+---
+## 2026-10-14 — Bitácora: filtros por rango de fechas y por documento
+
+**Pedido del usuario:** en la Bitácora, un filtro por rango de fechas y por documento, «todo de acuerdo a los accesos permitidos del usuario».
+
+- **«Documento» es la pantalla donde pasó** (Registros, Artículos, Empleados…), no el tipo de modelo. Cada fila ya guarda su pantalla, que es justo lo que decide qué ve un Administrador. Así el filtro coincide con el menú, y un documento con varias clases de registros (Parámetros de planilla: conceptos, cargas, provisiones) se elige una sola vez.
+  - Lo de antes de la Bitácora, que no tiene pantalla, va en cuatro opciones: Sesiones, Usuarios y permisos, Compañía y Mi cuenta.
+- **De acuerdo a los accesos:**
+  - Solo se ofrecen las pantallas que la persona puede ver y donde se registra algo; los reportes, no.
+  - Pedir a mano una que no puede ver es un error de validación («No tenés acceso a ese documento.»), no una lista vacía que parezca que no pasó nada.
+  - Lo demás ya lo filtraba la consulta base.
+- **También el número, código o nombre**, para seguir la historia de un documento puntual («AS-0005», «CLI-001»). En lo de usuarios busca el nombre de la persona.
+- **Las fechas entran enteras** (el «Hasta» incluye todo ese día). Si vienen al revés, se ordenan.
+- **«Ver 15 más» repite los filtros:** sin eso, la segunda página mezclaría todo.
+- **Verificado en el navegador** con un Administrador temporal con Artículos y Registros (sin Planillas):
+  - las opciones del filtro;
+  - cada filtro y «Ver más» con filtro;
+  - «Limpiar»;
+  - el error al pedir Empleados a mano;
+  - teléfono y oscuro.
+
+---
+## 2026-10-14 — Códigos y consecutivos: fijos desde el primer movimiento, y la cuenta bancaria con aprobación
+
+**Pedido del usuario:** un análisis, con criterio contable y de seguridad, de qué códigos y consecutivos debería dar o cambiar la persona, y después: «aplicalo así», todo lo recomendado (prioridad alta, media y baja, y los puntos de seguridad). Detalle en CLAUDE.md secc. 36.
+
+- **Los documentos ya estaban bien:** asientos, comprobantes, órdenes y movimientos se numeran solos, no se repiten y se anulan en vez de borrarse. No se tocaron.
+- **Datos maestros: se sugiere el código, y queda fijo desde su primer movimiento** (`CodeRules`). El código es la llave de los reportes, las plantillas de Excel, Conti y los papeles ya impresos; cambiarlo después los desconecta.
+  - Cuenta contable: fija con un asiento (también borrador) o un saldo inicial.
+  - Socio: fijo desde que se crea; el maestro de proveedores es blanco típico de fraude, y su código está en estados de cuenta y partidas.
+  - Empleado: fijo con su primera planilla; la plantilla de movimientos lo busca por código.
+  - Concepto de planilla: los de CONTAPP siempre; los propios, una vez usados.
+  - Carga social: siempre (une sus vigencias).
+  - Categoría, departamento y puesto: fijos cuando ya se usan.
+  - El resto de los catálogos ya no dejaba cambiarlo; ahora también sugiere el siguiente.
+- **La sugerencia sigue el formato que ya usa la compañía** (`CLI-006` → `CLI-007`), no impone uno. Sin nada que seguir, el primero de la serie (`CLI-0001`, `PRV-0001`, `SOC-0001`, `EMP-0001`); en un catálogo sin serie, nada.
+- **Los indicadores de impuesto propios ya estaban fijos al usarse** (el análisis decía lo contrario): `TaxRateController::update` ya solo deja cerrar la vigencia de uno usado. No se cambió.
+- **Período de planilla:** el número que sigue, sin saltos; el primero del año puede ser cualquiera, para quien empieza a mitad de año.
+- **Consecutivo inicial distinto de 1, solo el Superusuario:** sirve para continuar la numeración de otro sistema, y es justamente lo que permitiría repetir números.
+- **Cuenta bancaria de un empleado: la cambia el Superusuario, o queda pendiente de su aprobación.** El fraude más común de una planilla es cambiar la cuenta justo antes del archivo de pago, y la Bitácora sola no avisa a nadie.
+  - Se eligió «pendiente + correo al Superusuario» y no «la confirma un segundo usuario cualquiera», porque una compañía pequeña puede no tener dos personas con acceso a planillas.
+  - Mientras está pendiente se le paga a la cuenta confirmada, y la verificación previa de la planilla lo advierte.
+- **Separación de funciones: «Cobros y pagos» pasa a ser su propia pantalla** (`business_partners.open_items`). Quien crea proveedores ya no aplica sus pagos solo por tener Socios de negocio.
+  - La migración le copió a cada persona (y a cada invitación pendiente) el nivel que tenía en Socios de negocio, para que nadie pierda nada el día del cambio; el Superusuario separa después.
+  - Nueva entrada en el menú con los socios que tienen partidas pendientes.
+- **Bug encontrado de paso, corregido:** al editar un empleado desde la lista, el formulario se llenaba con una fila a la que le faltaban campos (fecha de nacimiento, dirección, número de asegurado, tipo de contrato, banco, notas, cuenta de gasto…). Guardar los dejaba vacíos. La fila ahora trae todo lo que edita el formulario.
+- **Verificado en el navegador** con un Administrador temporal (no Superusuario):
+  - las sugerencias de socio, cuenta, empleado, período y artículo;
+  - los campos fijos de un socio y de una cuenta con asientos;
+  - el cambio de cuenta que queda pendiente, sin botones para aprobar;
+  - «Cobros y pagos»;
+  - el consecutivo inicial que no aparece;
+  - teléfono y oscuro.
+  - Aprobar y rechazar (solo el Superusuario) quedó cubierto por las pruebas.
+
+---
 ## 2026-10-09 — La Bitácora: el historial de todo, en Administración
 
 **Pedido del usuario:** en Administración, una «Bitácora» con el historial de movimientos de la compañía y quién los hizo. La ven solo el Superusuario y los Administradores. Carga los 15 más recientes y «Ver más» trae 15 más, para no cargar al servidor. Tiene que ser de TODO.

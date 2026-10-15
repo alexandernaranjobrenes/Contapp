@@ -114,7 +114,13 @@ function documentLabel(item) {
 
     <AppLayout :title="`Partidas abiertas — ${partner.name}`">
         <div class="view-toolbar">
-            <Link :href="route('business-partners.index')" class="btn btn-ghost"><ArrowLeftIcon /> Socios de negocio</Link>
+            <!-- Vuelve a donde se puede: la ficha de socios es otro permiso (CLAUDE.md secc. 36). -->
+            <Link
+                v-if="($page.props.screenAccess?.['business_partners.partners'] ?? 'none') !== 'none'"
+                :href="route('business-partners.index')"
+                class="btn btn-ghost"
+            ><ArrowLeftIcon /> Socios de negocio</Link>
+            <Link v-else :href="route('open-items.index')" class="btn btn-ghost"><ArrowLeftIcon /> Cobros y pagos</Link>
             <div class="view-actions">
                 <button
                     type="button"

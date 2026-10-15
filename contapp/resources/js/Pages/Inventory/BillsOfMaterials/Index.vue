@@ -8,6 +8,8 @@ import { confirmAction } from '../../../Utils/confirm';
 import { useCrudModal } from '../../../Utils/crudModal';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     billsOfMaterials: { type: Array, default: () => [] },
     items: { type: Array, default: () => [] },
 });
@@ -63,7 +65,7 @@ function quantity(value) {
         <div class="view-toolbar">
             <div class="view-actions">
                 <Link :href="route('production-orders.index')" class="btn btn-ghost">Órdenes de fabricación</Link>
-                <button type="button" class="btn btn-primary" :disabled="!items.length" @click="openCreate()">
+                <button type="button" class="btn btn-primary" :disabled="!items.length" @click="openCreate({ code: nextCode ?? '' })">
                     <PlusIcon /> Crear nuevo
                 </button>
             </div>

@@ -3,6 +3,7 @@
 namespace App\Domains\BusinessPartners\Models;
 
 use App\Domains\Core\Concerns\BelongsToCompany;
+use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,6 +27,16 @@ class BpCategory extends Model
      */
     public function priceList(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\Inventory\Models\PriceList::class);
+        return $this->belongsTo(PriceList::class);
+    }
+
+    /**
+     * Por qué su código ya no se cambia (CodeRules), o null si todavía se
+     * puede: con socios adentro, es el código por el que se agrupan sus
+     * reportes y por el que Conti la busca.
+     */
+    public function codeLockReason(): ?string
+    {
+        return $this->businessPartners()->exists() ? 'ya hay socios en esta categoría' : null;
     }
 }

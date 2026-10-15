@@ -38,7 +38,7 @@ final class ApplyPaymentAction extends BaseContiAction
 
     public function screen(): string
     {
-        return 'business_partners.partners';
+        return 'business_partners.open_items';
     }
 
     public function fields(): array

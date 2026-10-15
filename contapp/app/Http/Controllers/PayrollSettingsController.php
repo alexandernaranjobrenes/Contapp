@@ -5,9 +5,13 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
+use App\Domains\Payroll\Models\EmployeeRecurringInput;
 use App\Domains\Payroll\Models\PayrollConcept;
 use App\Domains\Payroll\Models\PayrollContribution;
+use App\Domains\Payroll\Models\PayrollEntryLine;
+use App\Domains\Payroll\Models\PayrollInput;
 use App\Domains\Payroll\Models\PayrollProvision;
 use App\Domains\Payroll\Models\PayrollSetting;
 use App\Domains\Payroll\Models\PayrollTaxBracket;
@@ -35,6 +39,16 @@ class PayrollSettingsController extends Controller
     public function index(CurrentCompany $currentCompany): Response
     {
         $settings = PayrollSetting::where('company_id', $currentCompany->id())->first();
+
+        // Los conceptos con el código fijo (CodeRules): los usados, en tres
+        // consultas para toda la lista, y los que trae CONTAPP.
+        $conceptIds = PayrollConcept::pluck('id');
+        $lockedConcepts = array_fill_keys([
+            ...PayrollEntryLine::whereIn('payroll_concept_id', $conceptIds)->distinct()->pluck('payroll_concept_id')->all(),
+            ...PayrollInput::whereIn('payroll_concept_id', $conceptIds)->distinct()->pluck('payroll_concept_id')->all(),
+            ...EmployeeRecurringInput::whereIn('payroll_concept_id', $conceptIds)->distinct()->pluck('payroll_concept_id')->all(),
+        ], true);
+        $defaultConcepts = array_column(CostaRicaPayrollDefaults::CONCEPTS, 'code');
 
         return Inertia::render('Payroll/Settings/Index', [
             'settings' => $settings === null ? null : [
@@ -99,6 +113,8 @@ class PayrollSettingsController extends Controller
                 ->get()
                 ->map(fn (PayrollConcept $c) => [
                     'id' => $c->id, 'code' => $c->code, 'name' => $c->name, 'type' => $c->type,
+                    // Usado o de los que trae CONTAPP: el código es fijo (CodeRules).
+                    'code_locked' => isset($lockedConcepts[$c->id]) || in_array($c->code, $defaultConcepts, true),
                     'affects_ccss' => (bool) $c->affects_ccss,
                     'affects_income_tax' => (bool) $c->affects_income_tax,
                     'affects_provisions' => (bool) $c->affects_provisions,
@@ -287,6 +303,10 @@ class PayrollSettingsController extends Controller
 
         $validated = $request->validate($this->contributionRules($currentCompany->id(), $model->id));
 
+        // El código une las vigencias de una misma carga (SEM, IVM…): un
+        // cambio de tasa es una vigencia nueva con el mismo código (CodeRules).
+        CodeRules::ensureUnchanged('une las vigencias de la misma carga; para cambiar la tasa, agregá una vigencia nueva', $model->code, $validated['code']);
+
         $model->update([
             ...$validated,
             'exempt_for_pensioner' => $validated['exempt_for_pensioner'] ?? false,
@@ -413,10 +433,12 @@ class PayrollSettingsController extends Controller
     public function updateConcept(Request $request, int $concept, CurrentCompany $currentCompany): RedirectResponse
     {
         $model = PayrollConcept::findOrFail($concept);
+        $validated = $request->validate($this->conceptRules($currentCompany->id(), $model->id));
 
-        $model->update($this->normalizeConcept(
-            $request->validate($this->conceptRules($currentCompany->id(), $model->id))
-        ));
+        // Usado en planillas, o de los que trae CONTAPP: el código es fijo (CodeRules).
+        CodeRules::ensureUnchanged($model->codeLockReason(), $model->code, $validated['code']);
+
+        $model->update($this->normalizeConcept($validated));
 
         return back()->with('success', "Concepto {$model->code} actualizado.");
     }

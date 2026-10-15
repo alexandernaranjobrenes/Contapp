@@ -6,6 +6,7 @@ use App\Domains\Accounting\Models\CostAllocationRule;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\Accounting\Services\CostAllocationSplitter;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,8 @@ class CostAllocationRuleController extends Controller
     public function index(CurrentCompany $currentCompany): Response
     {
         return Inertia::render('CostAllocationRules/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(CostAllocationRule::query()),
             'rules' => CostAllocationRule::with('lines.costCenter:id,code,name')
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'valid_from', 'valid_until', 'is_active']),

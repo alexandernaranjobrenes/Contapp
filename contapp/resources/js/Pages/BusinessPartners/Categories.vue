@@ -8,6 +8,8 @@ import { useCrudModal } from '../../Utils/crudModal';
 import { ArrowLeftIcon, PencilIcon, PlusIcon } from '@lucide/vue';
 
 const props = defineProps({
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
     categories: { type: Array, default: () => [] },
     priceLists: { type: Array, default: () => [] },
 });
@@ -32,6 +34,9 @@ const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdi
     store: () => route('bp-categories.store'),
     update: (c) => route('bp-categories.update', c.id),
 });
+
+// Con socios adentro, el código de la categoría ya no se cambia (CodeRules).
+const codeLocked = computed(() => mode.value === 'edit' && !! selected.value?.code_locked);
 
 const modalTitle = computed(() => {
     if (mode.value === 'create') return 'Nueva categoría';
@@ -58,7 +63,7 @@ function destroy() {
         <div class="view-toolbar">
             <Link :href="route('business-partners.index')" class="btn btn-ghost"><ArrowLeftIcon /> Socios de negocio</Link>
             <div class="view-actions">
-                <button type="button" class="btn btn-primary" @click="openCreate()"><PlusIcon /> Crear nuevo</button>
+                <button type="button" class="btn btn-primary" @click="openCreate({ code: nextCode ?? '' })"><PlusIcon /> Crear nuevo</button>
             </div>
             <div class="view-filters">
                 <input v-model="search" type="search" placeholder="Buscar código o nombre..." aria-label="Buscar categoría">
@@ -119,7 +124,8 @@ function destroy() {
                 <div class="field-row">
                     <div class="field">
                         <label for="category-code">Código</label>
-                        <input id="category-code" v-model="form.code" type="text" autocomplete="off" placeholder="MAYORISTA" required>
+                        <input id="category-code" v-model="form.code" type="text" autocomplete="off" placeholder="MAYORISTA" required :disabled="codeLocked">
+                        <span v-if="codeLocked" class="hint small">No se puede cambiar: ya hay socios en esta categoría.</span>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">

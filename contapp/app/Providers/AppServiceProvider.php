@@ -3,7 +3,7 @@
 namespace App\Providers;
 
 use App\Domains\Banking\Contracts\BccrExchangeRateClient;
-use App\Domains\Banking\Services\BccrSoapExchangeRateClient;
+use App\Domains\Banking\Services\BccrSddeExchangeRateClient;
 use App\Domains\Billing\Contracts\HaciendaSigner;
 use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\Services\Hacienda\UnconfiguredHaciendaSigner;
@@ -40,7 +40,7 @@ class AppServiceProvider extends ServiceProvider
         // (ContiChatController). Por petición: nunca se arrastra a otra.
         $this->app->scoped(ContiContext::class);
 
-        $this->app->bind(BccrExchangeRateClient::class, BccrSoapExchangeRateClient::class);
+        $this->app->bind(BccrExchangeRateClient::class, BccrSddeExchangeRateClient::class);
 
         // Firma y envío a Hacienda: por defecto fallan explícitamente porque
         // exigen el certificado del contribuyente y credenciales del ATV. Al

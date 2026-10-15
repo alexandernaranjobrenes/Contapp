@@ -11,6 +11,9 @@ const props = defineProps({
     departments: { type: Array, default: () => [] },
     positions: { type: Array, default: () => [] },
     costCenters: { type: Array, default: () => [] },
+    // Los códigos que siguen (CodeRules): se proponen al crear.
+    nextDepartmentCode: { type: String, default: null },
+    nextPositionCode: { type: String, default: null },
 });
 
 const page = usePage();
@@ -57,6 +60,7 @@ function fillForm(kind, row = null) {
 function openCreate() {
     const kind = tab.value === 'departamentos' ? 'department' : 'position';
     fillForm(kind);
+    rowForm.code = (kind === 'department' ? props.nextDepartmentCode : props.nextPositionCode) ?? '';
     modal.value = { kind, id: null, mode: 'create' };
 }
 
@@ -117,6 +121,9 @@ function destroyRow() {
 }
 
 const modalOpen = computed(() => !! modal.value && (modal.value.mode === 'create' || !! modalRow.value));
+
+// Con gente (o puestos) adentro, el código ya no se cambia (CodeRules).
+const codeLocked = computed(() => modal.value?.mode === 'edit' && !! modalRow.value?.code_locked);
 
 const modalTitle = computed(() => {
     if (! modal.value) return '';
@@ -325,7 +332,10 @@ const withoutOccupation = computed(
                 <div class="field-row">
                     <div class="field">
                         <label for="structure-code">Código</label>
-                        <input id="structure-code" v-model="rowForm.code" type="text" maxlength="20" required>
+                        <input id="structure-code" v-model="rowForm.code" type="text" maxlength="20" required :disabled="codeLocked">
+                        <span v-if="codeLocked" class="hint small">
+                            No se puede cambiar: {{ modal.kind === 'department' ? 'el departamento ya tiene trabajadores o puestos' : 'el puesto ya tiene trabajadores' }}.
+                        </span>
                         <span v-if="rowForm.errors.code" class="error">{{ rowForm.errors.code }}</span>
                     </div>
                     <div class="field">

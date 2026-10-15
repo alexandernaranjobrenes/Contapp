@@ -256,7 +256,7 @@ it('con la licencia vencida se consulta, pero no se prepara nada para guardar', 
 /** Una compañía en la que se puede contabilizar hoy. */
 function contiJournalFixture(): array
 {
-    $f = contiUser(['accounting.journal_entries' => 'read_write', 'business_partners.partners' => 'read_write']);
+    $f = contiUser(['accounting.journal_entries' => 'read_write', 'business_partners.partners' => 'read_write', 'business_partners.open_items' => 'read_write']);
     $company = $f['company'];
 
     ExchangeRate::factory()->create(['company_id' => $company->id, 'currency_id' => $company->foreign_currency_id, 'rate_date' => now()->format('Y-m-d'), 'rate' => '520.000000']);

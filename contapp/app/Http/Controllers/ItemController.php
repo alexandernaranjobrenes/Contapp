@@ -5,9 +5,10 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
-use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\GlDetermination;
+use App\Domains\Inventory\Models\Item;
 use App\Domains\Inventory\Models\ItemGroup;
 use App\Domains\Inventory\Models\ItemWarehouse;
 use App\Domains\Inventory\Models\UnitOfMeasure;
@@ -64,6 +65,8 @@ class ItemController extends Controller
             ->withQueryString();
 
         return Inertia::render('Inventory/Items/Index', [
+            // El código que sigue (CodeRules): se propone al crear.
+            'nextCode' => CodeRules::following(Item::query()),
             'items' => $items,
             'filters' => $filters,
             'itemGroups' => ItemGroup::where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),

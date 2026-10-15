@@ -9,6 +9,8 @@ import { confirmAction } from '../../Utils/confirm';
 
 const props = defineProps({
     costCenters: { type: Array, default: () => [] },
+    // El código que sigue (CodeRules): se propone al crear, y se puede cambiar.
+    nextCode: { type: String, default: null },
 });
 
 const page = usePage();
@@ -65,7 +67,7 @@ function fillForm(values) {
 }
 
 function openCreate() {
-    fillForm({ code: '', name: '', start_date: today, end_date: '', is_active: true });
+    fillForm({ code: props.nextCode ?? '', name: '', start_date: today, end_date: '', is_active: true });
     selectedId.value = null;
     mode.value = 'create';
 }

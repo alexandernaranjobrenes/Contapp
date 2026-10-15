@@ -100,6 +100,12 @@ final class UpdateBusinessPartnerAction extends BusinessPartnerAction
 
         $changes = array_intersect_key($input, $current);
 
+        // El código es fijo desde que se crea (CodeRules), también desde Conti.
+        if (isset($changes['codigo']) && (string) $changes['codigo'] !== $partner->code) {
+            $this->fail('codigo', 'El código no se puede cambiar: '.BusinessPartner::CODE_LOCKED.'.');
+        }
+        unset($changes['codigo']);
+
         if ($changes === []) {
             $this->fail('socio', 'No mandaste ningún campo para cambiar.');
         }

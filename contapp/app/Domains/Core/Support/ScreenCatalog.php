@@ -144,6 +144,12 @@ final class ScreenCatalog
             ]],
             ['key' => 'business_partners', 'label' => 'Socios de negocio', 'screens' => [
                 $r('business_partners.partners', 'Socios de negocio', 'Operación', 'business_partners', ['business-partners.*']),
+                // Aplicar cobros y pagos es otro permiso que editar la ficha
+                // del socio (separación de funciones, CLAUDE.md secc. 36): quien
+                // da de alta proveedores no tiene por qué ser quien les aplica
+                // los pagos. Las rutas de partidas le ganan al comodín de
+                // arriba por ser más largas.
+                $r('business_partners.open_items', 'Cobros y pagos', 'Operación', 'business_partners', ['business-partners.open-items', 'business-partners.open-items.*', 'open-items.*']),
                 $report('reports.aging', 'Antigüedad de saldos', 'reports.aging'),
                 $r('business_partners.categories', 'Categorías de socios', 'Catálogos', 'business_partners', ['bp-categories.*']),
             ]],

@@ -7,6 +7,7 @@ use App\Domains\Accounting\Models\JournalDetail;
 use App\Domains\Accounting\Services\ChartOfAccountBulkImporter;
 use App\Domains\Accounting\Services\ChartOfAccountTemplateExporter;
 use App\Domains\Core\Models\Company;
+use App\Domains\Core\Support\CodeRules;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\TaxRate;
 use Illuminate\Http\RedirectResponse;
@@ -26,9 +27,14 @@ class ChartOfAccountController extends Controller
             'requires_cost_center', 'tax_classification', 'tax_rate_id', 'is_active',
         ]);
 
+        // El código es fijo desde el primer asiento o saldo inicial (CodeRules).
+        $moved = ChartOfAccount::withMovements($accounts->pluck('id')->all());
+        $accounts->each(fn (ChartOfAccount $account) => $account->setAttribute('code_locked', isset($moved[$account->id])));
+
         return Inertia::render('ChartOfAccounts/Index', [
             'accounts' => $accounts,
             'accountTypes' => ChartOfAccount::ACCOUNT_TYPES,
+            'nextCodes' => $this->nextCodes(),
             // Para el selector "Indicador de impuesto vinculado": no filtra
             // por vigencia acá, es solo configuración de a qué cuenta apunta
             // cada indicador — la vigencia real se exige recién al contabilizar.
@@ -55,6 +61,7 @@ class ChartOfAccountController extends Controller
     {
         $account = ChartOfAccount::findOrFail($account);
         $validated = $this->validated($request, $currentCompany->id(), $account->id);
+        CodeRules::ensureUnchanged($account->codeLockReason(), $account->code, $validated['code']);
 
         $account->update([
             ...$validated,
@@ -114,6 +121,30 @@ class ChartOfAccountController extends Controller
         }
 
         return back()->with('success', "Se importaron {$result->importedCount} cuenta(s) del archivo.");
+    }
+
+    /**
+     * El código que sigue para una cuenta nueva de cada clase: el de la
+     * última cuenta de movimiento de esa clase, dentro de su mismo grupo
+     * (como lo sugiere Conti). Null en una clase sin cuentas todavía.
+     *
+     * @return array<string, ?string>
+     */
+    private function nextCodes(): array
+    {
+        $out = [];
+
+        foreach (array_keys(ChartOfAccount::ACCOUNT_TYPES) as $type) {
+            $leaves = ChartOfAccount::where('account_type', $type)->where('accepts_posting', true);
+            $latest = (clone $leaves)->latest('created_at')->latest('id')->first();
+
+            $out[$type] = $latest === null ? null : CodeRules::next(
+                (clone $leaves)->where('parent_id', $latest->parent_id)->orderByDesc('code')->value('code'),
+                fn (string $code) => ChartOfAccount::where('code', $code)->exists(),
+            );
+        }
+
+        return $out;
     }
 
     private function validated(Request $request, ?int $companyId, ?int $ignoreId = null): array
