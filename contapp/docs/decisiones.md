@@ -3,6 +3,55 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-14 — Respaldos de una compañía: exportar a un archivo de texto cifrado e importar a una compañía nueva
+
+**Pedido del usuario:** que el Superusuario y el backoffice puedan exportar un respaldo completo de los datos de una compañía según un período, en texto plano, y que el sistema pueda importarlo. Al exportar, elegir qué y de qué fechas, y un resumen antes de confirmar.
+
+**Decidido con el usuario:**
+- Para qué: un respaldo ante una pérdida, y mover una compañía a otra licencia (de la misma instalación).
+- Importar solo a una compañía nueva.
+- El período: los catálogos completos, los movimientos del período y los saldos iniciales, y además la opción «Todo el historial».
+- Cifrado: el archivo es texto, pero cifrado con una contraseña.
+- Sin fotos ni logo. Con la Bitácora.
+- Importan el Superusuario y el backoffice.
+
+**Cómo se hizo (CLAUDE.md secc. 37):**
+- **JSON Lines** (una línea por registro) y no CSV ni un volcado SQL:
+  - CSV serían unas 130 tablas y pierde tipos y vacíos.
+  - Un SQL queda atado a MySQL, y ejecutar un SQL que alguien pudo editar es peligroso.
+  - JSON Lines se lee de a una línea, así una compañía grande no carga todo en memoria.
+  - Va **comprimido y cifrado**, y el archivo es texto (base64): un respaldo con años de historia no pasaría el límite de subida de 64 MB.
+- **libsodium** (XChaCha20-Poly1305 por tramos y Argon2id para la clave): cada tramo se autentica, así un archivo cortado o editado no se abre. Una contraseña equivocada se detecta en el primer tramo.
+- **Una firma de la instalación** (HMAC con la APP_KEY): que solo se importe lo que CONTAPP exportó, tal cual.
+  - Sin eso, alguien podría armar un archivo con asientos que nunca existieron y cifrarlo con su propia contraseña.
+  - El costo: no sirve entre instalaciones, ni después de cambiar la APP_KEY. Eso calza con los usos que eligió el usuario.
+- **Qué lleva cada tabla se declara una vez** (`BackupCatalog`), como la Bitácora, con una prueba que exige clasificar cada tabla nueva. Las referencias se leen de la base: no hay una lista de 377 llaves foráneas que mantener.
+- **Los saldos iniciales se arman en el mismo vocabulario del respaldo** (filas con id negativo: un asiento APE, sus líneas, el kardex de apertura). La importación no tiene un camino aparte para ellos.
+  - El asiento va el día **anterior** al período: así el estado de resultados del período no carga lo de antes, y el del año da lo mismo.
+  - Una línea por partida abierta, para seguir cobrando cada documento con su vencimiento.
+  - Las planillas traen los 12 meses anteriores, que el aguinaldo y las liquidaciones necesitan.
+- **Importar en una transacción** (todo o nada), en la cola `backups`: no queda una compañía a medias.
+  - El archivo subido y su contraseña (cifrada con la APP_KEY) se guardan solo mientras hace falta, y como mucho 24 horas.
+  - La cola tiene su propio servicio en Docker (`queue`), que atiende solo esa cola: los comprobantes de pago ya encolados no salen de golpe.
+- **Las personas, por su correo.** Una cuenta es de la persona, no de la compañía: se respeta el cupo de la licencia, y quien no cabe o no tiene cuenta queda anotado. Alguien sin rol (el Superusuario de la licencia de origen) no se suma.
+- **La Bitácora se trae con sus referencias traducidas:** a quién se refiere cada movimiento, y los ids que lleva adentro.
+- **Si la licencia ya tiene una compañía con ese nombre**, se propone «(copia)»: dos iguales en el selector se confunden.
+
+**Encontrado al probar con los datos reales de la compañía 1** (ida y vuelta dentro de una transacción que se deshizo): con todo el historial, desde marzo y de marzo a agosto, el balance de comprobación, las partidas abiertas y las existencias dieron idénticos, y no se descartó ningún registro.
+- Antes de eso, la Bitácora, la determinación de cuentas y los registros programados se importaban antes que lo que referencian (no son llaves foráneas), y quedaban apuntando a nada. Se corrigió con `AFTER` y `LAST`.
+
+**Verificado en el navegador**, con un Superusuario, una licencia y un usuario del backoffice temporales (todo borrado después; la base quedó igual):
+- el menú;
+- las secciones (Facturación arrastra Inventario);
+- el resumen de exportar con los saldos iniciales;
+- una contraseña de cuenta equivocada;
+- la descarga cifrada;
+- la importación con su resumen verificado, procesada por el servicio `queue`;
+- la lista de importaciones;
+- la pantalla del backoffice;
+- teléfono y oscuro.
+
+---
 ## 2026-10-14 — El tipo de cambio del BCCR, solo, todos los días (y el programador ya corre)
 
 **Pedido del usuario:** con el token del BCCR ya funcionando, que un cron sincronice una vez al día todas las compañías, para que nadie tenga que hacerlo a mano; y cambiar el texto de la pantalla.

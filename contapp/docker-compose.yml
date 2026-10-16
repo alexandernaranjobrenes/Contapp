@@ -48,6 +48,24 @@ services:
     networks:
       - contapp
 
+  # La cola «backups»: importar un respaldo (CLAUDE.md secc. 37) puede
+  # tardar, y corre aparte de la pantalla. Solo esa cola: lo demás que se
+  # encola (los comprobantes de pago por correo) sigue como estaba.
+  queue:
+    image: contapp-app
+    container_name: contapp_queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: ["php", "artisan", "queue:work", "--queue=backups", "--tries=1", "--timeout=3600", "--sleep=3", "--memory=512"]
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro
+      - contapp_vendor:/var/www/html/vendor
+    depends_on:
+      - app
+    networks:
+      - contapp
+
   nginx:
     image: nginx:stable-alpine
     container_name: contapp_nginx

@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\LicenseInvitationAcceptanceController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
+use App\Http\Controllers\Backoffice\CompanyBackupController as BackofficeCompanyBackupController;
 use App\Http\Controllers\Backoffice\FeedbackModerationController;
 use App\Http\Controllers\Backoffice\NewsController;
 use App\Http\Controllers\BalanceSheetController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\CommercialFollowUpController;
 use App\Http\Controllers\CommercialInteractionController;
 use App\Http\Controllers\CommercialProfileController;
 use App\Http\Controllers\CompanyAppearanceController;
+use App\Http\Controllers\CompanyBackupController;
 use App\Http\Controllers\CompanyDetailsController;
 use App\Http\Controllers\CompanyLogoController;
 use App\Http\Controllers\CompanyProvisioningController;
@@ -904,6 +906,15 @@ Route::middleware('auth')->group(function () {
         Route::get('activity-log/more', [ActivityLogController::class, 'more'])->middleware('throttle:60,1')->name('activity-log.more');
     });
 
+    // Respaldos de una compañía (CLAUDE.md secc. 37): solo el Superusuario,
+    // lo revisa el controlador. Exportar e importar piden su contraseña.
+    Route::get('backups', [CompanyBackupController::class, 'index'])->name('backups.index');
+    Route::post('backups/preview', [CompanyBackupController::class, 'preview'])->middleware('throttle:30,1')->name('backups.preview');
+    Route::post('backups/export', [CompanyBackupController::class, 'export'])->middleware('throttle:10,1')->name('backups.export');
+    Route::post('backups/import', [CompanyBackupController::class, 'upload'])->middleware('throttle:10,1')->name('backups.import');
+    Route::post('backups/import/{uuid}/confirm', [CompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('backups.import.confirm');
+    Route::get('backups/import/{uuid}', [CompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('backups.import.status');
+
     Route::middleware('can-manage-users')->group(function () {
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
         Route::get('users/create', [UserManagementController::class, 'create'])->name('users.create');
@@ -965,6 +976,14 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::delete('license-categories/{licenseCategory}', [LicenseCategoryController::class, 'destroy'])->name('license-categories.destroy');
 
     Route::get('licenses/{license}/commercial-profile', [CommercialProfileController::class, 'show'])->name('licenses.commercial-profile.show');
+
+    // Respaldos de las compañías de una licencia (CLAUDE.md secc. 37).
+    Route::get('licenses/{license}/backups', [BackofficeCompanyBackupController::class, 'index'])->name('licenses.backups.index');
+    Route::post('licenses/{license}/backups/preview', [BackofficeCompanyBackupController::class, 'preview'])->middleware('throttle:30,1')->name('licenses.backups.preview');
+    Route::post('licenses/{license}/backups/export', [BackofficeCompanyBackupController::class, 'export'])->middleware('throttle:10,1')->name('licenses.backups.export');
+    Route::post('licenses/{license}/backups/import', [BackofficeCompanyBackupController::class, 'upload'])->middleware('throttle:10,1')->name('licenses.backups.import');
+    Route::post('licenses/{license}/backups/import/{uuid}/confirm', [BackofficeCompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('licenses.backups.import.confirm');
+    Route::get('licenses/{license}/backups/import/{uuid}', [BackofficeCompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('licenses.backups.import.status');
     Route::post('licenses/{license}/commercial-profile', [CommercialProfileController::class, 'store'])->name('licenses.commercial-profile.store');
     Route::post('licenses/{license}/commercial-interactions', [CommercialInteractionController::class, 'store'])->name('licenses.commercial-interactions.store');
     Route::post('licenses/{license}/commercial-follow-ups', [CommercialFollowUpController::class, 'store'])->name('licenses.commercial-follow-ups.store');

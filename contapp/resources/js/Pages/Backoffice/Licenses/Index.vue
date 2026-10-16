@@ -283,6 +283,8 @@ const HISTORY_ACTIONS = {
     license_invitation_cancelled: 'Quitó la asignación',
     license_invitation_accepted: 'La persona aceptó la licencia',
     license_activated: 'Se activó con una cuenta existente',
+    license_company_backup_exported: 'Exportó un respaldo de una compañía',
+    license_company_backup_imported: 'Creó una compañía desde un respaldo',
 };
 
 const HISTORY_FIELDS = {
@@ -894,6 +896,7 @@ function statusOf(license) {
                 </template>
                 <template v-else-if="selected && mode === 'details'">
                     <a :href="route('backoffice.licenses.commercial-profile.show', selected.id)" class="btn btn-ghost">Perfil comercial</a>
+                    <a :href="route('backoffice.licenses.backups.index', selected.id)" class="btn btn-ghost">Respaldos</a>
                     <button type="button" class="btn btn-ghost" @click="startRenew">Renovar</button>
                     <button v-if="selected.status === 'active'" type="button" class="btn btn-ghost" @click="askConfirm('suspend')">Suspender</button>
                     <button v-if="selected.status === 'suspended'" type="button" class="btn btn-ghost" @click="reactivate">Reactivar</button>

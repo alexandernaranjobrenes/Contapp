@@ -86,6 +86,8 @@ class ActivityLogService
         'company.theme_updated' => 'cambió el tema de la compañía',
         'company.logo_updated' => 'cambió el logo de la compañía',
         'company.logo_removed' => 'quitó el logo de la compañía',
+        'company.backup_exported' => 'exportó un respaldo de la compañía',
+        'company.backup_imported' => 'creó la compañía desde un respaldo',
         'license_activated' => 'activó la licencia',
         'license_invitation_accepted' => 'aceptó la licencia',
         'user.profile_updated' => 'editó su perfil',
@@ -148,6 +150,17 @@ class ActivityLogService
         'payroll_concept_id' => PayrollConcept::class,
         'tax_rate_id' => TaxRate::class,
     ];
+
+    /**
+     * Las columnas que apuntan a otro registro, con su clase: al importar un
+     * respaldo (BackupImporter) se traducen igual que el resto.
+     *
+     * @return array<string, class-string>
+     */
+    public static function referenceColumns(): array
+    {
+        return self::REFERENCES;
+    }
 
     /** @var array<class-string, array<int, string>> Los nombres de las referencias de la página. */
     private array $names = [];

@@ -1,0 +1,217 @@
+<?php
+
+use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
+use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Accounting\Models\ExchangeRate;
+use App\Domains\Accounting\Models\FiscalPeriod;
+use App\Domains\Accounting\Models\FiscalYear;
+use App\Domains\Accounting\Models\JournalEntry;
+use App\Domains\Accounting\Services\PostJournalService;
+use App\Domains\Core\Models\AuditLog;
+use App\Domains\Core\Models\Company;
+use App\Domains\Core\Models\CompanyBackup;
+use App\Domains\Core\Models\DocumentType;
+use App\Domains\Core\Scopes\CompanyScope;
+use App\Domains\Core\Services\PermissionGrantService;
+use App\Domains\Licensing\Models\License;
+use App\Models\User;
+use App\Notifications\CompanyBackupExportedNotification;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+
+/*
+|--------------------------------------------------------------------------
+| Respaldos: las pantallas (CLAUDE.md secc. 37)
+|--------------------------------------------------------------------------
+|
+| Solo el Superusuario (de su licencia) y el backoffice (de cualquiera).
+| Antes de exportar, el resumen; para exportar e importar, la contraseña de
+| la cuenta. Importar crea una compañía nueva, dentro del cupo.
+|
+*/
+
+beforeEach(function () {
+    Notification::fake();
+    Storage::fake('local');
+});
+
+/** Una compañía con licencia, su Superusuario (con sesión) y un asiento. */
+function httpBackupFixture(): array
+{
+    $superuser = User::factory()->create(['is_super_admin' => true, 'email' => 'dueno@example.com', 'name' => 'Dueño']);
+    $license = License::factory()->create(['superuser_id' => $superuser->id, 'max_companies' => 3]);
+    $company = Company::factory()->create(['license_id' => $license->id, 'legal_name' => 'Panadería La Espiga S.A.', 'trade_name' => 'Panadería La Espiga', 'tax_id' => '3-101-555555']);
+    $company->users()->attach($superuser->id, ['is_default' => true]);
+    $superuser->update(['default_company_id' => $company->id]);
+
+    ExchangeRate::factory()->create(['company_id' => $company->id, 'currency_id' => $company->foreign_currency_id, 'rate_date' => '2026-01-01', 'rate' => '510.000000']);
+    $year = FiscalYear::factory()->create(['company_id' => $company->id, 'year' => 2026]);
+    FiscalPeriod::factory()->create(['fiscal_year_id' => $year->id, 'period_number' => 3, 'start_date' => '2026-03-01', 'end_date' => '2026-03-31', 'status' => 'open']);
+    $cash = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-01-01-001']);
+    $capital = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '3-01-01-01-001', 'account_type' => 'equity', 'normal_balance' => 'credit']);
+    $type = DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'DIA', 'origin_module' => 'contable']);
+    app(PostJournalService::class)->post($company, $type, new DateTime('2026-03-05'), new DateTime('2026-03-05'), [
+        new JournalLineInput($cash->id, $company->local_currency_id, debit: 5000, credit: 0),
+        new JournalLineInput($capital->id, $company->local_currency_id, debit: 0, credit: 5000),
+    ], 'Aporte');
+
+    test()->actingAs($superuser);
+
+    return compact('superuser', 'license', 'company');
+}
+
+function httpBackupExport(array $f, array $override = [])
+{
+    return test()->postJson(route('backups.export'), [
+        'company_id' => $f['company']->id,
+        'sections' => ['accounting'],
+        'period' => 'all',
+        'password' => 'clave-del-archivo',
+        'password_confirmation' => 'clave-del-archivo',
+        'account_password' => 'password',
+        ...$override,
+    ]);
+}
+
+it('solo el Superusuario: un Administrador no entra a Respaldos', function () {
+    $f = httpBackupFixture();
+
+    $this->get(route('backups.index'))->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Backups/Index')->where('companies.0.name', 'Panadería La Espiga')->has('sections', 7));
+
+    $admin = app(PermissionGrantService::class)->createUser($f['superuser'], $f['company'], ['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'Secreto#1234'], 'admin', []);
+    $this->actingAs($admin);
+
+    $this->get(route('backups.index'))->assertForbidden();
+    $this->postJson(route('backups.preview'), ['company_id' => $f['company']->id, 'period' => 'all'])->assertForbidden();
+    httpBackupExport($f)->assertForbidden();
+});
+
+it('antes de exportar, el resumen de lo que va', function () {
+    $f = httpBackupFixture();
+
+    $summary = $this->postJson(route('backups.preview'), ['company_id' => $f['company']->id, 'sections' => ['billing'], 'period' => 'range', 'from' => '2026-03-01'])
+        ->assertOk()
+        ->json();
+
+    expect($summary['company'])->toBe('Panadería La Espiga')
+        ->and($summary['period'])->toBe('Desde el 01/03/2026 hasta hoy')
+        ->and(array_column($summary['sections'], 'key'))->toBe(['accounting', 'inventory', 'billing'])
+        ->and(collect($summary['sections'][0]['items'])->firstWhere('label', 'Asientos')['count'])->toBe(1);
+
+    // Una compañía de otra licencia, no.
+    $other = Company::factory()->create();
+    $this->postJson(route('backups.preview'), ['company_id' => $other->id, 'period' => 'all'])->assertStatus(422)->assertJsonValidationErrors('company_id');
+});
+
+it('exportar pide la contraseña de la cuenta y una del archivo; baja el archivo cifrado y queda en la Bitácora', function () {
+    $f = httpBackupFixture();
+
+    httpBackupExport($f, ['account_password' => 'otra'])->assertStatus(422)->assertJsonValidationErrors(['account_password' => 'La contraseña de tu cuenta no es correcta.']);
+    httpBackupExport($f, ['password' => 'corta', 'password_confirmation' => 'corta'])->assertStatus(422)->assertJsonValidationErrors('password');
+    httpBackupExport($f, ['password_confirmation' => 'distinta-de-la-otra'])->assertStatus(422)->assertJsonValidationErrors('password');
+
+    $response = httpBackupExport($f)->assertOk();
+    $content = $response->streamedContent();
+
+    expect($response->headers->get('Content-Disposition'))->toContain('respaldo-panaderia-la-espiga-inicio-al-')
+        ->and($content)->toStartWith("CONTAPP RESPALDO CIFRADO\nversion: 1\ncompania: Panadería La Espiga (3-101-555555)")
+        // Nada legible adentro.
+        ->and($content)->not->toContain('Aporte')
+        ->and(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->value('user_id'))->toBe($f['superuser']->id);
+
+    Notification::assertNothingSent();
+});
+
+it('importar: se revisa, se confirma y crea una compañía nueva con lo que trae', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+
+    $this->post(route('backups.import'), ['file' => $file, 'password' => 'otra-clave'], ['Accept' => 'application/json'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['file' => 'La contraseña no es la de este respaldo, o el archivo está dañado.']);
+
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $upload = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->assertOk()->json();
+
+    expect($upload['summary']['company']['legal_name'])->toBe('Panadería La Espiga S.A.')
+        ->and($upload['summary']['exported']['correo'])->toBe('dueno@example.com')
+        ->and($upload['defaults']['tax_id'])->toBe('3-101-555555')
+        // La original sigue en la licencia: se propone «(copia)» para no confundirlas.
+        ->and($upload['defaults']['legal_name'])->toBe('Panadería La Espiga S.A. (copia)')
+        ->and($upload['defaults']['trade_name'])->toBe('Panadería La Espiga (copia)');
+
+    $this->postJson(route('backups.import.confirm', $upload['uuid']), ['legal_name' => 'La Espiga (copia)', 'account_password' => 'otra'])
+        ->assertStatus(422)->assertJsonValidationErrors('account_password');
+
+    // En las pruebas la cola corre en el momento.
+    $status = $this->postJson(route('backups.import.confirm', $upload['uuid']), ['legal_name' => 'La Espiga (copia)', 'account_password' => 'password'])->assertOk()->json();
+    expect($this->getJson(route('backups.import.status', $upload['uuid']))->json('status'))->toBe('done');
+
+    $backup = CompanyBackup::where('uuid', $upload['uuid'])->sole();
+    $copy = Company::findOrFail($backup->company_id);
+
+    expect($copy->legal_name)->toBe('La Espiga (copia)')
+        ->and($copy->license_id)->toBe($f['license']->id)
+        ->and(JournalEntry::withoutGlobalScope(CompanyScope::class)->where('company_id', $copy->id)->count())->toBe(1)
+        ->and($backup->result['imported'])->toBeGreaterThan(0)
+        // Nada queda guardado: ni el archivo ni su contraseña.
+        ->and($backup->file_path)->toBeNull()
+        ->and($backup->getRawOriginal('secret'))->toBeNull()
+        ->and(Storage::disk('local')->allFiles('backups'))->toBe([])
+        ->and(AuditLog::where('company_id', $copy->id)->where('action', 'company.backup_imported')->exists())->toBeTrue();
+
+    // Ya importado, no se confirma otra vez.
+    $this->postJson(route('backups.import.confirm', $upload['uuid']), ['legal_name' => 'Otra', 'account_password' => 'password'])->assertStatus(422);
+});
+
+it('sin cupo en la licencia no se importa', function () {
+    $f = httpBackupFixture();
+    $f['license']->update(['max_companies' => 1]);
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+
+    $upload = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->assertOk()->json();
+    expect($upload['can_add_company'])->toBeFalse();
+
+    $this->postJson(route('backups.import.confirm', $upload['uuid']), ['legal_name' => 'Copia', 'account_password' => 'password'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('legal_name');
+
+    expect(Company::where('license_id', $f['license']->id)->count())->toBe(1);
+});
+
+it('el backoffice exporta cualquier compañía, y al Superusuario le llega un correo', function () {
+    $f = httpBackupFixture();
+    $propietario = loginAsPropietario(['name' => 'Soporte CONTAPP']);
+
+    $this->get(route('backoffice.licenses.backups.index', $f['license']->id))->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Backoffice/Licenses/Backups')->where('superuser.email', 'dueno@example.com'));
+
+    $this->postJson(route('backoffice.licenses.backups.export', $f['license']->id), [
+        'company_id' => $f['company']->id, 'sections' => [], 'period' => 'all',
+        'password' => 'clave-del-archivo', 'password_confirmation' => 'clave-del-archivo', 'account_password' => 'password',
+    ])->assertOk()->streamedContent();
+
+    Notification::assertSentTo($f['superuser'], CompanyBackupExportedNotification::class);
+
+    // En la Bitácora de la compañía, a nombre del equipo de CONTAPP; y en el historial de la licencia.
+    expect(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->value('new_values')['by'])->toBe('Equipo de CONTAPP (Soporte CONTAPP)')
+        ->and(AuditLog::where('propietario_id', $propietario->id)->where('action', 'license_company_backup_exported')->exists())->toBeTrue();
+});
+
+it('un respaldo subido que nadie confirma se borra a las 24 horas', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+
+    expect(Storage::disk('local')->allFiles('backups'))->toHaveCount(1);
+
+    $this->travel(25)->hours();
+    $this->artisan('contapp:prune-backups')->assertSuccessful();
+
+    $backup = CompanyBackup::where('uuid', $uuid)->sole();
+    expect($backup->status)->toBe('expired')
+        ->and($backup->getRawOriginal('secret'))->toBeNull()
+        ->and(Storage::disk('local')->allFiles('backups'))->toBe([]);
+});

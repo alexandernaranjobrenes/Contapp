@@ -202,6 +202,26 @@ Se ven en el pie de página y en el selector de compañía:
   - «Ver 15 más» sigue con los mismos filtros.
 - Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus últimos cuatro dígitos.
 
+
+### 1.15 Respaldos (Administración → Respaldos)
+- Un respaldo es **toda la información de una compañía** —o la de un período— en un archivo de texto cifrado. Sirve para guardarla aparte o para pasar una compañía a otra licencia.
+- Lo hace **solo el Superusuario**, con las compañías de su licencia. El equipo de CONTAPP también puede, desde su panel; si exporta, al Superusuario le llega un correo.
+- **Exportar:**
+  1. Elegí la compañía, **qué exportar** (Contabilidad y socios de negocio va siempre; Bancos, Inventario, Facturación, Planillas, Personas y permisos, Bitácora) y el **período**: «Todo el historial» o «Un período» con «Desde» y «Hasta» (vacío, hasta hoy).
+  2. Tocá «Revisar»: aparece el **resumen** con cuántos asientos, socios, artículos, comprobantes, empleados… lleva, y te pregunta si estás seguro.
+  3. Escribí una **contraseña para el archivo** (al menos 10 caracteres, dos veces) y la de tu cuenta, y tocá «Sí, exportar». Se descarga el archivo.
+  - **Guardá la contraseña del archivo:** sin ella el respaldo no se puede abrir, y nadie la puede recuperar.
+  - Con un período, los catálogos (cuentas, socios, artículos, empleados) van completos y los movimientos, los del período. También van los **saldos del día anterior**: el saldo de cada cuenta, las partidas abiertas, las existencias y las vacaciones, para que la compañía arranque bien si se importa.
+  - No lleva fotos ni el logo.
+- **Importar:**
+  1. Elegí el archivo, escribí su contraseña y tocá «Revisar». CONTAPP verifica que lo haya generado esta instalación y que nadie lo haya modificado.
+  2. Revisá el resumen, escribí la razón social, el nombre comercial y la cédula de la **compañía nueva**, y la contraseña de tu cuenta. Tocá «Sí, importar».
+  - **Siempre crea una compañía nueva** en la licencia (ocupa un cupo de compañía); nunca se mezcla con una que ya existe.
+  - Se importa en segundo plano: podés salir de la pantalla. Al terminar, dice cuántos registros entraron y quién quedó con acceso.
+  - Lo contabilizado entra contabilizado, con los mismos números de documento.
+  - Las personas entran por su correo si ya tienen cuenta en CONTAPP y caben en la licencia; a las demás hay que invitarlas desde Usuarios.
+- **«Este respaldo no lo generó esta instalación de CONTAPP, o fue modificado»**: el archivo fue editado o viene de otro lado; no se puede importar.
+- **«La contraseña no es la de este respaldo»**: revisá la contraseña del archivo (no la de tu cuenta).
 ---
 
 ## 2. Contabilidad

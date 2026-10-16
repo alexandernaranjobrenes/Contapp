@@ -61,7 +61,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*')
                 || $request->hasHeader('X-Contapp-Download')
-                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload', 'items.barcode-scans.*', 'items.next-barcode', 'barcode-phone.store', 'activity-log.more'),
+                || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload', 'items.barcode-scans.*', 'items.next-barcode', 'barcode-phone.store', 'activity-log.more')
+                // Los respaldos (CLAUDE.md secc. 37): la pantalla habla JSON, y la
+                // descarga va por fetch para que un error vuelva al formulario.
+                || $request->routeIs('backups.preview', 'backups.export', 'backups.import*', 'backoffice.licenses.backups.preview', 'backoffice.licenses.backups.export', 'backoffice.licenses.backups.import*'),
         );
 
         // Una acción de Inertia (guardar, eliminar, contabilizar…) que

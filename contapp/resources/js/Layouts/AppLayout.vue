@@ -227,6 +227,9 @@ const nav = computed(() => {
     }
     if (page.props.auth?.user?.is_super_admin) {
         adminChildren.push({ label: 'Agregar compañía', href: route('companies.create'), match: ['companies.*'] });
+        // Los respaldos (CLAUDE.md secc. 37): toda la información de la
+        // compañía, solo el Superusuario.
+        adminChildren.push({ label: 'Respaldos', href: route('backups.index'), match: ['backups.*'] });
     }
     if (adminChildren.length) {
         items.push({

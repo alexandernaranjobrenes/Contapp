@@ -708,3 +708,31 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - Quien crea o edita proveedores no tiene por qué ser quien les aplica los pagos: Socios de negocio ya no da acceso a esto.
 - La migración que la separó le dio a cada persona el mismo nivel que tenía en Socios de negocio; el Superusuario la ajusta.
 - En Conti, `aplicar_pago` es de esta pantalla. En los perfiles de permisos, Tesorería la tiene con escritura y los socios solo para consultar.
+
+## 37. RESPALDOS: TODA UNA COMPAÑÍA EN UN ARCHIVO DE TEXTO CIFRADO, Y DE VUELTA A UNA COMPAÑÍA NUEVA
+
+**Regla:** el respaldo de una compañía (Administración → Respaldos, y en el backoffice, la ficha de la licencia → Respaldos) lo exportan e importan **solo el Superusuario** (de las compañías de su licencia) y **el backoffice** (de cualquiera). Los Administradores no: es toda la información de la compañía. Se importa **solo a una compañía nueva**, nunca encima de una que existe.
+
+- **Para qué:** guardar una compañía aparte y mover una compañía a otra licencia. No sirve para pasarla a otra instalación de CONTAPP (ver la firma).
+- **Qué lleva** (`App\Domains\Core\Backup\BackupCatalog`): cada tabla de la base es de una sección o está en EXCLUDED con su motivo; una prueba lo exige (como AuditCatalog).
+  - Secciones que se eligen: Contabilidad y socios (siempre), Bancos, Inventario, Facturación (necesita Inventario), Planillas, Personas y permisos, Bitácora.
+  - Formas: `catalog` (todo, como está hoy), `movement` (por su fecha, en el período), `child` (lo que cuelga de algo que va), `state` (existencias, partidas abiertas: como estaban al cierre).
+  - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo. Las monedas y lo de CONTAPP se referencian por su id.
+  - Las referencias se leen de la base (`BackupSchema`: `Schema::getForeignKeys`, igual en MySQL y SQLite). Las que no son llave foránea (un tipo y un id, ids adentro de un JSON) van en `AFTER` y las traduce `BackupImporter::special()`.
+- **El período:** «Todo el historial», o «Desde» y «Hasta» (vacío = hoy).
+  - Con «Desde»: los saldos al día anterior (`BackupOpening`). Son un asiento APE contabilizado con el saldo de cada cuenta por socio y moneda (como el balance de comprobación), una línea por partida abierta, las existencias y el costo promedio como primeras filas del kardex, y el saldo de vacaciones como un ajuste. Las planillas traen además los 12 meses anteriores (aguinaldo, liquidaciones).
+  - Con «Hasta» antes de hoy: el estado de ese día (`BackupState`), calculado de los movimientos.
+- **El archivo** (`BackupFile`): texto. Un encabezado legible (compañía, período, cómo se deriva la clave) y líneas base64 con el contenido: JSON Lines (`BackupExporter`), comprimido con gzip y cifrado por tramos con XChaCha20-Poly1305 (libsodium secretstream), con la clave derivada de la contraseña con Argon2id.
+  - Adentro: el encabezado (`manifiesto`), las personas (id, correo, nombre), una línea por fila, y el cierre con cuántas filas, el SHA-256 y la firma.
+  - **La firma** (`BackupSignature`) es un HMAC con una clave derivada de la APP_KEY: solo se importa lo que esta instalación exportó, tal cual. Un archivo armado o editado a mano no pasa aunque se sepa la contraseña. Si cambia la APP_KEY, los respaldos anteriores ya no se importan.
+  - La contraseña del archivo la elige quien exporta (al menos 10 caracteres). CONTAPP no la guarda ni la puede recuperar.
+- **Importar** (`BackupImporter`, en la cola `backups`, `ImportCompanyBackupJob`):
+  1. `inspect()` descifra, verifica el SHA-256 y la firma, y cuenta, sin guardar nada.
+  2. `import()`, en una transacción (todo o nada): crea la compañía, da un id nuevo a cada fila y traduce sus referencias.
+  - Los códigos y números de documento se conservan, y lo contabilizado entra contabilizado.
+  - Una referencia a algo que no vino: vacía si se puede; si no, la fila no entra y se cuenta.
+  - Las personas, por su correo, dentro del cupo de la licencia; quien no tiene cuenta o no cabe queda anotado. El Superusuario de la licencia siempre entra.
+- **El flujo de las pantallas** (`HandlesCompanyBackups`, `CompanyBackupPanel.vue`): elegir qué y el período, y después el resumen («¿Estás seguro?», con cuántos de cada cosa y los saldos iniciales). Se exporta con la contraseña del archivo y la de la cuenta, y la descarga va por fetch para que un error vuelva al formulario. Para importar: subir y revisar, ver el resumen, dar los datos de la compañía nueva y la contraseña de la cuenta, y la cola sigue el avance. Las rutas JSON están en `shouldRenderJsonWhen`.
+- **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`contapp:prune-backups`, cada hora). Exportar queda en la Bitácora. Si exporta el backoffice, va también al historial de la licencia y al Superusuario le llega un correo.
+- **Docker:** el servicio `queue` atiende solo la cola `backups` (los comprobantes de pago encolados siguen como estaban). En un servidor hace falta un worker de esa cola.
+- **Las pruebas:** `CompanyBackupTest` hace de ida y vuelta (todo el historial, desde una fecha y un rango) y compara el balance de comprobación, las partidas, las existencias y las vacaciones. `CompanyBackupHttpTest` prueba las pantallas.

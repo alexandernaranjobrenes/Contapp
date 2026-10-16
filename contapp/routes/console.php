@@ -21,6 +21,10 @@ Schedule::command('contapp:process-journal-schedules')->daily();
 // la 1 se reintenta; repetirlo no cambia nada. También completa los días
 // anteriores que falten. En Docker lo corre el servicio `scheduler`
 // (schedule:work); en un servidor, el cron de `schedule:run` cada minuto.
+// Los respaldos subidos que nadie confirmó: el archivo y su contraseña no
+// quedan guardados más de un día (CLAUDE.md secc. 37).
+Schedule::command('contapp:prune-backups')->hourly();
+
 Schedule::command('contapp:sync-bccr-rates')
     ->twiceDaily(6, 13)
     ->timezone('America/Costa_Rica')

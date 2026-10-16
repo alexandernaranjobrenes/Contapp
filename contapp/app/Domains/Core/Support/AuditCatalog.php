@@ -174,6 +174,7 @@ final class AuditCatalog
         Core\Role::class => 'Catálogo del sistema.',
         Core\Module::class => 'Catálogo del sistema.',
         Core\CompanyModule::class => 'Los módulos de la compañía los decide la licencia, en el backoffice.',
+        Core\CompanyBackup::class => 'Las importaciones de respaldos: ya quedan como «creó la compañía desde un respaldo».',
         Conti\ContiAction::class => 'Es lo que Conti prepara: lo que se confirma queda con sus registros.',
         Conti\ContiUsage::class => 'Es el consumo de cada mensaje, no un cambio de datos.',
         Conti\ContiUserSetting::class => 'El acceso a Conti ya lo anota ContiAccessService.',
