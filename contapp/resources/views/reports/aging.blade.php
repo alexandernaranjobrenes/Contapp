@@ -10,6 +10,11 @@
         table.data td.num { text-align: right; }
         table.data tfoot td { font-weight: bold; background: #f2f2f2; }
         .currency-label { font-weight: bold; font-size: 11px; margin-top: 12px; }
+        table.documents { width: 100%; border-collapse: collapse; font-size: 7px; margin: 2px 0 4px; }
+        table.documents th, table.documents td { border: 1px solid #ddd; padding: 2px 4px; }
+        table.documents th { background: #E8EDF5; text-align: left; }
+        table.documents td.num { text-align: right; }
+        .documents-cell { padding: 0 !important; border: none !important; }
     </style>
 </head>
 <body>
@@ -39,6 +44,34 @@
                         @endforeach
                         <td class="num">{{ $row->total }}</td>
                     </tr>
+                    @if ($includeDocuments && count($row->documents))
+                        <tr>
+                            <td class="documents-cell" colspan="{{ count($result->bucketLabels) + 3 }}">
+                                <table class="documents">
+                                    <thead>
+                                        <tr>
+                                            <th>Documento</th>
+                                            <th>Vencimiento</th>
+                                            <th class="num">Monto original</th>
+                                            <th class="num">Saldo pendiente</th>
+                                            <th>Tramo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($row->documents as $doc)
+                                            <tr>
+                                                <td>{{ $doc->documentLabel }}</td>
+                                                <td>{{ $doc->dueDate ?? '—' }}</td>
+                                                <td class="num">{{ $doc->originalAmount }}</td>
+                                                <td class="num">{{ $doc->balance }}</td>
+                                                <td>{{ $result->bucketLabels[$doc->bucket] ?? $doc->bucket }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    @endif
                 @endforeach
             </tbody>
             <tfoot>

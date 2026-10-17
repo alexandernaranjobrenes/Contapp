@@ -139,6 +139,39 @@ it('permite personalizar los cortes de días de la proyección en vez del están
         ->and($row->buckets['d_11_40'])->toEqual('20.00');
 });
 
+it('filtra la proyección por un socio de negocio específico', function () {
+    $fx = cashFlowFixture();
+    $otherClient = BusinessPartner::factory()->create([
+        'company_id' => $fx['company']->id, 'gl_account_id' => $fx['cxc']->id, 'currency_id' => $fx['company']->local_currency_id,
+    ]);
+
+    postClientReceivable($fx, $fx['client'], '100', '2026-01-10');
+    postClientReceivable($fx, $otherClient, '900', '2026-01-10');
+
+    $result = app(CashFlowProjectionService::class)->build($fx['company'], '2026-01-01', null, $fx['client']->id);
+
+    expect($result->collections[0]->rows)->toHaveCount(1)
+        ->and($result->collections[0]->rows[0]->partnerCode)->toBe($fx['client']->code)
+        ->and($result->collections[0]->total)->toEqual('100.00');
+});
+
+it('filtra la proyección por un rango de códigos de socio', function () {
+    $fx = cashFlowFixture();
+    $fx['client']->update(['code' => 'C-010']);
+    $outOfRange = BusinessPartner::factory()->create([
+        'company_id' => $fx['company']->id, 'gl_account_id' => $fx['cxc']->id, 'currency_id' => $fx['company']->local_currency_id,
+        'code' => 'C-090',
+    ]);
+
+    postClientReceivable($fx, $fx['client'], '100', '2026-01-10');
+    postClientReceivable($fx, $outOfRange, '900', '2026-01-10');
+
+    $result = app(CashFlowProjectionService::class)->build($fx['company'], '2026-01-01', null, null, 'C-001', 'C-050');
+
+    expect($result->collections[0]->rows)->toHaveCount(1)
+        ->and($result->collections[0]->rows[0]->partnerCode)->toBe('C-010');
+});
+
 it('aísla la proyección de cobros y pagos entre compañías distintas', function () {
     $fxA = cashFlowFixture();
     postClientReceivable($fxA, $fxA['client'], '100', '2026-01-10');

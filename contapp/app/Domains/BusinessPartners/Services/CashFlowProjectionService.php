@@ -29,8 +29,19 @@ use Illuminate\Support\Facades\DB;
  */
 class CashFlowProjectionService
 {
-    public function build(Company $company, string $asOf, ?string $buckets = null): CashFlowProjectionResult
-    {
+    /**
+     * $businessPartnerId filtra a UN socio puntual; $partnerCodeFrom/$partnerCodeTo
+     * filtran un RANGO por código — alternativos en pantalla, independientes
+     * acá (ver mismo criterio en AgingService::build).
+     */
+    public function build(
+        Company $company,
+        string $asOf,
+        ?string $buckets = null,
+        ?int $businessPartnerId = null,
+        ?string $partnerCodeFrom = null,
+        ?string $partnerCodeTo = null,
+    ): CashFlowProjectionResult {
         $scheme = DayBucketScheme::fromInput($buckets, DayBucketScheme::CASH_FLOW_DEFAULT);
         $bucketLabels = $scheme->untilDueLabels();
 
@@ -41,6 +52,9 @@ class CashFlowProjectionService
             ->join('chart_of_accounts', 'chart_of_accounts.id', '=', 'journal_details.account_id')
             ->where('business_partners.company_id', $company->id)
             ->where('bp_open_items.status', '!=', 'closed')
+            ->when($businessPartnerId, fn ($q, $v) => $q->where('business_partners.id', $v))
+            ->when($partnerCodeFrom, fn ($q, $v) => $q->where('business_partners.code', '>=', $v))
+            ->when($partnerCodeTo, fn ($q, $v) => $q->where('business_partners.code', '<=', $v))
             ->select(
                 'business_partners.code as partner_code',
                 'business_partners.name as partner_name',

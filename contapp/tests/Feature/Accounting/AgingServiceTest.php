@@ -160,6 +160,44 @@ it('filtra por tipo de socio (clientes vs. proveedores)', function () {
         ->and($suppliersOnly->groups[0]->rows[0]->partnerCode)->toBe($supplier->code);
 });
 
+it('filtra por un socio de negocio específico', function () {
+    $fx = agingFixture();
+    $otherClient = BusinessPartner::factory()->create([
+        'company_id' => $fx['company']->id, 'gl_account_id' => $fx['cxc']->id, 'currency_id' => $fx['company']->local_currency_id,
+    ]);
+
+    postOpenSale($fx, $fx['client'], '100', '2026-03-15');
+    postOpenSale($fx, $otherClient, '900', '2026-03-15');
+
+    $result = app(AgingService::class)->build($fx['company'], '2026-03-01', 'both', null, $fx['client']->id);
+
+    expect($result->groups[0]->rows)->toHaveCount(1)
+        ->and($result->groups[0]->rows[0]->partnerCode)->toBe($fx['client']->code)
+        ->and($result->groups[0]->rows[0]->total)->toEqual('100.00');
+});
+
+it('filtra por un rango de códigos de socio', function () {
+    $fx = agingFixture();
+    $fx['client']->update(['code' => 'C-010']);
+    $inRange = BusinessPartner::factory()->create([
+        'company_id' => $fx['company']->id, 'gl_account_id' => $fx['cxc']->id, 'currency_id' => $fx['company']->local_currency_id,
+        'code' => 'C-020',
+    ]);
+    $outOfRange = BusinessPartner::factory()->create([
+        'company_id' => $fx['company']->id, 'gl_account_id' => $fx['cxc']->id, 'currency_id' => $fx['company']->local_currency_id,
+        'code' => 'C-090',
+    ]);
+
+    postOpenSale($fx, $fx['client'], '100', '2026-03-15');
+    postOpenSale($fx, $inRange, '200', '2026-03-15');
+    postOpenSale($fx, $outOfRange, '900', '2026-03-15');
+
+    $result = app(AgingService::class)->build($fx['company'], '2026-03-01', 'both', null, null, 'C-010', 'C-050');
+
+    $codes = collect($result->groups[0]->rows)->pluck('partnerCode')->sort()->values()->toArray();
+    expect($codes)->toEqual(['C-010', 'C-020']);
+});
+
 it('aísla la antigüedad de saldos entre compañías distintas', function () {
     $fxA = agingFixture();
     postOpenSale($fxA, $fxA['client'], '100', '2026-03-15');

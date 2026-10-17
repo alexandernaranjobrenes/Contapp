@@ -32,8 +32,23 @@ use Illuminate\Support\Facades\DB;
  */
 class AgingService
 {
-    public function build(Company $company, string $asOf, string $partnerType = 'both', ?string $buckets = null): AgingResult
-    {
+    /**
+     * $businessPartnerId filtra a UN socio puntual; $partnerCodeFrom/$partnerCodeTo
+     * filtran un RANGO por código (orden alfabético de string, igual que
+     * cualquier "de la cuenta X a la cuenta Y" ya establecido en otros
+     * reportes) — son independientes entre sí, se pueden combinar aunque en
+     * la pantalla se ofrezcan como modos alternativos ("un socio" vs. "un
+     * rango").
+     */
+    public function build(
+        Company $company,
+        string $asOf,
+        string $partnerType = 'both',
+        ?string $buckets = null,
+        ?int $businessPartnerId = null,
+        ?string $partnerCodeFrom = null,
+        ?string $partnerCodeTo = null,
+    ): AgingResult {
         $scheme = DayBucketScheme::fromInput($buckets);
         $bucketLabels = $scheme->overdueLabels();
 
@@ -45,6 +60,9 @@ class AgingService
             ->when($partnerType !== 'both', fn ($q) => $q->where(function ($q2) use ($partnerType) {
                 $q2->where('business_partners.type', $partnerType)->orWhere('business_partners.type', 'both');
             }))
+            ->when($businessPartnerId, fn ($q, $v) => $q->where('business_partners.id', $v))
+            ->when($partnerCodeFrom, fn ($q, $v) => $q->where('business_partners.code', '>=', $v))
+            ->when($partnerCodeTo, fn ($q, $v) => $q->where('business_partners.code', '<=', $v))
             ->select(
                 'business_partners.code as partner_code',
                 'business_partners.name as partner_name',

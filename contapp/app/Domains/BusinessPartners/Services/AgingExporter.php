@@ -10,7 +10,13 @@ use OpenSpout\Writer\XLSX\Writer;
 
 class AgingExporter
 {
-    public function writeTo(string $outputPath, ReportHeader $header, AgingResult $result): void
+    /**
+     * $includeDocuments agrega, debajo de cada socio, el detalle de sus
+     * documentos (número, vencimiento, monto original, saldo, tramo) — lo
+     * mismo que la ficha que se abre al tocar un socio en pantalla, para
+     * quien necesita el XLSX/PDF con ese nivel sin tener que abrir CONTAPP.
+     */
+    public function writeTo(string $outputPath, ReportHeader $header, AgingResult $result, bool $includeDocuments = false): void
     {
         $writer = new Writer();
         $writer->openToFile($outputPath);
@@ -20,6 +26,7 @@ class AgingExporter
         $bold = (new Style())->setFontBold();
         $muted = (new Style())->setFontSize(9);
         $tableHeader = (new Style())->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
+        $docHeader = (new Style())->setFontBold()->setBackgroundColor('E8EDF5');
         $totalStyle = (new Style())->setFontBold()->setBackgroundColor('F2F2F2');
 
         $writer->addRows([
@@ -46,6 +53,21 @@ class AgingExporter
                     ...array_map(fn ($k) => (float) $row->buckets[$k], $bucketKeys),
                     (float) $row->total,
                 ]));
+
+                if ($includeDocuments && $row->documents !== []) {
+                    $writer->addRow(Row::fromValues(
+                        ['', 'Documento', 'Vencimiento', 'Monto original', 'Saldo pendiente', 'Tramo'],
+                        $docHeader
+                    ));
+
+                    foreach ($row->documents as $doc) {
+                        $writer->addRow(Row::fromValues([
+                            '', $doc->documentLabel, $doc->dueDate ?? '—',
+                            (float) $doc->originalAmount, (float) $doc->balance,
+                            $result->bucketLabels[$doc->bucket] ?? $doc->bucket,
+                        ]));
+                    }
+                }
             }
 
             $writer->addRow(Row::fromValues([

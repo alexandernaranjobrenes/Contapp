@@ -12,6 +12,12 @@ import { formatMoney } from '../Utils/money';
 const props = defineProps({
     group: { type: Object, required: true },
     bucketLabels: { type: Object, required: true },
+    // Con el detalle de documentos activado (ver Aging.vue/CashFlowProjection.vue),
+    // además de la ficha de cada socio se arma esta tabla plana por moneda,
+    // oculta en pantalla y visible solo al imprimir (mismo criterio que
+    // .col-extra, CLAUDE.md secc. 20): en pantalla sigue siendo la ficha la
+    // única forma de verlo, pero en papel no hay ficha que tocar.
+    printDocuments: { type: Boolean, default: false },
 });
 
 const bucketKeys = computed(() => Object.keys(props.bucketLabels));
@@ -23,6 +29,14 @@ function oldestBucket(row) {
 
 const selectedCode = ref(null);
 const selected = computed(() => props.group.rows.find((r) => r.partner_code === selectedCode.value) ?? null);
+
+// Una fila por documento, con su socio, para la tabla que solo se ve al
+// imprimir (ver prop printDocuments).
+const flatDocuments = computed(() => props.group.rows.flatMap((row) => row.documents.map((doc) => ({
+    ...doc,
+    partner_code: row.partner_code,
+    partner_name: row.partner_name,
+}))));
 </script>
 
 <template>
@@ -39,6 +53,10 @@ const selected = computed(() => props.group.rows.find((r) => r.partner_code === 
                 <strong class="bucket-value">{{ formatMoney(group.total) }}</strong>
             </div>
         </div>
+
+        <p v-if="group.rows.length" class="hint no-print">
+            Tocá un socio para ver el detalle de sus documentos: fecha de vencimiento, monto original, saldo pendiente y tramo de cada uno.
+        </p>
 
         <div class="table-responsive">
             <table>
@@ -72,6 +90,32 @@ const selected = computed(() => props.group.rows.find((r) => r.partner_code === 
                         <td data-label="Total" class="num total-value">{{ formatMoney(group.total) }}</td>
                     </tr>
                 </tfoot>
+            </table>
+        </div>
+
+        <div v-if="printDocuments && flatDocuments.length" class="print-only">
+            <h4 class="block-title">Detalle de documentos</h4>
+            <table class="documents-table">
+                <thead>
+                    <tr>
+                        <th>Socio</th>
+                        <th>Documento</th>
+                        <th>Vencimiento</th>
+                        <th class="num">Monto original</th>
+                        <th class="num">Saldo pendiente</th>
+                        <th>Tramo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(doc, i) in flatDocuments" :key="i">
+                        <td>{{ doc.partner_code }} — {{ doc.partner_name }}</td>
+                        <td>{{ doc.document_label }}</td>
+                        <td>{{ doc.due_date ?? '—' }}</td>
+                        <td class="num">{{ formatMoney(doc.original_amount) }}</td>
+                        <td class="num">{{ formatMoney(doc.balance) }}</td>
+                        <td>{{ bucketLabels[doc.bucket] }}</td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </div>
@@ -147,6 +191,19 @@ table { font-size: 0.84rem; }
 .bucket-total { border-color: var(--color-primary); }
 
 .documents-table { font-size: 0.8rem; }
+.block-title { margin: 1rem 0 0.4rem; font-size: 0.88rem; }
+
+/* El detalle de documentos solo se arma en el DOM para imprimirlo (prop
+   printDocuments) — en pantalla se sigue viendo con la ficha de cada
+   socio, nunca los dos a la vez. */
+@media screen {
+    .print-only { display: none; }
+}
+
+@media print {
+    .no-print { display: none !important; }
+    .print-only { display: block; }
+}
 
 @media screen and (max-width: 1024px) {
     .total-label { text-align: left; }
