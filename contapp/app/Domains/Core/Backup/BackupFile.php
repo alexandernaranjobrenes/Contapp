@@ -111,6 +111,50 @@ final class BackupFile
     }
 
     /**
+     * Que sea un respaldo de CONTAPP y que la contraseña sea la suya: el
+     * encabezado y el primer tramo, nada más. Lo hace la subida, que tiene
+     * que contestar enseguida; la revisión completa (descifrar todo, el
+     * SHA-256 y la firma) va en la cola.
+     *
+     * @return array<string, string> el encabezado
+     *
+     * @throws InvalidBackupException
+     */
+    public static function check(string $path, string $password): array
+    {
+        $handle = @fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new InvalidBackupException('No se pudo leer el archivo.');
+        }
+
+        try {
+            $header = self::readHeader($handle);
+            $key = self::key($password, base64_decode($header['sal'], true) ?: '', (int) $header['ops'], (int) $header['mem']);
+            $state = sodium_crypto_secretstream_xchacha20poly1305_init_pull(base64_decode($header['encabezado'], true) ?: '', $key);
+            sodium_memzero($key);
+
+            while (($raw = fgets($handle)) !== false && trim($raw) === '') {
+                // Las líneas vacías no cuentan.
+            }
+
+            if ($raw === false) {
+                throw new InvalidBackupException('El archivo está incompleto: se cortó antes del final.');
+            }
+
+            $cipher = base64_decode(trim($raw), true);
+
+            if ($cipher === false || sodium_crypto_secretstream_xchacha20poly1305_pull($state, $cipher) === false) {
+                throw new InvalidBackupException('La contraseña no es la de este respaldo, o el archivo está dañado.');
+            }
+
+            return $header;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
      * Las líneas JSON del respaldo, descifradas, de a una.
      *
      * @return \Generator<string>

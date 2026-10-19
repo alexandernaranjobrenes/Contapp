@@ -2,24 +2,28 @@
 
 namespace App\Domains\Billing\Contracts;
 
-use App\Domains\Billing\Models\SalesDocument;
+use App\Domains\Billing\Services\Hacienda\HaciendaResponse;
 
 /**
- * Envía el comprobante firmado al API REST de la DGT y consulta su estado.
- * Misma razón que HaciendaSigner para ser interfaz: sin credenciales ATV no
- * hay nada que enviar ni forma de verificar la respuesta.
+ * El API de recepción de comprobantes de Hacienda: enviar uno y consultar su
+ * estado. Interfaz para poder cambiar el cliente HTTP sin tocar la máquina de
+ * estados, y para que las pruebas no dependan de la red.
+ *
+ * El token lo pone quien llama (HaciendaTokenProvider): es de cada compañía.
  */
 interface HaciendaTransport
 {
     /**
-     * @return array{status: string, message: string|null}
+     * POST /recepcion. Una respuesta 2xx es «recibido»; un 4xx o un problema
+     * de red lanza HaciendaApiException.
+     *
+     * @param  array<string, mixed>  $payload
      */
-    public function send(SalesDocument $document, string $signedXml): array;
+    public function submit(string $environment, string $accessToken, array $payload): HaciendaResponse;
 
     /**
-     * @return array{status: string, message: string|null}
+     * GET /recepcion/{clave}. Un 404 NO lanza: es la respuesta «Hacienda no
+     * tiene esa clave», que decide si se puede reenviar.
      */
-    public function status(SalesDocument $document): array;
-
-    public function isConfigured(): bool;
+    public function status(string $environment, string $accessToken, string $clave): HaciendaResponse;
 }

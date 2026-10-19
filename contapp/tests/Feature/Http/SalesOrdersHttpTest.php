@@ -259,7 +259,7 @@ it('facturar por HTTP contra un pedido libera su reserva', function () {
         'posting_date' => now()->format('Y-m-d'),
         'sales_order_id' => $order->id,
         'lines' => [[
-            'cabys_code' => '2310110000000',
+            'cabys_code' => '4526100000100',
             'description' => 'Producto de prueba',
             'unit_code' => 'Unid',
             'quantity' => 30,

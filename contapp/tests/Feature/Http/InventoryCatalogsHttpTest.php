@@ -275,14 +275,14 @@ it('LA PRUEBA DE LA FICHA: guarda el CAByS y los demás datos de Hacienda', func
     $f = companyWithUom();
 
     $this->post(route('items.store'), itemFiscalPayload($f, [
-        'cabys_code' => '2310110000000',
+        'cabys_code' => '4526100000100',
         'fiscal_unit_code' => 'Unid',
         'iva_rate_code' => '08',
     ]))->assertSessionHasNoErrors();
 
     $item = Item::where('company_id', $f['company']->id)->sole();
 
-    expect($item->cabys_code)->toBe('2310110000000')
+    expect($item->cabys_code)->toBe('4526100000100')
         ->and($item->fiscal_unit_code)->toBe('Unid')
         ->and($item->iva_rate_code)->toBe('08');
 });

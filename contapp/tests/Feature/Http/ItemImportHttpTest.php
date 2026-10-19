@@ -65,7 +65,7 @@ function itemRow(array $overrides = []): array
         'lleva_lotes' => 'No',
         'minimo' => 10,
         'maximo' => 50,
-        'cabys' => '2310110000000',
+        'cabys' => '4526100000100',
         'unidad_hacienda' => 'Unid',
         'tarifa_iva' => '08',
         'impuesto' => '',
@@ -112,7 +112,7 @@ it('LA PRUEBA CENTRAL: importa artículos con todos sus datos', function () {
         ->and($items['ART-001']->uom_id)->toBe($f['uom']->id)
         ->and((float) $items['ART-001']->minimum_stock)->toBe(10.0)
         ->and((float) $items['ART-001']->maximum_stock)->toBe(50.0)
-        ->and($items['ART-001']->cabys_code)->toBe('2310110000000')
+        ->and($items['ART-001']->cabys_code)->toBe('4526100000100')
         ->and($items['ART-001']->iva_rate_code)->toBe('08')
         ->and($items['ART-001']->status)->toBe('active');
 

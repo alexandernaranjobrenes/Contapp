@@ -175,6 +175,13 @@ final class AuditCatalog
         Core\Module::class => 'Catálogo del sistema.',
         Core\CompanyModule::class => 'Los módulos de la compañía los decide la licencia, en el backoffice.',
         Core\CompanyBackup::class => 'Las importaciones de respaldos: ya quedan como «creó la compañía desde un respaldo».',
+        // Facturación electrónica (CLAUDE.md secc. 38).
+        Bill\HaciendaSetting::class => 'Lo anota HaciendaSettingsController («editó los datos del emisor para Hacienda»), solo para el Superusuario.',
+        Bill\HaciendaCredential::class => 'Son las credenciales del ATV y la llave: HaciendaSettingsController anota que cambiaron, nunca los valores.',
+        Bill\FiscalSequence::class => 'El consecutivo avanza solo con cada comprobante; el cambio a mano lo anota HaciendaSettingsController.',
+        Bill\ElectronicDocument::class => 'Su historia ante Hacienda queda en electronic_document_events, con cada cambio de estado.',
+        Bill\ElectronicDocumentEvent::class => 'Es la bitácora del comprobante electrónico.',
+        Bill\ElectronicDocumentExchange::class => 'Es el registro de cada envío y consulta a Hacienda.',
         Conti\ContiAction::class => 'Es lo que Conti prepara: lo que se confirma queda con sus registros.',
         Conti\ContiUsage::class => 'Es el consumo de cada mensaje, no un cambio de datos.',
         Conti\ContiUserSetting::class => 'El acceso a Conti ya lo anota ContiAccessService.',

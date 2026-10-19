@@ -10,7 +10,7 @@ class SalesPayment extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['sales_document_id', 'method_code', 'amount'];
+    protected $fillable = ['sales_document_id', 'method_code', 'method_other', 'amount'];
 
     public function document(): BelongsTo
     {

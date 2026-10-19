@@ -3,107 +3,124 @@
 namespace App\Jobs;
 
 use App\Domains\Core\Backup\BackupImporter;
+use App\Domains\Core\Backup\BackupProgress;
 use App\Domains\Core\Backup\CompanyBackupService;
 use App\Domains\Core\Backup\Exceptions\InvalidBackupException;
 use App\Domains\Core\Models\AuditLog;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\CompanyBackup;
 use App\Models\User;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Storage;
-use Throwable;
 
 /**
- * Importa un respaldo ya revisado y confirmado (CLAUDE.md secc. 37). En la
- * cola «backups»: en Docker la atiende el servicio `queue`.
+ * Importa un respaldo ya revisado y confirmado (CLAUDE.md secc. 37): en una
+ * compañía nueva, o completando la que se comparó con lo que le falta.
  *
- * Todo o nada: si algo falla, no queda una compañía a medias. Al terminar,
- * bien o mal, se borran el archivo y su contraseña.
+ * Todo o nada: si algo falla, no queda una compañía a medias ni una completada
+ * a medias. Al terminar, bien o mal, se borran el archivo y su contraseña.
  */
-class ImportCompanyBackupJob implements ShouldQueue
+class ImportCompanyBackupJob extends CompanyBackupJob
 {
-    use Queueable;
-
-    public int $tries = 1;
-
-    public int $timeout = 3600;
-
-    public function __construct(public readonly int $backupId)
+    protected function expects(): string
     {
-        $this->onQueue('backups');
+        return 'queued';
     }
 
-    public function handle(BackupImporter $importer): void
+    protected function running(): string
     {
-        $backup = CompanyBackup::with('license')->find($this->backupId);
+        return 'importing';
+    }
 
-        if ($backup === null || $backup->status !== 'queued') {
-            return;
-        }
+    protected function work(CompanyBackup $backup, string $path, BackupImporter $importer, CompanyBackupService $service): void
+    {
+        $data = $backup->company_data;
+        $by = $backup->requested_by_user_id ? User::find($backup->requested_by_user_id) : null;
+        $manifest = ['compania' => $backup->summary['company'], 'periodo' => ['texto' => $backup->summary['period']]];
+        $progress = BackupProgress::for($backup);
 
-        $backup->update(['status' => 'importing']);
+        if ($backup->mode === 'merge') {
+            $company = Company::withoutGlobalScopes()->where('license_id', $backup->license_id)->find($backup->target_company_id);
 
-        try {
-            if (! $backup->license->canActivateAnotherCompany()) {
-                throw new InvalidBackupException('La licencia ya no tiene cupo para otra compañía.');
+            if ($company === null) {
+                throw new InvalidBackupException('Esa compañía ya no está en la licencia.');
             }
 
-            if ($backup->file_path === null || $backup->secret === null || ! Storage::disk('local')->exists($backup->file_path)) {
-                throw new InvalidBackupException('El archivo del respaldo ya no está: volvé a subirlo.');
+            if (! $backup->license->isValid()) {
+                throw new InvalidBackupException('La licencia no está vigente: no se le pueden agregar datos a sus compañías.');
             }
 
-            $data = $backup->company_data;
-            $result = $importer->import(
-                Storage::disk('local')->path($backup->file_path),
-                $backup->secret,
-                $backup->license,
-                ['legal_name' => $data['legal_name'], 'trade_name' => $data['trade_name'] ?? null, 'tax_id' => $data['tax_id'] ?? null],
-            );
-
-            BackupImporter::recordImport(
-                $result['company'],
-                $backup->requested_by_user_id ? User::find($backup->requested_by_user_id) : null,
-                $data['by'] ?? null,
-                ['compania' => $backup->summary['company'], 'periodo' => ['texto' => $backup->summary['period']]],
-            );
-
-            // En el historial de la licencia, si lo hizo el equipo de CONTAPP.
-            if ($backup->requested_by_propietario_id) {
-                AuditLog::create([
-                    'propietario_id' => $backup->requested_by_propietario_id,
-                    'action' => 'license_company_backup_imported',
-                    'auditable_type' => $backup->license->getMorphClass(),
-                    'auditable_id' => $backup->license_id,
-                    'new_values' => ['company' => $result['company']->trade_name ?: $result['company']->legal_name, 'period' => $backup->summary['period']],
-                    'created_at' => now(),
-                ]);
-            }
+            $report = $importer->merge($path, (string) $backup->secret, $company, progress: $progress);
+            BackupImporter::recordImport($company, $by, $data['by'] ?? null, $manifest, $report['totals']['added']);
+            $this->recordForLicense($backup, $company, 'license_company_backup_merged');
 
             $backup->update([
                 'status' => 'done',
-                'company_id' => $result['company']->id,
+                'company_id' => $company->id,
                 'progress' => $backup->total,
-                'result' => [
-                    'imported' => array_sum($result['imported']),
-                    'dropped' => $result['dropped'],
-                    'people' => $result['people'],
-                ],
+                'result' => ['imported' => $report['totals']['added'], 'dropped' => [], 'people' => $report['people']],
+                'comparison' => $service->mergeSummary($backup, $report),
                 'finished_at' => now(),
             ]);
-        } catch (Throwable $e) {
-            if (! $e instanceof InvalidBackupException) {
-                report($e);
-            }
 
-            $backup->update([
-                'status' => 'failed',
-                'error' => $e instanceof InvalidBackupException
-                    ? $e->getMessage()
-                    : 'No se pudo importar: ocurrió un error y no se guardó nada. Si se repite, avisale al equipo de CONTAPP.',
-                'finished_at' => now(),
-            ]);
-        } finally {
-            CompanyBackupService::forget($backup);
+            return;
         }
+
+        if (! $backup->license->canActivateAnotherCompany()) {
+            throw new InvalidBackupException('La licencia ya no tiene cupo para otra compañía.');
+        }
+
+        $result = $importer->import(
+            $path,
+            (string) $backup->secret,
+            $backup->license,
+            ['legal_name' => $data['legal_name'], 'trade_name' => $data['trade_name'] ?? null, 'tax_id' => $data['tax_id'] ?? null],
+            $progress,
+        );
+
+        BackupImporter::recordImport($result['company'], $by, $data['by'] ?? null, $manifest);
+        $this->recordForLicense($backup, $result['company'], 'license_company_backup_imported');
+
+        $backup->update([
+            'status' => 'done',
+            'company_id' => $result['company']->id,
+            'progress' => $backup->total,
+            'result' => [
+                'imported' => array_sum($result['imported']),
+                'dropped' => $result['dropped'],
+                'people' => $result['people'],
+            ],
+            'finished_at' => now(),
+        ]);
+    }
+
+    protected function onError(CompanyBackup $backup, string $message): void
+    {
+        $backup->update(['status' => 'failed', 'error' => $message, 'finished_at' => now()]);
+    }
+
+    protected function unexpected(): string
+    {
+        return 'No se pudo importar: ocurrió un error y no se guardó nada. Si se repite, avisale al equipo de CONTAPP.';
+    }
+
+    protected function after(CompanyBackup $backup): void
+    {
+        CompanyBackupService::forget($backup);
+    }
+
+    /** En el historial de la licencia, si lo hizo el equipo de CONTAPP. */
+    private function recordForLicense(CompanyBackup $backup, Company $company, string $action): void
+    {
+        if (! $backup->requested_by_propietario_id) {
+            return;
+        }
+
+        AuditLog::create([
+            'propietario_id' => $backup->requested_by_propietario_id,
+            'action' => $action,
+            'auditable_type' => $backup->license->getMorphClass(),
+            'auditable_id' => $backup->license_id,
+            'new_values' => ['company' => $company->trade_name ?: $company->legal_name, 'period' => $backup->summary['period']],
+            'created_at' => now(),
+        ]);
     }
 }

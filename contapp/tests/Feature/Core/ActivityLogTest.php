@@ -3,6 +3,7 @@
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Banking\Models\BankAccount;
 use App\Domains\Core\Models\AuditLog;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Services\ActivityRecorder;
 use App\Domains\Core\Services\PermissionGrantService;
 use App\Domains\Core\Support\AuditCatalog;
@@ -253,6 +254,64 @@ it('filtra por rango de fechas, por documento y por su número o nombre', functi
         ->and($sentences(['search' => 'AS-0005']))->toBe(['creó el artículo AS-0005'])
         ->and($sentences(['search' => 'Lucía']))->toBe(['creó la cuenta de Lucía Rojas'])
         ->and($sentences(['search' => '%']))->toBe([]);
+});
+
+it('filtra por usuario, y «Sistema» es lo de los procesos automáticos', function () {
+    ['user' => $super, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true, 'name' => 'Mario Soto']);
+    freshActivity();
+    $lucia = User::factory()->create(['name' => 'Lucía Rojas']);
+
+    activityRow($company, $super, 'inventory.items', 'ART-1', '2026-10-01 10:00');
+    activityRow($company, $lucia, 'inventory.items', 'ART-2', '2026-10-02 10:00');
+    activityRow($company, $super, 'accounting.journal_entries', 'AS-0005', '2026-10-03 10:00');
+    AuditLog::create([
+        'company_id' => $company->id, 'user_id' => null, 'action' => AuditLog::ACTIVITY, 'screen' => 'inventory.items',
+        'auditable_type' => Item::class, 'auditable_id' => 1, 'subject' => 'ART-3',
+        'changes' => ['records' => [['t' => Item::class, 'id' => 1, 'a' => 'created', 's' => 'ART-3', 'f' => []]], 'omitted' => []],
+        'created_at' => Carbon::parse('2026-10-04 10:00'),
+    ]);
+    // Alguien de otra compañía no aparece.
+    activityRow(Company::factory()->create(), User::factory()->create(['name' => 'Zoe Otra']), 'inventory.items', 'ART-9', '2026-10-04 11:00');
+
+    $response = $this->get(route('activity-log.index'))->assertOk();
+    expect($response->inertiaProps('people'))->toBe([
+        ['value' => (string) $lucia->id, 'label' => 'Lucía Rojas'],
+        ['value' => (string) $super->id, 'label' => 'Mario Soto'],
+        ['value' => 'system', 'label' => 'Sistema'],
+    ]);
+
+    $sentences = fn (array $filters) => collect($this->get(route('activity-log.index', $filters))->assertOk()->inertiaProps('log.entries'))->pluck('sentence')->all();
+
+    expect($sentences(['user' => (string) $lucia->id]))->toBe(['creó el artículo ART-2'])
+        ->and($sentences(['user' => 'system']))->toBe(['creó el artículo ART-3'])
+        // Con los demás filtros.
+        ->and($sentences(['user' => (string) $super->id, 'document' => 'inventory.items']))->toBe(['creó el artículo ART-1'])
+        ->and($this->get(route('activity-log.index', ['user' => (string) $lucia->id]))->inertiaProps('filters.user'))->toBe((string) $lucia->id);
+
+    // «Ver más» también lo respeta.
+    $more = $this->getJson(route('activity-log.more', ['before' => 999999, 'user' => (string) $lucia->id]))->assertOk()->json('entries');
+    expect(collect($more)->pluck('sentence')->all())->toBe(['creó el artículo ART-2']);
+
+    $this->get(route('activity-log.index', ['user' => 'alguien']))->assertSessionHasErrors(['user' => 'Ese usuario no es válido.']);
+});
+
+it('el filtro «Usuario» ofrece solo a quien aparece en lo que la persona puede ver', function () {
+    ['user' => $super, 'company' => $company] = logInAsCompanyUser(null, ['is_super_admin' => true]);
+    $pedro = User::factory()->create(['name' => 'Pedro Planillas']);
+    $admin = activityAdmin($super, $company, ['inventory.items' => 'read']);
+    freshActivity();
+
+    activityRow($company, $super, 'inventory.items', 'ART-1', '2026-10-01 10:00');
+    activityRow($company, $pedro, 'payroll.employees', 'EMP-0001', '2026-10-02 10:00');
+
+    $people = fn () => array_column($this->get(route('activity-log.index'))->assertOk()->inertiaProps('people'), 'label');
+
+    expect($people())->toContain('Pedro Planillas');
+    $this->actingAs($admin);
+    expect($people())->not->toContain('Pedro Planillas')->toContain($super->name);
+
+    // Pidiéndolo a mano, tampoco aparece lo de otra pantalla.
+    expect($this->get(route('activity-log.index', ['user' => (string) $pedro->id]))->inertiaProps('log.entries'))->toBe([]);
 });
 
 it('«Ver más» sigue con los mismos filtros', function () {

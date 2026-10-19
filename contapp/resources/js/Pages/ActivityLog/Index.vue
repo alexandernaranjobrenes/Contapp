@@ -19,9 +19,11 @@ import { requestJson } from '../../Utils/http';
 const props = defineProps({
     log: { type: Object, required: true }, // { entries, has_more }
     pageSize: { type: Number, default: 15 },
-    filters: { type: Object, default: () => ({}) }, // { from, to, document, search }: los aplicados
+    filters: { type: Object, default: () => ({}) }, // { from, to, document, user, search }: los aplicados
     // Solo lo que la persona puede ver, por sección: [{ label, options: [{ value, label }] }]
     documents: { type: Array, default: () => [] },
+    // Las personas que aparecen en lo que ve, y «Sistema»: [{ value, label }]
+    people: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -33,7 +35,7 @@ const error = ref('');
 const open = ref({});
 
 // ── Filtros ──
-const blank = { from: '', to: '', document: '', search: '' };
+const blank = { from: '', to: '', document: '', user: '', search: '' };
 const fromProps = (filters) => Object.fromEntries(Object.keys(blank).map((key) => [key, filters?.[key] ?? '']));
 const form = ref(fromProps(props.filters));
 const consulting = ref(false);
@@ -125,6 +127,13 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
                         </optgroup>
                     </select>
                 </label>
+                <label class="filter-field">
+                    <span>Usuario</span>
+                    <select v-model="form.user">
+                        <option value="">Todos</option>
+                        <option v-for="person in people" :key="person.value" :value="person.value">{{ person.label }}</option>
+                    </select>
+                </label>
                 <label class="filter-field search-field">
                     <span>Número, código o nombre</span>
                     <input v-model="form.search" type="search" maxlength="100" placeholder="Ej. AS-0005, CLI-001 o un nombre">
@@ -139,8 +148,8 @@ const valueOf = (field, action) => (action === 'deleted' ? field.old : field.new
         <p v-if="filterErrors.length" class="flash flash-error" role="alert">{{ filterErrors.join(' ') }}</p>
 
         <p class="hint intro">
-            Todo lo que se hizo en la compañía y quién lo hizo, de lo más reciente a lo más antiguo. Cada movimiento se
-            despliega con lo que cambió. Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus
+            Todo lo que se hizo en la compañía y quién lo hizo, de lo más reciente a lo más antiguo. «Sistema» es lo que hicieron los
+            procesos automáticos. Cada movimiento se despliega con lo que cambió. Las contraseñas y claves nunca se guardan; las cuentas bancarias, solo con sus
             últimos cuatro dígitos.
         </p>
 

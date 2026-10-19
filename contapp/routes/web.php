@@ -97,6 +97,9 @@ use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReorderController;
+use App\Http\Controllers\ElectronicDocumentController;
+use App\Http\Controllers\HaciendaLookupController;
+use App\Http\Controllers\HaciendaSettingsController;
 use App\Http\Controllers\SalesDocumentController;
 use App\Http\Controllers\SalesOrderController;
 use App\Http\Controllers\SavedReportController;
@@ -250,6 +253,13 @@ Route::middleware('auth')->group(function () {
     Route::post('conti/formularios/sugerencias', [ContiFormController::class, 'suggest'])->middleware('throttle:conti-lookup')->name('conti.forms.suggest');
     Route::get('conti/ajustes', [ContiSettingsController::class, 'show'])->name('conti.settings.show');
     Route::put('conti/ajustes/modelo', [ContiSettingsController::class, 'updateModel'])->name('conti.settings.model');
+
+    // Los datos públicos de Hacienda (HaciendaLookupController): el catálogo
+    // CAByS y lo que Hacienda tiene inscrito de una cédula. Cualquier cuenta:
+    // son públicos, no de la compañía activa, y los usan pantallas de varios
+    // módulos (artículos, facturación, socios). Responden JSON.
+    Route::get('hacienda/cabys', [HaciendaLookupController::class, 'cabys'])->middleware('throttle:60,1')->name('hacienda.cabys');
+    Route::get('hacienda/contribuyente', [HaciendaLookupController::class, 'taxpayer'])->middleware('throttle:30,1')->name('hacienda.taxpayer');
 
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
@@ -502,6 +512,12 @@ Route::middleware('auth')->group(function () {
         Route::get('sales-documents/create', [SalesDocumentController::class, 'create'])->name('sales-documents.create');
         Route::get('sales-documents/{salesDocument}', [SalesDocumentController::class, 'show'])->name('sales-documents.show');
         Route::get('sales-documents/{salesDocument}/xml', [SalesDocumentController::class, 'xml'])->name('sales-documents.xml');
+        // Facturación electrónica (CLAUDE.md secc. 38): el PDF, la respuesta
+        // de Hacienda y consultar el estado. Consultar no cambia la venta,
+        // solo trae lo que Hacienda dice de ella: alcanza con Lectura.
+        Route::get('sales-documents/{salesDocument}/pdf', [ElectronicDocumentController::class, 'pdf'])->name('sales-documents.pdf');
+        Route::get('sales-documents/{salesDocument}/hacienda/response', [ElectronicDocumentController::class, 'response'])->name('sales-documents.hacienda.response');
+        Route::post('sales-documents/{salesDocument}/hacienda/check', [ElectronicDocumentController::class, 'check'])->middleware('throttle:20,1')->name('sales-documents.hacienda.check');
         // Los cambios de precio que se liberaron. Bloquear solo sirve si
         // después alguien puede revisar qué se autorizó y quién lo firmó.
         Route::get('price-overrides', [PriceOverrideController::class, 'index'])->name('price-overrides.index');
@@ -514,6 +530,9 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('module-access:billing,read_write')->group(function () {
         Route::post('sales-documents', [SalesDocumentController::class, 'store'])->name('sales-documents.store');
+        Route::post('sales-documents/{salesDocument}/hacienda/retry', [ElectronicDocumentController::class, 'retry'])->middleware('throttle:10,1')->name('sales-documents.hacienda.retry');
+        Route::post('sales-documents/{salesDocument}/hacienda/reissue', [ElectronicDocumentController::class, 'reissue'])->middleware('throttle:10,1')->name('sales-documents.hacienda.reissue');
+        Route::post('sales-documents/{salesDocument}/hacienda/deliver', [ElectronicDocumentController::class, 'deliver'])->middleware('throttle:10,1')->name('sales-documents.hacienda.deliver');
         Route::post('sales-orders', [SalesOrderController::class, 'store'])->name('sales-orders.store');
         Route::post('sales-orders/{salesOrder}/cancel', [SalesOrderController::class, 'cancel'])->name('sales-orders.cancel');
 
@@ -906,12 +925,26 @@ Route::middleware('auth')->group(function () {
         Route::get('activity-log/more', [ActivityLogController::class, 'more'])->middleware('throttle:60,1')->name('activity-log.more');
     });
 
+    // Facturación electrónica (CLAUDE.md secc. 38): las credenciales del ATV
+    // y la llave criptográfica de la compañía. Solo el Superusuario de cada
+    // compañía; lo revisa el controlador en cada acción.
+    Route::get('hacienda-settings', [HaciendaSettingsController::class, 'index'])->name('hacienda-settings.index');
+    Route::put('hacienda-settings/emitter', [HaciendaSettingsController::class, 'updateEmitter'])->name('hacienda-settings.emitter');
+    Route::put('hacienda-settings/environment', [HaciendaSettingsController::class, 'updateEnvironment'])->name('hacienda-settings.environment');
+    Route::put('hacienda-settings/credentials/{environment}', [HaciendaSettingsController::class, 'updateCredentials'])->middleware('throttle:10,1')->name('hacienda-settings.credentials');
+    Route::post('hacienda-settings/certificate/{environment}', [HaciendaSettingsController::class, 'uploadCertificate'])->middleware('throttle:10,1')->name('hacienda-settings.certificate');
+    Route::post('hacienda-settings/test/{environment}', [HaciendaSettingsController::class, 'testConnection'])->middleware('throttle:10,1')->name('hacienda-settings.test');
+    Route::post('hacienda-settings/enable', [HaciendaSettingsController::class, 'enable'])->name('hacienda-settings.enable');
+    Route::post('hacienda-settings/disable', [HaciendaSettingsController::class, 'disable'])->name('hacienda-settings.disable');
+    Route::put('hacienda-settings/sequence', [HaciendaSettingsController::class, 'updateSequence'])->name('hacienda-settings.sequence');
+
     // Respaldos de una compañía (CLAUDE.md secc. 37): solo el Superusuario,
     // lo revisa el controlador. Exportar e importar piden su contraseña.
     Route::get('backups', [CompanyBackupController::class, 'index'])->name('backups.index');
     Route::post('backups/preview', [CompanyBackupController::class, 'preview'])->middleware('throttle:30,1')->name('backups.preview');
     Route::post('backups/export', [CompanyBackupController::class, 'export'])->middleware('throttle:10,1')->name('backups.export');
     Route::post('backups/import', [CompanyBackupController::class, 'upload'])->middleware('throttle:10,1')->name('backups.import');
+    Route::post('backups/import/{uuid}/compare', [CompanyBackupController::class, 'compare'])->middleware('throttle:10,1')->name('backups.import.compare');
     Route::post('backups/import/{uuid}/confirm', [CompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('backups.import.confirm');
     Route::get('backups/import/{uuid}', [CompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('backups.import.status');
 
@@ -982,6 +1015,7 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('licenses/{license}/backups/preview', [BackofficeCompanyBackupController::class, 'preview'])->middleware('throttle:30,1')->name('licenses.backups.preview');
     Route::post('licenses/{license}/backups/export', [BackofficeCompanyBackupController::class, 'export'])->middleware('throttle:10,1')->name('licenses.backups.export');
     Route::post('licenses/{license}/backups/import', [BackofficeCompanyBackupController::class, 'upload'])->middleware('throttle:10,1')->name('licenses.backups.import');
+    Route::post('licenses/{license}/backups/import/{uuid}/compare', [BackofficeCompanyBackupController::class, 'compare'])->middleware('throttle:10,1')->name('licenses.backups.import.compare');
     Route::post('licenses/{license}/backups/import/{uuid}/confirm', [BackofficeCompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('licenses.backups.import.confirm');
     Route::get('licenses/{license}/backups/import/{uuid}', [BackofficeCompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('licenses.backups.import.status');
     Route::post('licenses/{license}/commercial-profile', [CommercialProfileController::class, 'store'])->name('licenses.commercial-profile.store');

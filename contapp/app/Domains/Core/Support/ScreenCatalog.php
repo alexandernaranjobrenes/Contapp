@@ -126,7 +126,13 @@ final class ScreenCatalog
                 $r('billing.sales_orders', 'Órdenes de pedido', 'Operación', 'billing', ['sales-orders.*']),
                 // Consultar lo emitido; emitir es «Nueva factura».
                 $r('billing.sales_documents', 'Comprobantes', 'Operación', 'billing', ['sales-documents.*'], true),
-                $r('billing.new_invoice', 'Nueva factura', 'Operación', 'billing', ['sales-documents.create', 'sales-documents.store']),
+                // Reintentar el envío, volver a emitir un rechazado y reenviarlo al
+                // cliente es emitir (CLAUDE.md secc. 38): lo hace quien puede
+                // emitir, no quien solo consulta los comprobantes.
+                $r('billing.new_invoice', 'Nueva factura', 'Operación', 'billing', [
+                    'sales-documents.create', 'sales-documents.store',
+                    'sales-documents.hacienda.retry', 'sales-documents.hacienda.reissue', 'sales-documents.hacienda.deliver',
+                ]),
                 $report('billing.price_overrides', 'Cambios de precio autorizados', 'price-overrides', 'billing'),
                 $r('billing.settings', 'Parámetros de facturación', 'Configuración', 'billing', ['billing-settings.*']),
             ]],

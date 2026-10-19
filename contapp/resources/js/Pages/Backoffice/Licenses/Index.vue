@@ -285,6 +285,7 @@ const HISTORY_ACTIONS = {
     license_activated: 'Se activó con una cuenta existente',
     license_company_backup_exported: 'Exportó un respaldo de una compañía',
     license_company_backup_imported: 'Creó una compañía desde un respaldo',
+    license_company_backup_merged: 'Completó una compañía con un respaldo',
 };
 
 const HISTORY_FIELDS = {

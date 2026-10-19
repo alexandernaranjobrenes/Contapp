@@ -126,6 +126,9 @@ class TestJournalEntriesSeeder extends Seeder
 
         $acc = fn (string $code) => ChartOfAccount::where('code', $code)->firstOrFail()->id;
         $doc = fn (string $code) => DocumentType::where('code', $code)->firstOrFail();
+        // Las ventas de ejemplo van con FVE, salvo que la compañía ya tenga el
+        // suyo y se pida otro tipo (SEED_SALES_TYPE, ver TestCompanySetupSeeder).
+        $salesType = env('SEED_SALES_TYPE') ?: 'FVE';
         $bp = fn (string $code) => BusinessPartner::where('code', $code)->firstOrFail()->id;
         $rule = fn (string $code) => CostAllocationRule::where('code', $code)->firstOrFail()->id;
         $ivaRate = fn (string $code) => ChartOfAccount::where('code', $code)->firstOrFail()->tax_rate_id;
@@ -162,7 +165,7 @@ class TestJournalEntriesSeeder extends Seeder
         // descuadre que este módulo existe para no tener.
 
         // ── 3. Factura de venta a crédito ─────────────────────────────────
-        $venta1 = $this->post($company, $doc('FVE'), '2026-03-05', 'Factura de venta a Distribuidora La Central', $createdBy, [
+        $venta1 = $this->post($company, $doc($salesType), '2026-03-05', 'Factura de venta a Distribuidora La Central', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-02-01-001'), currencyId: $crc, debit: '5650000.00', credit: 0,
                 description: 'Distribuidora La Central S.A.',
                 businessPartnerId: $bp('CLI-001'), dueDate: '2026-04-04', opensItem: true),
@@ -212,7 +215,7 @@ class TestJournalEntriesSeeder extends Seeder
         ]);
 
         // ── 7. Segunda factura de venta ───────────────────────────────────
-        $log[] = $this->post($company, $doc('FVE'), '2026-06-18', 'Factura de venta a Comercial El Roble', $createdBy, [
+        $log[] = $this->post($company, $doc($salesType), '2026-06-18', 'Factura de venta a Comercial El Roble', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-02-01-001'), currencyId: $crc, debit: '9040000.00', credit: 0,
                 description: 'Comercial El Roble S.A.',
                 businessPartnerId: $bp('CLI-002'), dueDate: '2026-07-18', opensItem: true),
@@ -236,7 +239,7 @@ class TestJournalEntriesSeeder extends Seeder
         // deriva el equivalente en colones con la tasa vigente al 2026-08-01.
         // Deja saldo en USD en una cuenta de CxC, que es justo lo que después
         // se revalúa con la pantalla de diferencial cambiario.
-        $log[] = $this->post($company, $doc('FVE'), '2026-08-12', 'Factura de exportación a Northbridge Trading', $createdBy, [
+        $log[] = $this->post($company, $doc($salesType), '2026-08-12', 'Factura de exportación a Northbridge Trading', $createdBy, [
             new JournalLineInput(accountId: $acc('1-01-02-01-002'), currencyId: $usd, debit: '12000.00', credit: 0,
                 description: 'Northbridge Trading LLC',
                 businessPartnerId: $bp('CLI-005'), dueDate: '2026-09-26', opensItem: true),

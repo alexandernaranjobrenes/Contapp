@@ -4,6 +4,7 @@ import { watch } from 'vue';
 import { ArrowLeftIcon } from '@lucide/vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
+import PartnerFiscalFields from '../../Components/PartnerFiscalFields.vue';
 
 const props = defineProps({
     accounts: { type: Array, default: () => [] },
@@ -11,6 +12,8 @@ const props = defineProps({
     categories: { type: Array, default: () => [] },
     costCenters: { type: Array, default: () => [] },
     priceLists: { type: Array, default: () => [] },
+    identificationTypes: { type: Object, default: () => ({}) },
+    territory: { type: Object, default: () => ({}) },
     today: { type: String, required: true },
     // El código que sigue en cada tipo (CodeRules): se propone, y se puede
     // cambiar solo ahora; después queda fijo.
@@ -22,6 +25,11 @@ const form = useForm({
     name: '',
     type: 'client',
     tax_id: '',
+    identification_type: '',
+    province: '',
+    canton: '',
+    district: '',
+    address_details: '',
     email: '',
     economic_activity_code: '',
     phone: '',
@@ -82,7 +90,10 @@ function submit() {
                 <div class="field">
                     <label for="tax_id">Cédula</label>
                     <input id="tax_id" v-model="form.tax_id" type="text">
+                    <span v-if="form.errors.tax_id" class="error">{{ form.errors.tax_id }}</span>
                 </div>
+
+                <PartnerFiscalFields :form="form" :identification-types="identificationTypes" :territory="territory" />
 
                 <div class="field">
                     <label for="email">Correo electrónico</label>
@@ -102,7 +113,7 @@ function submit() {
 
                 <div class="field">
                     <label for="economic_activity_code">Código de actividad económica</label>
-                    <input id="economic_activity_code" v-model="form.economic_activity_code" type="text" placeholder="Hacienda">
+                    <input id="economic_activity_code" v-model="form.economic_activity_code" type="text" maxlength="6" placeholder="6201.0">
                 </div>
 
                 <div class="field">

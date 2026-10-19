@@ -204,7 +204,7 @@ Se ven en el pie de página y en el selector de compañía:
 
 
 ### 1.15 Respaldos (Administración → Respaldos)
-- Un respaldo es **toda la información de una compañía** —o la de un período— en un archivo de texto cifrado. Sirve para guardarla aparte o para pasar una compañía a otra licencia.
+- Un respaldo es **toda la información de una compañía** —o la de un período— en un archivo de texto cifrado. Sirve para guardarla aparte, para pasar una compañía a otra licencia o para completar una compañía con lo que le falta.
 - Lo hace **solo el Superusuario**, con las compañías de su licencia. El equipo de CONTAPP también puede, desde su panel; si exporta, al Superusuario le llega un correo.
 - **Exportar:**
   1. Elegí la compañía, **qué exportar** (Contabilidad y socios de negocio va siempre; Bancos, Inventario, Facturación, Planillas, Personas y permisos, Bitácora) y el **período**: «Todo el historial» o «Un período» con «Desde» y «Hasta» (vacío, hasta hoy).
@@ -214,14 +214,22 @@ Se ven en el pie de página y en el selector de compañía:
   - Con un período, los catálogos (cuentas, socios, artículos, empleados) van completos y los movimientos, los del período. También van los **saldos del día anterior**: el saldo de cada cuenta, las partidas abiertas, las existencias y las vacaciones, para que la compañía arranque bien si se importa.
   - No lleva fotos ni el logo.
 - **Importar:**
-  1. Elegí el archivo, escribí su contraseña y tocá «Revisar». CONTAPP verifica que lo haya generado esta instalación y que nadie lo haya modificado.
-  2. Revisá el resumen, escribí la razón social, el nombre comercial y la cédula de la **compañía nueva**, y la contraseña de tu cuenta. Tocá «Sí, importar».
-  - **Siempre crea una compañía nueva** en la licencia (ocupa un cupo de compañía); nunca se mezcla con una que ya existe.
+  1. Elegí el archivo, escribí su contraseña y tocá «Revisar». CONTAPP verifica que lo haya generado esta instalación y que nadie lo haya modificado; con un archivo grande tarda, y la pantalla muestra el avance.
+  2. Revisá el resumen y elegí **dónde importarlo**:
+     - **En una compañía nueva:** escribí su razón social, nombre comercial y cédula, y la contraseña de tu cuenta. Tocá «Sí, importar». Ocupa un cupo de compañía de la licencia.
+     - **Completar una compañía que ya existe:** elegila y tocá «Comparar». CONTAPP muestra qué le falta, qué ya tiene y qué tiene distinto, sin guardar nada. Si se puede, escribí la contraseña de tu cuenta y tocá «Sí, completar».
   - Se importa en segundo plano: podés salir de la pantalla. Al terminar, dice cuántos registros entraron y quién quedó con acceso.
   - Lo contabilizado entra contabilizado, con los mismos números de documento.
   - Las personas entran por su correo si ya tienen cuenta en CONTAPP y caben en la licencia; a las demás hay que invitarlas desde Usuarios.
+- **Completar una compañía:**
+  - Cada cosa se reconoce por su código o su número (una cuenta por su código, un asiento por su tipo y número). **Lo que ya está no se cambia**, aunque tenga otros datos: queda lo de la compañía, y la comparación dice cuántos son distintos.
+  - Un documento entra entero, con sus líneas; a uno que ya está no se le agrega nada.
+  - Los saldos de partidas, las existencias, el costo promedio y los consecutivos se recalculan con lo que entra.
+  - **No se puede completar** si un documento ya está con otros datos (por ejemplo, en borrador acá y contabilizado en el respaldo, o con el mismo número y otro contenido), o si lo que falta del kardex de un artículo es de antes de su último movimiento: traerlo duplicaría o cambiaría lo ya contabilizado. La comparación dice cuál; se resuelve en la compañía, o se importa el respaldo en una compañía nueva.
+  - Un respaldo «desde» una fecha trae los saldos del día anterior: entran solo si la compañía no tiene movimientos antes de esa fecha.
 - **«Este respaldo no lo generó esta instalación de CONTAPP, o fue modificado»**: el archivo fue editado o viene de otro lado; no se puede importar.
 - **«La contraseña no es la de este respaldo»**: revisá la contraseña del archivo (no la de tu cuenta).
+- **«Este respaldo es de una versión anterior de CONTAPP y le faltan datos que esta versión exige»**: hay que avisarle al equipo de CONTAPP.
 ---
 
 ## 2. Contabilidad
@@ -425,7 +433,11 @@ Revalúa los saldos en moneda extranjera de clientes, proveedores y cuentas al t
 - Campos de la ficha:
   - **Código**: CONTAPP propone el que sigue según el tipo (CLI-0001 para clientes, PRV-0001 para proveedores, SOC-0001 para ambos, o el formato que ya use la compañía). Se puede cambiar al crear; **después queda fijo**, porque es la llave de sus estados de cuenta y sus partidas.
   - **Tipo**: Cliente, Proveedor o Ambos.
-  - **Nombre**, **Cédula**, **Correo electrónico**, **Teléfono**, **Nombre del encargado** y **Código de actividad económica**.
+  - **Nombre**, **Cédula**, **Correo electrónico**, **Teléfono**, **Nombre del encargado** y **Código de actividad económica** (formato 6201.0).
+  - **Tipo de identificación** (cédula física, jurídica, DIMEX, NITE, extranjero no domiciliado o no contribuyente): **obligatorio para recibir una factura electrónica**, y la cédula tiene que tener los dígitos de su tipo (9 la física, 10 la jurídica).
+  - **Ubicación para la factura electrónica** (opcional): «Provincia», «Cantón» y «Distrito», elegidos por nombre de la tabla oficial de Hacienda (cada lista muestra solo lo de la anterior), y «Otras señas». Si no está completa, la factura va sin la ubicación del cliente.
+  - **«Consultar la cédula en Hacienda»**: con la «Cédula» escrita, trae lo que Hacienda tiene inscrito: pone el «Tipo de identificación» y, si están vacíos, el nombre y la actividad económica principal; debajo muestra el nombre, la situación, el régimen y las actividades.
+  - El **correo** es al que le llega el comprobante electrónico cuando Hacienda lo acepta.
   - **Cliente/proveedor desde**: por defecto la fecha de hoy, pero se puede poner una fecha anterior al migrar.
   - **Estado** (Activo o Inactivo), **Categoría** (opcional) y **Centro de costo** (opcional).
   - **Cuenta contable**: es la **cuenta de control**, normalmente Cuentas por Cobrar o por Pagar. Tiene que ser una cuenta hoja.
@@ -495,7 +507,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
   - «Lleva inventario»: desmarcado, es un **servicio**, que se compra o vende sin kardex ni costo. «Se compra» y «Se vende».
   - «Maneja lotes»: cada movimiento exige un número de lote. «Maneja números de serie»: una serie por unidad.
   - «Mínimo de existencia» y «Máximo»: alimentan la sugerencia de compra. En cero, no hay control de reorden.
-  - Datos fiscales: «Código CAByS» (13 dígitos), «Unidad de medida de Hacienda» y «Tarifa de IVA de Hacienda».
+  - Datos fiscales: «Código CAByS», «Unidad de medida de Hacienda» y «Tarifa de IVA de Hacienda». «Código CAByS» es una lista con **todo el catálogo CAByS 2025** (unos 20 500 códigos, agrupados por sección). Al abrirla hay un buscador arriba: por código («4526») o por palabras de la descripción («teclado computadora», sin importar tildes); la lista se va cargando al bajar. Debajo del campo aparece si es servicio o mercancía y su IVA. Al elegir uno se propone su tarifa de IVA si la ficha no tiene. No se puede guardar un código que no está en el catálogo.
   - Cuentas propias (opcionales).
   - Desde el artículo se llega a su **kardex**, sus **lotes**, sus **series** (que nacen con la entrada de mercancía; solo se editan la garantía y las notas) y sus **niveles por almacén** (un mínimo y un máximo distintos por almacén).
 - **Grupos de artículos**: clasifican y, además, pueden definir las cuentas de todo el grupo.
@@ -606,7 +618,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
 
 ### 7.1 Parámetros de facturación (Facturación → Parámetros de facturación)
 Se configuran antes de facturar:
-- **Actividades económicas**: «Código (6 dígitos)», «Nombre de la actividad», «Cuenta de ingresos» y «Actividad por defecto». La actividad con la que se factura decide a qué cuenta de ingresos va la venta.
+- **Actividades económicas**: «Código», «Nombre de la actividad», «Cuenta de ingresos» y «Actividad por defecto». La actividad con la que se factura decide a qué cuenta de ingresos va la venta. El código va con el formato de la versión 4.4 de Hacienda, por ejemplo **6201.0** (cuatro dígitos, punto, uno): con los seis dígitos de antes no se puede emitir electrónicamente. La columna «En Hacienda» dice si cada actividad está **inscrita** a la cédula de la compañía; una «No inscrita» hace que Hacienda rechace el comprobante (-408). Debajo de la tabla se listan las actividades que Hacienda tiene inscritas y todavía no están configuradas, con «Agregar», que abre el formulario ya lleno. En el formulario de «Agregar», el «Código» y el «Nombre de la actividad» son listas con todas las actividades de Hacienda (TRIBU-CR): arriba las inscritas a la cédula de la compañía y abajo el resto del catálogo. Elegir en una llena la otra. Si se elige una que no está inscrita, el formulario avisa que Hacienda rechazaría el comprobante: primero hay que inscribirla en TRIBU-CR.
 - **Cuentas de IVA por tarifa**: «Tarifa», «Cuenta de IVA por pagar» e «Indicador de impuesto». El indicador es opcional pero recomendado: sin él, esas ventas no aparecen en el Reporte de IVA.
 - **Medios de pago**: «Medio de pago» y «Cuenta». Es la cuenta que se debita en una venta de contado según cómo se cobró.
 
@@ -621,6 +633,8 @@ Se configuran antes de facturar:
 - 09 Factura electrónica de exportación
 - 10 Recibo electrónico de pago
 
+Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma y envía: 01, 02, 03, 04 y 09.
+
 **El encabezado:**
 - «Tipo de comprobante» y «Tipo de documento (ERP)».
 - «Sucursal» y «Terminal».
@@ -634,7 +648,7 @@ Se configuran antes de facturar:
 **Las líneas:**
 - «Artículo», «Descripción», «Bodega», «Cant.» y «Precio». El precio se precarga desde la lista de precios del cliente.
 - Las acciones de la línea permiten indicar:
-  - «CAByS», «Unidad de medida», «Tarifa de IVA» y «Ubicación en la bodega»;
+  - «CAByS» (la misma lista con todo el catálogo CAByS que la ficha del artículo; en una línea sin artículo, elegirlo propone la descripción y la tarifa de IVA), «Unidad de medida», «Tarifa de IVA» y «Ubicación en la bodega»;
   - un **descuento**: «Código», «Monto» y «Naturaleza del descuento»;
   - otro **impuesto**;
   - una **exoneración**: «Tipo de documento de exoneración», «Número de documento», «Artículo», «Inciso», «Institución» y «% exonerado»;
@@ -648,11 +662,26 @@ Se configuran antes de facturar:
 - Todo queda registrado en **Cambios de precio autorizados**.
 
 **Hacienda (firma y envío):**
-- Si la compañía no tiene certificado de firma configurado, aparece un aviso: el comprobante **se emite y se registra en el ERP**, y su **XML queda disponible para descargar**, pero **no se puede firmar ni enviar a Hacienda** hasta cargar la llave criptográfica.
-- Si alguien pregunta por el envío a Hacienda, explicá esto y sugerí contactar al equipo de CONTAPP para la configuración de la firma.
+- **Encendida** (lo decide el Superusuario, ver 7.6): al emitir, el comprobante se registra en el ERP, se **firma con la llave de la compañía** y se **envía a Hacienda** solo, en segundo plano. El aviso de arriba de la pantalla dice en qué ambiente («Pruebas» o «Producción»).
+  - Se emite con la **fecha y hora de hoy**: la «Fecha de emisión» no se puede cambiar. La «Fecha de contabilización» sí.
+  - Una **factura** necesita un cliente con su **tipo de identificación** y su cédula (Socios de negocio). A consumidor final se emite un **tiquete**.
+  - Cada línea lleva su impuesto, también si es exenta (tarifa 10) o de 0 %.
+  - La condición de venta y el medio de pago «Otros» piden describir cuál es.
+  - Si falta algo, el comprobante **no se emite** y el mensaje dice qué falta. No queda nada a medias: ni venta, ni asiento, ni consecutivo.
+- **Encendida pero incompleta**: un aviso rojo dice qué falta, y no se puede emitir hasta que el Superusuario lo complete.
+- **Apagada**: el comprobante se registra en el ERP y su XML (sin firmar) queda para descargar, pero no se envía a Hacienda.
 
 ### 7.3 Comprobantes (Facturación → Comprobantes)
 - La lista de lo emitido: «Consecutivo», «Fecha», «Cliente», «Total» y «Estado». Al tocar uno se ve el detalle.
+- En un comprobante electrónico, el «Estado» es el de Hacienda:
+  - **Firmado, por enviar** / **Enviando** / **En proceso en Hacienda**: va en camino. CONTAPP lo envía y consulta solo, con esperas cada vez más largas.
+  - **Aceptado**: vale. Si el Superusuario lo dejó así, al cliente le llegan por correo el XML firmado, la respuesta de Hacienda y el PDF.
+  - **Rechazado** o **Hacienda no lo recibió**: el detalle dice por qué. Se corrige lo que indica (los datos del cliente o del emisor) y se usa **«Emitir de nuevo»**, que lo vuelve a emitir con consecutivo y clave nuevos. Una clave ya procesada no se puede reenviar. Si lo que está mal son los montos, se anula con una nota de crédito y se emite otra factura.
+  - **Envío sin confirmar** / **Requiere atención**: no se sabe si llegó, o Hacienda no respondió. «Reintentar envío» consulta primero si Hacienda ya lo tiene (nunca lo envía dos veces).
+  - **Sustituido**: un intento anterior, reemplazado por otro con clave nueva.
+  - **Pruebas**: se envió al sandbox de Hacienda y no tiene validez fiscal.
+- En el detalle: «Consultar estado», «Reintentar envío», «Enviar al cliente», «Emitir de nuevo», y las descargas del **XML firmado**, la **respuesta de Hacienda** y el **PDF**. La «Historia ante Hacienda» muestra cada paso.
+- Una nota de crédito sobre una factura electrónica solo se puede emitir si Hacienda **aceptó** la factura.
 - Desde un comprobante, **«Copiar a → Nota de crédito»** prepara la nota de crédito.
 - **Nota de crédito (03)**: devuelve la mercancía al inventario **al costo original** y cancela la partida por cobrar.
 - Ver los comprobantes requiere el permiso «Comprobantes», y emitirlos, el permiso «Nueva factura».
@@ -668,6 +697,21 @@ Se configuran antes de facturar:
 - Cada línea que se apartó del precio de lista: «Fecha», «Documento», «Artículo», «Diferencia» y «Lo autorizó».
 - Se filtra por fechas y por quién autorizó.
 - Sirve para detectar listas de precios mal puestas: el mismo descuento repetido muchas veces es señal de eso.
+
+### 7.6 Facturación electrónica (Administración → Facturación electrónica)
+- **Solo el Superusuario** de cada compañía la ve y la configura. Cada compañía tiene la suya: un Administrador no puede ver ni cambiar las credenciales.
+- **Lo que se carga:**
+  - **Datos del emisor**: «Tipo de identificación», «Provincia», «Cantón» y «Distrito» (por nombre, de la tabla oficial de Hacienda), «Barrio» (opcional), «Otras señas», «Teléfono», los **correos** del emisor (hasta 4), la «Sucursal» y la «Terminal» por defecto, y si se le envía el comprobante al cliente cuando Hacienda lo acepta. La razón social y la cédula son las de la compañía (Mi cuenta → Mis datos).
+  - Por **ambiente** («Pruebas (sandbox)» y «Producción»), lo que se genera en el ATV de Hacienda: el **usuario y la contraseña del API**, y la **llave criptográfica (.p12) con su PIN**. La llave se revisa al cargarla (el PIN, que esté vigente y que sea de la compañía) y todo se guarda cifrado. La contraseña y el PIN nunca se vuelven a mostrar: para cambiarlos se escriben de nuevo.
+  - **«Probar conexión»** pide un token a Hacienda con ese usuario y contraseña; no envía ningún comprobante.
+  - **Consecutivos**: cada tipo de comprobante lleva su propia numeración por sucursal y terminal. Para continuar la que la compañía traía de TribuCR o de otro sistema, se fija el próximo número (nunca detrás de uno ya usado). Otra opción es usar otra terminal.
+- **Encender**: solo cuando no falta nada; la pantalla lista lo que falta. Se recomienda probar primero en **Pruebas**, en una compañía de prueba, porque cada comprobante igual queda registrado en el ERP.
+- **Pasar a Producción**: con la emisión encendida, solo si las credenciales y la llave de producción ya están cargadas. Rige desde el próximo comprobante.
+- **Apagar**: los comprobantes nuevos dejan de enviarse; los que ya iban en camino siguen.
+- La llave vence: CONTAPP le avisa al Superusuario por correo a los 30, 15, 7 y 1 día.
+- **Antes de emitir**, con la emisión encendida, CONTAPP le pregunta a Hacienda lo que ya sabe que va a rechazar: si un **CAByS** de las líneas no está en el catálogo (rechazo -400) o si la **actividad económica** no está inscrita a la cédula de la compañía (rechazo -408). En ese caso el comprobante no se emite y el formulario dice qué corregir; no se gasta el consecutivo. Si Hacienda no contesta, se emite igual.
+- **Servicio o mercancía** lo decide el CAByS de la línea (los que empiezan con 5 a 9 son servicios), porque así suma Hacienda los totales. Un artículo de bodega con un CAByS de servicio tiene el CAByS mal elegido.
+- Si alguien que no es el Superusuario pregunta cómo configurar la facturación electrónica, decile que lo hace el Superusuario de la compañía en esta pantalla.
 
 ---
 

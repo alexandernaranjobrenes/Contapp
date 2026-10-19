@@ -365,7 +365,9 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 **Regla:** la barra superior (`.topbar`) es la misma en todas las pantallas; lo único que cambia es el título (`.topbar-title`). Todo lo propio de una vista va en la **barra de la vista** (`.view-toolbar`), arriba de su tabla o de su contenido.
 
-- **La barra superior tiene, y solo tiene:** el botón del menú (en ≤ 1024px), el título, el selector de compañía, el cambio de tema, el rol, «Comentarios y noticias» (solo en la aplicación) y «Salir» (con ese texto, no «Salir del sistema»). El nombre del usuario no va. `AppLayout.vue` y `BackofficeLayout.vue` no tienen slot de acciones, a propósito: no hay por dónde meter un botón.
+- **La barra superior tiene, y solo tiene:** el botón del menú (en ≤ 1024px), el título, el selector de compañía, el cambio de tema, el de «Menú arriba / Menú al lado» (desde 1025px, solo en la aplicación; ver secc. 29), el rol, «Comentarios y noticias» (solo en la aplicación) y «Salir» (con ese texto, no «Salir del sistema»). El nombre del usuario no va. `AppLayout.vue` y `BackofficeLayout.vue` no tienen slot de acciones, a propósito: no hay por dónde meter un botón.
+- **Con el menú arriba** (secc. 29), lo de la barra superior pasa a una columna angosta a la izquierda, **solo de íconos** (el nombre de cada uno en su tooltip y su `aria-label`). El título va en la barra del menú, junto a la marca.
+  - **La compañía es un ícono** (`Building2`) que abre al lado la lista para cambiar: al pasar el mouse, al tocarlo o con el teclado (Enter, Espacio, flecha abajo o derecha; Escape o flecha izquierda vuelven). La lista marca en cuál se está y lleva el rol en su encabezado: la columna no tiene lugar para ninguno de los dos. El ícono no lleva `title`, porque el tooltip taparía la lista. Cambiar sigue siendo con `startCompanySwitch()` (secc. 30).
 - **«Comentarios y noticias»** (`MessagesSquare`, junto a «Salir»): abre a la derecha, debajo de la barra, el panel `Components/Feedback/FeedbackPanel.vue`. No es modal: Escape, la X, tocar fuera o cambiar de pantalla lo cierran. Tiene dos pestañas: Comentarios, donde cualquier cuenta publica, vota y comenta (ver `FeedbackService`), y Noticias, que publica el backoffice. Lleva un punto mientras haya una noticia que esa persona no vio.
 - **No existe una barra de documento.** La vieja `.doc-toolbar` (buscar, nuevo, guardar, imprimir… en una tira de íconos) se eliminó: cada acción va con su nombre en la barra de la vista o en el pie de la ficha.
 - **La barra de la vista** (`.view-toolbar`) tiene dos filas. **Arriba, los botones:** el enlace de volver (`ArrowLeft`, a la izquierda, cuando la pantalla es un detalle) y `.view-actions` a la derecha, con las exportaciones, «Guardar configuración», los enlaces a pantallas vecinas, los pasos de un flujo (calcular, aprobar, contabilizar) y «Crear nuevo», que va último. **Abajo, los filtros:** `.view-filters`, a todo el ancho, con el buscador, los rangos de fecha, los demás filtros y su botón «Consultar», pegados a la tabla que filtran.
@@ -416,6 +418,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 **Regla:** toda pantalla funciona sin desplazarse de lado a 375px (y 320px), 768px, 1025px y 1280px.
 
 - **Menú lateral:** en ≤ 1024px es un cajón que abre el botón de menú, con fondo que lo cierra, y que se cierra con Escape y al navegar. Colapsado en escritorio, los íconos van **centrados** en la barra angosta (`.is-collapsed`).
+  - **Aunque la persona haya elegido el menú arriba** (secc. 29): esa preferencia vale solo desde 1025px, y en una pantalla angosta ni se ofrece el botón para cambiarla.
 - **Barra superior:** sus botones nunca se encogen; cuando no cabe todo, cede el título (se corta con puntos suspensivos hasta un mínimo legible). El rol se muestra desde 1025px; en ≤ 640px la compañía se angosta y «Salir» queda solo con su ícono (el texto sigue ahí para el lector de pantalla). El panel «Comentarios y noticias» ocupa todo el ancho en un teléfono.
 - **Tablas como tarjetas:** en ≤ 1024px (solo `@media screen`, para que en papel siga siendo tabla) cada fila de `.table-responsive` es una tarjeta: la primera celda es el título y cada otra celda muestra su `data-label` a la izquierda y su valor a la derecha. La celda fluye como texto, así que «código — nombre» o un detalle en una segunda línea se leen juntos. Una celda vacía no ocupa línea. El pie de totales también es tarjeta.
 - **`.no-cards`** para la tabla que tiene que seguir siendo tabla en pantallas chicas (por ejemplo, una con muy pocas columnas cortas); **`.capture-grid`** para las grillas de captura, donde el campo ocupa lo que la etiqueta deja libre y el texto de apoyo baja a su propia línea.
@@ -444,6 +447,14 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - **Teclado:** flecha derecha (o abajo) entra a la ventana; las flechas la recorren; Escape o flecha izquierda vuelven al ícono.
   - **Tamaño:** alineada con su ícono, sin salirse de la pantalla; si no cabe en la altura, se desplaza.
   - **Pieza:** está en `AppLayout.vue` (`.sidebar-flyout`), teletransportada a `<body>` para que el desplazamiento de la barra no la recorte. No se usa `title` en los íconos: el tooltip nativo taparía la ventana.
+  - **En una pantalla táctil** (sin «pasar por encima»): el primer toque en una sección abre su ventana y el segundo entra a la sección. Tocar fuera la cierra.
+- **Arriba o al lado:** desde 1025px, cada persona elige el menú arriba con el botón «Menú arriba» de la barra superior (`PanelTop`; de vuelta, «Menú al lado», `PanelLeft`).
+  - **Es una preferencia de su navegador**, como el tema: `localStorage` (`contapp-layout`: `side` o `top`), no la base. Se lee antes de pintar.
+  - **Arriba**, la barra del menú mide lo mismo que la barra superior (`--topbar-height`: los paneles de la derecha se abren debajo). Lleva la marca y el título de la pantalla (`.brand-title`, se corta con puntos suspensivos), y después las secciones.
+  - **Cada sección** es su ícono y su nombre, y abre debajo la misma ventana flotante del modo colapsado, con las mismas categorías. El teclado: izquierda y derecha pasan de sección, abajo entra a la ventana. Una sección sin pantallas (el Panel) no abre nada.
+  - **Las que no caben**, en «Más», que abre la ventana con todas ellas: la barra nunca se desplaza de lado. Se mide con un `ResizeObserver`; las que sobran quedan en la barra, invisibles y fuera del flujo, para poder medirlas otra vez.
+  - **Lo de la barra superior**, en la columna de íconos de la izquierda (secc. 24). Colapsar no aplica: el botón no está.
+  - **Administración y Mi cuenta no van en la barra:** van abajo en la columna de la izquierda, junto a «Salir» (`rail: true` en el menú). Abren su ventana al lado, como la barra colapsada. Son de la compañía y de la persona, no del trabajo diario.
 
 ## 30. CAMBIO DE COMPAÑÍA: UNA TRANSICIÓN QUE NO SE PUEDE PASAR POR ALTO
 
@@ -652,9 +663,13 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Nunca se guardan los campos con `password`, `token`, `secret`, `api_key` ni `security_code`, ni los `$hidden`. Las cuentas bancarias, con los últimos cuatro dígitos.
 - **Cómo se lee** (`ActivityLogService`, `ActivityLog/Index.vue`):
   - De a 15, más nuevas primero; «Ver más» pide las siguientes con `?before={id}` (índice `company_id, id`).
-  - Filtros (`from`, `to`, `document`, `search` en la dirección; «Ver más» los repite):
+  - Filtros (`from`, `to`, `document`, `user`, `search` en la dirección; «Ver más» los repite):
     - Fechas: las dos entran enteras (`created_at` desde el inicio de `from` hasta antes del día siguiente a `to`). Al revés, se ordenan.
     - `document`: una pantalla (`screen`) o una de `OTHER_DOCUMENTS` (sesiones, usuarios, compañía, mi cuenta: lo de antes de la Bitácora, sin pantalla). `ActivityLogService::documents()` ofrece solo las pantallas que la persona ve y donde se registra algo (no los reportes). Una que no puede ver es un error de validación, no una lista vacía.
+    - `user`: quién lo hizo, por su id, o `system` (sin persona: los procesos automáticos, «Sistema»).
+      - `ActivityLogService::people()` ofrece a quienes aparecen en lo que la persona ve de la Bitácora, por nombre. Incluye a quien ya no tiene acceso a la compañía, porque lo que hizo sigue ahí; dos con el mismo nombre se distinguen por su correo.
+      - Pidiendo a mano a alguien que solo aparece en otra pantalla, la lista sale vacía: la consulta ya es solo de lo que se ve (`visible()`, lo mismo que la página).
+      - Índice `company_id, user_id, id`.
     - `search`: el `subject` del registro («AS-0005», «CLI-001 — …»), o el nombre de la persona en lo de usuarios.
   - En palabras: el verbo de la ruta (`post` → «contabilizó», `void` → «anuló»…) o el del registro; «con Conti» si vino de Conti. Las referencias se muestran por su nombre, no por su id.
 - **Quién la ve** (`can-manage-company`):
@@ -709,11 +724,11 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - La migración que la separó le dio a cada persona el mismo nivel que tenía en Socios de negocio; el Superusuario la ajusta.
 - En Conti, `aplicar_pago` es de esta pantalla. En los perfiles de permisos, Tesorería la tiene con escritura y los socios solo para consultar.
 
-## 37. RESPALDOS: TODA UNA COMPAÑÍA EN UN ARCHIVO DE TEXTO CIFRADO, Y DE VUELTA A UNA COMPAÑÍA NUEVA
+## 37. RESPALDOS: TODA UNA COMPAÑÍA EN UN ARCHIVO DE TEXTO CIFRADO, Y DE VUELTA A UNA COMPAÑÍA NUEVA O A COMPLETAR UNA QUE EXISTE
 
-**Regla:** el respaldo de una compañía (Administración → Respaldos, y en el backoffice, la ficha de la licencia → Respaldos) lo exportan e importan **solo el Superusuario** (de las compañías de su licencia) y **el backoffice** (de cualquiera). Los Administradores no: es toda la información de la compañía. Se importa **solo a una compañía nueva**, nunca encima de una que existe.
+**Regla:** el respaldo de una compañía (Administración → Respaldos, y en el backoffice, la ficha de la licencia → Respaldos) lo exportan e importan **solo el Superusuario** (de las compañías de su licencia) y **el backoffice** (de cualquiera). Los Administradores no: es toda la información de la compañía. Se importa **en una compañía nueva**, o **completando una que ya existe con lo que le falta**: nunca se sobrescribe nada de lo que ya está.
 
-- **Para qué:** guardar una compañía aparte y mover una compañía a otra licencia. No sirve para pasarla a otra instalación de CONTAPP (ver la firma).
+- **Para qué:** guardar una compañía aparte, mover una compañía a otra licencia y completar una compañía con lo que le falta (lo perdido, o un período que todavía no tiene). No sirve para pasarla a otra instalación de CONTAPP (ver la firma).
 - **Qué lleva** (`App\Domains\Core\Backup\BackupCatalog`): cada tabla de la base es de una sección o está en EXCLUDED con su motivo; una prueba lo exige (como AuditCatalog).
   - Secciones que se eligen: Contabilidad y socios (siempre), Bancos, Inventario, Facturación (necesita Inventario), Planillas, Personas y permisos, Bitácora.
   - Formas: `catalog` (todo, como está hoy), `movement` (por su fecha, en el período), `child` (lo que cuelga de algo que va), `state` (existencias, partidas abiertas: como estaban al cierre).
@@ -726,13 +741,91 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Adentro: el encabezado (`manifiesto`), las personas (id, correo, nombre), una línea por fila, y el cierre con cuántas filas, el SHA-256 y la firma.
   - **La firma** (`BackupSignature`) es un HMAC con una clave derivada de la APP_KEY: solo se importa lo que esta instalación exportó, tal cual. Un archivo armado o editado a mano no pasa aunque se sepa la contraseña. Si cambia la APP_KEY, los respaldos anteriores ya no se importan.
   - La contraseña del archivo la elige quien exporta (al menos 10 caracteres). CONTAPP no la guarda ni la puede recuperar.
-- **Importar** (`BackupImporter`, en la cola `backups`, `ImportCompanyBackupJob`):
-  1. `inspect()` descifra, verifica el SHA-256 y la firma, y cuenta, sin guardar nada.
-  2. `import()`, en una transacción (todo o nada): crea la compañía, da un id nuevo a cada fila y traduce sus referencias.
+- **Importar** (`BackupImporter`, todo en la cola `backups`: `InspectCompanyBackupJob`, `CompareCompanyBackupJob`, `ImportCompanyBackupJob`, con su base `CompanyBackupJob`):
+  - Al subirlo solo se comprueba que sea un respaldo y su contraseña, con el encabezado y el primer tramo (`BackupFile::check`): la subida contesta enseguida.
+  1. `inspect()`, en la cola: descifra, verifica el SHA-256 y la firma, y cuenta, sin guardar nada. También revisa que cada fila traiga las columnas que esta versión exige (sin vacío ni valor por defecto): un respaldo de una versión anterior al que le falta una se rechaza ahí, diciendo cuál, salvo que `BackupCatalog::FILL` diga con qué completarla. **Una migración que agrega una columna obligatoria sin valor por defecto a una tabla del respaldo la suma a FILL.**
+  2. `import()` (compañía nueva) o `merge()` (completar), en una transacción (todo o nada). Cada fila que entra recibe un id nuevo y sus referencias se traducen.
+  - El archivo se lee de nuevo en cada paso, a propósito: queda cifrado en el disco y lo descifrado nunca se escribe. Descifrar es lo de menos; lo que tarda es la base.
   - Los códigos y números de documento se conservan, y lo contabilizado entra contabilizado.
   - Una referencia a algo que no vino: vacía si se puede; si no, la fila no entra y se cuenta.
   - Las personas, por su correo, dentro del cupo de la licencia; quien no tiene cuenta o no cabe queda anotado. El Superusuario de la licencia siempre entra.
-- **El flujo de las pantallas** (`HandlesCompanyBackups`, `CompanyBackupPanel.vue`): elegir qué y el período, y después el resumen («¿Estás seguro?», con cuántos de cada cosa y los saldos iniciales). Se exporta con la contraseña del archivo y la de la cuenta, y la descarga va por fetch para que un error vuelva al formulario. Para importar: subir y revisar, ver el resumen, dar los datos de la compañía nueva y la contraseña de la cuenta, y la cola sigue el avance. Las rutas JSON están en `shouldRenderJsonWhen`.
-- **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`contapp:prune-backups`, cada hora). Exportar queda en la Bitácora. Si exporta el backoffice, va también al historial de la licencia y al Superusuario le llega un correo.
+  - **El avance** (`BackupProgress`) va por una conexión aparte, copia de la de siempre: lo que se escribe dentro de la transacción no se ve hasta el final. En SQLite, por la misma.
+- **Completar una compañía que ya existe** (`BackupMerger`, `BackupBalances`):
+  - **Primero se compara:** `merge()` con `$dryRun` hace todo y lo deshace. Dice por sección qué le falta, qué ya tiene, qué tiene distinto y qué lo impide. Se confirma con la contraseña de la cuenta, y solo si nada lo impide (lo revisa el servidor).
+  - **Cómo se reconoce cada fila** (`BackupCatalog`): por su dueño (`OWNERS`, o el `parent` de una hija), o por su llave (las únicas de la base, leídas con `Schema::getIndexes`, y si no, `KEYS`).
+    - Un documento entra entero o no entra: a uno que ya está no se le agrega ni se le cambia una línea. Sus líneas se reconocen por su lugar.
+    - Las hijas con `'own'` (lotes, ubicaciones, precios de una lista, períodos de un año, estados de cuenta, aplicaciones de pagos) son registros propios: si faltan, se agregan aunque su catálogo ya estuviera.
+    - **Una prueba exige que cada tabla tenga dueño o llave.**
+  - **Lo que ya está no se toca.** Si tiene otros datos, se cuenta como distinto y queda el de la compañía.
+  - **Lo que impide completarla** (y no se guarda nada):
+    - Un documento que ya está con otros datos: en otra etapa (borrador acá, contabilizado en el respaldo), o con el mismo número y otro contenido. Traer lo que generó en el respaldo lo duplicaría o lo dejaría a medias.
+    - Lo que falta del kardex de un artículo, si es de antes de su último movimiento acá, o si no arranca desde la misma existencia y el mismo costo promedio. Cambiaría el costo de salidas ya contabilizadas.
+    - Otra moneda local.
+    - Otra cédula jurídica no lo impide (se puede querer pasar un catálogo), pero se avisa.
+  - **Lo único que cambia de lo que ya estaba** es lo que el sistema calcula de los movimientos, y solo en lo que recibió movimientos nuevos (`BackupBalances`, con las mismas fórmulas que sus servicios):
+    - los consecutivos de cada tipo de documento y serie, después del último número que entró;
+    - lo aplicado, el saldo y el estado de las partidas;
+    - las existencias por almacén, ubicación y lote, el costo promedio y las series;
+    - lo apartado y lo pedido en camino de las órdenes nuevas;
+    - el saldo de un rebajo, la marca de conciliada de una línea del estado de cuenta, y la próxima fecha de un registro programado.
+    - `BackupCatalog::DERIVED` lo deja fuera de la comparación.
+  - **Los saldos iniciales** de un respaldo «desde» una fecha (las filas de id negativo de `BackupOpening`) entran solo si la compañía no tiene movimientos antes de esa fecha: si los tiene, ya tiene esos saldos. Las partidas de antes del período se reconocen por su documento.
+  - **Las personas:** quien ya tiene acceso queda como está, con sus permisos; quien falta entra como en una compañía nueva.
+  - Queda en la Bitácora de la compañía (`company.backup_merged`, con cuánto se agregó) y, si lo hizo el backoffice, en el historial de la licencia.
+- **El flujo de las pantallas** (`HandlesCompanyBackups`, `CompanyBackupPanel.vue`):
+  - **Exportar:** elegir qué y el período, y después el resumen («¿Estás seguro?», con cuántos de cada cosa y los saldos iniciales). Se exporta con la contraseña del archivo y la de la cuenta, y la descarga va por fetch para que un error vuelva al formulario.
+  - **Importar:** subir, y la cola lo revisa. Ver el resumen y elegir dónde:
+    - una compañía nueva, con sus datos;
+    - o completar una de la licencia: comparar, ver la comparación y confirmar.
+  - Cada paso de la cola muestra su avance, con una barra.
+  - Las rutas JSON están en `shouldRenderJsonWhen`.
+  - Las compañías de la licencia viajan como `licenseCompanies`: `companies` es el nombre de las del selector de la barra superior, y lo taparía.
+- **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`contapp:prune-backups`, cada hora, también los que quedaron revisándose o comparándose).
+  - **Exportar queda en la Bitácora cuando el archivo salió entero:** si la descarga se corta, no se anota.
+  - Si exporta el backoffice, va también al historial de la licencia y al Superusuario le llega un correo.
 - **Docker:** el servicio `queue` atiende solo la cola `backups` (los comprobantes de pago encolados siguen como estaban). En un servidor hace falta un worker de esa cola.
-- **Las pruebas:** `CompanyBackupTest` hace de ida y vuelta (todo el historial, desde una fecha y un rango) y compara el balance de comprobación, las partidas, las existencias y las vacaciones. `CompanyBackupHttpTest` prueba las pantallas.
+- **Las pruebas:**
+  - `CompanyBackupTest` hace de ida y vuelta (todo el historial, desde una fecha y un rango) y compara el balance de comprobación, las partidas, las existencias y las vacaciones.
+  - También completa una copia y la deja igual que la original: lo que la impide, lo distinto, el kardex hacia adelante, los saldos iniciales, las personas y un respaldo de una versión anterior.
+  - `CompanyBackupHttpTest` prueba las pantallas.
+
+## 38. FACTURACIÓN ELECTRÓNICA: FIRMADA, ENVIADA Y SEGUIDA HASTA QUE HACIENDA RESPONDE, CON LAS CREDENCIALES DE CADA COMPAÑÍA
+
+**Regla:** con la facturación electrónica encendida, emitir un comprobante es también firmarlo con la llave de la compañía y enviarlo a Hacienda (comprobantes v4.4), como TribuCR. Las credenciales del ATV y la llave criptográfica las aporta **solo el Superusuario de cada compañía**, cada una las suyas. Nunca se envía dos veces la misma venta, y lo que no se puede emitir no deja nada a medias.
+
+- **La guía y las fuentes:** `../guia_agente_facturacionElectronica_Hacienda.md` (la implementación de referencia, sus rechazos reales L1–L21 y sus defectos), `docs/einvoice/` (fuentes oficiales con su SHA-256, decisiones y bitácora de rechazos). La fuente de verdad son los **XSD oficiales v4.4** en `resources/hacienda/xsd/v4.4` (los del ATV, `docs/einvoice/01-fuentes.md`): nombres, orden de nodos, largos y catálogos se verifican ahí, no de memoria. Para trabajar en esto está el subagente `hacienda-cr-einvoice` (`.claude/agents/`).
+- **Administración → Facturación electrónica** (`HaciendaSettingsController`, `Hacienda/Settings.vue`):
+  - Solo el Superusuario de la compañía activa (`User::isSuperAdmin`), revisado en cada acción del servidor. No es una pantalla del `ScreenCatalog`: es del rol, como Respaldos.
+  - Datos del emisor (`hacienda_settings`): tipo de identificación, ubicación (provincia, cantón y distrito elegidos por nombre de la tabla oficial: `CostaRicaTerritory`, `TerritorySelects.vue`), correos (1 a 4, con el patrón del XSD), teléfono, sucursal y terminal por defecto, y si se le envía al cliente.
+  - Por **ambiente** (`hacienda_credentials`, una fila por compañía y `stag`/`prod`): usuario y contraseña del API del ATV, y la llave `.p12` con su PIN. **Todo lo secreto con cast `encrypted`** (APP_KEY) y en `$hidden`; la llave en la base, nunca en el disco. A la pantalla solo llega `summary()`: si está cargado y los datos públicos del certificado.
+  - La llave se revisa **al cargarla** (`CertificateInspector`): el PIN, que sea RSA, la vigencia y que el titular (el serialNumber del sujeto, «CPJ-3-101-123456») sea la cédula de la compañía. Las del ATV cifradas con RC2-40 se abren con `openssl pkcs12 -legacy` y se guardan otra vez cifradas con los algoritmos actuales.
+  - «Probar conexión» pide un token real; no envía comprobantes. Encender exige que `ElectronicInvoicing::missing()` esté vacío; pasar a producción encendida, que también lo esté el ambiente nuevo.
+  - Cada cambio va a la Bitácora como `company.hacienda_*`, sin valores secretos, y solo lo ve el Superusuario (`ActivityLogService::SUPERUSER_ONLY`).
+- **Emitir** (`PostSalesDocumentService`, misma transacción que el asiento y el inventario):
+  1. `ElectronicInvoicing::assertCanIssue` ANTES de tomar el número: receptor identificado en una factura (con los dígitos de su tipo), fecha del documento = hoy en Costa Rica, actividad `0000.0`, un impuesto por línea, «Otros» descritos, la nota sobre un comprobante **aceptado**…
+  2. El consecutivo sale de `fiscal_sequences` (`FiscalSequenceAllocator`, `FOR UPDATE`): una serie por sucursal, terminal y tipo, que arranca después del más alto ya usado. El Superusuario puede fijar el próximo (para seguir la numeración de TribuCR), nunca hacia atrás. Con la emisión apagada se usa el contador del tipo de documento, como siempre.
+  3. La clave lleva la fecha de `issued_at` (UTC en la base, Costa Rica en la clave y el XML: `HaciendaClock`), la misma de FechaEmision.
+  4. `ElectronicDocumentIssuer`: arma el XML (`SalesDocumentXmlBuilder`), revisa las cuentas del resumen (`invariantProblems`), lo valida contra el XSD (`XsdValidator`), lo firma (`XadesEpesSigner`), verifica la firma desde el texto (`XmlSignatureVerifier`) y guarda `electronic_documents` en `signed`. Si algo falla, `ElectronicInvoicingException` deshace todo.
+  5. El envío va por la cola después del commit (`SubmitElectronicDocumentJob::dispatch()->afterCommit()`).
+- **Los datos de Hacienda, no inventados** (los tres rechazos del primer comprobante de prueba, `docs/einvoice/rejections.md`):
+  - **Ubicación:** la tabla oficial `Codificacionubicacion_V4.4` (`resources/hacienda/ubicacion/v4.4.php`, generada del .xlsx del ATV). `CostaRicaTerritory::rules()` exige que cada código exista dentro del anterior, en el emisor y en el socio; la pantalla los ofrece por nombre.
+  - **API público** (`HaciendaPublicData`, `api.hacienda.go.cr`, sin credenciales): un CAByS que no esté en el catálogo local (`/fe/cabys?codigo=`) y actividades inscritas de una cédula (`/fe/ae`), en caché. **Si no contesta, nada se bloquea**: solo cuenta un «no existe» dicho por Hacienda. En las pruebas está apagado (`HACIENDA_PUBLIC_API_ENABLED=false` en phpunit.xml) y se simula con `Http::fake`.
+  - **CAByS:** el catálogo oficial completo viene con CONTAPP (`CabysCatalog`, `resources/hacienda/cabys/cabys-2025.php`, del archivo del BCCR: 20 506 códigos). En la ficha del artículo y en la línea de la factura es una lista con todo el catálogo (`CabysPicker.vue`, `hacienda.cabys`: de a 100, con buscador por código o palabras). Un código se revisa primero ahí y solo si no está se le pregunta a Hacienda (`HaciendaPublicData::cabys`); la ficha no guarda uno que no existe (`cabysRule`). Cuando el BCCR publique una versión nueva, se regenera el archivo de su Excel.
+  - **Antes de emitir** (`ElectronicPreflight`, desde `SalesDocumentController::store` con la emisión encendida): un CAByS que no está en el catálogo (-400) o una actividad que la cédula no tiene inscrita (-408) vuelven al formulario sin gastar consecutivo; lo mismo antes de «Emitir de nuevo» (`problemsForDocument`), que reusa el CAByS y la actividad guardados en la venta. Parámetros de facturación marca cada actividad «Inscrita / No inscrita» y ofrece agregar las inscritas.
+  - **Actividades:** el código y el nombre se eligen de dos listas enlazadas: las inscritas a la cédula y el resto del catálogo de TRIBU-CR (`EconomicActivityCatalog`, de la tabla oficial CIIU 3 → CIIU 4). El servidor no acepta un código v4.4 que no sea del catálogo ni esté inscrito.
+  - **Servicio o mercancía lo decide el CAByS** (`FiscalCatalogs::cabysIsService`: primer dígito 5-9 = servicio, como la CPC), porque así cruza Hacienda los totales del resumen (-111). `is_service` de la línea sigue decidiendo lo del ERP: si sale de bodega y a qué cuenta de ingreso va.
+- **El XML** (`SalesDocumentXmlBuilder`): un namespace y una raíz por tipo; el de exportación (09) sin base imponible, exoneración ni impuesto neto (`PROFILES`). Totales por categoría sobre `MontoTotal` (antes del descuento), exoneración parcial repartida entre gravado y exonerado (`SalesTotalsCalculator`), `TotalDesgloseImpuesto` por código y tarifa, `MedioPago` antes de `TotalComprobante`, `FechaEmisionIR` siempre. Montos con `FiscalDecimal` (bcmath, mitad hacia arriba), nunca con float.
+  - Para validar un XML todavía sin firmar, `XsdValidator` le pone una `ds:Signature` de relleno: filtrar el error «falta Signature» no sirve, porque libxml lo informa mal con elementos que se repiten.
+- **La firma** (`XadesEpesSigner`): XAdES-EPES con la política de `config/hacienda.php` y su hash (calculado sobre el PDF oficial, no copiado), C14N 1.0 inclusiva, RSA-SHA256, tres referencias (el documento con enveloped-signature, KeyInfo y SignedProperties). Todo el árbol se adjunta antes de calcular los digests, y el XML firmado no se reformatea.
+- **El ciclo ante Hacienda** (`ElectronicDocument`, `HaciendaSubmissionService`):
+  - Estados: `signed → submitting → submitted → accepted | rejected`, más `submit_unknown`, `submit_failed`, `needs_attention` y `superseded`. Una transición que no está en la tabla **lanza**. Cada cambio va a `electronic_document_events`; cada llamada, a `electronic_document_exchanges`. Las dos solo se agregan.
+  - **Nunca dos comprobantes por una venta:** ante un tiempo agotado o un 5xx, `submit_unknown`, y antes de reenviar se consulta la clave; si Hacienda la tiene se sigue su estado, si da 404 se reenvía la **misma**. Un 400 se lee de `X-Error-Cause` (`submit_failed`); «ya fue recibido» se reconcilia. Un 401 renueva el token una vez.
+  - «Procesando» se consulta con `hacienda.poll_backoff` (de 20 s a un día) y, agotado, pasa a `needs_attention`.
+  - Rechazado o no recibido se corrige con `ElectronicDocumentReissuer`: consecutivo, clave y fecha nuevos, el XML armado otra vez con los datos actuales; el anterior queda `superseded`. La venta (montos, asiento, inventario) no cambia: si lo malo son los montos, va una nota de crédito.
+  - El token (`HaciendaTokenProvider`) se guarda cifrado por compañía y ambiente, y se pide bajo un candado.
+- **La cola y el programador:** la cola `hacienda` la atiende su propio worker (`queue-hacienda` en docker-compose). `contapp:hacienda-sync` corre **cada minuto** y despacha lo que tiene `next_attempt_at` vencido; es el único que programa trabajo a futuro (el servicio no se encola a sí mismo: con la cola en `sync` se llamaría en cadena). Los jobs viajan con el id, fijan la compañía del comprobante mientras corren y la sueltan. `contapp:hacienda-certificates` avisa al Superusuario de la llave por vencer (30/15/7/1 días).
+- **Al cliente** (`ElectronicDocumentDelivery`, `ElectronicDocumentMail`): solo un comprobante aceptado, con el XML firmado, la respuesta de Hacienda y el PDF (`ElectronicDocumentPdf`, `reports/electronic-document.blade.php`; el QR no va, la resolución lo suspendió). Una vez automático; reenviar a mano desde la ficha.
+- **En pantalla** (`Billing/Sales/Show.vue`): el estado ante Hacienda con su mensaje e historia; «Consultar estado» (con Lectura en «Comprobantes»), y «Reintentar envío», «Enviar al cliente» y «Emitir de nuevo», que son emitir: sus rutas son de la pantalla «Nueva factura» en `ScreenCatalog` y piden Lectura y escritura ahí («Comprobantes» es de solo consulta). El listado muestra el estado de Hacienda y marca lo de «Pruebas». El XML que se descarga de un comprobante electrónico es el firmado.
+- **Socios de negocio:** el receptor de una factura necesita `identification_type`; la ubicación (provincia, cantón y distrito de la tabla oficial) es opcional, pero si viene es completa y coherente, y va al XML solo si está completa (`PartnerFiscalFields.vue`). «Consultar la cédula en Hacienda» trae el tipo de identificación y, si están vacíos, el nombre y la actividad principal.
+- **No viajan en un respaldo** (`BackupCatalog::EXCLUDED`): las credenciales, la configuración y el archivo fiscal; una copia de la compañía podría volver a enviar sus comprobantes. Tampoco van a la Bitácora (`AuditCatalog::IGNORED`): tienen su propia historia.
+- **Las pruebas** (`tests/Feature/Billing/Hacienda`) no tocan a Hacienda: la llave es autofirmada (`haciendaP12()`), el IDP y el API se simulan con `Http::fake` y `preventStrayRequests`. Cada escenario se valida contra el XSD oficial **firmado**, y cada rechazo real de la guía (L1–L16) tiene su prueba.

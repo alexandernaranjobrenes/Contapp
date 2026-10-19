@@ -39,7 +39,7 @@ function salePayload(array $f, array $overrides = []): array
         'document_date' => now()->format('Y-m-d'),
         'posting_date' => now()->format('Y-m-d'),
         'lines' => [[
-            'cabys_code' => '2310110000000',
+            'cabys_code' => '4526100000100',
             'description' => 'Producto de prueba',
             'unit_code' => 'Unid',
             'quantity' => 10,
@@ -106,6 +106,18 @@ it('traduce la falta de existencia a un error de formulario sin dejar comprobant
     expect(SalesDocument::count())->toBe(0);
 });
 
+it('una mercancía sin bodega vuelve al formulario con el motivo, no a una página de error', function () {
+    $f = billingHttpFixture();
+    $payload = salePayload($f);
+    $payload['lines'][0]['warehouse_id'] = null;
+
+    $this->post(route('sales-documents.store'), $payload)
+        ->assertRedirect()
+        ->assertSessionHasErrors(['billing' => 'La línea del artículo ART-1 debe indicar de qué bodega sale.']);
+
+    expect(SalesDocument::where('company_id', $f['company']->id)->count())->toBe(0);
+});
+
 it('rechaza más de cuatro medios de pago', function () {
     $f = billingHttpFixture();
 
@@ -128,8 +140,9 @@ it('la pantalla de emisión expone los catálogos de la norma y el estado de Hac
             ->where('catalogs.ivaRates.08.percentage', '13.00')
             ->has('catalogs.saleConditions')
             ->has('catalogs.units')
-            ->where('hacienda.signer_configured', false)
-            ->where('hacienda.transport_configured', false)
+            // Apagada por defecto: facturar sigue como antes de la facturación electrónica.
+            ->where('hacienda.enabled', false)
+            ->has('hacienda.missing')
         );
 });
 
@@ -271,8 +284,10 @@ it('EL CIERRE DEL CÍRCULO: el CAByS guardado en la ficha llega a la pantalla de
         'is_inventory_item' => true,
         'is_sales_item' => true,
         'status' => 'active',
-        'cabys_code' => '2310110000000',
-        'fiscal_unit_code' => 'kg',
+        'cabys_code' => '4526100000100',
+        // «Kg», como lo escribe el XSD v4.4 (UnidadMedidaType distingue
+        // mayúsculas: «kg» no existe y Hacienda lo rechaza).
+        'fiscal_unit_code' => 'Kg',
         'iva_rate_code' => '08',
     ])->assertSessionHasNoErrors();
 
@@ -280,8 +295,8 @@ it('EL CIERRE DEL CÍRCULO: el CAByS guardado en la ficha llega a la pantalla de
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('Billing/Sales/Create')
-            ->where('items.0.cabys_code', '2310110000000')
-            ->where('items.0.fiscal_unit_code', 'kg')
+            ->where('items.0.cabys_code', '4526100000100')
+            ->where('items.0.fiscal_unit_code', 'Kg')
             ->where('items.0.iva_rate_code', '08')
         );
 });

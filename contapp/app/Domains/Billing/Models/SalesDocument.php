@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SalesDocument extends Model
 {
@@ -21,8 +22,8 @@ class SalesDocument extends Model
         'company_id', 'document_type_id', 'fiscal_document_type', 'situation',
         'branch', 'terminal', 'consecutive', 'clave', 'security_code',
         'emitter_activity_code', 'receiver_activity_code', 'business_partner_id',
-        'currency_id', 'exchange_rate', 'sale_condition', 'credit_term_days',
-        'document_date', 'posting_date', 'due_date',
+        'currency_id', 'exchange_rate', 'sale_condition', 'sale_condition_other', 'credit_term_days',
+        'document_date', 'issued_at', 'posting_date', 'due_date',
         'total_taxed_services', 'total_exempt_services', 'total_exonerated_services', 'total_no_subject_services',
         'total_taxed_goods', 'total_exempt_goods', 'total_exonerated_goods', 'total_no_subject_goods',
         'total_sale', 'total_discounts', 'total_net_sale', 'total_tax', 'total_document',
@@ -45,6 +46,9 @@ class SalesDocument extends Model
     {
         return [
             'document_date' => 'date',
+            // FechaEmision, en UTC: se pasa a la hora de Costa Rica al armar
+            // la clave y el XML (HaciendaClock).
+            'issued_at' => 'datetime',
             'posting_date' => 'date',
             'due_date' => 'date',
         ];
@@ -88,6 +92,20 @@ class SalesDocument extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /**
+     * El comprobante electrónico vigente: el último. Uno anterior que Hacienda
+     * rechazó queda en electronicDocuments, como sustituido.
+     */
+    public function electronicDocument(): HasOne
+    {
+        return $this->hasOne(ElectronicDocument::class)->latestOfMany();
+    }
+
+    public function electronicDocuments(): HasMany
+    {
+        return $this->hasMany(ElectronicDocument::class)->orderBy("id");
     }
 
     public function inventoryDocument(): BelongsTo

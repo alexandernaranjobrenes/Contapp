@@ -8,17 +8,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Una importación de respaldo: subida y revisada, en cola, importando,
- * terminada o con error. Ver la migración y CLAUDE.md secc. 37.
+ * Un respaldo subido para importar: se revisa en la cola (inspecting),
+ * queda revisado (validated), se compara con una compañía que ya existe
+ * (comparing → compared), y confirmado va a la cola (queued → importing →
+ * done o failed). Sin confirmar, vence (expired). Ver las migraciones y
+ * CLAUDE.md secc. 37.
  */
 class CompanyBackup extends Model
 {
-    /** Lo que dura un respaldo subido y revisado esperando la confirmación. */
+    /** Lo que dura un respaldo subido esperando la confirmación. */
     public const HOURS_TO_CONFIRM = 24;
 
+    /** Mientras la cola trabaja con él. */
+    public const RUNNING = ['inspecting', 'comparing', 'queued', 'importing'];
+
     protected $fillable = [
-        'uuid', 'license_id', 'requested_by_user_id', 'requested_by_propietario_id', 'status',
-        'file_path', 'secret', 'summary', 'company_data', 'result', 'progress', 'total',
+        'uuid', 'license_id', 'requested_by_user_id', 'requested_by_propietario_id', 'status', 'mode', 'target_company_id',
+        'file_path', 'secret', 'summary', 'company_data', 'comparison', 'result', 'progress', 'total',
         'company_id', 'error', 'expires_at', 'finished_at',
     ];
 
@@ -30,6 +36,7 @@ class CompanyBackup extends Model
             'secret' => 'encrypted',
             'summary' => 'array',
             'company_data' => 'array',
+            'comparison' => 'array',
             'result' => 'array',
             'expires_at' => 'datetime',
             'finished_at' => 'datetime',
@@ -46,6 +53,11 @@ class CompanyBackup extends Model
         return $this->belongsTo(Company::class);
     }
 
+    public function targetCompany(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'target_company_id');
+    }
+
     public function requestedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by_user_id');
@@ -53,19 +65,24 @@ class CompanyBackup extends Model
 
     public function isPending(): bool
     {
-        return in_array($this->status, ['queued', 'importing'], true);
+        return in_array($this->status, self::RUNNING, true);
     }
 
-    /** Lo que ve la pantalla mientras importa y al terminar. */
+    /** Lo que ve la pantalla mientras trabaja la cola y al terminar. */
     public function toStatus(): array
     {
         return [
             'uuid' => $this->uuid,
             'status' => $this->status,
+            'mode' => $this->mode,
             'progress' => $this->progress,
             'total' => $this->total,
             'company_id' => $this->company_id,
-            'company_name' => $this->company_data['trade_name'] ?? $this->company_data['legal_name'] ?? null,
+            'target_company_id' => $this->target_company_id,
+            'company_name' => $this->mode === 'merge'
+                ? ($this->comparison['company']['name'] ?? null)
+                : ($this->company_data['trade_name'] ?? $this->company_data['legal_name'] ?? null),
+            'comparison' => $this->comparison,
             'result' => $this->result,
             'error' => $this->error,
         ];

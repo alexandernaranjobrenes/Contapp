@@ -67,14 +67,14 @@ class ItemTemplateExporter
                     'ART-001', 'Tornillo hexagonal 1/4"', 'FERR', 'Unid', '7501234567890',
                     'Sí', 'Sí', 'Sí', 'No',
                     10, 50,
-                    '2310110000000', 'Unid', '08', 'IVA-13',
+                    '4294401030100', 'Unid', '08', 'IVA-13',
                     'Sí',
                 ]),
                 Row::fromValues([
                     'SERV-001', 'Instalación a domicilio', '', 'Sp', '',
                     'No', 'Sí', 'No', 'No',
                     '', '',
-                    '8511010000000', 'Sp', '08', 'IVA-13',
+                    '5469900000000', 'Sp', '08', 'IVA-13',
                     'Sí',
                 ]),
             ]);

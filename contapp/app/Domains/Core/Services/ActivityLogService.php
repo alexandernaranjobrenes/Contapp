@@ -43,8 +43,17 @@ class ActivityLogService
 {
     public const PAGE = 15;
 
+    /** En el filtro «Usuario»: lo que hizo un proceso automático (sin persona). */
+    public const SYSTEM = 'system';
+
     /** Lo que decide solo el Superusuario: un Administrador no lo ve. */
-    private const SUPERUSER_ONLY = ['conti_access_updated', 'license_activated', 'license_invitation_accepted'];
+    private const SUPERUSER_ONLY = [
+        'conti_access_updated', 'license_activated', 'license_invitation_accepted',
+        // La facturación electrónica es solo del Superusuario (CLAUDE.md secc. 38).
+        'company.hacienda_settings_updated', 'company.hacienda_credentials_updated', 'company.hacienda_certificate_uploaded',
+        'company.hacienda_connection_tested', 'company.hacienda_environment_changed', 'company.hacienda_enabled',
+        'company.hacienda_disabled', 'company.hacienda_sequence_changed',
+    ];
 
     /** La acción de la ruta, en palabras. Si no está, la del registro (creó, editó, eliminó). */
     private const VERBS = [
@@ -88,6 +97,15 @@ class ActivityLogService
         'company.logo_removed' => 'quitó el logo de la compañía',
         'company.backup_exported' => 'exportó un respaldo de la compañía',
         'company.backup_imported' => 'creó la compañía desde un respaldo',
+        'company.backup_merged' => 'completó la compañía con un respaldo',
+        'company.hacienda_settings_updated' => 'editó los datos del emisor para Hacienda',
+        'company.hacienda_credentials_updated' => 'cambió las credenciales del ATV de Hacienda',
+        'company.hacienda_certificate_uploaded' => 'cargó la llave criptográfica de Hacienda',
+        'company.hacienda_connection_tested' => 'probó la conexión con Hacienda',
+        'company.hacienda_environment_changed' => 'cambió el ambiente de Hacienda',
+        'company.hacienda_enabled' => 'encendió la facturación electrónica',
+        'company.hacienda_disabled' => 'apagó la facturación electrónica',
+        'company.hacienda_sequence_changed' => 'cambió el consecutivo de un comprobante electrónico',
         'license_activated' => 'activó la licencia',
         'license_invitation_accepted' => 'aceptó la licencia',
         'user.profile_updated' => 'editó su perfil',
@@ -173,30 +191,23 @@ class ActivityLogService
     /**
      * Las filas que ve esta persona, antes de $before (la última que ya
      * tiene en pantalla), con los filtros de la pantalla: from y to (fechas
-     * AAAA-MM-DD, las dos incluidas), document (una de documents()) y search
-     * (el número, código o nombre del registro).
+     * AAAA-MM-DD, las dos incluidas), document (una de documents()), user
+     * (una de people(): el id de la persona, o «system») y search (el número,
+     * código o nombre del registro).
      *
-     * @param  array{from?: ?string, to?: ?string, document?: ?string, search?: ?string}  $filters
+     * @param  array{from?: ?string, to?: ?string, document?: ?string, user?: ?string, search?: ?string}  $filters
      * @return array{entries: list<array>, has_more: bool}
      */
     public function page(User $viewer, int $companyId, ?int $before = null, array $filters = []): array
     {
-        $query = AuditLog::query()
-            ->where('company_id', $companyId)
-            ->whereNull('propietario_id')
+        $query = $this->visible($viewer, $companyId)
             ->when($before, fn ($q) => $q->where('id', '<', $before))
             ->when($filters['from'] ?? null, fn ($q, string $from) => $q->where('created_at', '>=', Carbon::parse($from)->startOfDay()))
             ->when($filters['to'] ?? null, fn ($q, string $to) => $q->where('created_at', '<', Carbon::parse($to)->addDay()->startOfDay()))
             ->when($filters['document'] ?? null, fn ($q, string $document) => $this->whereDocument($q, $document))
+            ->when($filters['user'] ?? null, fn ($q, string $user) => $user === self::SYSTEM ? $q->whereNull('user_id') : $q->where('user_id', (int) $user))
             ->when($filters['search'] ?? null, fn ($q, string $search) => $this->whereSearch($q, $search))
             ->orderByDesc('id');
-
-        $allowed = $this->allowedScreens($viewer, $companyId);
-
-        if ($allowed !== null) {
-            $query->where(fn ($q) => $q->whereNull('screen')->orWhereIn('screen', $allowed))
-                ->whereNotIn('action', self::SUPERUSER_ONLY);
-        }
 
         $rows = $query->limit(self::PAGE + 1)->get();
         $hasMore = $rows->count() > self::PAGE;
@@ -251,6 +262,55 @@ class ActivityLogService
     public function documentKeys(User $viewer, int $companyId): array
     {
         return collect($this->documents($viewer, $companyId))->flatMap(fn (array $group) => array_column($group['options'], 'value'))->all();
+    }
+
+    /**
+     * Lo que se puede elegir en el filtro «Usuario»: las personas que
+     * aparecen en lo que esta persona ve de la Bitácora (también quien ya no
+     * tiene acceso a la compañía: lo que hizo sigue ahí), por nombre, y
+     * «Sistema» si hay algo de un proceso automático. Dos con el mismo nombre
+     * se distinguen por su correo.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public function people(User $viewer, int $companyId): array
+    {
+        $ids = $this->visible($viewer, $companyId)->reorder()->distinct()->pluck('user_id');
+
+        $users = User::whereIn('id', $ids->filter())->orderBy('name')->get(['id', 'name', 'email']);
+        $repeated = $users->countBy('name')->filter(fn (int $count) => $count > 1);
+
+        $options = $users->map(fn (User $user) => [
+            'value' => (string) $user->id,
+            'label' => isset($repeated[$user->name]) ? "{$user->name} ({$user->email})" : $user->name,
+        ])->values()->all();
+
+        if ($ids->contains(null)) {
+            $options[] = ['value' => self::SYSTEM, 'label' => 'Sistema'];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Lo de la compañía que esta persona puede ver: el Superusuario, todo; un
+     * Administrador, lo de sus pantallas (y lo que no es de una pantalla:
+     * usuarios, la compañía, sesiones), menos lo que es solo del Superusuario.
+     */
+    private function visible(User $viewer, int $companyId): Builder
+    {
+        $query = AuditLog::query()
+            ->where('company_id', $companyId)
+            ->whereNull('propietario_id');
+
+        $allowed = $this->allowedScreens($viewer, $companyId);
+
+        if ($allowed !== null) {
+            $query->where(fn ($q) => $q->whereNull('screen')->orWhereIn('screen', $allowed))
+                ->whereNotIn('action', self::SUPERUSER_ONLY);
+        }
+
+        return $query;
     }
 
     /** Las pantallas que la persona puede ver; null si las ve todas (el Superusuario). */

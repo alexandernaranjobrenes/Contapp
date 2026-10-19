@@ -90,7 +90,7 @@ function overridePayload(array $f): array
         'document_date' => now()->format('Y-m-d'),
         'posting_date' => now()->format('Y-m-d'),
         'lines' => [[
-            'cabys_code' => '2310110000000',
+            'cabys_code' => '4526100000100',
             'description' => 'Producto de prueba',
             'unit_code' => 'Unid',
             'quantity' => 10,

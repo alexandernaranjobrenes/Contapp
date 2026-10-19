@@ -4,6 +4,7 @@ import { ref, computed, watch } from 'vue';
 import { DownloadIcon, PencilIcon, PlusIcon, PrinterIcon, ScanBarcodeIcon, UploadIcon, WandSparklesIcon } from '@lucide/vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
+import CabysPicker from '../../../Components/CabysPicker.vue';
 import BarcodePreview from '../../../Components/BarcodePreview.vue';
 import BarcodeScanner from '../../../Components/BarcodeScanner.vue';
 import BarcodePhoneLink from '../../../Components/BarcodePhoneLink.vue';
@@ -134,6 +135,17 @@ const { mode, selected, modalOpen, form, openCreate, openDetail, close, startEdi
     storePayload: normalize,
     updatePayload: ({ code, ...data }) => normalize(data),
 });
+
+// Al elegir un CAByS del catálogo de Hacienda, su tarifa de IVA se propone
+// si el artículo todavía no tiene una. Nunca se pisa una ya elegida: tiene que
+// calzar con el indicador de impuesto, y eso lo decide quien llena la ficha.
+// La tarifa del CAByS («13», «exento»…) → su código de la Nota 8.1; «na» no se propone.
+const IVA_RATE_BY_CABYS_TAX = { 13: '08', 4: '04', 2: '03', 1: '02', exento: '10' };
+
+function onCabysPick(entry) {
+    const rate = IVA_RATE_BY_CABYS_TAX[entry.tax];
+    if (! form.iva_rate_code && rate) form.iva_rate_code = rate;
+}
 
 const modalTitle = computed(() => {
     if (mode.value === 'create') return 'Nuevo artículo';
@@ -625,12 +637,7 @@ function onFileSelected(e) {
                 <div class="form-grid">
                     <div class="field">
                         <label for="item-cabys">Código CAByS</label>
-                        <input
-                            id="item-cabys"
-                            v-model="form.cabys_code"
-                            type="text" inputmode="numeric" maxlength="13" placeholder="13 dígitos"
-                            class="cabys-input"
-                        >
+                        <CabysPicker id="item-cabys" v-model="form.cabys_code" @pick="onCabysPick" />
                         <span v-if="form.errors.cabys_code" class="error">{{ form.errors.cabys_code }}</span>
                     </div>
 
@@ -697,7 +704,6 @@ function onFileSelected(e) {
 <style scoped>
 table { font-size: 0.85rem; }
 .code-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-variant-numeric: tabular-nums; }
-.cabys-input { font-variant-numeric: tabular-nums; }
 
 /* El código de barras: el campo con sus dos botones, y el dibujo abajo. */
 .barcode-field { gap: 0.45rem; }

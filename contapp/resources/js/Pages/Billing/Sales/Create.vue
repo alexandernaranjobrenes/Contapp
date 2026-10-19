@@ -3,6 +3,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
+import CabysPicker from '../../../Components/CabysPicker.vue';
 import { ArrowLeftIcon, PlusIcon, SlidersHorizontalIcon, XIcon } from '@lucide/vue';
 
 const props = defineProps({
@@ -25,7 +26,13 @@ const props = defineProps({
 });
 
 const page = usePage();
-const today = new Date().toISOString().slice(0, 10);
+// La fecha local del navegador, no la de UTC: a las 7 de la noche en Costa
+// Rica, toISOString() ya diría mañana.
+const today = new Date().toLocaleDateString('en-CA');
+
+// La facturación electrónica de la compañía (ElectronicInvoicing::status):
+// encendida, cada comprobante se firma y se envía a Hacienda al emitirlo.
+const electronic = computed(() => !! props.hacienda.enabled);
 
 const localCurrency = props.currencies.find((c) => c.code === 'CRC') ?? props.currencies[0];
 
@@ -33,14 +40,15 @@ const form = useForm({
     document_type_id: props.documentTypes[0]?.id ?? '',
     fiscal_document_type: '01',
     situation: '1',
-    branch: '001',
-    terminal: '00001',
+    branch: props.hacienda.branch ?? '001',
+    terminal: props.hacienda.terminal ?? '00001',
     business_partner_id: '',
     emitter_activity_code: props.activities.find((a) => a.is_default)?.code ?? props.activities[0]?.code ?? '',
     receiver_activity_code: '',
     currency_id: localCurrency?.id ?? '',
     exchange_rate: 1,
     sale_condition: '01',
+    sale_condition_other: '',
     credit_term_days: '',
     document_date: today,
     posting_date: today,
@@ -134,6 +142,23 @@ watch(() => form.business_partner_id, (id) => {
     }
 });
 
+// Con la emisión electrónica encendida, solo los tipos que CONTAPP firma y
+// envía, y las condiciones de venta que el XSD de ese tipo admite.
+const documentTypeOptions = computed(() => Object.fromEntries(
+    Object.entries(props.catalogs.documentTypes)
+        .filter(([code]) => ! electronic.value || props.hacienda.electronic_types.includes(code))
+));
+
+const saleConditionOptions = computed(() => {
+    const excluded = electronic.value ? (props.catalogs.saleConditionsNotIn?.[form.fiscal_document_type] ?? []) : [];
+
+    return Object.fromEntries(Object.entries(props.catalogs.saleConditions).filter(([code]) => ! excluded.includes(code)));
+});
+
+// Un comprobante electrónico se emite hoy: la clave lleva la fecha y hora de
+// emisión. La contabilización sí puede ir en otra fecha.
+watch(electronic, (on) => { if (on) form.document_date = today; }, { immediate: true });
+
 // --- Panel 2: términos financieros ---
 
 const isCredit = computed(() => props.catalogs.creditConditions.includes(form.sale_condition));
@@ -197,6 +222,18 @@ const priceNotice = computed(() => {
 });
 
 // --- Panel 3: líneas ---
+
+// Un CAByS elegido del catálogo de Hacienda en una línea sin artículo: su
+// descripción y su tarifa de IVA se proponen. Con artículo, manda la ficha.
+// La tarifa del CAByS («13», «exento»…) → su código de la Nota 8.1; «na» no se propone.
+const IVA_RATE_BY_CABYS_TAX = { 13: '08', 4: '04', 2: '03', 1: '02', exento: '10' };
+
+function onLineCabysPick(line, entry) {
+    if (line.item_id) return;
+    if ((line.description ?? '').trim().length < 3) line.description = entry.description.slice(0, 200);
+    const rate = IVA_RATE_BY_CABYS_TAX[entry.tax];
+    if (rate) line.taxes[0].iva_rate_code = rate;
+}
 
 function onItemSelected(line) {
     const item = props.items.find((i) => i.id === line.item_id);
@@ -271,6 +308,13 @@ function lineMissing(line) {
     return missing;
 }
 
+// Una mercancía del inventario sale de una bodega: sin ella no hay de dónde
+// rebajar la existencia ni qué costo llevar a resultados (SalesLineInput lo
+// rechaza). La bodega se elige en la fila misma, no en el detalle.
+function needsWarehouse(line) {
+    return !! line.item_id && ! line.is_service && ! line.warehouse_id;
+}
+
 function lineMeta(line) {
     const rate = props.catalogs.ivaRates[line.taxes[0]?.iva_rate_code];
 
@@ -288,8 +332,9 @@ const totals = computed(() => {
     let taxedServices = 0, taxedGoods = 0, exempt = 0, exonerated = 0, noSubject = 0;
 
     for (const line of form.lines) {
+        // Los totales por categoría van sobre el monto bruto de la línea,
+        // como en el XML (SalesTotalsCalculator): el descuento se resta aparte.
         const gross = Number(line.quantity || 0) * Number(line.unit_price || 0);
-        const subtotal = gross - Number(line.discount_amount || 0);
 
         sale += gross;
         discounts += Number(line.discount_amount || 0);
@@ -298,11 +343,11 @@ const totals = computed(() => {
         const hasExoneration = line.taxes.some((t) => Number(t.exonerated_percentage || 0) > 0);
         const codes = line.taxes.map((t) => t.iva_rate_code).filter(Boolean);
 
-        if (hasExoneration) exonerated += subtotal;
-        else if (codes.includes('10')) exempt += subtotal;
-        else if (codes.length === 0 || codes.every((c) => c === '11')) noSubject += subtotal;
-        else if (line.is_service) taxedServices += subtotal;
-        else taxedGoods += subtotal;
+        if (hasExoneration) exonerated += gross;
+        else if (codes.includes('10')) exempt += gross;
+        else if (codes.length === 0 || codes.every((c) => c === '11')) noSubject += gross;
+        else if (line.is_service) taxedServices += gross;
+        else taxedGoods += gross;
     }
 
     const net = sale - discounts;
@@ -331,7 +376,7 @@ const referenceRequired = computed(() =>
 
 watch(referenceRequired, (required) => {
     if (required && form.references.length === 0) {
-        form.references.push({ document_type: '01', number: '', reason_code: '01', reason: '' });
+        form.references.push({ document_type: '01', number: '', issued_at: '', reason_code: '01', reason: '' });
     }
 });
 
@@ -341,8 +386,10 @@ const canSubmit = computed(() => {
     if (isCredit.value && ! form.credit_term_days) return false;
     if (! isCredit.value && ! paymentsMatch.value) return false;
     if (referenceRequired.value && form.references.length === 0) return false;
+    if (form.sale_condition === '99' && form.sale_condition_other.trim().length < 5) return false;
+    if (electronic.value && ! props.hacienda.ready) return false;
 
-    return form.lines.every((l) => l.cabys_code && l.description.length >= 3 && Number(l.quantity) > 0);
+    return form.lines.every((l) => l.cabys_code && l.description.length >= 3 && Number(l.quantity) > 0 && ! needsWarehouse(l));
 });
 
 // --- Cambio de precio: el que respeta la lista y el que hay que autorizar ---
@@ -402,6 +449,9 @@ function submit() {
             ...data,
             business_partner_id: data.business_partner_id === '' ? null : data.business_partner_id,
             credit_term_days: data.credit_term_days === '' ? null : data.credit_term_days,
+            sale_condition_other: data.sale_condition === '99' ? data.sale_condition_other : null,
+            payments: data.payments.map((p) => ({ ...p, method_other: p.method_code === '99' ? (p.method_other ?? null) : null })),
+            references: data.references.map((r) => ({ ...r, issued_at: r.issued_at || null })),
             receiver_activity_code: data.receiver_activity_code === '' ? null : data.receiver_activity_code,
             notes: data.notes === '' ? null : data.notes,
             lines: data.lines.map((line) => ({
@@ -428,10 +478,19 @@ function submit() {
 
         <div v-if="page.props.errors?.billing" class="flash flash-error">{{ page.props.errors.billing }}</div>
 
-        <p v-if="!hacienda.signer_configured" class="flash flash-warning">
-            No hay certificado de firma configurado. El comprobante se va a emitir y registrar en el ERP, y su XML
-            queda disponible para descargar, pero <strong>no se puede firmar ni enviar a Hacienda</strong> hasta cargar
-            la llave criptográfica.
+        <!-- Facturación electrónica (CLAUDE.md secc. 38) -->
+        <div v-if="electronic && !hacienda.ready" class="flash flash-error">
+            La facturación electrónica está encendida pero incompleta, y no se puede emitir hasta completarla. Falta:
+            <ul class="missing-list"><li v-for="item in hacienda.missing" :key="item">{{ item }}</li></ul>
+            Lo completa el Superusuario en Administración → Facturación electrónica.
+        </div>
+        <p v-else-if="electronic" class="flash flash-success">
+            Facturación electrónica encendida ({{ hacienda.environment_label }}): al emitir, el comprobante se firma y se
+            envía a Hacienda. Se emite con la fecha y hora de hoy.
+        </p>
+        <p v-else class="flash flash-warning">
+            La facturación electrónica está apagada: el comprobante se registra en el ERP y su XML queda para descargar,
+            pero <strong>no se firma ni se envía a Hacienda</strong>.
         </p>
 
         <form @submit.prevent="attemptSubmit">
@@ -443,7 +502,7 @@ function submit() {
                     <div class="field">
                         <label>Tipo de comprobante</label>
                         <select v-model="form.fiscal_document_type">
-                            <option v-for="(label, code) in catalogs.documentTypes" :key="code" :value="code">
+                            <option v-for="(label, code) in documentTypeOptions" :key="code" :value="code">
                                 {{ code }} — {{ label }}
                             </option>
                         </select>
@@ -483,7 +542,7 @@ function submit() {
                     </div>
                     <div class="field">
                         <label>Actividad del receptor</label>
-                        <input v-model="form.receiver_activity_code" type="text" maxlength="6" placeholder="6 dígitos">
+                        <input v-model="form.receiver_activity_code" type="text" maxlength="6" placeholder="6201.0">
                     </div>
                 </div>
 
@@ -512,10 +571,15 @@ function submit() {
                     <div class="field">
                         <label>Condición de venta</label>
                         <select v-model="form.sale_condition">
-                            <option v-for="(label, code) in catalogs.saleConditions" :key="code" :value="code">
+                            <option v-for="(label, code) in saleConditionOptions" :key="code" :value="code">
                                 {{ code }} — {{ label }}
                             </option>
                         </select>
+                    </div>
+                    <div v-if="form.sale_condition === '99'" class="field">
+                        <label for="sale_condition_other">¿Qué condición es?</label>
+                        <input id="sale_condition_other" v-model="form.sale_condition_other" type="text" minlength="5" maxlength="100" required>
+                        <span v-if="form.errors.sale_condition_other" class="error">{{ form.errors.sale_condition_other }}</span>
                     </div>
                     <div class="field">
                         <label>Plazo del crédito (días)</label>
@@ -524,7 +588,8 @@ function submit() {
                     </div>
                     <div class="field">
                         <label>Fecha de emisión</label>
-                        <input v-model="form.document_date" type="date" required>
+                        <input v-model="form.document_date" type="date" required :disabled="electronic">
+                        <span v-if="electronic" class="hint small">Hoy: un comprobante electrónico se emite en el momento.</span>
                     </div>
                     <div class="field">
                         <label>Fecha de contabilización</label>
@@ -574,6 +639,7 @@ function submit() {
                                     <span class="line-meta muted small">
                                         {{ lineMeta(line) }}
                                         <span v-if="lineMissing(line).length" class="line-missing">Falta {{ lineMissing(line).join(' y ') }}: abrí el detalle de la línea.</span>
+                                        <span v-if="needsWarehouse(line)" class="line-missing">Elegí la bodega de donde sale la mercancía.</span>
                                     </span>
                                 </td>
                                 <td data-label="Bodega" class="warehouse-cell">
@@ -642,9 +708,14 @@ function submit() {
                         <label>Justificación</label>
                         <input v-model="reference.reason" type="text" minlength="3" maxlength="180" required>
                     </div>
+                    <div class="field">
+                        <label>Fecha de emisión del documento</label>
+                        <input v-model="reference.issued_at" type="date">
+                        <span class="hint small">Si es un comprobante de CONTAPP (su clave), se toma la suya exacta.</span>
+                    </div>
                 </div>
 
-                <button type="button" class="btn btn-ghost" @click="form.references.push({ document_type: '01', number: '', reason_code: '01', reason: '' })">
+                <button type="button" class="btn btn-ghost" @click="form.references.push({ document_type: '01', number: '', issued_at: '', reason_code: '01', reason: '' })">
                     <PlusIcon /> Referencia
                 </button>
             </section>
@@ -689,6 +760,12 @@ function submit() {
                         </select>
                         <input v-model="payment.amount" type="number" step="0.01" min="0" class="right" :aria-label="`Monto del medio de pago ${index + 1}`">
                         <button type="button" class="btn btn-ghost" :aria-label="`Quitar el medio de pago ${index + 1}`" @click="form.payments.splice(index, 1)"><XIcon /></button>
+                        <input
+                            v-if="payment.method_code === '99'"
+                            v-model="payment.method_other"
+                            class="method-other" type="text" minlength="3" maxlength="100" required placeholder="¿Cuál medio?"
+                            :aria-label="`Descripción del medio de pago ${index + 1}`"
+                        >
                     </div>
 
                     <div class="payment-actions">
@@ -733,7 +810,7 @@ function submit() {
 
                 <div class="emit">
                     <button type="submit" class="btn btn-primary btn-emit" :disabled="form.processing || !canSubmit">
-                        {{ needsAuthorization ? 'Emitir (requiere autorización)' : 'Emitir y registrar en el ERP' }}
+                        {{ needsAuthorization ? 'Emitir (requiere autorización)' : (electronic ? 'Emitir, firmar y enviar a Hacienda' : 'Emitir y registrar en el ERP') }}
                     </button>
                 </div>
             </section>
@@ -802,7 +879,7 @@ function submit() {
                 <div class="form-grid">
                     <div class="field">
                         <label for="adv-cabys">CAByS</label>
-                        <input id="adv-cabys" v-model="form.lines[advancedLine].cabys_code" type="text" maxlength="13" required class="cabys">
+                        <CabysPicker id="adv-cabys" v-model="form.lines[advancedLine].cabys_code" required @pick="(entry) => onLineCabysPick(form.lines[advancedLine], entry)" />
                     </div>
                     <div class="field">
                         <label for="adv-unit">Unidad de medida</label>
@@ -844,9 +921,10 @@ function submit() {
                     </div>
                 </div>
 
-                <div v-if="form.lines[advancedLine].discount_code === '99'" class="field">
-                    <label>Naturaleza del descuento</label>
-                    <input v-model="form.lines[advancedLine].discount_reason" type="text" maxlength="80">
+                <div v-if="form.lines[advancedLine].discount_code" class="field">
+                    <label>Naturaleza del descuento {{ form.lines[advancedLine].discount_code === '99' ? '' : '(opcional)' }}</label>
+                    <input v-model="form.lines[advancedLine].discount_reason" type="text" maxlength="80" :minlength="form.lines[advancedLine].discount_code === '99' ? 5 : 0">
+                    <span class="hint small">Sin texto, el XML lleva el nombre del código de descuento.</span>
                 </div>
 
                 <h3>Impuestos y exoneración</h3>
@@ -926,6 +1004,7 @@ function submit() {
 </template>
 
 <style scoped>
+.missing-list { margin: 0.35rem 0; padding-left: 1.2rem; font-size: 0.82rem; }
 .panel { padding: 1.1rem 1.25rem; margin-bottom: 0.9rem; }
 .panel h2 { font-size: 0.92rem; margin: 0 0 0.9rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); }
 .panel h3 { font-size: 0.82rem; margin: 1rem 0 0.5rem; color: var(--color-text-muted); }
@@ -940,7 +1019,6 @@ function submit() {
 table { font-size: 0.82rem; }
 th, td { padding: 0.35rem 0.4rem; }
 .right, td input.right { text-align: right; }
-.cabys { font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
 
 .lines-grid { margin-bottom: 0.6rem; }
@@ -973,6 +1051,7 @@ th, td { padding: 0.35rem 0.4rem; }
 .totals-column.grand strong { font-size: 1.3rem; }
 
 .payment-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 0.6rem; margin-bottom: 0.5rem; }
+.payment-row .method-other { grid-column: 1 / -1; }
 .payment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; }
 
 @media (max-width: 640px) {

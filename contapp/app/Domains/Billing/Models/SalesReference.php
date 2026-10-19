@@ -16,7 +16,8 @@ class SalesReference extends Model
 
     protected function casts(): array
     {
-        return ['issued_at' => 'date'];
+        // FechaEmisionIR lleva hora: en UTC, como issued_at del comprobante.
+        return ['issued_at' => 'datetime'];
     }
 
     public function document(): BelongsTo

@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
-use App\Domains\Billing\Contracts\HaciendaSigner;
-use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\Models\BillingPaymentAccount;
 use App\Domains\Billing\Models\BillingTaxAccount;
 use App\Domains\Billing\Models\CompanyEconomicActivity;
+use App\Domains\Billing\Services\Hacienda\ElectronicInvoicing;
+use App\Domains\Billing\Services\Hacienda\HaciendaPublicData;
+use App\Domains\Billing\Support\EconomicActivityCatalog;
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\TaxRate;
 use Illuminate\Http\RedirectResponse;
@@ -29,8 +31,10 @@ use Inertia\Response;
  */
 class BillingSettingsController extends Controller
 {
-    public function index(HaciendaSigner $signer, HaciendaTransport $transport): Response
+    public function index(CurrentCompany $currentCompany, ElectronicInvoicing $electronic): Response
     {
+        $company = Company::findOrFail($currentCompany->id());
+
         return Inertia::render('Billing/Settings/Index', [
             'activities' => CompanyEconomicActivity::with('revenueAccount:id,code,description_es')
                 ->orderBy('code')->get(),
@@ -45,10 +49,14 @@ class BillingSettingsController extends Controller
                 'ivaRates' => FiscalCatalogs::IVA_RATES,
                 'paymentMethods' => FiscalCatalogs::PAYMENT_METHODS,
             ],
-            'hacienda' => [
-                'signer_configured' => $signer->isConfigured(),
-                'transport_configured' => $transport->isConfigured(),
-            ],
+            // El estado de la facturación electrónica; se configura en
+            // Administración → Facturación electrónica, solo el Superusuario.
+            'hacienda' => $electronic->status($company),
+            // La pantalla le pregunta a Hacienda qué actividades tiene
+            // inscritas esta cédula (HaciendaLookupController::taxpayer).
+            'companyTaxId' => preg_replace('/\D/', '', (string) $company->tax_id) ?: null,
+            // Las actividades de TRIBU-CR, para elegir código y nombre.
+            'activityCatalog' => EconomicActivityCatalog::all(),
         ]);
     }
 
@@ -57,14 +65,27 @@ class BillingSettingsController extends Controller
         $companyId = $currentCompany->id();
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'size:6'],
+            // La v4.4 usa «6201.0» (cuatro dígitos, punto, uno); los seis
+            // dígitos de antes se aceptan para no romper lo que ya estaba, pero
+            // con ese formato no se puede emitir electrónicamente
+            // (ElectronicInvoicing::missing lo dice).
+            'code' => ['required', 'string', 'size:6', 'regex:/^(\d{4}\.\d|\d{6})$/'],
             'name' => ['required', 'string', 'max:255'],
             'revenue_account_id' => ['required', $this->accountRule($companyId)],
             'is_default' => ['boolean'],
+        ], [
+            'code.regex' => 'El código de actividad de la v4.4 va con el formato 6201.0.',
         ]);
 
         if (CompanyEconomicActivity::where('company_id', $companyId)->where('code', $validated['code'])->exists()) {
             return back()->withErrors(['code' => "Ya existe la actividad económica {$validated['code']}."])->withInput();
+        }
+
+        // Un código de la v4.4 tiene que ser de Hacienda: del catálogo de
+        // TRIBU-CR, o una actividad que Hacienda tiene inscrita a la cédula.
+        if (preg_match('/^\d{4}\.\d$/', $validated['code']) && ! EconomicActivityCatalog::exists($validated['code'])
+            && ! $this->registeredToCompany($companyId, $validated['code'])) {
+            return back()->withErrors(['code' => "La actividad {$validated['code']} no está en el catálogo de actividades de Hacienda."])->withInput();
         }
 
         // Una sola actividad por defecto: marcar una desmarca la anterior.
@@ -75,6 +96,13 @@ class BillingSettingsController extends Controller
         CompanyEconomicActivity::create([...$validated, 'company_id' => $companyId]);
 
         return back()->with('success', "Actividad económica {$validated['code']} registrada.");
+    }
+
+    private function registeredToCompany(int $companyId, string $code): bool
+    {
+        $taxId = preg_replace('/\D/', '', (string) Company::whereKey($companyId)->value('tax_id'));
+
+        return $taxId !== '' && app(HaciendaPublicData::class)->activityIsRegistered($taxId, $code) === true;
     }
 
     public function destroyActivity(int $activity): RedirectResponse

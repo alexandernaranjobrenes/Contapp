@@ -18,8 +18,8 @@ use Inertia\Response;
  *
  * De a 15: la pantalla llega con las primeras y «Ver más» pide las
  * siguientes (more), para no traer de una vez años de historia. Los filtros
- * (rango de fechas, documento y su número o nombre) viajan en la dirección y
- * «Ver más» los repite.
+ * (rango de fechas, documento, usuario y el número o nombre del registro)
+ * viajan en la dirección y «Ver más» los repite.
  */
 class ActivityLogController extends Controller
 {
@@ -35,6 +35,8 @@ class ActivityLogController extends Controller
             // Solo lo que la persona puede ver: un Administrador sin Planillas
             // no tiene «Empleados» para elegir.
             'documents' => $log->documents($request->user(), $companyId),
+            // Las personas que aparecen en lo que ve, y «Sistema».
+            'people' => $log->people($request->user(), $companyId),
         ]);
     }
 
@@ -46,16 +48,20 @@ class ActivityLogController extends Controller
         return response()->json($log->page($request->user(), $companyId, (int) $validated['before'], $this->filters($request, $log, $companyId)));
     }
 
-    /** @return array{from: ?string, to: ?string, document: ?string, search: ?string} */
+    /** @return array{from: ?string, to: ?string, document: ?string, user: ?string, search: ?string} */
     private function filters(Request $request, ActivityLogService $log, int $companyId): array
     {
+        // La persona: su id, o «system». No hace falta que esté en la lista de
+        // people(): la consulta ya es solo de la compañía y de lo que se ve.
         $validated = $request->validate([
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
             'document' => ['nullable', 'string', Rule::in($log->documentKeys($request->user(), $companyId))],
+            'user' => ['nullable', 'string', 'regex:/^('.ActivityLogService::SYSTEM.'|[1-9]\d{0,18})$/'],
             'search' => ['nullable', 'string', 'max:100'],
         ], [
             'document.in' => 'No tenés acceso a ese documento.',
+            'user.regex' => 'Ese usuario no es válido.',
         ]);
 
         $from = $validated['from'] ?? null;
@@ -72,6 +78,7 @@ class ActivityLogController extends Controller
             'from' => $from,
             'to' => $to,
             'document' => $validated['document'] ?? null,
+            'user' => $validated['user'] ?? null,
             'search' => $search !== '' ? $search : null,
         ];
     }

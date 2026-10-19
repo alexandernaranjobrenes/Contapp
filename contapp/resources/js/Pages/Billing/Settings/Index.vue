@@ -1,6 +1,6 @@
 <script setup>
-import { Head, useForm, router, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
+import { computed, onMounted, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
 import { confirmAction } from '../../../Utils/confirm';
@@ -14,6 +14,9 @@ const props = defineProps({
     taxRates: { type: Array, default: () => [] },
     catalogs: { type: Object, required: true },
     hacienda: { type: Object, default: () => ({}) },
+    companyTaxId: { type: String, default: null },
+    // Las actividades de TRIBU-CR (CIIU 4), código => nombre (EconomicActivityCatalog).
+    activityCatalog: { type: Object, default: () => ({}) },
 });
 
 const page = usePage();
@@ -38,10 +41,97 @@ const addProcessing = computed(() => (adding.value ? addForms[adding.value].proc
 function openAdd(kind) {
     addForms[kind].reset();
     addForms[kind].clearErrors();
+    // La primera actividad de la compañía es la de por defecto.
+    if (kind === 'activity') activityForm.is_default = props.activities.length === 0;
     adding.value = kind;
 }
 
 const closeAdd = () => { adding.value = null; };
+
+// --- Las actividades que Hacienda tiene inscritas a la cédula ---
+// (api.hacienda.go.cr/fe/ae, por HaciendaLookupController). Facturar con una
+// que no está inscrita es un rechazo seguro: -408.
+const registered = ref(null); // null = sin consultar; { available, activities }
+const loadingRegistered = ref(false);
+
+async function loadRegistered() {
+    if (! props.companyTaxId) return;
+    loadingRegistered.value = true;
+
+    try {
+        const res = await fetch(route('hacienda.taxpayer', { identification: props.companyTaxId }), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (res.redirected || ! res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        registered.value = {
+            available: data.available,
+            found: data.taxpayer?.found ?? false,
+            activities: (data.taxpayer?.activities ?? []).filter((a) => a.active),
+        };
+    } catch {
+        registered.value = { available: false, found: false, activities: [] };
+    } finally {
+        loadingRegistered.value = false;
+    }
+}
+
+onMounted(loadRegistered);
+
+const registeredKnown = computed(() => registered.value?.available && registered.value.found);
+
+function registrationOf(activity) {
+    if (! registeredKnown.value) return null;
+    return registered.value.activities.some((a) => a.code === activity.code);
+}
+
+// Las inscritas que la compañía todavía no configuró.
+const notConfigured = computed(() => (registeredKnown.value
+    ? registered.value.activities.filter((a) => ! props.activities.some((c) => c.code === a.code))
+    : []));
+
+// En «Nueva actividad económica», código y nombre son dos listas con todas
+// las actividades de Hacienda que la compañía todavía no configuró: elegir en
+// una llena la otra. Arriba, las inscritas a la cédula; abajo, el resto del
+// catálogo de TRIBU-CR (con una de esas Hacienda rechaza el comprobante).
+const choices = computed(() => {
+    const configured = new Set(props.activities.map((a) => a.code));
+    const inscribed = (registeredKnown.value ? registered.value.activities : [])
+        .filter((a) => ! configured.has(a.code))
+        .map((a) => ({ code: a.code, name: props.activityCatalog[a.code] ?? a.description }));
+    const inscribedCodes = new Set(inscribed.map((a) => a.code));
+    const others = Object.entries(props.activityCatalog)
+        .filter(([code]) => ! configured.has(code) && ! inscribedCodes.has(code))
+        .map(([code, name]) => ({ code, name }));
+
+    return { inscribed, others };
+});
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'es');
+const choicesByName = computed(() => ({
+    inscribed: [...choices.value.inscribed].sort(byName),
+    others: [...choices.value.others].sort(byName),
+}));
+
+const othersLabel = computed(() => (registeredKnown.value
+    ? 'Otras del catálogo de Hacienda (no inscritas a la cédula)'
+    : 'Catálogo de actividades de Hacienda'));
+
+function chooseActivity(code) {
+    const activity = [...choices.value.inscribed, ...choices.value.others].find((a) => a.code === code);
+    activityForm.code = activity?.code ?? '';
+    activityForm.name = activity?.name ?? '';
+}
+
+// Elegida una que Hacienda dice que la cédula no tiene inscrita.
+const choiceNotInscribed = computed(() => registeredKnown.value && activityForm.code !== ''
+    && ! registered.value.activities.some((a) => a.code === activityForm.code));
+
+function addRegistered(activity) {
+    openAdd('activity');
+    chooseActivity(activity.code);
+}
 
 function submitActivity() {
     activityForm.post(route('billing-settings.activities.store'), {
@@ -126,21 +216,27 @@ function accountLabel(account) {
     <AppLayout title="Configuración de facturación">
         <div v-for="(message, key) in page.props.errors" :key="key" class="flash flash-error">{{ message }}</div>
 
-        <div class="card hacienda" :class="hacienda.signer_configured ? '' : 'pending'">
+        <!-- Facturación electrónica: se configura en Administración, solo el
+             Superusuario (CLAUDE.md secc. 38). Acá solo se informa. -->
+        <div class="card hacienda" :class="hacienda.enabled && hacienda.ready ? '' : 'pending'">
             <div>
-                <strong>Firma electrónica</strong>
+                <strong>Facturación electrónica</strong>
                 <p class="muted small">
-                    {{ hacienda.signer_configured
-                        ? 'Certificado cargado: los comprobantes se pueden firmar.'
-                        : 'Sin certificado. Se pueden emitir comprobantes y registrarlos en el ERP, y descargar su XML, pero no firmarlos.' }}
+                    <template v-if="hacienda.enabled && hacienda.ready">Encendida ({{ hacienda.environment_label }}): cada comprobante se firma y se envía a Hacienda.</template>
+                    <template v-else-if="hacienda.enabled">Encendida pero incompleta: no se puede emitir hasta completarla.</template>
+                    <template v-else>Apagada: los comprobantes se registran en el ERP sin enviarse a Hacienda.</template>
                 </p>
             </div>
+            <div v-if="hacienda.missing?.length">
+                <strong>Falta</strong>
+                <ul class="muted small missing"><li v-for="item in hacienda.missing" :key="item">{{ item }}</li></ul>
+            </div>
             <div>
-                <strong>Envío a la DGT</strong>
                 <p class="muted small">
-                    {{ hacienda.transport_configured
-                        ? 'Credenciales del ATV cargadas.'
-                        : 'Sin credenciales del ATV. Los comprobantes no se envían a Hacienda todavía.' }}
+                    Las credenciales del ATV y la llave criptográfica las carga el Superusuario en
+                    <Link v-if="page.props.auth?.user?.is_super_admin" :href="route('hacienda-settings.index')" class="link">Administración → Facturación electrónica</Link>
+                    <template v-else>Administración → Facturación electrónica</template>.
+                    El código de actividad va con el formato de la v4.4 (6201.0).
                 </p>
             </div>
         </div>
@@ -158,7 +254,7 @@ function accountLabel(account) {
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>Código</th><th>Nombre</th><th>Cuenta de ingresos</th><th>Por defecto</th></tr>
+                        <tr><th>Código</th><th>Nombre</th><th>Cuenta de ingresos</th><th>Por defecto</th><th>En Hacienda</th></tr>
                     </thead>
                     <tbody>
                         <tr
@@ -174,10 +270,42 @@ function accountLabel(account) {
                             <td data-label="Nombre">{{ a.name }}</td>
                             <td data-label="Cuenta de ingresos" class="muted small">{{ accountLabel(a.revenue_account) }}</td>
                             <td data-label="Por defecto"><span v-if="a.is_default" class="badge badge-success">Sí</span></td>
+                            <td data-label="En Hacienda">
+                                <span v-if="registrationOf(a) === true" class="badge badge-success">Inscrita</span>
+                                <span
+                                    v-else-if="registrationOf(a) === false"
+                                    class="badge badge-danger"
+                                    title="Hacienda rechaza el comprobante con una actividad que el emisor no tiene inscrita (-408)."
+                                >No inscrita</span>
+                                <span v-else class="muted small">—</span>
+                            </td>
                         </tr>
-                        <tr v-if="!activities.length"><td colspan="4" class="muted empty-row">Sin actividades registradas.</td></tr>
+                        <tr v-if="!activities.length"><td colspan="5" class="muted empty-row">Sin actividades registradas.</td></tr>
                     </tbody>
                 </table>
+            </div>
+
+            <div class="registered">
+                <p v-if="!companyTaxId" class="muted small">La compañía no tiene cédula: no se puede consultar qué actividades tiene inscritas en Hacienda.</p>
+                <p v-else-if="loadingRegistered" class="muted small">Consultando en Hacienda las actividades inscritas a la cédula {{ companyTaxId }}…</p>
+                <p v-else-if="registered && !registered.available" class="muted small">
+                    Hacienda no contestó la consulta de actividades inscritas.
+                    <button type="button" class="btn btn-ghost" @click="loadRegistered">Reintentar</button>
+                </p>
+                <p v-else-if="registered && !registered.found" class="muted small">Hacienda no tiene inscrita la cédula {{ companyTaxId }}.</p>
+                <template v-else-if="registered">
+                    <p class="muted small">
+                        Inscritas en Hacienda a la cédula {{ companyTaxId }}:
+                        <template v-if="!registered.activities.length">ninguna activa.</template>
+                        <template v-else-if="!notConfigured.length">todas están configuradas.</template>
+                    </p>
+                    <ul v-if="notConfigured.length" class="registered-list">
+                        <li v-for="a in notConfigured" :key="a.code">
+                            <span><strong class="code-cell">{{ a.code }}</strong> {{ a.description }}<template v-if="a.primary"> · principal</template></span>
+                            <button type="button" class="btn btn-ghost" @click="addRegistered(a)"><PlusIcon /> Agregar</button>
+                        </li>
+                    </ul>
+                </template>
             </div>
         </section>
 
@@ -290,17 +418,41 @@ function accountLabel(account) {
         <!-- Agregar -->
         <DetailModal :open="!!adding" :title="adding ? addTitles[adding] : ''" @close="closeAdd">
             <form v-if="adding === 'activity'" id="billing-add-form" @submit.prevent="submitActivity">
-                <div class="field-row">
+                <div class="field-row activity-pick">
                     <div class="field">
-                        <label for="activity-code">Código (6 dígitos)</label>
-                        <input id="activity-code" v-model="activityForm.code" type="text" maxlength="6" required>
+                        <label for="activity-code">Código</label>
+                        <select id="activity-code" :value="activityForm.code" required @change="chooseActivity($event.target.value)">
+                            <option value="" disabled>— Elegir —</option>
+                            <optgroup v-if="choices.inscribed.length" :label="`Inscritas a la cédula ${companyTaxId}`">
+                                <option v-for="a in choices.inscribed" :key="a.code" :value="a.code">{{ a.code }}</option>
+                            </optgroup>
+                            <optgroup :label="othersLabel">
+                                <option v-for="a in choices.others" :key="a.code" :value="a.code">{{ a.code }}</option>
+                            </optgroup>
+                        </select>
                         <span v-if="activityForm.errors.code" class="error">{{ activityForm.errors.code }}</span>
                     </div>
                     <div class="field">
                         <label for="activity-name">Nombre de la actividad</label>
-                        <input id="activity-name" v-model="activityForm.name" type="text" required>
+                        <select id="activity-name" :value="activityForm.code" required @change="chooseActivity($event.target.value)">
+                            <option value="" disabled>— Elegir —</option>
+                            <optgroup v-if="choicesByName.inscribed.length" :label="`Inscritas a la cédula ${companyTaxId}`">
+                                <option v-for="a in choicesByName.inscribed" :key="a.code" :value="a.code">{{ a.name }}</option>
+                            </optgroup>
+                            <optgroup :label="othersLabel">
+                                <option v-for="a in choicesByName.others" :key="a.code" :value="a.code">{{ a.name }}</option>
+                            </optgroup>
+                        </select>
                         <span v-if="activityForm.errors.name" class="error">{{ activityForm.errors.name }}</span>
                     </div>
+                    <p v-if="choiceNotInscribed" class="hint span-full warn">
+                        Hacienda no tiene esta actividad inscrita a la cédula {{ companyTaxId }}: un comprobante con ella se rechaza (-408).
+                        Primero hay que inscribirla en TRIBU-CR.
+                    </p>
+                    <p v-else-if="loadingRegistered" class="hint span-full">Consultando en Hacienda las actividades inscritas a la cédula…</p>
+                    <p v-else-if="!registeredKnown" class="hint span-full">
+                        No se pudo saber qué actividades tiene inscritas la cédula: Hacienda no contestó o la compañía no tiene cédula.
+                    </p>
                 </div>
                 <div class="field">
                     <label for="activity-account">Cuenta de ingresos</label>
@@ -373,9 +525,20 @@ function accountLabel(account) {
 .hacienda { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem 1.5rem; padding: 1rem 1.25rem; margin-bottom: 0.9rem; }
 .hacienda.pending { border-left: 3px solid var(--color-warning); }
 .hacienda p { margin: 0.2rem 0 0; }
+.hacienda .missing { margin: 0.2rem 0 0; padding-left: 1.1rem; }
+.hacienda .link { color: var(--color-primary); }
 
 table { font-size: 0.85rem; }
 .code-cell { font-variant-numeric: tabular-nums; }
+
+.registered { margin-top: 0.75rem; }
+.field-row .span-full { flex-basis: 100%; margin: 0; font-size: 0.78rem; }
+.activity-pick .field:first-child { flex: 0 0 8rem; min-width: 8rem; }
+.activity-pick select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.activity-pick .warn { color: var(--color-danger); }
+.registered p { margin: 0; }
+.registered-list { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.85rem; }
+.registered-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
     .panel-head .btn { width: 100%; justify-content: center; }

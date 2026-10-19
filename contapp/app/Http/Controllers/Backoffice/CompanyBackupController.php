@@ -48,6 +48,11 @@ class CompanyBackupController extends Controller
         return $this->uploadImport($request, License::findOrFail($license), $this->backups);
     }
 
+    public function compare(Request $request, int $license, string $uuid): JsonResponse
+    {
+        return $this->compareImport($request, License::findOrFail($license), $uuid, $this->backups);
+    }
+
     public function confirm(Request $request, int $license, string $uuid): JsonResponse
     {
         return $this->confirmImport($request, License::findOrFail($license), $uuid, $this->backups);

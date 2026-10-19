@@ -563,7 +563,10 @@ table {
         height: auto !important;
     }
 
+    // Con el menú arriba, .app-main es un grid (la columna de la sesión y el
+    // contenido): en papel, uno solo.
     .app-main {
+        display: block !important;
         height: auto !important;
         overflow: visible !important;
     }

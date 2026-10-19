@@ -4,13 +4,29 @@ import { computed, ref } from 'vue';
 import AppLayout from '../../../Layouts/AppLayout.vue';
 import DetailModal from '../../../Components/DetailModal.vue';
 import { useRecordDetail } from '../../../Utils/recordDetail';
-import { ArrowRightIcon, DownloadIcon, EyeIcon, PlusIcon } from '@lucide/vue';
+import { ArrowRightIcon, DownloadIcon, EyeIcon, FileTextIcon, PlusIcon } from '@lucide/vue';
+import { electronicBadge } from '../../../Utils/electronicStatus';
 
 const props = defineProps({
     documents: { type: Array, default: () => [] },
     documentTypeLabels: { type: Object, default: () => ({}) },
     saleConditionLabels: { type: Object, default: () => ({}) },
+    electronicLabels: { type: Object, default: () => ({}) },
 });
+
+// El estado que se ve: el de Hacienda si el comprobante es electrónico (lo que
+// importa saber de una factura enviada), el del ERP si no.
+function statusOf(d) {
+    if (d.electronic_document) {
+        return {
+            label: props.electronicLabels[d.electronic_document.status] ?? d.electronic_document.status,
+            badge: electronicBadge(d.electronic_document.status),
+            test: d.electronic_document.environment === 'stag',
+        };
+    }
+
+    return { label: d.status === 'posted' ? 'Emitido' : 'Anulado', badge: d.status === 'posted' ? 'badge-success' : 'badge-neutral', test: false };
+}
 
 function money(value) {
     return Number(value ?? 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -82,9 +98,8 @@ const canCredit = computed(() => selected.value && selected.value.fiscal_documen
                             <td data-label="Cliente">{{ customer(d) }}</td>
                             <td data-label="Total" class="num">{{ d.currency?.code }} {{ money(d.total_document) }}</td>
                             <td data-label="Estado">
-                                <span class="badge" :class="d.status === 'posted' ? 'badge-success' : 'badge-neutral'">
-                                    {{ d.status === 'posted' ? 'Emitido' : 'Anulado' }}
-                                </span>
+                                <span class="badge" :class="statusOf(d).badge">{{ statusOf(d).label }}</span>
+                                <span v-if="statusOf(d).test" class="badge badge-neutral" title="Enviado al sandbox de Hacienda: sin validez fiscal">Pruebas</span>
                             </td>
                         </tr>
                         <tr v-if="!filtered.length">
@@ -103,9 +118,7 @@ const canCredit = computed(() => selected.value && selected.value.fiscal_documen
             @close="closeDetail"
         >
             <template #badge>
-                <span v-if="selected" class="badge" :class="selected.status === 'posted' ? 'badge-success' : 'badge-neutral'">
-                    {{ selected.status === 'posted' ? 'Emitido' : 'Anulado' }}
-                </span>
+                <span v-if="selected" class="badge" :class="statusOf(selected).badge">{{ statusOf(selected).label }}</span>
             </template>
 
             <dl v-if="selected" class="detail-list">
@@ -140,6 +153,7 @@ const canCredit = computed(() => selected.value && selected.value.fiscal_documen
             <template #actions>
                 <template v-if="selected">
                     <a :href="route('sales-documents.xml', selected.id)" class="btn btn-ghost"><DownloadIcon /> Descargar XML</a>
+                    <a :href="route('sales-documents.pdf', selected.id)" class="btn btn-ghost" data-download><FileTextIcon /> PDF</a>
                     <Link v-if="canCredit" :href="route('sales-documents.create', { correct: selected.id })" class="btn btn-ghost">
                         <ArrowRightIcon /> Nota de crédito
                     </Link>

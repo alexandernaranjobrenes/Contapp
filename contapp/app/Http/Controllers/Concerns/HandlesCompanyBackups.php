@@ -26,8 +26,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * Exportar: elegir compañía, secciones y período → resumen → contraseña del
  * archivo y la de la cuenta → descarga.
- * Importar: subir el archivo con su contraseña → resumen (ya verificado) →
- * datos de la compañía nueva y la contraseña de la cuenta → en cola.
+ * Importar: subir el archivo con su contraseña → se revisa en la cola →
+ * resumen (ya verificado) → una compañía nueva (sus datos) o completar una
+ * que ya existe (se compara en la cola: qué le falta) → la contraseña de la
+ * cuenta → en cola. La pantalla sigue el avance con importStatus().
  */
 trait HandlesCompanyBackups
 {
@@ -50,7 +52,9 @@ trait HandlesCompanyBackups
                 'max_companies' => $license->max_companies,
                 'can_add_company' => $license->canActivateAnotherCompany(),
             ],
-            'companies' => $companies->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->trade_name ?: $c->legal_name, 'tax_id' => $c->tax_id])->values(),
+            // No «companies»: es el nombre de las del selector de la barra
+            // superior (HandleInertiaRequests), y lo taparía.
+            'licenseCompanies' => $companies->map(fn (Company $c) => ['id' => $c->id, 'name' => $c->trade_name ?: $c->legal_name, 'tax_id' => $c->tax_id])->values(),
             'currentCompanyId' => $currentCompanyId,
             'sections' => collect(BackupCatalog::SECTIONS)->map(fn (string $label, string $key) => [
                 'key' => $key,
@@ -65,7 +69,11 @@ trait HandlesCompanyBackups
                 ->limit(10)
                 ->get()
                 ->map(fn (CompanyBackup $b) => [
-                    ...$b->toStatus(),
+                    'uuid' => $b->uuid,
+                    'status' => $b->status,
+                    'mode' => $b->mode,
+                    'company_name' => $b->toStatus()['company_name'],
+                    'error' => $b->error,
                     'source' => $b->summary['company']['trade_name'] ?? $b->summary['company']['legal_name'] ?? '',
                     'period' => $b->summary['period'] ?? '',
                     'created_at' => $b->created_at?->toIso8601String(),
@@ -109,31 +117,51 @@ trait HandlesCompanyBackups
             throw ValidationException::withMessages(['file' => $e->getMessage()]);
         }
 
-        $company = $backup->summary['company'];
+        return response()->json($this->statusPayload($license, $backup));
+    }
 
-        // Si la licencia ya tiene una compañía con ese nombre (se restaura
-        // mientras la original sigue ahí), se propone «(copia)»: dos iguales
-        // en el selector de compañía se confunden.
-        $taken = Company::withoutGlobalScopes()->where('license_id', $license->id)
-            ->where(fn ($q) => $q->where('legal_name', $company['legal_name'])->orWhere('trade_name', $company['trade_name'] ?? $company['legal_name']))
-            ->exists();
-        $suffix = $taken ? ' (copia)' : '';
-
-        return response()->json([
-            'uuid' => $backup->uuid,
-            'summary' => $backup->summary,
-            'defaults' => [
-                'legal_name' => $company['legal_name'].$suffix,
-                'trade_name' => $company['trade_name'] ? $company['trade_name'].$suffix : null,
-                'tax_id' => $company['tax_id'],
-            ],
-            'can_add_company' => $license->canActivateAnotherCompany(),
+    /** Comparar con una compañía de la licencia: qué le falta. Va a la cola. */
+    protected function compareImport(Request $request, License $license, string $uuid, CompanyBackupService $backups): JsonResponse
+    {
+        $backup = $this->pendingBackup($license, $uuid, ['validated', 'compared']);
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', Rule::in($this->licenseCompanies($license)->pluck('id')->all())],
+        ], [
+            'company_id.required' => 'Elegí qué compañía completar.',
+            'company_id.in' => 'Esa compañía no es de esta licencia.',
         ]);
+
+        $backups->compare($backup, $this->licenseCompanies($license)->firstWhere('id', (int) $validated['company_id']));
+
+        return response()->json($this->statusPayload($license, $backup->fresh()));
     }
 
     protected function confirmImport(Request $request, License $license, string $uuid, CompanyBackupService $backups): JsonResponse
     {
-        $backup = $this->pendingBackup($license, $uuid);
+        $mode = $request->validate(['mode' => ['nullable', Rule::in(['new', 'merge'])]])['mode'] ?? 'new';
+        $actor = $this->backupActor($request);
+        $by = isset($actor['propietario_id']) ? "Equipo de CONTAPP ({$actor['name']})" : null;
+
+        if ($mode === 'merge') {
+            $backup = $this->pendingBackup($license, $uuid, ['compared']);
+            $this->checkAccountPassword($request);
+
+            // Lo mismo que dijo la comparación, en el servidor: la pantalla
+            // ya no ofrece confirmar, pero eso no es una regla.
+            if (($backup->comparison['conflicts_total'] ?? 0) > 0) {
+                throw ValidationException::withMessages(['company_id' => 'Esta compañía no se puede completar con este respaldo: revisá lo que lo impide.']);
+            }
+
+            if (! $license->isValid()) {
+                throw ValidationException::withMessages(['company_id' => 'La licencia no está vigente: no se le pueden agregar datos a sus compañías.']);
+            }
+
+            $backups->confirm($backup, null, $by);
+
+            return response()->json($this->statusPayload($license, $backup->fresh()));
+        }
+
+        $backup = $this->pendingBackup($license, $uuid, ['validated', 'compared']);
         $data = $request->validate([
             'legal_name' => ['required', 'string', 'max:255'],
             'trade_name' => ['nullable', 'string', 'max:255'],
@@ -145,17 +173,49 @@ trait HandlesCompanyBackups
             throw ValidationException::withMessages(['legal_name' => 'La licencia ya alcanzó el máximo de compañías: pedí más cupo antes de importar.']);
         }
 
-        $actor = $this->backupActor($request);
-        $backups->confirm($backup, $data, isset($actor['propietario_id']) ? "Equipo de CONTAPP ({$actor['name']})" : null);
+        $backups->confirm($backup, $data, $by);
 
-        return response()->json($backup->fresh()->toStatus());
+        return response()->json($this->statusPayload($license, $backup->fresh()));
     }
 
     protected function importStatus(License $license, string $uuid): JsonResponse
     {
         $backup = CompanyBackup::where('license_id', $license->id)->where('uuid', $uuid)->firstOrFail();
 
-        return response()->json($backup->toStatus());
+        return response()->json($this->statusPayload($license, $backup));
+    }
+
+    /**
+     * Lo que la pantalla necesita de un respaldo subido: su estado y, ya
+     * revisado, lo que trae y con qué datos se propone la compañía nueva.
+     */
+    private function statusPayload(License $license, CompanyBackup $backup): array
+    {
+        $payload = $backup->toStatus();
+
+        if ($backup->summary === null || ! in_array($backup->status, ['validated', 'comparing', 'compared'], true)) {
+            return $payload;
+        }
+
+        $company = $backup->summary['company'];
+
+        // Si la licencia ya tiene una compañía con ese nombre (se restaura
+        // mientras la original sigue ahí), se propone «(copia)»: dos iguales
+        // en el selector de compañía se confunden.
+        $taken = Company::withoutGlobalScopes()->where('license_id', $license->id)
+            ->where(fn ($q) => $q->where('legal_name', $company['legal_name'])->orWhere('trade_name', $company['trade_name'] ?? $company['legal_name']))
+            ->exists();
+        $suffix = $taken ? ' (copia)' : '';
+
+        return $payload + [
+            'summary' => $backup->summary,
+            'defaults' => [
+                'legal_name' => $company['legal_name'].$suffix,
+                'trade_name' => $company['trade_name'] ? $company['trade_name'].$suffix : null,
+                'tax_id' => $company['tax_id'],
+            ],
+            'can_add_company' => $license->canActivateAnotherCompany(),
+        ];
     }
 
     protected function backupOptions(Request $request, License $license): BackupOptions
@@ -193,11 +253,12 @@ trait HandlesCompanyBackups
         }
     }
 
-    private function pendingBackup(License $license, string $uuid): CompanyBackup
+    /** @param  list<string>  $statuses  en los que puede estar para lo que se pide */
+    private function pendingBackup(License $license, string $uuid, array $statuses): CompanyBackup
     {
         $backup = CompanyBackup::where('license_id', $license->id)->where('uuid', $uuid)->firstOrFail();
 
-        if ($backup->status !== 'validated' || $backup->expires_at?->isPast()) {
+        if (! in_array($backup->status, $statuses, true) || $backup->expires_at?->isPast()) {
             throw ValidationException::withMessages(['legal_name' => 'Este respaldo ya no está esperando confirmación: volvé a subirlo.']);
         }
 

@@ -3,6 +3,142 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-19 — El CAByS se elige de una lista con todo el catálogo
+
+**Pedido del usuario:** que el CAByS de un artículo sea un select con todos los códigos CAByS de Hacienda.
+
+**Qué se decidió:** el catálogo completo (CAByS 2025 del BCCR, 20 506 códigos) viene con CONTAPP como archivo de datos con su hash, no se consulta en línea: la lista no depende de que el API de Hacienda conteste, y revisar un código no sale a la red. Con 20 000 opciones un `<select>` nativo no se puede usar ni pesa poco, así que es un control con aspecto de select que abre la lista agrupada por sección, la carga de a 100 desde el servidor y trae un buscador arriba. Se usa en la ficha del artículo y en la línea de la factura. Un código que no está en el archivo se le pregunta a Hacienda, por si es de una versión más nueva.
+
+---
+## 2026-10-19 — Las actividades económicas se eligen del catálogo de Hacienda
+
+**Pedido del usuario:** que el código y el nombre de una actividad sean listas, que elegir en una llene la otra, y que tengan todas las actividades económicas de Hacienda.
+
+**Qué se decidió:** el catálogo es la tabla oficial de correspondencia ATV → TRIBU-CR (367 subclases CIIU 4), guardada con su hash; Hacienda no publica otro listado completo ni lo expone en su API público. Las listas muestran primero las actividades inscritas a la cédula (de `/fe/ae`, aunque no estén en la tabla) y después el resto, con un aviso si se elige una no inscrita (-408). El servidor exige que un código v4.4 sea del catálogo o esté inscrito; los de seis dígitos de antes se siguen aceptando.
+
+---
+## 2026-10-18 — Los datos de Hacienda, no inventados: ubicación, CAByS y actividades
+
+**Pedido del usuario:** que cantón y distrito se elijan por nombre según la provincia, que los CAByS sean reales, usar los datos de Hacienda, y revisar por qué Hacienda rechazó el primer comprobante de prueba (-408, -400 y -111 dos veces).
+
+**Qué se decidió:**
+- **La ubicación sale de la tabla oficial** (`Codificacionubicacion_V4.4` del ATV), guardada como catálogo con su hash. Cada código tiene que existir dentro del anterior, en el emisor y en el socio. Antes eran dos casillas de dos dígitos que aceptaban cualquier número.
+- **El API público de Hacienda** (`api.hacienda.go.cr`, sin credenciales) para el catálogo CAByS y las actividades inscritas de una cédula. **Nunca bloquea si no contesta:** solo un «no existe» dicho por Hacienda detiene algo. Así una caída de Hacienda no impide facturar ni dar de alta artículos.
+- **Antes de emitir se revisa lo que Hacienda ya dijo que rechaza** (CAByS inexistente, actividad no inscrita), para no gastar el consecutivo en un rechazo seguro. Se revisa en el controlador y no dentro de la transacción de emisión, para no tener una consulta HTTP con la base bloqueada.
+- **Servicio o mercancía lo decide el CAByS** (primer dígito, la sección de la CPC), porque así reparte Hacienda el resumen. `is_service` sigue siendo del ERP (bodega, cuenta de ingreso): un artículo inventariable con CAByS de servicio es un CAByS mal elegido, y el buscador lo muestra.
+- **Los XSD pasaron a los del ATV.** Al comparar los del repositorio (de un paquete de GitHub) con los oficiales resultaron ser una revisión anterior; lo que CONTAPP genera valida igual con los dos (`docs/einvoice/01-fuentes.md`).
+- **Datos de ejemplo:** los artículos de demostración (seeder y los cargados en la compañía «prueba») pasaron a CAByS reales y a la unidad `Kg`. Los datos propios del usuario no se tocaron: su actividad 6209.9 (Hacienda tiene inscrita la 6209.0) y su artículo «Libro» (CAByS de un servicio de TI, unidad `Sp`) los corrige él.
+
+---
+## 2026-10-18 — Facturación electrónica ante Hacienda (comprobantes v4.4)
+
+**Pedido del usuario:** el sistema completo de facturación electrónica, como lo hace TribuCR, siguiendo la guía que preparó a partir de su implementación en App Arrendamientos (`guia_agente_facturacionElectronica_Hacienda.md`). Las credenciales las aporta **solo el Superusuario de cada compañía**, una distinta en cada una. No hacer pruebas de emisión contra Hacienda: las hace él.
+
+**Cómo se hizo (CLAUDE.md secc. 38, `docs/einvoice/`):**
+- **Fuentes oficiales primero.** Los XSD v4.4 quedaron en `resources/hacienda/xsd/v4.4` con su SHA-256, y cada catálogo de `FiscalCatalogs` se rehízo desde sus enumeraciones. El hash de la política de firma se calculó sobre el PDF oficial. Varios catálogos de antes estaban mal: unidades que el XSD no admite (`kg`, `m2`, `Cm` como centímetro, `t` como tonelada), condiciones de venta e instituciones que faltaban, etiquetas equivocadas. Una migración pasa las unidades de los artículos a los símbolos del XSD.
+- **Administración → Facturación electrónica**, solo del Superusuario: datos del emisor, y por ambiente (pruebas y producción) el usuario y la contraseña del ATV y la llave `.p12` con su PIN, cifrados con la APP_KEY y revisados al cargarlos. Encender exige que no falte nada.
+- **Emitir es firmar**, en la misma transacción que el asiento y el inventario: revisión previa (antes de tomar el número), consecutivo fiscal por sucursal/terminal/tipo con `FOR UPDATE`, clave con la fecha real de emisión, XML validado contra el XSD, firma XAdES-EPES con política explícita, verificación independiente de la firma. Si algo falla no queda nada.
+- **El XML se rehízo según el XSD:** el de antes tenía `NumeroVINoSerie` y `MedioPago` fuera de lugar, `TipoDocumentoEX` en vez de `TipoDocumentoEX1`, le faltaban `ProveedorSistemas`, `BaseImponible`, `ImpuestoAsumidoEmisorFabrica`, `TotalNoSujeto`, `TotalDesgloseImpuesto` y `FechaEmisionIR` obligatoria, y los totales por categoría se calculaban sobre el subtotal (con un descuento, TotalVenta no cuadraba).
+- **El envío y el seguimiento** van por su propia cola (`queue-hacienda`), despachados cada minuto por `contapp:hacienda-sync`. Máquina de estados que lanza ante una transición imposible, reconciliación antes de reenviar (una venta nunca termina con dos comprobantes), backoff con tope, historia de estados e intercambios que solo se agrega.
+- **Rechazado → «Emitir de nuevo»** con consecutivo, clave y fecha nuevos; el anterior queda sustituido.
+- **Aceptado → al cliente** el XML firmado, la respuesta de Hacienda y el PDF.
+- **Socios de negocio** ganan el tipo de identificación y la ubicación con códigos de Hacienda.
+
+**Decidido sin preguntar (se puede cambiar):**
+- Tipos: 01, 02, 03, 04 y 09. La factura de compra es de Compras; el recibo de pago no tiene XSD publicado.
+- `ProveedorSistemas` desde `HACIENDA_SYSTEM_PROVIDER_ID`; vacío, la cédula del emisor.
+- La serie fiscal no distingue ambiente: al pasar a producción el Superusuario fija el próximo número o usa otra terminal. Se recomienda probar en una compañía de prueba.
+- El archivo fiscal, las credenciales y la configuración no viajan en un respaldo.
+
+**Verificado:** 82 pruebas nuevas en `tests/Feature/Billing/Hacienda` (cada escenario de la matriz de la guía validado contra el XSD oficial con la firma incluida, la firma verificada de forma independiente, la máquina de estados contra un Hacienda simulado, las pantallas y los permisos). Las 116 de Facturación siguen pasando. Las pantallas compilan. **No se envió nada a Hacienda**, ni al sandbox. No se verificó en el navegador.
+
+---
+## 2026-10-17 — La Bitácora se filtra por usuario
+
+**Pedido del usuario:** un filtro por usuario en Administración → Bitácora.
+
+**Cómo se hizo (CLAUDE.md secc. 35):**
+- **«Usuario»**, después de «Documento». Ofrece a quienes aparecen en lo que la persona ve de la Bitácora (`ActivityLogService::people()`), no a los que hoy tienen acceso a la compañía: lo que hizo alguien que ya se fue sigue ahí, y es justo lo que se busca. Más «Sistema», lo de los procesos automáticos.
+  - Un Administrador no ve en la lista a quien solo hizo algo en pantallas que él no tiene. La regla de qué se ve quedó en un solo lugar (`visible()`), para la página y para la lista.
+- **Se valida la forma, no la lista** (un id o `system`). Pedir a mano a otra persona no muestra nada que no se viera igual: la consulta ya es solo de la compañía y de lo que la persona puede ver.
+- **Índice `company_id, user_id, id`:** lo que hizo una persona, de a 15 y de lo más nuevo a lo más viejo, y quiénes aparecen, sin recorrer toda la Bitácora de la compañía.
+
+**Verificado:** 2 pruebas nuevas en `ActivityLogTest` (14 en total). Cubren el filtro con los demás, «Ver más», «Sistema», otra compañía, lo que ve un Administrador y un valor inválido. `vite build` compila. No se verificó en el navegador.
+
+---
+## 2026-10-17 — El menú arriba, si la persona lo prefiere
+
+**Pedido del usuario:** que el menú lateral se pueda poner horizontal arriba, en el lugar de la barra superior, y que esta pase a ser vertical. Que se guarde en el navegador como el modo oscuro, no en la base, y que en pantallas angostas quede como está.
+
+**Decidido con el usuario:**
+- La columna de la sesión va a la izquierda, donde estaba el menú.
+- El título, en la barra del menú, junto a la marca.
+- Las secciones que no caben, en «Más», en vez de desplazar la barra de lado (secc. 28).
+
+**Cómo se hizo (CLAUDE.md secc. 24, 28 y 29):**
+- **El mismo marcado, otra disposición.** `.layout-top` en `.app-shell` cambia el grid: la barra del menú arriba, y abajo un grid con la columna de la sesión y el contenido. No hay un segundo menú que mantener: las secciones, sus permisos y sus categorías son las mismas.
+  - Los avisos y el contenido quedaron dentro de `.app-body`. Con el menú al lado se ven igual que antes.
+- **Las ventanas de cada sección son las del menú colapsado** (`.sidebar-flyout`), abiertas debajo. Lo mismo para «Más», con todas las que no cupieron.
+- **Cuántas caben** se mide con un `ResizeObserver`. Las que sobran quedan en la barra, invisibles y fuera del flujo, así se pueden volver a medir al agrandar la ventana. Ni se ven ni reciben el foco.
+  - La marca no se encoge según el menú, y el menú se queda con lo que sobra. Si los dos pudieran encogerse, ocultar secciones le daría más lugar a la marca, el menú se angostaría otra vez, y la cuenta no se quedaba quieta.
+- **La barra del menú mide `--topbar-height`:** los paneles de «Comentarios y noticias» y de Conti se abren debajo de esa altura, y siguen calzando.
+- **Solo desde 1025px** (`topLayout` exige que no sea angosta). En una tablet o un teléfono, el cajón de siempre, y el botón para cambiarlo no se muestra.
+
+**De paso:** en una pantalla táctil ancha (una tablet grande en horizontal), tocar una sección del menú colapsado entraba directo a su primera pantalla: sin «pasar por encima», la ventana no se podía abrir. Ahora el primer toque la abre y el segundo entra, y tocar fuera la cierra. Vale para el menú colapsado y para el de arriba.
+
+**Ajuste pedido después de verlo:** la columna de la izquierda, solo de íconos (3.5rem).
+- La compañía pasó a ser un ícono que abre la lista al lado, al pasar el mouse o al tocarlo.
+- La lista lleva también el rol: en la columna ya no cabía la etiqueta.
+- Lo que se resigna: con el menú arriba, el nombre de la compañía no está siempre a la vista. Está en la lista y en el `aria-label` del ícono, y al cambiar de compañía la ventana de transición (secc. 30) dice a cuál se pasa.
+- Administración y Mi cuenta, abajo en esa columna, junto a «Salir», y no en la barra: abren su ventana al lado. La barra queda para el trabajo diario, y le cabe una sección más antes de «Más».
+
+**Verificado:** `vite build` compila. No se verificó en el navegador.
+
+---
+## 2026-10-17 — Respaldos: completar una compañía que ya existe, y cuatro arreglos
+
+**Pedido del usuario:** corregir lo que se vio al analizar los respaldos, y que importar sirva también para una compañía que ya existe, **sin sobrescribir nunca nada**: comparar, ver qué le falta e importar solo eso.
+
+**Los cuatro arreglos:**
+- **El avance se veía en cero hasta el final:** se escribía dentro de la transacción de la importación. Ahora va por una conexión aparte (`BackupProgress`), y la pantalla muestra una barra.
+- **Exportar se anotaba en la Bitácora antes de bajar:** ahora, cuando el archivo salió entero.
+- **La revisión completa era parte de la subida** (Argon2id, descifrar y leer todo, dentro del pedido). Ahora la subida solo comprueba la contraseña con el primer tramo (`BackupFile::check`), y la revisión va a la cola.
+  - Que se lea el archivo más de una vez queda a propósito: está cifrado en el disco, y lo descifrado nunca se escribe. Lo que tarda es la base, no descifrar.
+- **Un respaldo de una versión anterior al que le falta una columna obligatoria** fallaba a mitad de la importación, con un mensaje genérico. Ahora se rechaza al revisarlo, diciendo qué falta, salvo que `BackupCatalog::FILL` diga con qué completarlo.
+
+**Completar una compañía — cómo se decidió:**
+- **Primero se compara**, haciendo todo y deshaciéndolo. Es la misma importación, así que lo que dice la comparación es exactamente lo que va a pasar. El costo: con años de historia tarda lo mismo que importar.
+- **Cada fila se reconoce por algo que identifica:**
+  - por su llave única de la base (el código de una cuenta, el número de un asiento);
+  - si no tiene, por la de `KEYS`;
+  - o por su documento (`OWNERS`): una línea va con su asiento, un movimiento de inventario con su asiento.
+  - Una prueba exige que cada tabla tenga una de las tres.
+- **Nunca se sobrescribe, ni siquiera lo distinto:** queda lo de la compañía y se cuenta.
+  - **La excepción es lo que el sistema calcula de los movimientos**, y solo para lo que recibió movimientos nuevos: saldos de partidas, existencias, costo promedio, consecutivos, lo apartado y en camino. No es un dato distinto, es la consecuencia de lo que se agregó.
+  - Sin recalcularlo, una factura vieja cobrada en el respaldo seguiría pendiente, y el próximo asiento chocaría con un número importado.
+  - Se recalcula con las mismas fórmulas de los servicios (`ApplyPaymentService`, `BackupState`…).
+- **Lo que impide completar**, en vez de hacerlo a medias:
+  - **Un documento que ya está con otros datos.** Si acá está en borrador y en el respaldo contabilizado, traer su asiento y dejar el borrador permitiría contabilizarlo otra vez: se duplicaría. Si es el mismo número con otro contenido, son dos documentos distintos.
+  - **El kardex hacia atrás.** El costo promedio es global y móvil, y cada salida se contabiliza con él. Meter una entrada antes de salidas ya contabilizadas cambiaría su costo, y eso es modificar asientos. Por eso lo que falta tiene que ir después de lo último de cada artículo, y arrancar desde la misma existencia y el mismo costo.
+  - Otra moneda local: los montos no se pueden sumar.
+- **Los saldos iniciales** de un respaldo «desde» una fecha entran solo si la compañía no tiene movimientos antes. Si los tiene, ya tiene esos saldos: traerlos los duplicaría.
+- **Las personas que ya tienen acceso quedan como están**: completar no le cambia los permisos a nadie.
+
+**Encontrado de paso:** la pantalla de Respaldos mandaba las compañías de la licencia como `companies`, el mismo nombre que las del selector de la barra superior. Las tapaba, y el selector quedaba con nombres vacíos. Ahora es `licenseCompanies`.
+
+**Verificado con pruebas** (12 nuevas, 26 en total de respaldos):
+- una copia al 31/03, completada con todo el historial, queda igual a la original: el balance, las partidas, las existencias con su costo y los consecutivos;
+- completarla otra vez no agrega nada;
+- un documento con el mismo número, el kardex hacia atrás, lo distinto que se conserva;
+- los saldos iniciales en una compañía vacía y en una que ya los tiene;
+- las personas;
+- un respaldo sin una columna obligatoria;
+- el avance;
+- y por las pantallas, comparar, confirmar y el bloqueo.
+
+No se verificó en el navegador.
+
+---
 ## 2026-10-14 — Respaldos de una compañía: exportar a un archivo de texto cifrado e importar a una compañía nueva
 
 **Pedido del usuario:** que el Superusuario y el backoffice puedan exportar un respaldo completo de los datos de una compañía según un período, en texto plano, y que el sistema pueda importarlo. Al exportar, elegir qué y de qué fechas, y un resumen antes de confirmar.

@@ -19,7 +19,9 @@ class PruneCompanyBackups extends Command
 {
     public function handle(): int
     {
-        $expired = CompanyBackup::where('status', 'validated')->where('expires_at', '<', now())->get();
+        // Revisado o comparado sin confirmar; o que se quedó revisándose o
+        // comparándose (la cola se cayó a la mitad).
+        $expired = CompanyBackup::whereIn('status', ['inspecting', 'validated', 'comparing', 'compared'])->where('expires_at', '<', now())->get();
 
         foreach ($expired as $backup) {
             CompanyBackupService::forget($backup);

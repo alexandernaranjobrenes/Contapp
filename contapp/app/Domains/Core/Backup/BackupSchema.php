@@ -20,6 +20,12 @@ final class BackupSchema
     /** @var array<string, list<string>> */
     private array $columns = [];
 
+    /** @var array<string, list<string>> tabla => columnas sin vacío ni valor por defecto */
+    private array $required = [];
+
+    /** @var array<string, list<list<string>>> */
+    private array $uniqueKeys = [];
+
     /** @return array<string, string> columna => tabla a la que apunta */
     public function references(string $table): array
     {
@@ -54,6 +60,40 @@ final class BackupSchema
     public function hasColumn(string $table, string $column): bool
     {
         return in_array($column, $this->columns($table), true);
+    }
+
+    /**
+     * Lo que una fila tiene que traer sí o sí: sin vacío y sin valor por
+     * defecto (el id no, lo pone la base).
+     *
+     * @return list<string>
+     */
+    public function requiredColumns(string $table): array
+    {
+        $this->loadColumns($table);
+
+        return $this->required[$table];
+    }
+
+    /**
+     * Las llaves únicas de la tabla, sin la primaria: el código de una
+     * cuenta, el número de un asiento.
+     *
+     * @return list<list<string>>
+     */
+    public function uniqueKeys(string $table): array
+    {
+        if (! isset($this->uniqueKeys[$table])) {
+            $this->uniqueKeys[$table] = [];
+
+            foreach (Schema::getIndexes($table) as $index) {
+                if ($index['unique'] && ! $index['primary'] && ! in_array('id', $index['columns'], true)) {
+                    $this->uniqueKeys[$table][] = array_values($index['columns']);
+                }
+            }
+        }
+
+        return $this->uniqueKeys[$table];
     }
 
     /**
@@ -128,10 +168,15 @@ final class BackupSchema
 
         $this->columns[$table] = [];
         $this->nullable[$table] = [];
+        $this->required[$table] = [];
 
         foreach (Schema::getColumns($table) as $column) {
             $this->columns[$table][] = $column['name'];
             $this->nullable[$table][$column['name']] = (bool) $column['nullable'];
+
+            if (! $column['nullable'] && $column['default'] === null && ! ($column['auto_increment'] ?? false) && $column['name'] !== 'id') {
+                $this->required[$table][] = $column['name'];
+            }
         }
     }
 }

@@ -5,16 +5,32 @@ namespace App\Domains\Billing\Services;
 use App\Domains\Billing\DataTransferObjects\SalesLineInput;
 use App\Domains\Billing\DataTransferObjects\SalesTaxInput;
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\Billing\Support\FiscalDecimal;
 
 /**
  * Arma el resumen del comprobante exactamente como lo define el XML v4.4.
  *
  * Lo delicado no es la aritmética sino la CLASIFICACIÓN: cada línea cae en uno
  * de cuatro cubos (gravada, exenta, exonerada, no sujeta) y además se separa
- * entre servicios y mercancías. Esos ocho totales son los que Hacienda cruza,
+ * entre servicios y mercancías según su CAByS (FiscalCatalogs::cabysIsService:
+ * así lo decide Hacienda). Esos ocho totales son los que Hacienda cruza,
  * y la diferencia entre "exenta" y "no sujeta" —que parecen lo mismo porque
  * ambas dan impuesto cero— es normativa: la 10 es exenta por ley, la 11 no
  * está sujeta al impuesto, y confundirlas distorsiona la declaración de IVA.
+ *
+ * ── Sobre qué monto se clasifica ─────────────────────────────────────────
+ *
+ * Sobre el MontoTotal de la línea (cantidad × precio), antes del descuento.
+ * El XSD define TotalVenta como la suma de gravado + exento + exonerado + no
+ * sujeto, y TotalVentaNeta como TotalVenta − TotalDescuentos: si los cubos
+ * se llenaran con el subtotal ya descontado, el descuento se restaría dos
+ * veces y Hacienda rechazaría el resumen.
+ *
+ * ── La exoneración parcial ───────────────────────────────────────────────
+ *
+ * Una línea exonerada en parte va a dos cubos: la porción exonerada
+ * (MontoTotal × tarifa exonerada / tarifa) al exonerado, y el resto al
+ * gravado. Exonerada del todo, va entera al exonerado.
  *
  * Todo con bcmath a 5 decimales, que es la precisión del esquema.
  */
@@ -48,6 +64,7 @@ class SalesTotalsCalculator
         ];
 
         foreach (array_values($lines) as $index => $line) {
+            $totalAmount = $line->totalAmount();
             $subtotal = $line->subtotal();
 
             $taxes = [];
@@ -62,25 +79,30 @@ class SalesTotalsCalculator
                 $lineExonerated = bcadd($lineExonerated, $computed['exonerated_amount'], 5);
             }
 
-            $bucket = $this->bucketFor($line, $lineExonerated);
-            $suffix = $line->isService ? 'services' : 'goods';
-            $key = "total_{$bucket}_{$suffix}";
+            // Por el CAByS, como lo cruza Hacienda; no por is_service, que
+            // es lo que el ERP hace con la línea (bodega, cuenta de ingreso).
+            $suffix = FiscalCatalogs::cabysIsService($line->cabysCode) ? 'services' : 'goods';
+            $shares = $this->sharesFor($line, $taxes, $totalAmount);
 
-            $totals[$key] = bcadd($totals[$key], $subtotal, 5);
-            $totals['total_sale'] = bcadd($totals['total_sale'], $line->totalAmount(), 5);
+            foreach ($shares as $bucket => $amount) {
+                $key = "total_{$bucket}_{$suffix}";
+                $totals[$key] = bcadd($totals[$key], $amount, 5);
+            }
+
+            $totals['total_sale'] = bcadd($totals['total_sale'], $totalAmount, 5);
             $totals['total_discounts'] = bcadd($totals['total_discounts'], $line->discountAmount, 5);
             $totals['total_tax'] = bcadd($totals['total_tax'], $lineTax, 5);
 
             $computedLines[] = [
                 'line_number' => $index + 1,
                 'input' => $line,
-                'total_amount' => $line->totalAmount(),
+                'total_amount' => $totalAmount,
                 'subtotal' => $subtotal,
                 'tax_amount' => $lineTax,
                 'exonerated_amount' => $lineExonerated,
                 'line_total' => bcadd($subtotal, $lineTax, 5),
                 'taxes' => $taxes,
-                'bucket' => $bucket,
+                'bucket' => array_key_first($shares),
             ];
         }
 
@@ -91,18 +113,29 @@ class SalesTotalsCalculator
     }
 
     /**
+     * El monto del impuesto sobre la base imponible (el subtotal) y, si hay
+     * exoneración, la tarifa exonerada en puntos porcentuales como la pide
+     * la v4.4 (TarifaExonerada): «13.00» es la exoneración total de la
+     * tarifa general. El porcentaje que se digita es del impuesto (100 =
+     * todo), así que se convierte: tarifa × porcentaje / 100.
+     *
      * @return array<string, mixed>
      */
     private function computeTax(SalesTaxInput $tax, string $base): array
     {
-        $amount = $this->money(bcdiv(bcmul($base, $tax->ratePercentage, 10), '100', 10));
+        $amount = FiscalDecimal::percentOf($base, $tax->ratePercentage);
 
         $exonerated = '0.00000';
+        $exoneratedRate = null;
 
         if ($tax->isExonerated()) {
-            $exonerated = $this->money(
-                bcdiv(bcmul($amount, $tax->exoneratedPercentage, 10), '100', 10)
-            );
+            $exoneratedRate = self::exoneratedRate($tax->ratePercentage, $tax->exoneratedPercentage);
+            $exonerated = FiscalDecimal::percentOf($base, $exoneratedRate);
+
+            // El redondeo de la tarifa no puede exonerar más que el impuesto.
+            if (bccomp($exonerated, $amount, 5) > 0) {
+                $exonerated = $amount;
+            }
         }
 
         return [
@@ -118,6 +151,7 @@ class SalesTotalsCalculator
             'exoneration_institution' => $tax->exonerationInstitution,
             'exoneration_date' => $tax->exonerationDate,
             'exonerated_percentage' => $tax->exoneratedPercentage,
+            'exonerated_rate' => $exoneratedRate,
             'exonerated_amount' => $exonerated,
             // Lo que de verdad se cobra y se debe a Hacienda.
             'net_amount' => bcsub($amount, $exonerated, 5),
@@ -125,35 +159,61 @@ class SalesTotalsCalculator
     }
 
     /**
-     * Una línea exonerada se reporta como exonerada aunque su tarifa fuera
-     * gravada: lo que la clasifica es el trato fiscal efectivo, no la tarifa
-     * nominal.
+     * TarifaExonerada: los puntos de la tarifa que se exoneran. Es pública
+     * porque el XML la vuelve a calcular de lo guardado (tarifa y
+     * porcentaje), y tiene que dar exactamente lo mismo.
      */
-    private function bucketFor(SalesLineInput $line, string $exonerated): string
+    public static function exoneratedRate(string $ratePercentage, string $exoneratedPercentage): string
     {
-        if (bccomp($exonerated, '0.00000', 5) > 0) {
-            return 'exonerated';
-        }
-
-        $ivaCodes = array_filter(array_map(fn (SalesTaxInput $t) => $t->ivaRateCode, $line->taxes));
-
-        if (empty($ivaCodes)) {
-            return 'no_subject';
-        }
-
-        if (in_array(FiscalCatalogs::EXEMPT_RATE_CODE, $ivaCodes, true)) {
-            return 'exempt';
-        }
-
-        if (array_diff($ivaCodes, [FiscalCatalogs::NO_SUBJECT_RATE_CODE]) === []) {
-            return 'no_subject';
-        }
-
-        return 'taxed';
+        return FiscalDecimal::round(bcdiv(bcmul($ratePercentage, $exoneratedPercentage, 6), '100', 6), 2);
     }
 
-    private function money(string $value): string
+    /**
+     * En qué cubos cae el MontoTotal de la línea. La clave del primero es la
+     * clasificación «principal» de la línea (la que se guarda para mostrar).
+     *
+     * @param  array<int, array<string, mixed>>  $taxes
+     * @return array<string, string>
+     */
+    private function sharesFor(SalesLineInput $line, array $taxes, string $totalAmount): array
     {
-        return number_format((float) $value, 5, '.', '');
+        $iva = array_values(array_filter(
+            $taxes,
+            fn (array $t) => $t['iva_rate_code'] !== null
+        ));
+
+        $exonerated = array_values(array_filter($iva, fn (array $t) => $t['exonerated_rate'] !== null));
+
+        if ($exonerated !== []) {
+            $tax = $exonerated[0];
+
+            if (bccomp($tax['rate_percentage'], '0', 2) <= 0) {
+                return ['exonerated' => $totalAmount];
+            }
+
+            $ratio = bcdiv($tax['exonerated_rate'], $tax['rate_percentage'], 10);
+            $exoneratedShare = FiscalDecimal::mul($totalAmount, bccomp($ratio, '1', 10) > 0 ? '1' : $ratio);
+            $taxedShare = bcsub($totalAmount, $exoneratedShare, 5);
+
+            return bccomp($taxedShare, '0', 5) > 0
+                ? ['exonerated' => $exoneratedShare, 'taxed' => $taxedShare]
+                : ['exonerated' => $totalAmount];
+        }
+
+        $codes = array_map(fn (array $t) => $t['iva_rate_code'], $iva);
+
+        if ($codes === []) {
+            return ['no_subject' => $totalAmount];
+        }
+
+        if (in_array(FiscalCatalogs::EXEMPT_RATE_CODE, $codes, true)) {
+            return ['exempt' => $totalAmount];
+        }
+
+        if (array_diff($codes, [FiscalCatalogs::NO_SUBJECT_RATE_CODE]) === []) {
+            return ['no_subject' => $totalAmount];
+        }
+
+        return ['taxed' => $totalAmount];
     }
 }

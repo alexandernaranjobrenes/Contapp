@@ -7,9 +7,9 @@ import { openScanner } from '../Utils/contiScan';
 import { useNewsSeen } from '../Utils/newsSeen';
 import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
-    BookOpenIcon, BotIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
-    MessageCircleIcon, MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PercentIcon, ReceiptIcon, ScanLineIcon, SettingsIcon,
-    SunIcon, TagsIcon, UsersIcon, XIcon,
+    BookOpenIcon, BotIcon, Building2Icon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
+    MessageCircleIcon, MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftIcon, PanelLeftOpenIcon, PanelTopIcon, PercentIcon, ReceiptIcon,
+    ScanLineIcon, SettingsIcon, SunIcon, TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
 
 /**
@@ -19,6 +19,11 @@ import {
  * El nombre del usuario no va: ocupaba lugar y no decide nada. Por
  * eso este layout no tiene un slot para acciones: los botones, filtros y
  * buscadores de cada pantalla van en su .view-toolbar, arriba de la tabla.
+ *
+ * Con «menú arriba» (desde 1025px, si la persona lo eligió): el menú es una
+ * barra horizontal arriba, con la marca y el título, y lo de la barra superior
+ * pasa a una columna a la izquierda. En un teléfono o una tablet, siempre
+ * como está: el menú en su panel.
  */
 defineProps({
     title: { type: String, default: '' },
@@ -230,10 +235,16 @@ const nav = computed(() => {
         // Los respaldos (CLAUDE.md secc. 37): toda la información de la
         // compañía, solo el Superusuario.
         adminChildren.push({ label: 'Respaldos', href: route('backups.index'), match: ['backups.*'] });
+        // La facturación electrónica (CLAUDE.md secc. 38): las credenciales
+        // del ATV y la llave de la compañía, solo el Superusuario.
+        adminChildren.push({ label: 'Facturación electrónica', href: route('hacienda-settings.index'), match: ['hacienda-settings.*'] });
     }
+    // `rail`: con el menú arriba, va en la columna de la izquierda, abajo,
+    // junto a «Salir» (pedido del usuario): es de la compañía y de la persona,
+    // no del trabajo diario.
     if (adminChildren.length) {
         items.push({
-            label: 'Administración', icon: SettingsIcon,
+            label: 'Administración', icon: SettingsIcon, rail: true,
             match: adminChildren.flatMap((c) => c.match),
             children: adminChildren,
         });
@@ -251,7 +262,7 @@ const nav = computed(() => {
         accountChildren.push({ label: 'Activar una licencia', href: route('license-redemption.create'), match: ['license-redemption.*'] });
     }
     items.push({
-        label: 'Mi cuenta', icon: CircleUserRoundIcon,
+        label: 'Mi cuenta', icon: CircleUserRoundIcon, rail: true,
         // Con foto de perfil subida, la foto va en lugar del ícono.
         photo: accountPhoto.value,
         match: accountChildren.flatMap((c) => c.match),
@@ -287,8 +298,28 @@ const narrowQuery = typeof window !== 'undefined' ? window.matchMedia('(max-widt
 const narrow = ref(narrowQuery?.matches ?? false);
 const navOpen = ref(false);
 
-// Colapsado de verdad (solo íconos): en escritorio y si el usuario lo pidió.
-const compact = computed(() => collapsed.value && !narrow.value);
+// El menú arriba o al lado (CLAUDE.md secc. 29): una preferencia de la
+// persona en este navegador, como el tema, no un dato de la base. Se lee
+// antes de pintar, así la página ya sale como la dejó.
+const LAYOUT_KEY = 'contapp-layout';
+const layout = ref(typeof window !== 'undefined' && localStorage.getItem(LAYOUT_KEY) === 'top' ? 'top' : 'side');
+
+// Arriba, solo con lugar: en una pantalla angosta el menú es su panel.
+const topLayout = computed(() => layout.value === 'top' && !narrow.value);
+
+// Colapsado de verdad (solo íconos): en escritorio, con el menú al lado, y si
+// el usuario lo pidió.
+const compact = computed(() => collapsed.value && !narrow.value && !topLayout.value);
+
+// Las secciones abren su ventana flotante: con el menú colapsado (al lado) y
+// con el menú arriba (debajo de la sección).
+const flyoutMode = computed(() => compact.value || topLayout.value);
+
+function toggleLayout() {
+    layout.value = layout.value === 'top' ? 'side' : 'top';
+    localStorage.setItem(LAYOUT_KEY, layout.value);
+    closeFlyout();
+}
 
 function onNarrowChange(event) {
     narrow.value = event.matches;
@@ -302,6 +333,7 @@ function closeNavOnEscape(event) {
 watch(() => page.url, () => {
     navOpen.value = false;
     closeFlyout();
+    closeCompanyMenu();
 });
 
 // ── Menú flotante del modo colapsado (CLAUDE.md secc. 29) ─────────────────
@@ -313,24 +345,49 @@ watch(() => page.url, () => {
 //
 // Va teletransportado a <body> y con position: fixed: dentro de la barra, que
 // se desplaza (overflow-y), quedaría recortado.
-const flyout = ref(null); // { item, anchor, anchorTop, top, left }
+//
+// Con el menú arriba es la misma ventana, debajo de la sección. Una sección
+// sin pantallas (el Panel) ya muestra su nombre: no abre nada.
+const flyout = ref(null); // { item, anchor, anchorTop, top, left, below }
 const flyoutEl = ref(null);
 let flyoutTimer = null;
 let switchTimer = null;
 // Al volver con Escape, el foco regresa al ícono: ese foco no reabre la ventana.
 let skipFocusOpen = false;
 
+// Debajo, si la sección está en la barra de arriba; al lado de su columna, si
+// está en la barra lateral colapsada o en la columna de la izquierda del menú
+// arriba (Administración, Mi cuenta).
 function showFlyout(item, anchor) {
     const rect = anchor.getBoundingClientRect();
-    const sidebarRight = anchor.closest('.sidebar')?.getBoundingClientRect().right ?? rect.right;
+    const column = anchor.closest('.sidebar, .topbar');
 
-    flyout.value = { item, anchor, anchorTop: rect.top, top: rect.top, left: sidebarRight + 6 };
+    if (topLayout.value && column?.classList.contains('sidebar')) {
+        flyout.value = { item, anchor, anchorTop: rect.bottom + 6, top: rect.bottom + 6, left: rect.left, below: true };
+    } else {
+        const columnRight = column?.getBoundingClientRect().right ?? rect.right;
+        flyout.value = { item, anchor, anchorTop: rect.top, top: rect.top, left: columnRight + 6, below: false };
+    }
+
     nextTick(positionFlyout);
+}
+
+// Lo que se abre al llegar a una sección: con el menú arriba, nada para una
+// sin pantallas (y se cierra la que estaba abierta).
+function opensFlyout(item) {
+    if (! flyoutMode.value) return false;
+
+    if (topLayout.value && ! item.children && ! item.sections) {
+        scheduleCloseFlyout();
+        return false;
+    }
+
+    return true;
 }
 
 // Con el teclado se abre en el acto.
 function openFlyout(item, event) {
-    if (! compact.value) return;
+    if (! opensFlyout(item)) return;
 
     if (skipFocusOpen) {
         skipFocusOpen = false;
@@ -347,7 +404,7 @@ function openFlyout(item, event) {
 // sin esa espera cada uno reemplazaría la ventana que se estaba buscando.
 // Quedarse sobre el ícono sí cambia la sección; seguir de largo, no.
 function hoverSection(item, event) {
-    if (! compact.value) return;
+    if (! opensFlyout(item)) return;
 
     clearTimeout(flyoutTimer);
     clearTimeout(switchTimer);
@@ -367,16 +424,67 @@ function leaveSection() {
     scheduleCloseFlyout();
 }
 
-// Alineado con el ícono, pero sin salirse por abajo: Inventario tiene más de
-// veinte pantallas y en una pantalla baja no cabría desde el ícono hacia abajo.
+// En una pantalla táctil no hay «pasar por encima»: el primer toque en una
+// sección abre su ventana, y el segundo entra a la sección. Lo que cuenta es
+// si ya estaba abierta ANTES de tocar: el toque también le da el foco, y el
+// foco la abre.
+let pointerType = 'mouse';
+let openBeforeTouch = null;
+
+function onSectionPointerdown(event) {
+    pointerType = event.pointerType;
+    openBeforeTouch = flyout.value?.item.label ?? null;
+}
+
+function onSectionClickCapture(item, event) {
+    if (! flyoutMode.value || ! (item.children || item.sections) || pointerType === 'mouse' || openBeforeTouch === item.label) return;
+
+    event.preventDefault();
+    showFlyout(item, event.currentTarget);
+}
+
+// Tocar fuera la cierra: abierta con un toque, puede no tener el foco que al
+// irse la cerraría.
+function onOutsideFlyout(event) {
+    if (flyout.value && ! flyoutEl.value?.contains(event.target) && ! flyout.value.anchor?.contains(event.target)) {
+        closeFlyout();
+    }
+}
+
+// Al lado: alineado con el ícono, pero sin salirse por abajo (Inventario tiene
+// más de veinte pantallas y en una pantalla baja no cabría desde el ícono
+// hacia abajo). Arriba: debajo de la sección, sin salirse por la derecha; si
+// no cabe en la altura, se desplaza.
 function positionFlyout() {
     if (! flyout.value || ! flyoutEl.value) return;
+
+    if (flyout.value.below) {
+        const width = flyoutEl.value.offsetWidth;
+        flyout.value.left = Math.max(8, Math.min(flyout.value.left, window.innerWidth - 8 - width));
+
+        return;
+    }
 
     const height = flyoutEl.value.offsetHeight;
     const bottomLimit = window.innerHeight - 8;
 
     flyout.value.top = Math.max(8, Math.min(flyout.value.anchorTop, bottomLimit - height));
 }
+
+const flyoutStyle = computed(() => {
+    if (! flyout.value) return null;
+
+    const style = { top: `${flyout.value.top}px`, left: `${flyout.value.left}px` };
+
+    if (flyout.value.below) {
+        style.maxHeight = `calc(100dvh - ${flyout.value.top + 8}px)`;
+    }
+
+    return style;
+});
+
+// Lo que muestra la ventana: la sección, o con «Más» las que no cupieron.
+const flyoutSections = computed(() => flyout.value?.item.sections ?? (flyout.value ? [flyout.value.item] : []));
 
 // Se cierra con una pausa corta: es el tiempo de llevar el mouse del ícono a
 // la ventana sin que desaparezca en el camino.
@@ -403,11 +511,22 @@ function flyoutLinks() {
 }
 
 // Teclado desde el ícono: flecha derecha (o abajo) entra a la ventana; Escape
-// la cierra.
+// la cierra. Con el menú arriba, la flecha abajo entra, y la izquierda y la
+// derecha pasan a la sección de al lado.
 function onSectionKeydown(event) {
+    if (topLayout.value && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+        event.preventDefault();
+        const sections = [...(topNavEl.value?.querySelectorAll('[data-top-section]:not(.is-overflow), [data-top-more]:not(.is-overflow)') ?? [])];
+        const index = sections.indexOf(event.currentTarget);
+        const step = event.key === 'ArrowRight' ? 1 : -1;
+        sections[(index + step + sections.length) % sections.length]?.focus();
+
+        return;
+    }
+
     if (! flyout.value) return;
 
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    if (event.key === 'ArrowDown' || (! topLayout.value && event.key === 'ArrowRight')) {
         event.preventDefault();
         flyoutLinks()[0]?.focus();
     } else if (event.key === 'Escape') {
@@ -443,10 +562,86 @@ function onFlyoutFocusOut(event) {
     scheduleCloseFlyout();
 }
 
-// Al expandir la barra ya no hace falta.
-watch(compact, (value) => {
+// Al expandir la barra (o bajar el menú a su panel) ya no hace falta.
+watch(flyoutMode, (value) => {
     if (! value) closeFlyout();
 });
+
+// ── El menú arriba: las secciones que caben, y «Más» ──────────────────────
+//
+// La barra no se desplaza de lado (CLAUDE.md secc. 28): las secciones que no
+// caben después de la marca y el título van a «Más», que abre la misma
+// ventana con todas ellas. Las que sobran siguen en la barra, invisibles y
+// fuera del flujo: así se pueden medir otra vez cuando la ventana cambia.
+const topNavEl = ref(null);
+const visibleCount = ref(Infinity);
+let topNavObserver = null;
+
+// Con el menú arriba, la barra lleva el trabajo diario; Administración y Mi
+// cuenta, la columna de la izquierda (`rail`). Al lado, todo junto.
+const barNav = computed(() => (topLayout.value ? nav.value.filter((item) => ! item.rail) : nav.value));
+const railNav = computed(() => (topLayout.value ? nav.value.filter((item) => item.rail) : []));
+
+const overflowNav = computed(() => (topLayout.value ? barNav.value.slice(visibleCount.value) : []));
+const moreItem = computed(() => ({ label: 'Más', sections: overflowNav.value }));
+
+function fitTopNav() {
+    const el = topNavEl.value;
+
+    if (! topLayout.value || ! el) return;
+
+    const sections = [...el.querySelectorAll('[data-top-section]')];
+    const more = el.querySelector('[data-top-more]');
+    const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+    const widths = sections.map((section) => section.offsetWidth);
+    const all = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, widths.length - 1);
+
+    if (all <= el.clientWidth) {
+        visibleCount.value = sections.length;
+        return;
+    }
+
+    const room = el.clientWidth - (more?.offsetWidth ?? 0) - gap;
+    let used = 0;
+    let count = 0;
+
+    for (const width of widths) {
+        const next = used + (count ? gap : 0) + width;
+        if (next > room) break;
+        used = next;
+        count++;
+    }
+
+    visibleCount.value = count;
+}
+
+function watchTopNav() {
+    topNavObserver?.disconnect();
+    topNavObserver = null;
+
+    if (! topLayout.value || ! topNavEl.value) return;
+
+    topNavObserver = new ResizeObserver(fitTopNav);
+    topNavObserver.observe(topNavEl.value);
+    fitTopNav();
+}
+
+watch(topLayout, () => nextTick(watchTopNav));
+watch(() => barNav.value.length, () => nextTick(fitTopNav));
+
+// Teclado en la columna: flecha derecha (o abajo) entra a la ventana, que se
+// abre al lado; Escape la cierra. La flecha izquierda, dentro de la ventana,
+// vuelve al ícono (onFlyoutKeydown).
+function onRailKeydown(event) {
+    if (! flyout.value) return;
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        flyoutLinks()[0]?.focus();
+    } else if (event.key === 'Escape') {
+        closeFlyout();
+    }
+}
 
 onMounted(() => {
     const storedSidebar = localStorage.getItem('contapp-sidebar');
@@ -458,12 +653,22 @@ onMounted(() => {
     narrowQuery?.addEventListener('change', onNarrowChange);
     window.addEventListener('keydown', closeNavOnEscape);
     document.addEventListener('pointerdown', onOutsideDial);
+    document.addEventListener('pointerdown', onOutsideFlyout);
+    document.addEventListener('pointerdown', onOutsideCompanyMenu);
+
+    watchTopNav();
+    // Con la tipografía del tema ya cargada, los nombres miden otra cosa.
+    document.fonts?.ready.then(fitTopNav);
 });
 
 onBeforeUnmount(() => {
     narrowQuery?.removeEventListener('change', onNarrowChange);
     window.removeEventListener('keydown', closeNavOnEscape);
     document.removeEventListener('pointerdown', onOutsideDial);
+    document.removeEventListener('pointerdown', onOutsideFlyout);
+    document.removeEventListener('pointerdown', onOutsideCompanyMenu);
+    topNavObserver?.disconnect();
+    clearTimeout(companyTimer);
     clearTimeout(dialTimer);
 });
 
@@ -566,22 +771,154 @@ function companyName(company) {
     return company ? (company.trade_name || company.legal_name) : null;
 }
 
-function switchCompany(event) {
-    const select = event.target;
-    const to = companies.value.find((c) => String(c.id) === String(select.value));
-    const from = companies.value.find((c) => String(c.id) === String(currentCompanyId.value));
+const currentCompany = computed(() => companies.value.find((c) => String(c.id) === String(currentCompanyId.value)) ?? null);
 
+function switchTo(to, revert = () => {}) {
     if (! to || String(to.id) === String(currentCompanyId.value)) return;
 
     startCompanySwitch({
         // La ventana ya se pinta con el tema de la compañía a la que se va.
         to: { id: to.id, name: companyName(to), theme: to.theme || 'marino', licenseState: to.license_state ?? 'ok' },
-        from: from ? { id: from.id, name: companyName(from) } : null,
-        // Si se queda en la anterior, el selector vuelve a mostrarla: con
-        // :value de solo ida, Vue no lo corregiría solo.
-        revert: () => { select.value = String(currentCompanyId.value); },
+        from: currentCompany.value ? { id: currentCompany.value.id, name: companyName(currentCompany.value) } : null,
+        revert,
     });
 }
+
+function switchCompany(event) {
+    const select = event.target;
+
+    // Si se queda en la anterior, el selector vuelve a mostrarla: con :value
+    // de solo ida, Vue no lo corregiría solo.
+    switchTo(companies.value.find((c) => String(c.id) === String(select.value)), () => { select.value = String(currentCompanyId.value); });
+}
+
+// ── La compañía, con el menú arriba ────────────────────────────────────────
+//
+// La columna de la izquierda es solo de íconos (pedido del usuario): la
+// compañía es uno que abre a su lado la lista para cambiar, al pasar el mouse
+// o al tocarlo, y con el teclado (Enter, Espacio, flecha abajo o derecha). La
+// lista dice en cuál se está y con qué rol: la columna ya no tiene lugar para
+// el nombre ni para la etiqueta del rol.
+//
+// Sin `title` en el ícono: el tooltip nativo taparía la lista (como en el menú
+// colapsado). El nombre va en su aria-label.
+const companyBtn = ref(null);
+const companyMenuEl = ref(null);
+const companyMenu = ref(null); // { top, left }
+let companyTimer = null;
+let companyPointer = 'mouse';
+
+function companyItems() {
+    return [...(companyMenuEl.value?.querySelectorAll('button:not(:disabled)') ?? [])];
+}
+
+function openCompanyMenu(focusItem = false) {
+    clearTimeout(companyTimer);
+
+    const rect = companyBtn.value.getBoundingClientRect();
+    const railRight = companyBtn.value.closest('.topbar')?.getBoundingClientRect().right ?? rect.right;
+    companyMenu.value = { top: rect.top, left: railRight + 6 };
+
+    nextTick(() => {
+        positionCompanyMenu();
+
+        if (focusItem) {
+            const items = companyItems();
+            (items.find((item) => item.getAttribute('aria-checked') === 'true') ?? items[0])?.focus();
+        }
+    });
+}
+
+// Alineada con el ícono, sin salirse por abajo.
+function positionCompanyMenu() {
+    if (! companyMenu.value || ! companyMenuEl.value) return;
+
+    companyMenu.value.top = Math.max(8, Math.min(companyMenu.value.top, window.innerHeight - 8 - companyMenuEl.value.offsetHeight));
+}
+
+function closeCompanyMenu() {
+    clearTimeout(companyTimer);
+    companyMenu.value = null;
+}
+
+// Con una pausa corta: el tiempo de llevar el mouse del ícono a la lista.
+function scheduleCloseCompanyMenu() {
+    clearTimeout(companyTimer);
+    companyTimer = setTimeout(closeCompanyMenu, 250);
+}
+
+function keepCompanyMenu() {
+    clearTimeout(companyTimer);
+}
+
+function enterCompany(event) {
+    if (event.pointerType === 'mouse') openCompanyMenu();
+}
+
+function leaveCompany(event) {
+    if (event.pointerType === 'mouse') scheduleCloseCompanyMenu();
+}
+
+function onCompanyPointerdown(event) {
+    companyPointer = event.pointerType;
+}
+
+function onCompanyClick() {
+    // Con el mouse ya se abrió al pasar: el clic no la vuelve a cerrar.
+    if (companyPointer === 'mouse' && companyMenu.value) return;
+
+    companyMenu.value ? closeCompanyMenu() : openCompanyMenu();
+}
+
+function onCompanyKeydown(event) {
+    if (['Enter', ' ', 'ArrowDown', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault();
+        openCompanyMenu(true);
+    } else if (event.key === 'Escape') {
+        closeCompanyMenu();
+    }
+}
+
+// Dentro de la lista: flechas para recorrerla; Escape o flecha izquierda
+// vuelven al ícono.
+function onCompanyMenuKeydown(event) {
+    const items = companyItems();
+    const index = items.indexOf(document.activeElement);
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        items[(index + 1) % items.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length]?.focus();
+    } else if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        closeCompanyMenu();
+        companyBtn.value?.focus();
+    }
+}
+
+// Si el foco sale de la lista a otro lado que no sea su ícono, se cierra.
+function onCompanyMenuFocusOut(event) {
+    const next = event.relatedTarget;
+    if (next && (companyMenuEl.value?.contains(next) || next === companyBtn.value)) return;
+    scheduleCloseCompanyMenu();
+}
+
+function onOutsideCompanyMenu(event) {
+    if (companyMenu.value && ! companyMenuEl.value?.contains(event.target) && ! companyBtn.value?.contains(event.target)) {
+        closeCompanyMenu();
+    }
+}
+
+function chooseCompany(company) {
+    closeCompanyMenu();
+    switchTo(company);
+}
+
+watch(topLayout, (value) => {
+    if (! value) closeCompanyMenu();
+});
 
 // Los hijos de una sección, juntos por categoría y en el orden en que se
 // definieron. Con una sola categoría (Administración) no hay subtítulos.
@@ -631,37 +968,45 @@ function toggleGroup(item) {
 </script>
 
 <template>
-    <div class="app-shell" :class="{ 'is-collapsed': compact, 'nav-open': navOpen }">
+    <div class="app-shell" :class="{ 'is-collapsed': compact, 'nav-open': navOpen, 'layout-top': topLayout }">
         <aside id="app-nav" class="sidebar" @scroll.passive="closeFlyout">
             <div class="sidebar-brand">
                 <span class="brand-mark">C</span>
                 <span v-if="!compact" class="brand-name">CONTAPP</span>
+                <!-- Con el menú arriba, el título de la pantalla va acá, junto a
+                     la marca: la columna de la izquierda no tiene dónde. -->
+                <h1 v-if="topLayout" class="brand-title" :title="title">{{ title }}</h1>
                 <button type="button" class="nav-close" aria-label="Cerrar menú" @click="navOpen = false"><XIcon :size="18" /></button>
             </div>
 
-            <nav class="sidebar-nav" aria-label="Menú principal">
-                <template v-for="item in nav" :key="item.label">
+            <nav ref="topNavEl" class="sidebar-nav" aria-label="Menú principal">
+                <template v-for="(item, index) in barNav" :key="item.label">
                     <!-- Colapsado se ve solo el ícono: el nombre queda como
-                         tooltip y como etiqueta para el lector de pantalla. -->
+                         tooltip y como etiqueta para el lector de pantalla.
+                         Arriba, ícono y nombre; las que no caben, en «Más». -->
                     <Link
-                        v-if="!item.children || compact"
+                        v-if="!item.children || flyoutMode"
                         :href="item.children ? item.children[0].href : item.href"
                         class="sidebar-link"
-                        :class="{ active: isCurrent(item.match), 'flyout-open': flyout?.item.label === item.label }"
+                        :class="{ active: isCurrent(item.match), 'flyout-open': flyout?.item.label === item.label, 'is-overflow': topLayout && index >= visibleCount }"
+                        :data-top-section="topLayout ? '' : null"
                         :aria-label="compact ? item.label : null"
-                        :aria-haspopup="compact && item.children ? 'true' : null"
-                        :aria-expanded="compact && item.children ? flyout?.item.label === item.label : null"
+                        :aria-haspopup="flyoutMode && item.children ? 'true' : null"
+                        :aria-expanded="flyoutMode && item.children ? flyout?.item.label === item.label : null"
                         @mouseenter="hoverSection(item, $event)"
                         @mouseleave="leaveSection"
                         @focus="openFlyout(item, $event)"
                         @blur="scheduleCloseFlyout"
                         @keydown="onSectionKeydown"
+                        @pointerdown="onSectionPointerdown"
+                        @click.capture="onSectionClickCapture(item, $event)"
                     >
                         <span class="sidebar-icon">
                             <img v-if="item.photo" :src="item.photo" class="sidebar-photo" alt="" @error="photoFailed = true">
                             <component :is="item.icon" v-else :size="18" />
                         </span>
                         <span v-if="!compact" class="sidebar-label">{{ item.label }}</span>
+                        <ChevronDownIcon v-if="topLayout && item.children" class="top-chevron" :size="14" />
                     </Link>
 
                     <div v-else class="sidebar-group">
@@ -699,9 +1044,36 @@ function toggleGroup(item) {
                         </div>
                     </div>
                 </template>
+
+                <!-- Siempre está con el menú arriba, para poder medirla; sin
+                     secciones que no caben, invisible. -->
+                <button
+                    v-if="topLayout"
+                    type="button"
+                    data-top-more
+                    class="sidebar-link top-more"
+                    :class="{
+                        active: overflowNav.some((item) => isCurrent(item.match)),
+                        'flyout-open': flyout?.item.label === 'Más',
+                        'is-overflow': ! overflowNav.length,
+                    }"
+                    aria-haspopup="true"
+                    :aria-expanded="flyout?.item.label === 'Más'"
+                    @mouseenter="hoverSection(moreItem, $event)"
+                    @mouseleave="leaveSection"
+                    @focus="openFlyout(moreItem, $event)"
+                    @blur="scheduleCloseFlyout"
+                    @keydown="onSectionKeydown"
+                    @pointerdown="onSectionPointerdown"
+                    @click="showFlyout(moreItem, $event.currentTarget)"
+                >
+                    <span class="sidebar-label">Más</span>
+                    <ChevronDownIcon class="top-chevron" :size="14" />
+                </button>
             </nav>
 
             <button
+                v-if="!topLayout"
                 type="button"
                 class="sidebar-collapse-btn"
                 :aria-label="collapsed ? 'Expandir menú' : 'Colapsar menú'"
@@ -716,8 +1088,10 @@ function toggleGroup(item) {
         <div class="nav-backdrop" @click="navOpen = false" />
 
         <div class="app-main" :class="{ 'conti-docked': contiEnabled && conti.open, 'has-conti-fab': contiEnabled }">
+            <!-- Con el menú arriba es la columna de la izquierda: lo mismo,
+                 apilado y solo con los íconos. -->
             <header class="topbar">
-                <div class="topbar-heading">
+                <div v-if="!topLayout" class="topbar-heading">
                     <button
                         type="button"
                         class="nav-toggle"
@@ -733,8 +1107,28 @@ function toggleGroup(item) {
                 </div>
 
                 <div class="topbar-actions">
+                    <!-- Con el menú arriba, la compañía es un ícono que abre la
+                         lista al lado (la columna es solo de íconos). -->
+                    <button
+                        v-if="companies.length && topLayout"
+                        ref="companyBtn"
+                        type="button"
+                        class="btn btn-ghost topbar-icon-btn company-btn"
+                        :class="{ 'is-open': companyMenu }"
+                        aria-haspopup="menu"
+                        :aria-expanded="Boolean(companyMenu)"
+                        :aria-label="`Compañía: ${companyName(currentCompany) ?? '—'}. Cambiar de compañía`"
+                        @pointerenter="enterCompany"
+                        @pointerleave="leaveCompany"
+                        @pointerdown="onCompanyPointerdown"
+                        @click="onCompanyClick"
+                        @keydown="onCompanyKeydown"
+                    >
+                        <Building2Icon />
+                    </button>
+
                     <select
-                        v-if="companies.length"
+                        v-if="companies.length && !topLayout"
                         class="company-select"
                         aria-label="Compañía"
                         :value="currentCompanyId"
@@ -758,7 +1152,21 @@ function toggleGroup(item) {
                         <MoonIcon v-else />
                     </button>
 
-                    <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
+                    <!-- El menú arriba o al lado: solo con lugar para elegir
+                         (en una pantalla angosta, el menú siempre es su panel). -->
+                    <button
+                        type="button"
+                        class="btn btn-ghost topbar-icon-btn layout-btn"
+                        :title="topLayout ? 'Menú al lado' : 'Menú arriba'"
+                        :aria-label="topLayout ? 'Poner el menú al lado' : 'Poner el menú arriba'"
+                        @click="toggleLayout"
+                    >
+                        <PanelLeftIcon v-if="topLayout" />
+                        <PanelTopIcon v-else />
+                    </button>
+
+                    <!-- Con el menú arriba, el rol va en la lista de compañías. -->
+                    <span v-if="roleLabel && !topLayout" class="badge badge-role">{{ roleLabel }}</span>
 
                     <button
                         v-if="user"
@@ -775,6 +1183,33 @@ function toggleGroup(item) {
                         <span v-if="hasUnseenNews" class="topbar-dot" aria-hidden="true" />
                     </button>
 
+                    <!-- Con el menú arriba, abajo en la columna: Administración y
+                         Mi cuenta, junto a «Salir». Abren su ventana al lado,
+                         como la barra colapsada; sin `title`, que la taparía. -->
+                    <template v-if="topLayout">
+                        <span class="rail-spacer" aria-hidden="true" />
+                        <Link
+                            v-for="item in railNav"
+                            :key="item.label"
+                            :href="item.children[0].href"
+                            class="btn btn-ghost topbar-icon-btn rail-section"
+                            :class="{ active: isCurrent(item.match), 'flyout-open': flyout?.item.label === item.label }"
+                            :aria-label="item.label"
+                            aria-haspopup="true"
+                            :aria-expanded="flyout?.item.label === item.label"
+                            @mouseenter="hoverSection(item, $event)"
+                            @mouseleave="leaveSection"
+                            @focus="openFlyout(item, $event)"
+                            @blur="scheduleCloseFlyout"
+                            @keydown="onRailKeydown"
+                            @pointerdown="onSectionPointerdown"
+                            @click.capture="onSectionClickCapture(item, $event)"
+                        >
+                            <img v-if="item.photo" :src="item.photo" class="rail-photo" alt="" @error="photoFailed = true">
+                            <component :is="item.icon" v-else />
+                        </Link>
+                    </template>
+
                     <Link
                         v-if="user"
                         :href="route('logout')"
@@ -789,20 +1224,24 @@ function toggleGroup(item) {
                 </div>
             </header>
 
-            <div v-if="page.props.licenseGrace" class="flash flash-warning">
-                La licencia de tu compañía está vencida. Podés consultar y exportar información, pero no crear ni modificar registros hasta renovarla.
-            </div>
+            <!-- Los avisos y el contenido, juntos: con el menú arriba son la
+                 columna de la derecha de la columna de la sesión. -->
+            <div class="app-body">
+                <div v-if="page.props.licenseGrace" class="flash flash-warning">
+                    La licencia de tu compañía está vencida. Podés consultar y exportar información, pero no crear ni modificar registros hasta renovarla.
+                </div>
 
-            <div v-if="page.props.flash?.success" class="flash flash-success">
-                {{ page.props.flash.success }}
-            </div>
-            <div v-if="page.props.flash?.error" class="flash flash-error">
-                {{ page.props.flash.error }}
-            </div>
+                <div v-if="page.props.flash?.success" class="flash flash-success">
+                    {{ page.props.flash.success }}
+                </div>
+                <div v-if="page.props.flash?.error" class="flash flash-error">
+                    {{ page.props.flash.error }}
+                </div>
 
-            <main class="content">
-                <slot />
-            </main>
+                <main class="content">
+                    <slot />
+                </main>
+            </div>
 
             <!-- El menú flotante de la barra colapsada: fuera de la barra para
                  que su desplazamiento no lo recorte. -->
@@ -811,7 +1250,8 @@ function toggleGroup(item) {
                     v-if="flyout"
                     ref="flyoutEl"
                     class="sidebar-flyout"
-                    :style="{ top: `${flyout.top}px`, left: `${flyout.left}px` }"
+                    :class="{ 'is-below': flyout.below }"
+                    :style="flyoutStyle"
                     :aria-label="flyout.item.label"
                     @mouseenter="keepFlyout"
                     @mouseleave="scheduleCloseFlyout"
@@ -819,28 +1259,71 @@ function toggleGroup(item) {
                     @focusout="onFlyoutFocusOut"
                     @keydown="onFlyoutKeydown"
                 >
-                    <Link
-                        v-if="!flyout.item.children"
-                        :href="flyout.item.href"
-                        class="flyout-title flyout-title-link"
-                        :class="{ active: isCurrent(flyout.item.match) }"
-                    >{{ flyout.item.label }}</Link>
+                    <!-- Una sección; con «Más», cada una de las que no cupieron. -->
+                    <template v-for="section in flyoutSections" :key="section.label">
+                        <Link
+                            v-if="!section.children"
+                            :href="section.href"
+                            class="flyout-title flyout-title-link"
+                            :class="{ active: isCurrent(section.match) }"
+                        >{{ section.label }}</Link>
 
-                    <template v-else>
-                        <span class="flyout-title">{{ flyout.item.label }}</span>
-                        <template v-for="group in childGroups(flyout.item)" :key="group.label ?? 'todo'">
-                            <span v-if="group.label && childGroups(flyout.item).length > 1" class="flyout-group">{{ group.label }}</span>
-                            <Link
-                                v-for="child in group.children"
-                                :key="child.label"
-                                :href="child.href"
-                                class="flyout-link"
-                                :class="{ active: isCurrent(child.match) }"
-                                :aria-current="isCurrent(child.match) ? 'page' : null"
-                            >{{ child.label }}</Link>
+                        <template v-else>
+                            <span class="flyout-title">{{ section.label }}</span>
+                            <template v-for="group in childGroups(section)" :key="group.label ?? 'todo'">
+                                <span v-if="group.label && childGroups(section).length > 1" class="flyout-group">{{ group.label }}</span>
+                                <Link
+                                    v-for="child in group.children"
+                                    :key="child.label"
+                                    :href="child.href"
+                                    class="flyout-link"
+                                    :class="{ active: isCurrent(child.match) }"
+                                    :aria-current="isCurrent(child.match) ? 'page' : null"
+                                >{{ child.label }}</Link>
+                            </template>
                         </template>
                     </template>
                 </nav>
+
+                <!-- La lista de compañías del menú arriba, al lado de su ícono. -->
+                <div
+                    v-if="companyMenu"
+                    ref="companyMenuEl"
+                    class="company-menu"
+                    role="menu"
+                    aria-label="Compañías"
+                    :style="{ top: `${companyMenu.top}px`, left: `${companyMenu.left}px` }"
+                    @pointerenter="keepCompanyMenu"
+                    @pointerleave="leaveCompany"
+                    @keydown="onCompanyMenuKeydown"
+                    @focusout="onCompanyMenuFocusOut"
+                >
+                    <div class="company-menu-head">
+                        <span>Compañía</span>
+                        <span v-if="roleLabel" class="badge badge-role">{{ roleLabel }}</span>
+                    </div>
+                    <!-- Con la licencia suspendida o revocada no se puede
+                         entrar: se ve marcada y no se elige. Vencida sí
+                         (modo de gracia), avisando. -->
+                    <button
+                        v-for="c in companies"
+                        :key="c.id"
+                        type="button"
+                        role="menuitemradio"
+                        class="company-menu-item"
+                        :class="{ current: String(c.id) === String(currentCompanyId) }"
+                        :aria-checked="String(c.id) === String(currentCompanyId)"
+                        :disabled="isBlockedCompany(c) && c.id !== currentCompanyId"
+                        @click="chooseCompany(c)"
+                    >
+                        <CheckIcon v-if="String(c.id) === String(currentCompanyId)" class="company-menu-check" :size="15" />
+                        <span v-else class="company-menu-check" aria-hidden="true" />
+                        <span class="company-menu-name">
+                            {{ companyName(c) }}
+                            <small v-if="LICENSE_STATE_SUFFIX[c.license_state]">{{ LICENSE_STATE_SUFFIX[c.license_state].replace(' — ', '') }}</small>
+                        </span>
+                    </button>
+                </div>
             </Teleport>
 
             <FeedbackPanel v-if="user" :open="feedbackOpen" @close="feedbackOpen = false" />
@@ -1320,6 +1803,15 @@ function toggleGroup(item) {
     overflow: hidden;
 }
 
+/* Los avisos y el contenido: con el menú al lado, uno debajo del otro como
+   siempre; .content es lo único que se desplaza. */
+.app-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 /* Con Conti abierto en una pantalla ancha, todo lo de abajo de la barra se
    corre a la izquierda: nada queda debajo del panel (ContiPanel.vue, 27rem),
    tampoco los botones de confirmar lo que Conti preparó. En una pantalla
@@ -1614,6 +2106,283 @@ function toggleGroup(item) {
     white-space: nowrap;
 }
 
+/* ── El menú arriba (CLAUDE.md secc. 29) ─────────────────────────────────── */
+/*
+    Arriba, la barra del menú con la marca y el título; abajo, la columna de la
+    sesión a la izquierda y el contenido. La barra mide lo mismo que la barra
+    superior: los paneles de la derecha («Comentarios y noticias», Conti) se
+    abren debajo de --topbar-height. Solo existe desde 1025px (topLayout).
+*/
+.app-shell.layout-top {
+    --rail-width: 3.5rem;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--topbar-height) minmax(0, 1fr);
+}
+
+.layout-top .sidebar {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    height: var(--topbar-height);
+    padding: 0 0.75rem 0 1rem;
+    overflow: hidden;
+}
+
+/* La marca no se estira ni se encoge según el menú (sí el título, hasta su
+   tope): el menú se queda con lo que sobra, siempre lo mismo, y el cálculo
+   de cuántas secciones caben no se mueve al ocultar las que sobran. */
+.layout-top .sidebar-brand {
+    flex: 0 0 auto;
+    max-width: 45%;
+    min-width: 0;
+    padding: 0;
+    gap: 0.6rem;
+}
+
+.layout-top .brand-name {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* El título de la pantalla, junto a la marca: cede antes que el menú, y se
+   corta con puntos suspensivos (el completo, al pasar el mouse). Va con el
+   acento del tema (pedido del usuario): es el «estás acá» de la barra, y se
+   distingue de los nombres de las secciones, que son del mismo blanco. */
+.brand-title {
+    min-width: 0;
+    max-width: 20rem;
+    margin: 0 0 0 0.2rem;
+    padding-left: 0.8rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layout-top .sidebar-nav {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.15rem;
+}
+
+.layout-top .sidebar-link {
+    flex-shrink: 0;
+    gap: 0.45rem;
+    padding: 0.42rem 0.6rem;
+    white-space: nowrap;
+}
+
+/* Las que no caben: fuera del flujo e invisibles (no reciben el foco ni las
+   lee el lector de pantalla), pero se pueden seguir midiendo. */
+.layout-top .sidebar-link.is-overflow {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.top-more {
+    background: transparent;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+}
+
+.top-chevron {
+    flex-shrink: 0;
+    color: rgba(244, 246, 250, 0.5);
+    transition: transform .15s ease, color .15s ease;
+}
+
+.sidebar-link.flyout-open .top-chevron {
+    transform: rotate(180deg);
+    color: var(--color-accent);
+}
+
+.app-shell.layout-top .app-main {
+    display: grid;
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: auto;
+    min-height: 0;
+}
+
+/* La columna de la sesión: lo mismo que la barra superior, apilado y solo
+   con los íconos (el nombre de cada uno, en su tooltip y su aria-label). */
+.layout-top .topbar {
+    grid-column: 1;
+    grid-row: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 0.75rem 0;
+    border-bottom: 0;
+    border-right: 1px solid var(--color-border);
+    overflow-y: auto;
+}
+
+/* Toda la altura de la columna: arriba lo de la sesión, abajo (después del
+   espaciador) Administración, Mi cuenta y «Salir». */
+.layout-top .topbar-actions {
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.rail-spacer {
+    flex: 1 1 auto;
+    min-height: 0.75rem;
+}
+
+/* La sección en la que se está, o la que tiene su ventana abierta: marcada
+   como el botón de «Comentarios y noticias» abierto. */
+.rail-section.active,
+.rail-section.flyout-open {
+    background: var(--color-primary-soft);
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+}
+
+.rail-section.active {
+    color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+}
+
+/* La foto de perfil en lugar del ícono de «Mi cuenta». */
+.rail-photo {
+    display: block;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.layout-top .logout-btn {
+    width: 2.25rem;
+    padding: 0;
+}
+
+/* «Salir» queda con su ícono: el texto sigue ahí para el lector de pantalla. */
+.layout-top .logout-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+/* La compañía, primera: abierta su lista, queda marcada como el botón de
+   «Comentarios y noticias». */
+.company-btn.is-open {
+    background: var(--color-primary-soft);
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+}
+
+/* La lista de compañías, al lado de su ícono: por encima del contenido y de
+   los paneles de la derecha, como la ventana del menú. */
+.company-menu {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    min-width: 15rem;
+    max-width: 22rem;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    padding: 0.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 10px);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+}
+
+.company-menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.3rem 0.55rem 0.45rem;
+    margin-bottom: 0.2rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+.company-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.55rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.84rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.company-menu-item:hover:not(:disabled),
+.company-menu-item:focus-visible {
+    background: var(--color-surface-alt);
+    outline: none;
+}
+
+.company-menu-item.current {
+    font-weight: 700;
+    color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+}
+
+.company-menu-item:disabled {
+    cursor: not-allowed;
+    color: var(--color-text-muted);
+}
+
+.company-menu-check {
+    flex-shrink: 0;
+    width: 15px;
+}
+
+.company-menu-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.company-menu-name small {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+}
+
+.layout-top .app-body {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.layout-top .app-bottom {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .top-chevron { transition: none; }
+}
+
 /* Solo existen en pantallas angostas (ver la media query de abajo). */
 .nav-toggle,
 .nav-close,
@@ -1696,8 +2465,10 @@ function toggleGroup(item) {
         display: inline-flex;
     }
 
-    /* El panel siempre se abre completo: colapsar es cosa del escritorio. */
-    .sidebar-collapse-btn {
+    /* El panel siempre se abre completo: colapsar es cosa del escritorio. Y
+       el menú arriba también: acá no hay lugar, así que ni se ofrece. */
+    .sidebar-collapse-btn,
+    .layout-btn {
         display: none;
     }
 

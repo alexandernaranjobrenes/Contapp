@@ -9,7 +9,7 @@ import CompanyBackupPanel from '../../Components/CompanyBackupPanel.vue';
  */
 defineProps({
     license: { type: Object, required: true },
-    companies: { type: Array, required: true },
+    licenseCompanies: { type: Array, required: true },
     currentCompanyId: { type: Number, default: null },
     sections: { type: Array, required: true },
     minPassword: { type: Number, default: 10 },
@@ -20,6 +20,7 @@ const routes = {
     preview: 'backups.preview',
     export: 'backups.export',
     import: 'backups.import',
+    compare: 'backups.import.compare',
     confirm: 'backups.import.confirm',
     status: 'backups.import.status',
 };
@@ -31,11 +32,12 @@ const routes = {
     <AppLayout title="Respaldos">
         <p class="hint intro">
             Un respaldo es toda la información de una compañía —o la de un período— en un archivo de texto cifrado. Sirve para guardarla
-            aparte o para pasar una compañía a otra licencia. Solo vos, como Superusuario, podés exportar e importar.
+            aparte, para pasar una compañía a otra licencia o para completar una compañía con lo que le falta. Solo vos, como
+            Superusuario, podés exportar e importar.
         </p>
 
         <CompanyBackupPanel
-            :companies="companies"
+            :companies="licenseCompanies"
             :current-company-id="currentCompanyId"
             :sections="sections"
             :license="license"

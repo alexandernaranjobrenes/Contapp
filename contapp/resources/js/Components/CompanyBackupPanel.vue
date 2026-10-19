@@ -1,9 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { router } from '@inertiajs/vue3';
-import { ArchiveRestoreIcon, DownloadIcon, LockKeyholeIcon, ShieldCheckIcon, UploadIcon } from '@lucide/vue';
+import { router, usePage } from '@inertiajs/vue3';
+import {
+    ArchiveRestoreIcon, ArrowLeftIcon, DownloadIcon, GitCompareArrowsIcon, LockKeyholeIcon, ShieldCheckIcon, TriangleAlertIcon, UploadIcon,
+} from '@lucide/vue';
 import { requestJson } from '../Utils/http';
 import { fullDate } from '../Utils/relativeTime';
+import { startCompanySwitch } from '../Utils/companySwitch';
 
 /**
  * Exportar e importar el respaldo de una compañía (CLAUDE.md secc. 37). Lo
@@ -12,9 +15,10 @@ import { fullDate } from '../Utils/relativeTime';
  *
  * Exportar: qué y de qué período → el resumen («¿estás seguro?») → la
  * contraseña del archivo y la de la cuenta → baja el archivo.
- * Importar: el archivo y su contraseña → lo que trae, ya verificado → los
- * datos de la compañía nueva y la contraseña de la cuenta → en cola, y se
- * sigue el avance.
+ * Importar: el archivo y su contraseña → se revisa en la cola → lo que trae,
+ * ya verificado → en una compañía nueva (sus datos) o completando una que ya
+ * existe (se compara en la cola: qué le falta, qué ya tiene, qué lo impide) →
+ * la contraseña de la cuenta → en cola. Cada paso de la cola muestra su avance.
  */
 const props = defineProps({
     companies: { type: Array, required: true },
@@ -23,13 +27,14 @@ const props = defineProps({
     license: { type: Object, required: true },
     minPassword: { type: Number, default: 10 },
     imports: { type: Array, default: () => [] },
-    // { preview, export, import, confirm, status }: nombres de ruta; params, los que llevan todas.
+    // { preview, export, import, compare, confirm, status }: nombres de ruta; params, los que llevan todas.
     routes: { type: Object, required: true },
     routeParams: { type: Object, default: () => ({}) },
     accountLabel: { type: String, default: 'Tu contraseña de CONTAPP' },
     backoffice: { type: Boolean, default: false },
 });
 
+const page = usePage();
 const url = (name, extra = {}) => route(props.routes[name], { ...props.routeParams, ...extra });
 
 // ── Exportar ──────────────────────────────────────────────────────────
@@ -149,19 +154,75 @@ function restartExport() {
 
 // ── Importar ──────────────────────────────────────────────────────────
 
-const importStep = ref('upload'); // upload | confirm | importing | done | failed
+// upload | inspecting | review | comparing | comparison | importing | done | failed
+const importStep = ref('upload');
 const importFile = ref(null);
 const fileInput = ref(null);
 const importPassword = ref('');
 const importErrors = ref({});
 const importBusy = ref(false);
-const pending = ref(null); // { uuid, summary, defaults, can_add_company }
+// Lo último que dijo el servidor del respaldo: estado, avance, lo que trae
+// (summary, defaults), la comparación y el resultado.
+const pending = ref(null);
+const destination = ref('new'); // new | merge
+const mergeCompanyId = ref(null);
 const companyForm = ref({ legal_name: '', trade_name: '', tax_id: '', account_password: '' });
-const status = ref(null);
+const mergePassword = ref('');
 let poll = null;
+
+// El paso de la pantalla según lo que está haciendo el respaldo.
+const STEP_OF = {
+    inspecting: 'inspecting',
+    validated: 'review',
+    comparing: 'comparing',
+    compared: 'comparison',
+    queued: 'importing',
+    importing: 'importing',
+    done: 'done',
+    failed: 'failed',
+    expired: 'failed',
+};
+
+const RUNNING_STEPS = ['inspecting', 'comparing', 'importing'];
 
 function pickFile(event) {
     importFile.value = event.target.files?.[0] ?? null;
+}
+
+/**
+ * Lo que contestó el servidor: a qué paso va la pantalla, y si la cola
+ * sigue trabajando, que se siga mirando.
+ */
+function show(data) {
+    const step = STEP_OF[data.status] ?? 'failed';
+
+    // Recién revisado: los datos que se proponen para la compañía nueva.
+    if (step === 'review' && ['upload', 'inspecting'].includes(importStep.value) && data.defaults) {
+        companyForm.value = {
+            legal_name: data.defaults.legal_name,
+            trade_name: data.defaults.trade_name ?? '',
+            tax_id: data.defaults.tax_id ?? '',
+            account_password: '',
+        };
+    }
+
+    // La comparación falló: el respaldo vuelve a esperar, con el motivo.
+    if (step === 'review' && importStep.value === 'comparing' && data.error) {
+        importErrors.value = { general: data.error };
+    }
+
+    pending.value = { ...(pending.value ?? {}), ...data };
+    importStep.value = step;
+
+    if (RUNNING_STEPS.includes(step)) {
+        watchStatus();
+    } else {
+        stopWatching();
+    }
+
+    if (['done', 'failed'].includes(step)) {
+        router.reload({ only: ['imports', 'license'] });
+    }
 }
 
 async function reviewImport() {
@@ -184,59 +245,140 @@ async function reviewImport() {
         return;
     }
 
-    pending.value = result.data;
-    companyForm.value = { ...result.data.defaults, trade_name: result.data.defaults.trade_name ?? '', tax_id: result.data.defaults.tax_id ?? '', account_password: '' };
     importPassword.value = '';
-    importStep.value = 'confirm';
+    pending.value = null;
+    show(result.data);
 }
 
-async function confirmImport() {
+/** Lo que pidió la persona, a la cola; si el servidor lo rechaza, el motivo queda junto al campo. */
+async function send(name, body) {
     importBusy.value = true;
     importErrors.value = {};
-    const result = await requestJson(url('confirm', { uuid: pending.value.uuid }), { method: 'POST', body: companyForm.value });
+    const result = await requestJson(url(name, { uuid: pending.value.uuid }), { method: 'POST', body });
     importBusy.value = false;
 
     if (! result.ok) {
         importErrors.value = result.status === 422 ? result.errors : { general: result.message };
+        return false;
+    }
+
+    show(result.data);
+
+    return true;
+}
+
+function confirmImport() {
+    return send('confirm', { mode: 'new', ...companyForm.value });
+}
+
+function compareImport() {
+    if (! mergeCompanyId.value) {
+        importErrors.value = { company_id: 'Elegí qué compañía completar.' };
         return;
     }
 
-    status.value = result.data;
-    importStep.value = 'importing';
-    watchStatus();
+    return send('compare', { company_id: mergeCompanyId.value });
+}
+
+async function confirmMerge() {
+    if (await send('confirm', { mode: 'merge', account_password: mergePassword.value })) {
+        mergePassword.value = '';
+    }
+}
+
+function backToReview() {
+    importStep.value = 'review';
+    importErrors.value = {};
 }
 
 function watchStatus() {
-    clearInterval(poll);
+    if (poll) return;
+
     poll = setInterval(async () => {
         const result = await requestJson(url('status', { uuid: pending.value.uuid }));
 
-        if (! result.ok) return;
-
-        status.value = result.data;
-
-        if (result.data.status === 'done' || result.data.status === 'failed') {
-            clearInterval(poll);
-            importStep.value = result.data.status;
-            router.reload({ only: ['imports', 'license'] });
-        }
-    }, 2000);
+        if (result.ok) show(result.data);
+    }, 1500);
 }
 
-onBeforeUnmount(() => clearInterval(poll));
+function stopWatching() {
+    clearInterval(poll);
+    poll = null;
+}
+
+onBeforeUnmount(stopWatching);
 
 function restartImport() {
+    stopWatching();
     importStep.value = 'upload';
     pending.value = null;
-    status.value = null;
     importFile.value = null;
     importErrors.value = {};
+    destination.value = 'new';
+    mergeCompanyId.value = null;
+    mergePassword.value = '';
 
     if (fileInput.value) fileInput.value.value = '';
 }
 
-function goToCompany(companyId) {
-    router.put(route('company-switch'), { company_id: companyId });
+// El cambio de compañía, con su ventana (CLAUDE.md secc. 30). Las de la
+// barra superior traen el tema y el estado de la licencia; una recién creada
+// todavía no está entre ellas.
+function goToCompany(companyId, name) {
+    const mine = page.props.companies ?? [];
+    const to = mine.find((c) => c.id === companyId);
+    const from = mine.find((c) => c.id === page.props.currentCompanyId);
+
+    startCompanySwitch({
+        to: { id: companyId, name: to ? (to.trade_name || to.legal_name) : name, theme: to?.theme || 'marino', licenseState: to?.license_state ?? 'ok' },
+        from: from ? { id: from.id, name: from.trade_name || from.legal_name } : null,
+        revert: () => {},
+    });
+}
+
+// ── Mientras trabaja la cola ──────────────────────────────────────────
+
+const percent = computed(() => {
+    const total = pending.value?.total ?? 0;
+
+    return importStep.value !== 'inspecting' && total > 0 ? Math.min(100, Math.round(((pending.value.progress ?? 0) / total) * 100)) : null;
+});
+
+const companyNameOf = (id) => props.companies.find((c) => c.id === id)?.name ?? '';
+
+const runningTitle = computed(() => {
+    if (importStep.value === 'inspecting') return 'Revisando el archivo…';
+    if (importStep.value === 'comparing') return `Comparando con «${companyNameOf(pending.value?.target_company_id)}»…`;
+    if (pending.value?.mode === 'merge') return `Completando «${pending.value.company_name}»…`;
+
+    return `Importando «${companyForm.value.trade_name || companyForm.value.legal_name}»…`;
+});
+
+const progressText = computed(() => {
+    const done = number(pending.value?.progress);
+
+    return importStep.value === 'inspecting' ? `${done} registros revisados` : `${done} de ${number(pending.value?.total)} registros`;
+});
+
+// ── La comparación ────────────────────────────────────────────────────
+
+const comparison = computed(() => pending.value?.comparison ?? null);
+const blocked = computed(() => (comparison.value?.conflicts_total ?? 0) > 0);
+const nothingToAdd = computed(() => comparison.value && ! comparison.value.totals.added && ! comparison.value.people?.added?.length);
+
+function openingNote(opening) {
+    if (! opening || (! opening.added && ! opening.skipped)) return null;
+
+    return opening.added
+        ? `Los saldos al ${opening.date} entran: esta compañía no tiene movimientos antes del ${opening.from}.`
+        : `Los saldos al ${opening.date} no entran: esta compañía ya tiene movimientos antes del ${opening.from}, y con ellos esos saldos.`;
+}
+
+function mergeCount(item) {
+    const present = item.present ? `${number(item.present)} ya ${item.present === 1 ? 'está' : 'están'}` : '';
+    const different = item.different ? `${number(item.different)} ${item.different === 1 ? 'distinto' : 'distintos'}` : '';
+
+    return [present, different].filter(Boolean).join(', ');
 }
 
 // ── Resúmenes ─────────────────────────────────────────────────────────
@@ -255,7 +397,10 @@ function openingText(opening, date) {
 }
 
 const STATUS = {
+    inspecting: ['Revisándose', 'badge-warning'],
     validated: ['Esperando confirmación', 'badge-neutral'],
+    comparing: ['Comparándose', 'badge-warning'],
+    compared: ['Comparado', 'badge-neutral'],
     queued: ['En cola', 'badge-neutral'],
     importing: ['Importando', 'badge-warning'],
     done: ['Importado', 'badge-success'],
@@ -263,7 +408,7 @@ const STATUS = {
     expired: ['Vencido', 'badge-neutral'],
 };
 
-const droppedTotal = computed(() => Object.values(status.value?.result?.dropped ?? {}).reduce((a, b) => a + b, 0));
+const droppedTotal = computed(() => Object.values(pending.value?.result?.dropped ?? {}).reduce((a, b) => a + b, 0));
 
 function xsrfToken() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
@@ -407,7 +552,7 @@ function xsrfToken() {
                 <ArchiveRestoreIcon aria-hidden="true" />
                 <div>
                     <h2 id="import-title">Importar un respaldo</h2>
-                    <p class="hint">Crea una compañía nueva en la licencia con lo que trae el archivo. Nunca se mezcla con una que ya existe.</p>
+                    <p class="hint">En una compañía nueva, o completando una que ya existe con lo que le falta. Lo que ya está nunca se cambia.</p>
                 </div>
             </header>
 
@@ -425,13 +570,38 @@ function xsrfToken() {
                 <p v-if="importErrors.general" class="flash flash-error span-full" role="alert">{{ importErrors.general }}</p>
                 <div class="form-actions span-full">
                     <button type="submit" class="btn btn-primary" :disabled="importBusy" :data-busy="importBusy ? '' : null">
-                        <UploadIcon /> {{ importBusy ? 'Revisando el archivo…' : 'Revisar' }}
+                        <UploadIcon /> {{ importBusy ? 'Subiendo…' : 'Revisar' }}
                     </button>
                 </div>
             </form>
 
-            <form v-else-if="importStep === 'confirm'" class="summary" @submit.prevent="confirmImport">
-                <h3>¿Estás seguro de importar este respaldo?</h3>
+            <!-- Revisando, comparando o importando: la cola, con su avance. -->
+            <div v-else-if="RUNNING_STEPS.includes(importStep)" class="importing" role="status" aria-live="polite">
+                <span class="spinner" aria-hidden="true"></span>
+                <div class="importing-text">
+                    <p>
+                        <strong>{{ runningTitle }}</strong><br>
+                        <span class="muted">
+                            {{ importStep === 'comparing' ? 'Se hace todo y se deshace: no se guarda nada.' : 'Puede tardar unos minutos. Podés salir de esta pantalla: sigue solo.' }}
+                        </span>
+                    </p>
+                    <div
+                        v-if="percent !== null"
+                        class="bar"
+                        role="progressbar"
+                        :aria-valuenow="percent"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        :aria-label="runningTitle"
+                    >
+                        <span :style="{ width: `${percent}%` }"></span>
+                    </div>
+                    <p class="muted small">{{ progressText }}</p>
+                </div>
+            </div>
+
+            <form v-else-if="importStep === 'review'" class="summary" @submit.prevent="destination === 'new' ? confirmImport() : compareImport()">
+                <h3>¿Qué hacer con este respaldo?</h3>
                 <p class="verified"><ShieldCheckIcon aria-hidden="true" /> Lo generó esta instalación de CONTAPP y no fue modificado.</p>
                 <dl class="facts">
                     <div><dt>Compañía de origen</dt><dd>{{ pending.summary.company.trade_name || pending.summary.company.legal_name }}{{ pending.summary.company.tax_id ? ` (${pending.summary.company.tax_id})` : '' }}</dd></div>
@@ -451,65 +621,173 @@ function xsrfToken() {
 
                 <p v-if="openingText(pending.summary.opening, pending.summary.opening_date)" class="hint">{{ openingText(pending.summary.opening, pending.summary.opening_date) }}</p>
 
-                <h4 class="new-company">La compañía nueva <span class="muted small">({{ license.companies }} de {{ license.max_companies }} compañías de la licencia)</span></h4>
-                <p v-if="! pending.can_add_company" class="flash flash-error" role="alert">
-                    La licencia ya alcanzó el máximo de compañías: hace falta más cupo antes de importar.
-                </p>
-                <div class="form-grid">
-                    <div class="field">
-                        <label for="import-legal">Razón social</label>
-                        <input id="import-legal" v-model="companyForm.legal_name" type="text" maxlength="255" required>
-                        <span v-if="importErrors.legal_name" class="error">{{ importErrors.legal_name }}</span>
+                <fieldset class="field destination">
+                    <legend>Dónde importarlo</legend>
+                    <div class="period">
+                        <label class="check"><input v-model="destination" type="radio" value="new"> En una compañía nueva</label>
+                        <label class="check">
+                            <input v-model="destination" type="radio" value="merge" :disabled="! companies.length"> Completar una compañía que ya existe
+                        </label>
                     </div>
-                    <div class="field">
-                        <label for="import-trade">Nombre comercial</label>
-                        <input id="import-trade" v-model="companyForm.trade_name" type="text" maxlength="255">
+                </fieldset>
+
+                <template v-if="destination === 'new'">
+                    <h4 class="new-company">La compañía nueva <span class="muted small">({{ license.companies }} de {{ license.max_companies }} compañías de la licencia)</span></h4>
+                    <p v-if="! pending.can_add_company" class="flash flash-error" role="alert">
+                        La licencia ya alcanzó el máximo de compañías: hace falta más cupo antes de importar.
+                    </p>
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="import-legal">Razón social</label>
+                            <input id="import-legal" v-model="companyForm.legal_name" type="text" maxlength="255" required>
+                            <span v-if="importErrors.legal_name" class="error">{{ importErrors.legal_name }}</span>
+                        </div>
+                        <div class="field">
+                            <label for="import-trade">Nombre comercial</label>
+                            <input id="import-trade" v-model="companyForm.trade_name" type="text" maxlength="255">
+                        </div>
+                        <div class="field">
+                            <label for="import-tax">Cédula jurídica</label>
+                            <input id="import-tax" v-model="companyForm.tax_id" type="text" maxlength="50">
+                        </div>
+                        <div class="field">
+                            <label for="import-account">{{ accountLabel }}</label>
+                            <input id="import-account" v-model="companyForm.account_password" type="password" autocomplete="current-password" required>
+                            <span v-if="importErrors.account_password" class="error">{{ importErrors.account_password }}</span>
+                        </div>
                     </div>
-                    <div class="field">
-                        <label for="import-tax">Cédula jurídica</label>
-                        <input id="import-tax" v-model="companyForm.tax_id" type="text" maxlength="50">
+                    <p class="hint small">
+                        Las personas entran por su correo, si ya tienen cuenta en CONTAPP y caben en la licencia. Lo contabilizado entra contabilizado,
+                        con los mismos números de documento.
+                    </p>
+                </template>
+
+                <template v-else>
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="merge-company">Compañía que se completa</label>
+                            <select id="merge-company" v-model="mergeCompanyId" required>
+                                <option :value="null" disabled>Elegí una</option>
+                                <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}{{ c.tax_id ? ` (${c.tax_id})` : '' }}</option>
+                            </select>
+                            <span v-if="importErrors.company_id" class="error">{{ importErrors.company_id }}</span>
+                        </div>
                     </div>
-                    <div class="field">
-                        <label for="import-account">{{ accountLabel }}</label>
-                        <input id="import-account" v-model="companyForm.account_password" type="password" autocomplete="current-password" required>
-                        <span v-if="importErrors.account_password" class="error">{{ importErrors.account_password }}</span>
-                    </div>
-                </div>
-                <p class="hint small">
-                    Las personas entran por su correo, si ya tienen cuenta en CONTAPP y caben en la licencia. Lo contabilizado entra contabilizado,
-                    con los mismos números de documento.
-                </p>
+                    <p class="hint small">
+                        Primero se compara, sin guardar nada: qué le falta, qué ya tiene y si algo lo impide. Lo que ya está no se cambia; lo que el
+                        sistema calcula con los movimientos (saldos de partidas, existencias, costo promedio, consecutivos) se recalcula con lo que se agrega.
+                    </p>
+                </template>
 
                 <p v-if="importErrors.general" class="flash flash-error" role="alert">{{ importErrors.general }}</p>
 
                 <div class="form-actions">
                     <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="restartImport">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" :disabled="importBusy || ! pending.can_add_company" :data-busy="importBusy ? '' : null">
+                    <button
+                        v-if="destination === 'new'"
+                        type="submit"
+                        class="btn btn-primary"
+                        :disabled="importBusy || ! pending.can_add_company"
+                        :data-busy="importBusy ? '' : null"
+                    >
                         <ArchiveRestoreIcon /> {{ importBusy ? 'Enviando…' : 'Sí, importar' }}
+                    </button>
+                    <button v-else type="submit" class="btn btn-primary" :disabled="importBusy" :data-busy="importBusy ? '' : null">
+                        <GitCompareArrowsIcon /> {{ importBusy ? 'Enviando…' : 'Comparar' }}
                     </button>
                 </div>
             </form>
 
-            <div v-else-if="importStep === 'importing'" class="importing" role="status" aria-live="polite">
-                <span class="spinner" aria-hidden="true"></span>
-                <p>
-                    <strong>Importando «{{ companyForm.trade_name || companyForm.legal_name }}»…</strong><br>
-                    <span class="muted">Puede tardar unos minutos. Podés salir de esta pantalla: sigue solo.</span>
-                </p>
-            </div>
+            <form v-else-if="importStep === 'comparison'" class="summary" @submit.prevent="confirmMerge">
+                <h3 v-if="blocked">No se puede completar «{{ comparison.company.name }}» con este respaldo</h3>
+                <h3 v-else-if="nothingToAdd">A «{{ comparison.company.name }}» no le falta nada de este respaldo</h3>
+                <h3 v-else>¿Completar «{{ comparison.company.name }}» con lo que le falta?</h3>
+
+                <div v-if="comparison.other_tax_id" class="notice">
+                    <TriangleAlertIcon aria-hidden="true" />
+                    <p>
+                        El respaldo es de la cédula {{ comparison.other_tax_id }} y esta compañía es la {{ comparison.company.tax_id }}: probablemente es
+                        otra compañía. Cada cosa se reconoce por su código o su número, así que revisá bien lo que se agregaría.
+                    </p>
+                </div>
+
+                <div v-if="blocked" class="flash flash-error conflicts" role="alert">
+                    <p>
+                        <strong>Lo que lo impide</strong><template v-if="comparison.conflicts_total > comparison.conflicts.length">
+                            ({{ comparison.conflicts.length }} de {{ number(comparison.conflicts_total) }})</template>:
+                    </p>
+                    <ul>
+                        <li v-for="c in comparison.conflicts" :key="c">{{ c }}</li>
+                    </ul>
+                    <p>
+                        Completar no cambia lo que ya está, y traer lo del respaldo lo duplicaría o lo dejaría a medias. Resolvelo en esta compañía y
+                        volvé a comparar, o importá el respaldo en una compañía nueva.
+                    </p>
+                </div>
+
+                <dl class="facts">
+                    <div><dt>Le falta</dt><dd>{{ number(comparison.totals.added) }} registros</dd></div>
+                    <div><dt>Ya tiene</dt><dd>{{ number(comparison.totals.present) }}</dd></div>
+                    <div><dt>Distintos (queda lo de acá)</dt><dd>{{ number(comparison.totals.different) }}</dd></div>
+                    <div v-if="comparison.totals.dropped"><dt>No entran</dt><dd>{{ number(comparison.totals.dropped) }}</dd></div>
+                </dl>
+
+                <div class="counts">
+                    <div v-for="s in comparison.sections" :key="s.key" class="count-group">
+                        <h4>{{ s.label }}</h4>
+                        <ul>
+                            <li v-for="i in s.items" :key="i.label">
+                                <span>{{ i.label }}<small v-if="mergeCount(i)" class="muted"> · {{ mergeCount(i) }}</small></span>
+                                <strong :class="{ muted: ! i.added }">{{ i.added ? `+${number(i.added)}` : '0' }}</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <p v-if="openingNote(comparison.opening)" class="hint">{{ openingNote(comparison.opening) }}</p>
+                <ul class="result">
+                    <li v-if="comparison.people?.added?.length">Entrarían: {{ comparison.people.added.join(', ') }}.</li>
+                    <li v-if="comparison.people?.missing?.length">Sin cuenta en CONTAPP (invitalas desde Usuarios): {{ comparison.people.missing.join(', ') }}.</li>
+                    <li v-if="comparison.people?.no_quota?.length">No caben en la licencia: {{ comparison.people.no_quota.join(', ') }}.</li>
+                    <li v-if="comparison.totals.dropped">
+                        {{ number(comparison.totals.dropped) }} registros no entran: dependen de algo que no tiene ni esta compañía ni el respaldo.
+                    </li>
+                </ul>
+
+                <template v-if="! blocked && ! nothingToAdd">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="merge-account">{{ accountLabel }}</label>
+                            <input id="merge-account" v-model="mergePassword" type="password" autocomplete="current-password" required>
+                            <span v-if="importErrors.account_password" class="error">{{ importErrors.account_password }}</span>
+                        </div>
+                    </div>
+                    <p class="hint small">Mientras se completa, conviene que nadie trabaje en esa compañía.</p>
+                </template>
+
+                <p v-if="importErrors.general || importErrors.company_id" class="flash flash-error" role="alert">{{ importErrors.general ?? importErrors.company_id }}</p>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="backToReview"><ArrowLeftIcon /> Volver</button>
+                    <button v-if="! blocked && ! nothingToAdd" type="submit" class="btn btn-primary" :disabled="importBusy" :data-busy="importBusy ? '' : null">
+                        <ArchiveRestoreIcon /> {{ importBusy ? 'Enviando…' : 'Sí, completar' }}
+                    </button>
+                </div>
+            </form>
 
             <div v-else-if="importStep === 'done'" class="done">
                 <p class="flash flash-success" role="status">
                     <ShieldCheckIcon aria-hidden="true" />
-                    Listo: se creó «{{ status.company_name }}» con {{ number(status.result?.imported) }} registros.
+                    <template v-if="pending.mode === 'merge'">Listo: se le agregaron {{ number(pending.result?.imported) }} registros a «{{ pending.company_name }}».</template>
+                    <template v-else>Listo: se creó «{{ pending.company_name }}» con {{ number(pending.result?.imported) }} registros.</template>
                 </p>
                 <ul class="result">
-                    <li v-if="status.result?.people?.added?.length">Con acceso: {{ status.result.people.added.join(', ') }}.</li>
-                    <li v-if="status.result?.people?.missing?.length">
-                        Sin cuenta en CONTAPP (invitalas desde Usuarios): {{ status.result.people.missing.join(', ') }}.
+                    <li v-if="pending.result?.people?.added?.length">Con acceso: {{ pending.result.people.added.join(', ') }}.</li>
+                    <li v-if="pending.result?.people?.missing?.length">
+                        Sin cuenta en CONTAPP (invitalas desde Usuarios): {{ pending.result.people.missing.join(', ') }}.
                     </li>
-                    <li v-if="status.result?.people?.no_quota?.length">
-                        No cupieron en la licencia: {{ status.result.people.no_quota.join(', ') }}.
+                    <li v-if="pending.result?.people?.no_quota?.length">
+                        No cupieron en la licencia: {{ pending.result.people.no_quota.join(', ') }}.
                     </li>
                     <li v-if="droppedTotal">
                         Quedaron fuera {{ number(droppedTotal) }} registros que dependían de movimientos anteriores al período.
@@ -517,12 +795,12 @@ function xsrfToken() {
                 </ul>
                 <div class="form-actions">
                     <button type="button" class="btn btn-ghost" @click="restartImport">Importar otro</button>
-                    <button v-if="! backoffice" type="button" class="btn btn-primary" @click="goToCompany(status.company_id)">Ir a la compañía</button>
+                    <button v-if="! backoffice" type="button" class="btn btn-primary" @click="goToCompany(pending.company_id, pending.company_name)">Ir a la compañía</button>
                 </div>
             </div>
 
             <div v-else class="done">
-                <p class="flash flash-error" role="alert">{{ status?.error ?? 'No se pudo importar.' }}</p>
+                <p class="flash flash-error" role="alert">{{ pending?.error ?? 'No se pudo importar.' }}</p>
                 <button type="button" class="btn btn-ghost" @click="restartImport">Volver a intentar</button>
             </div>
         </section>
@@ -533,7 +811,7 @@ function xsrfToken() {
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>Fecha</th><th>Respaldo de</th><th>Período</th><th>Estado</th><th>Compañía creada</th></tr>
+                        <tr><th>Fecha</th><th>Respaldo de</th><th>Período</th><th>Estado</th><th>Compañía</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="i in imports" :key="i.uuid">
@@ -541,7 +819,10 @@ function xsrfToken() {
                             <td data-label="Respaldo de">{{ i.source }}</td>
                             <td data-label="Período">{{ i.period }}</td>
                             <td data-label="Estado"><span class="badge" :class="STATUS[i.status]?.[1]">{{ STATUS[i.status]?.[0] ?? i.status }}</span></td>
-                            <td data-label="Compañía creada">{{ i.status === 'done' ? i.company_name : (i.error ?? '—') }}</td>
+                            <td data-label="Compañía">
+                                <template v-if="i.status === 'done'">{{ i.mode === 'merge' ? `Completó ${i.company_name}` : `Creó ${i.company_name}` }}</template>
+                                <template v-else>{{ i.error ?? '—' }}</template>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -591,8 +872,22 @@ legend { font-weight: 600; font-size: 0.84rem; margin-bottom: 0.35rem; padding: 
 
 .new-company { margin-top: 0.5rem !important; }
 
+.count-group li > span { min-width: 0; }
+.count-group small { font-size: 0.72rem; }
+
+.destination { margin: 0.25rem 0 0.75rem; }
+
+.conflicts { margin-bottom: 1rem; }
+.conflicts p { margin: 0 0 0.35rem; }
+.conflicts p:last-child { margin: 0.35rem 0 0; }
+.conflicts ul { margin: 0; padding-left: 1.2rem; }
+
 .importing { display: flex; gap: 0.85rem; align-items: center; padding: 0.5rem 0; }
 .importing p { margin: 0; }
+.importing-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+
+.bar { height: 0.45rem; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width 0.4s ease; }
 .spinner { width: 1.6rem; height: 1.6rem; border: 3px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.9s linear infinite; flex-shrink: 0; }
 
 .done .flash { display: flex; gap: 0.5rem; align-items: center; }
@@ -603,5 +898,6 @@ legend { font-weight: 600; font-size: 0.84rem; margin-bottom: 0.35rem; padding: 
 
 @media (prefers-reduced-motion: reduce) {
     .spinner { animation: none; }
+    .bar > span { transition: none; }
 }
 </style>

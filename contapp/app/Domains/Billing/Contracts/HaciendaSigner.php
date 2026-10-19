@@ -2,18 +2,17 @@
 
 namespace App\Domains\Billing\Contracts;
 
+use App\Domains\Billing\Services\Hacienda\SigningKey;
+
 /**
  * Firma el XML con XAdES-EPES usando la llave criptográfica que Hacienda
  * entrega al contribuyente.
  *
- * Es una interfaz y no una clase concreta porque firmar exige un certificado
- * real: sin él no hay forma de construir ni de verificar una firma, y una
- * implementación "de prueba" que devolviera el XML sin firmar sería peor que
- * no tener ninguna — daría por emitido un comprobante que la DGT rechazaría.
+ * Es una interfaz para que la firma se pueda cambiar (una librería XAdES, un
+ * HSM) sin tocar el resto del módulo. La llave no es del firmador sino de
+ * cada compañía: se la pasa quien firma, ya abierta (CertificateInspector).
  */
 interface HaciendaSigner
 {
-    public function sign(string $xml): string;
-
-    public function isConfigured(): bool;
+    public function sign(string $xml, SigningKey $key, ?\DateTimeInterface $signingTime = null): string;
 }

@@ -89,6 +89,19 @@ class TestCompanySetupSeeder extends Seeder
      */
     private function seedFiscalYear(Company $company): int
     {
+        // El año de hoy, si la compañía ya lo tiene: una que abrió también el
+        // siguiente (2027) no tiene que recibir los datos de prueba en ese.
+        // Los asientos y movimientos de los otros seeders van fechados en el
+        // año en curso, y sin tasas ni normas de reparto vigentes en esas
+        // fechas no contabilizarían.
+        $current = (int) now()->format('Y');
+
+        if (FiscalYear::where('year', $current)->exists()) {
+            $this->command?->line("  Año fiscal {$current} ya existía; se usa ese.");
+
+            return $current;
+        }
+
         $existing = FiscalYear::max('year');
 
         if ($existing !== null) {
@@ -198,6 +211,34 @@ class TestCompanySetupSeeder extends Seeder
                     'status' => 'active',
                 ]
             );
+        }
+
+        // Una compañía que ya factura tiene su propio FVE: los asientos de
+        // venta de ejemplo (TestJournalEntriesSeeder) van con otro tipo, para
+        // no moverle el contador ni mezclarle ventas de prueba en su serie.
+        // SEED_SALES_TYPE=FVD lo pide; va como contable para que no aparezca
+        // en «Nueva factura».
+        $salesType = env('SEED_SALES_TYPE');
+
+        if ($salesType && $salesType !== 'FVE') {
+            DocumentType::firstOrCreate(
+                ['company_id' => $company->id, 'code' => $salesType],
+                [
+                    'name' => 'Factura de venta (datos de prueba)',
+                    'origin_module' => 'contable',
+                    'generates_journal' => true,
+                    'requires_electronic_key' => false,
+                    'bp_line_requirement' => 'due_date',
+                    'numbering_mask' => '99999999',
+                    'field_count' => 8,
+                    'next_consecutive' => 1,
+                    'consecutive_on_save' => true,
+                    'currency_mode' => 'libre',
+                    'status' => 'active',
+                ]
+            );
+
+            $this->command?->line("  Ventas de ejemplo con el tipo {$salesType}: el FVE de la compañía no se toca.");
         }
 
         // Mismos valores exactos que PeriodCloseService::closingDocumentType().

@@ -11,7 +11,7 @@ import CompanyBackupPanel from '../../../Components/CompanyBackupPanel.vue';
 const props = defineProps({
     license: { type: Object, required: true },
     superuser: { type: Object, default: null },
-    companies: { type: Array, required: true },
+    licenseCompanies: { type: Array, required: true },
     sections: { type: Array, required: true },
     minPassword: { type: Number, default: 10 },
     imports: { type: Array, default: () => [] },
@@ -21,6 +21,7 @@ const routes = {
     preview: 'backoffice.licenses.backups.preview',
     export: 'backoffice.licenses.backups.export',
     import: 'backoffice.licenses.backups.import',
+    compare: 'backoffice.licenses.backups.import.compare',
     confirm: 'backoffice.licenses.backups.import.confirm',
     status: 'backoffice.licenses.backups.import.status',
 };
@@ -39,10 +40,10 @@ const routes = {
             Exportar le avisa por correo al Superusuario: es su información.
         </p>
 
-        <p v-if="! companies.length" class="muted">Esta licencia todavía no tiene compañías: solo se puede importar.</p>
+        <p v-if="! licenseCompanies.length" class="muted">Esta licencia todavía no tiene compañías: solo se puede importar en una nueva.</p>
 
         <CompanyBackupPanel
-            :companies="companies"
+            :companies="licenseCompanies"
             :sections="sections"
             :license="license"
             :min-password="minPassword"

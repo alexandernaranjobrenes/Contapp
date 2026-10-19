@@ -21,6 +21,9 @@ class BusinessPartner extends Model
         'company_id', 'code', 'name', 'type', 'tax_id', 'category_id', 'family_id', 'cost_center_id',
         'gl_account_id', 'currency_id', 'price_list_id', 'credit_limit', 'payment_terms_days', 'status',
         'email', 'economic_activity_code', 'phone', 'contact_name', 'partner_since',
+        // Receptor de la factura electrónica: el tipo de identificación (Nota 4)
+        // y, opcional, la ubicación con los códigos que pide el XML.
+        'identification_type', 'province', 'canton', 'district', 'address_details',
     ];
 
     protected function casts(): array

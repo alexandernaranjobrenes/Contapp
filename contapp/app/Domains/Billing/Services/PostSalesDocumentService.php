@@ -13,7 +13,11 @@ use App\Domains\Billing\Models\CompanyEconomicActivity;
 use App\Domains\Billing\Models\SalesDocument;
 use App\Domains\Billing\Models\SalesDocumentLine;
 use App\Domains\Billing\Models\SalesOrder;
+use App\Domains\Billing\Services\Hacienda\ElectronicDocumentIssuer;
+use App\Domains\Billing\Services\Hacienda\ElectronicInvoicing;
+use App\Domains\Billing\Services\Hacienda\FiscalSequenceAllocator;
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\Billing\Support\HaciendaClock;
 use App\Domains\BusinessPartners\Models\BpOpenItem;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
@@ -26,6 +30,7 @@ use App\Domains\Inventory\DataTransferObjects\StockLineInput;
 use App\Domains\Inventory\Models\InventoryDocument;
 use App\Domains\Inventory\Models\InventoryDocumentLine;
 use App\Domains\Inventory\Services\PostStockMovementService;
+use App\Jobs\SubmitElectronicDocumentJob;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,8 +53,25 @@ use Illuminate\Support\Facades\DB;
  * comprobante corrige (originalSalesDocumentId): sin eso no hay costo al que
  * devolver ni partida que cancelar.
  *
- * El XML, la firma y el envío a Hacienda NO ocurren acá: son una fase aparte
- * que consume este documento ya emitido.
+ * ── La facturación electrónica ───────────────────────────────────────────
+ *
+ * Si la compañía la tiene encendida (Administración → Facturación
+ * electrónica, CLAUDE.md secc. 38), la misma transacción además:
+ *
+ *   - revisa lo que el comprobante exige ANTES de tomar el número
+ *     (ElectronicInvoicing::assertCanIssue);
+ *   - toma el consecutivo de la serie fiscal de su sucursal, terminal y tipo
+ *     (FiscalSequenceAllocator), y arma la clave con la fecha y hora reales de
+ *     emisión, que es la misma de FechaEmision;
+ *   - genera el XML, lo valida contra el XSD oficial y lo firma
+ *     (ElectronicDocumentIssuer).
+ *
+ * Si algo de eso falla, no queda nada, igual que con el inventario o el
+ * asiento. El envío a Hacienda va después del commit, por la cola: hablar con
+ * Hacienda dentro de la transacción la tendría abierta lo que tarde la red.
+ *
+ * Con la emisión apagada, el comprobante se registra como siempre y su XML
+ * (sin firmar) se puede descargar para revisarlo.
  */
 class PostSalesDocumentService
 {
@@ -60,13 +82,21 @@ class PostSalesDocumentService
         private readonly PostJournalService $postJournalService,
         private readonly SalesOrderService $salesOrderService,
         private readonly GlDeterminationResolver $glResolver,
+        private readonly ElectronicInvoicing $electronic,
+        private readonly FiscalSequenceAllocator $fiscalSequences,
+        private readonly ElectronicDocumentIssuer $electronicIssuer,
     ) {}
 
     public function post(Company $company, SalesDocumentInput $input, ?int $createdBy = null): SalesDocument
     {
         $this->assertDocumentIsIssuable($company, $input);
 
-        return DB::transaction(function () use ($company, $input, $createdBy) {
+        $settings = $this->electronic->settings($company);
+        $settings = $settings?->enabled ? $settings : null;
+
+        $electronicDocument = null;
+
+        $document = DB::transaction(function () use ($company, $input, $createdBy, $settings, &$electronicDocument) {
             $documentType = DocumentType::withoutGlobalScope(CompanyScope::class)
                 ->where('company_id', $company->id)
                 ->findOrFail($input->documentTypeId);
@@ -74,15 +104,19 @@ class PostSalesDocumentService
             $partner = $this->resolvePartner($company, $input);
             $activity = $this->resolveActivity($company, $input);
 
+            if ($settings !== null) {
+                $this->electronic->assertCanIssue($company, $input, $partner);
+            }
+
             $computed = $this->calculator->calculate($input->lines);
             $totals = $computed['totals'];
 
             $this->assertPaymentsMatchTotal($input, $totals['total_document']);
 
-            $document = $this->createDocument($company, $documentType, $input, $partner, $activity, $totals, $createdBy);
+            $document = $this->createDocument($company, $documentType, $input, $partner, $activity, $totals, $createdBy, $settings !== null);
 
             $this->persistLines($document, $computed['lines']);
-            $this->persistPaymentsAndReferences($document, $input);
+            $this->persistPaymentsAndReferences($company, $document, $input);
 
             // Antes de rebajar la existencia: la orden tiene que soltar lo que
             // apartó, o su propia reserva haría ver la mercancía como no
@@ -99,8 +133,22 @@ class PostSalesDocumentService
                 'inventory_document_id' => $inventoryDocument?->id,
             ]);
 
+            // Al final: el XML se firma cuando ya pasó todo lo que podía
+            // rechazar la venta (existencias, cuentas, pedido).
+            if ($settings !== null) {
+                $electronicDocument = $this->electronicIssuer->issue($company, $document->fresh(), $settings, $createdBy);
+            }
+
             return $document->load(['lines.taxes', 'payments', 'references']);
         });
+
+        // afterCommit: si esto corre dentro de otra transacción (la prueba en
+        // seco de Conti) y se deshace, el envío no sale.
+        if ($electronicDocument !== null) {
+            SubmitElectronicDocumentJob::dispatch($electronicDocument->id)->afterCommit();
+        }
+
+        return $document;
     }
 
     private function assertDocumentIsIssuable(Company $company, SalesDocumentInput $input): void
@@ -238,16 +286,29 @@ class PostSalesDocumentService
         CompanyEconomicActivity $activity,
         array $totals,
         ?int $createdBy,
+        bool $electronic = false,
     ): SalesDocument {
-        // Lock pesimista sobre el tipo de documento: dos ventas simultáneas no
-        // pueden tomar el mismo número fiscal, que además es irrepetible por ley.
-        $locked = DocumentType::withoutGlobalScope(CompanyScope::class)
-            ->whereKey($documentType->id)
-            ->lockForUpdate()
-            ->first();
+        $issuedAt = null;
 
-        $next = (int) $locked->next_consecutive;
-        $locked->increment('next_consecutive');
+        if ($electronic) {
+            // La serie fiscal de la sucursal, terminal y tipo: la factura y la
+            // nota de crédito llevan cada una la suya, como las numera
+            // Hacienda. Y la clave lleva la fecha y hora reales de emisión,
+            // la misma de FechaEmision (la fecha del documento es la del día,
+            // assertCanIssue ya lo revisó).
+            $issuedAt = HaciendaClock::now();
+            $next = $this->fiscalSequences->next($company, $input->branch, $input->terminal, $input->fiscalDocumentType);
+        } else {
+            // Lock pesimista sobre el tipo de documento: dos ventas simultáneas no
+            // pueden tomar el mismo número fiscal, que además es irrepetible por ley.
+            $locked = DocumentType::withoutGlobalScope(CompanyScope::class)
+                ->whereKey($documentType->id)
+                ->lockForUpdate()
+                ->first();
+
+            $next = (int) $locked->next_consecutive;
+            $locked->increment('next_consecutive');
+        }
 
         $consecutive = $this->keyGenerator->consecutive(
             $input->branch, $input->terminal, $input->fiscalDocumentType, $next
@@ -256,7 +317,7 @@ class PostSalesDocumentService
         $securityCode = $this->keyGenerator->securityCode();
 
         $clave = $this->keyGenerator->clave(
-            $company, $input->documentDate, $consecutive, $input->situation, $securityCode
+            $company, $issuedAt ? HaciendaClock::local($issuedAt) : $input->documentDate, $consecutive, $input->situation, $securityCode
         );
 
         $dueDate = $this->isCredit($input->saleCondition)
@@ -280,8 +341,10 @@ class PostSalesDocumentService
             'currency_id' => $input->currencyId,
             'exchange_rate' => $input->exchangeRate,
             'sale_condition' => $input->saleCondition,
+            'sale_condition_other' => $input->saleCondition === '99' ? $input->saleConditionOther : null,
             'credit_term_days' => $input->creditTermDays,
             'document_date' => $input->documentDate->format('Y-m-d'),
+            'issued_at' => $issuedAt,
             'posting_date' => $input->postingDate->format('Y-m-d'),
             'due_date' => $dueDate?->format('Y-m-d'),
             'notes' => $input->notes,
@@ -326,18 +389,44 @@ class PostSalesDocumentService
         }
     }
 
-    private function persistPaymentsAndReferences(SalesDocument $document, SalesDocumentInput $input): void
+    private function persistPaymentsAndReferences(Company $company, SalesDocument $document, SalesDocumentInput $input): void
     {
         foreach ($input->payments as $payment) {
             $document->payments()->create([
                 'method_code' => $payment['method_code'],
+                'method_other' => $payment['method_code'] === '99' ? ($payment['method_other'] ?? null) : null,
                 'amount' => $payment['amount'],
             ]);
         }
 
         foreach ($input->references as $reference) {
-            $document->references()->create($reference);
+            $document->references()->create([
+                ...$reference,
+                'issued_at' => $this->referenceIssuedAt($company, $reference),
+            ]);
         }
+    }
+
+    /**
+     * FechaEmisionIR: si la referencia es un comprobante nuestro (su clave),
+     * la fecha y hora exactas con que se emitió, que es lo que Hacienda
+     * cruza. Si no, la que se digitó, entendida en hora de Costa Rica.
+     *
+     * @param  array<string, mixed>  $reference
+     */
+    private function referenceIssuedAt(Company $company, array $reference): ?\DateTimeInterface
+    {
+        $own = $this->electronic->documentByClave($company, (string) ($reference['number'] ?? ''));
+
+        if ($own?->issued_at) {
+            return $own->issued_at;
+        }
+
+        if (! empty($reference['issued_at'])) {
+            return HaciendaClock::parseLocal((string) $reference['issued_at']);
+        }
+
+        return $own ? HaciendaClock::startOfLocalDay($own->document_date)->utc() : null;
     }
 
     /**

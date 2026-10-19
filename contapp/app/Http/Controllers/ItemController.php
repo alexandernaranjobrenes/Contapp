@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Billing\Services\Hacienda\HaciendaPublicData;
 use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Support\CodeRules;
@@ -311,8 +312,9 @@ class ItemController extends Controller
             // Datos fiscales de Hacienda. Nullable a propósito: obligar el
             // CAByS acá bloquearía dar de alta el catálogo antes de haber
             // investigado los códigos, que es como se trabaja en la práctica.
-            // La factura sí lo exige por línea, y la ficha avisa.
-            'cabys_code' => ['nullable', 'string', 'size:13', 'regex:/^\d{13}$/'],
+            // La factura sí lo exige por línea, y la ficha avisa. Si viene,
+            // tiene que estar en el catálogo de Hacienda (cuando contesta).
+            'cabys_code' => ['nullable', 'string', 'size:13', 'regex:/^\d{13}$/', app(HaciendaPublicData::class)->cabysRule()],
             'fiscal_unit_code' => ['nullable', Rule::in(array_keys(FiscalCatalogs::UNITS))],
             'iva_rate_code' => ['nullable', Rule::in(array_keys(FiscalCatalogs::IVA_RATES))],
             // company_id NULL en tax_rates es el catálogo nacional compartido

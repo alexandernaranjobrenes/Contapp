@@ -84,6 +84,10 @@ final class BillingResources
             'impuesto' => F::money($d->total_tax),
             'total' => F::money($d->total_document),
             'estado' => F::status($d->status),
+            // El estado ante Hacienda (CLAUDE.md secc. 38): lo que importa saber
+            // de una factura enviada. Null si se emitió sin facturación electrónica.
+            'estado_hacienda' => $d->electronicDocument?->label(),
+            'ambiente_hacienda' => $d->electronicDocument ? config('hacienda.environments.'.$d->electronicDocument->environment.'.label') : null,
         ];
 
         return new ContiResource(
@@ -91,10 +95,13 @@ final class BillingResources
             label: 'Comprobantes electrónicos emitidos',
             description: 'Facturas, tiquetes, notas de crédito y débito emitidos. El detalle trae las líneas, las referencias y las formas de pago.',
             screens: ['billing.sales_documents'],
-            query: fn () => SalesDocument::query()->with(['businessPartner:id,code,name', 'currency:id,code']),
+            query: fn () => SalesDocument::query()->with(['businessPartner:id,code,name', 'currency:id,code', 'electronicDocument' => fn ($q) => $q->select([
+                'electronic_documents.id', 'electronic_documents.sales_document_id', 'electronic_documents.status', 'electronic_documents.environment',
+            ])]),
             row: $row,
             detail: fn (SalesDocument $d) => $row($d) + [
                 'clave' => $d->clave,
+                'mensaje_hacienda' => $d->electronicDocument()->value('hacienda_message'),
                 'observaciones' => $d->notes,
                 'lineas' => $d->lines()->orderBy('line_number')->get()->map(fn ($l) => [
                     'codigo' => $l->item_code,

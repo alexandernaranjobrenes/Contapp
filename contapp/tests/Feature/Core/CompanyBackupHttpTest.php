@@ -2,11 +2,14 @@
 
 use App\Domains\Accounting\DataTransferObjects\JournalLineInput;
 use App\Domains\Accounting\Models\ChartOfAccount;
+use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\ExchangeRate;
 use App\Domains\Accounting\Models\FiscalPeriod;
 use App\Domains\Accounting\Models\FiscalYear;
 use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\PostJournalService;
+use App\Domains\Core\Backup\BackupImporter;
+use App\Domains\Core\Backup\CompanyBackupService;
 use App\Domains\Core\Models\AuditLog;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\CompanyBackup;
@@ -14,10 +17,13 @@ use App\Domains\Core\Models\DocumentType;
 use App\Domains\Core\Scopes\CompanyScope;
 use App\Domains\Core\Services\PermissionGrantService;
 use App\Domains\Licensing\Models\License;
+use App\Jobs\InspectCompanyBackupJob;
 use App\Models\User;
 use App\Notifications\CompanyBackupExportedNotification;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 /*
@@ -78,7 +84,7 @@ it('solo el Superusuario: un Administrador no entra a Respaldos', function () {
     $f = httpBackupFixture();
 
     $this->get(route('backups.index'))->assertOk()
-        ->assertInertia(fn ($page) => $page->component('Backups/Index')->where('companies.0.name', 'Panadería La Espiga')->has('sections', 7));
+        ->assertInertia(fn ($page) => $page->component('Backups/Index')->where('licenseCompanies.0.name', 'Panadería La Espiga')->has('sections', 7));
 
     $admin = app(PermissionGrantService::class)->createUser($f['superuser'], $f['company'], ['name' => 'Ana', 'email' => 'ana@example.com', 'password' => 'Secreto#1234'], 'admin', []);
     $this->actingAs($admin);
@@ -113,7 +119,12 @@ it('exportar pide la contraseña de la cuenta y una del archivo; baja el archivo
     httpBackupExport($f, ['password_confirmation' => 'distinta-de-la-otra'])->assertStatus(422)->assertJsonValidationErrors('password');
 
     $response = httpBackupExport($f)->assertOk();
+    $exported = fn () => AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->exists();
+
+    // Se anota cuando el archivo salió entero, no antes de empezar a bajar.
+    expect($exported())->toBeFalse();
     $content = $response->streamedContent();
+    expect($exported())->toBeTrue();
 
     expect($response->headers->get('Content-Disposition'))->toContain('respaldo-panaderia-la-espiga-inicio-al-')
         ->and($content)->toStartWith("CONTAPP RESPALDO CIFRADO\nversion: 1\ncompania: Panadería La Espiga (3-101-555555)")
@@ -198,6 +209,81 @@ it('el backoffice exporta cualquier compañía, y al Superusuario le llega un co
     // En la Bitácora de la compañía, a nombre del equipo de CONTAPP; y en el historial de la licencia.
     expect(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->value('new_values')['by'])->toBe('Equipo de CONTAPP (Soporte CONTAPP)')
         ->and(AuditLog::where('propietario_id', $propietario->id)->where('action', 'license_company_backup_exported')->exists())->toBeTrue();
+});
+
+it('subir solo comprueba la contraseña: la revisión completa va a la cola, y la pantalla la sigue', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    Queue::fake();
+
+    $upload = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->assertOk()->json();
+
+    expect($upload['status'])->toBe('inspecting')
+        ->and($upload)->not->toHaveKey('summary');
+    Queue::assertPushedOn('backups', InspectCompanyBackupJob::class);
+
+    // Lo que hace la cola.
+    $backup = CompanyBackup::where('uuid', $upload['uuid'])->sole();
+    (new InspectCompanyBackupJob($backup->id))->handle(app(BackupImporter::class), app(CompanyBackupService::class));
+
+    $status = $this->getJson(route('backups.import.status', $upload['uuid']))->assertOk()->json();
+    expect($status['status'])->toBe('validated')
+        ->and($status['summary']['company']['legal_name'])->toBe('Panadería La Espiga S.A.')
+        ->and($status['total'])->toBeGreaterThan(0);
+});
+
+it('completar una compañía: se compara, se confirma y le agrega solo lo que le falta', function () {
+    $f = httpBackupFixture();
+    $center = CostCenter::factory()->create(['company_id' => $f['company']->id, 'code' => 'CC-01']);
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+
+    // Se perdió el centro de costo después de exportar.
+    DB::table('cost_centers')->where('id', $center->id)->delete();
+
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+
+    // Con una compañía de otra licencia, no.
+    $this->postJson(route('backups.import.compare', $uuid), ['company_id' => Company::factory()->create()->id])->assertStatus(422)->assertJsonValidationErrors('company_id');
+
+    // En las pruebas la cola corre en el momento.
+    $compared = $this->postJson(route('backups.import.compare', $uuid), ['company_id' => $f['company']->id])->assertOk()->json();
+
+    expect($compared['status'])->toBe('compared')
+        ->and($compared['comparison']['conflicts'])->toBe([])
+        ->and($compared['comparison']['totals']['added'])->toBe(1)
+        ->and(collect($compared['comparison']['sections'][0]['items'])->firstWhere('label', 'Asientos'))->toMatchArray(['added' => 0, 'present' => 1])
+        // Comparar no guarda nada.
+        ->and(DB::table('cost_centers')->where('company_id', $f['company']->id)->exists())->toBeFalse();
+
+    $this->postJson(route('backups.import.confirm', $uuid), ['mode' => 'merge', 'account_password' => 'otra'])->assertStatus(422)->assertJsonValidationErrors('account_password');
+    $done = $this->postJson(route('backups.import.confirm', $uuid), ['mode' => 'merge', 'account_password' => 'password'])->assertOk()->json();
+
+    expect($done['status'])->toBe('done')
+        ->and($done['company_id'])->toBe($f['company']->id)
+        ->and($done['comparison']['totals']['added'])->toBe(1)
+        ->and(DB::table('cost_centers')->where('company_id', $f['company']->id)->value('code'))->toBe('CC-01')
+        // Ninguna compañía nueva, y el asiento sigue siendo uno.
+        ->and(Company::where('license_id', $f['license']->id)->count())->toBe(1)
+        ->and(JournalEntry::withoutGlobalScope(CompanyScope::class)->where('company_id', $f['company']->id)->count())->toBe(1)
+        ->and(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_merged')->value('new_values')['added'])->toBe(1)
+        ->and(Storage::disk('local')->allFiles('backups'))->toBe([]);
+});
+
+it('si la comparación encontró algo que lo impide, no se confirma', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+    $this->postJson(route('backups.import.compare', $uuid), ['company_id' => $f['company']->id])->assertOk();
+
+    // Como si la comparación hubiera encontrado un documento distinto.
+    $backup = CompanyBackup::where('uuid', $uuid)->sole();
+    $backup->update(['comparison' => ['conflicts' => ['El asiento DIA-1 ya está en esta compañía con otros datos.'], 'conflicts_total' => 1] + $backup->comparison]);
+
+    $this->postJson(route('backups.import.confirm', $uuid), ['mode' => 'merge', 'account_password' => 'password'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('company_id');
+
+    expect($backup->fresh()->status)->toBe('compared');
 });
 
 it('un respaldo subido que nadie confirma se borra a las 24 horas', function () {

@@ -1,10 +1,7 @@
 <?php
 
 use App\Domains\Accounting\Models\ChartOfAccount;
-use App\Domains\Billing\Contracts\HaciendaSigner;
-use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\DataTransferObjects\SalesTaxInput;
-use App\Domains\Billing\Exceptions\HaciendaNotConfiguredException;
 use App\Domains\Billing\Models\BillingPaymentAccount;
 use App\Domains\Billing\Services\SalesDocumentXmlBuilder;
 
@@ -91,7 +88,7 @@ it('la línea lleva su CAByS, unidad e impuesto', function () {
     $f = salesFixture();
     $xml = buildXml($f);
 
-    expect(xmlValue($xml, '//fe:LineaDetalle/fe:CodigoCABYS'))->toBe('2310110000000')
+    expect(xmlValue($xml, '//fe:LineaDetalle/fe:CodigoCABYS'))->toBe(TEST_CABYS_GOODS)
         ->and(xmlValue($xml, '//fe:LineaDetalle/fe:UnidadMedida'))->toBe('Unid')
         ->and(xmlValue($xml, '//fe:LineaDetalle/fe:Impuesto/fe:CodigoTarifaIVA'))->toBe('08')
         ->and(xmlValue($xml, '//fe:LineaDetalle/fe:Impuesto/fe:Tarifa'))->toBe('13.00');
@@ -106,11 +103,12 @@ it('una línea exonerada incluye el sub-nodo de exoneración', function () {
             exonerationDocumentType: '08',
             exonerationDocumentNumber: 'ZF-2026-001',
             exonerationInstitution: '01',
+            exonerationDate: now()->format('Y-m-d'),
             exoneratedPercentage: 100,
         )]]),
     ]]);
 
-    expect(xmlValue($xml, '//fe:Exoneracion/fe:TipoDocumentoEX'))->toBe('08')
+    expect(xmlValue($xml, '//fe:Exoneracion/fe:TipoDocumentoEX1'))->toBe('08')
         ->and(xmlValue($xml, '//fe:Exoneracion/fe:NumeroDocumento'))->toBe('ZF-2026-001')
         ->and(xmlValue($xml, '//fe:Exoneracion/fe:MontoExoneracion'))->toBe('1300.00000');
 });
@@ -182,21 +180,4 @@ it('la nota de crédito arrastra su documento de referencia', function () {
     expect(xmlValue($xml, '//fe:InformacionReferencia/fe:TipoDocIR'))->toBe('01')
         ->and(xmlValue($xml, '//fe:InformacionReferencia/fe:Codigo'))->toBe('02')
         ->and(xmlValue($xml, '//fe:InformacionReferencia/fe:Razon'))->toBe('Corrige monto facturado de más');
-});
-
-// --- Firma y envío ---
-
-it('la firma falla explícitamente mientras no haya certificado configurado', function () {
-    app(HaciendaSigner::class)->sign('<xml/>');
-})->throws(HaciendaNotConfiguredException::class);
-
-it('el envío falla explícitamente mientras no haya credenciales del ATV', function () {
-    $f = salesFixture();
-
-    app(HaciendaTransport::class)->send(postSale($f), '<xml/>');
-})->throws(HaciendaNotConfiguredException::class);
-
-it('firma y envío se declaran no configurados, para que la UI pueda avisarlo', function () {
-    expect(app(HaciendaSigner::class)->isConfigured())->toBeFalse()
-        ->and(app(HaciendaTransport::class)->isConfigured())->toBeFalse();
 });

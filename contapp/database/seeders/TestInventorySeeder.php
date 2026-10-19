@@ -171,41 +171,46 @@ class TestInventorySeeder extends Seeder
         // Los tres campos fiscales (CAByS, unidad y tarifa de Hacienda) los
         // LEE la pantalla de facturación electrónica para precargar la línea
         // (SalesDocumentController, que exige un CAByS de 13 dígitos por
-        // línea), pero todavía ninguna pantalla los escribe. Se cargan acá
-        // fuera de fillable, asignando atributo por atributo, justamente
-        // porque no son asignación masiva desde un formulario.
+        // línea). Se cargan acá fuera de fillable, asignando atributo por
+        // atributo, porque no son asignación masiva desde un formulario.
+        //
+        // Los CAByS son REALES, del catálogo de Hacienda (api.hacienda.go.cr/
+        // fe/cabys, revisados el 2026-10-18): uno inventado se rechaza con
+        // -400, y su primer dígito decide si la línea suma en servicios (5-9)
+        // o en mercancías (0-4). El café (1 %) y la capacitación (2 % en el
+        // catálogo; acá exenta a propósito) tienen la tarifa de su CAByS.
         $items = [
-            ['ART-0001', 'Laptop 14" 16GB RAM', 'MERC', 'UND', 'IVA-13', true, true, true, '8471300000000', 'Unid', '08', 'active'],
-            ['ART-0002', 'Monitor 24" Full HD', 'MERC', 'UND', 'IVA-13', true, true, true, '8528520000000', 'Unid', '08', 'active'],
-            ['ART-0003', 'Teclado inalámbrico', 'MERC', 'UND', 'IVA-13', true, true, true, '8471600000000', 'Unid', '08', 'active'],
-            ['ART-0004', 'Mouse óptico USB', 'MERC', 'UND', 'IVA-13', true, true, true, '8471600000001', 'Unid', '08', 'active'],
-            ['ART-0005', 'Impresora multifuncional', 'MERC', 'UND', 'IVA-13', true, true, true, '8443310000000', 'Unid', '08', 'active'],
-            ['ART-0006', 'Cable HDMI 2 m', 'MERC', 'UND', 'IVA-13', true, true, true, '8544420000000', 'Unid', '08', 'active'],
-            ['ART-0007', 'Disco duro externo 1 TB', 'MERC', 'UND', 'IVA-13', true, true, true, '8471700000000', 'Unid', '08', 'active'],
-            ['ART-0008', 'Silla ergonómica de oficina', 'MERC', 'UND', 'IVA-13', true, true, true, '9401300000000', 'Unid', '08', 'active'],
+            ['ART-0001', 'Laptop 14" 16GB RAM', 'MERC', 'UND', 'IVA-13', true, true, true, '4522003990000', 'Unid', '08', 'active'],
+            ['ART-0002', 'Monitor 24" Full HD', 'MERC', 'UND', 'IVA-13', true, true, true, '4731599010000', 'Unid', '08', 'active'],
+            ['ART-0003', 'Teclado inalámbrico', 'MERC', 'UND', 'IVA-13', true, true, true, '4526100000100', 'Unid', '08', 'active'],
+            ['ART-0004', 'Mouse óptico USB', 'MERC', 'UND', 'IVA-13', true, true, true, '4526100000200', 'Unid', '08', 'active'],
+            ['ART-0005', 'Impresora multifuncional', 'MERC', 'UND', 'IVA-13', true, true, true, '4491700000000', 'Unid', '08', 'active'],
+            ['ART-0006', 'Cable HDMI 2 m', 'MERC', 'UND', 'IVA-13', true, true, true, '4634001010100', 'Unid', '08', 'active'],
+            ['ART-0007', 'Disco duro externo 1 TB', 'MERC', 'UND', 'IVA-13', true, true, true, '4527100000000', 'Unid', '08', 'active'],
+            ['ART-0008', 'Silla ergonómica de oficina', 'MERC', 'UND', 'IVA-13', true, true, true, '3811100010400', 'Unid', '08', 'active'],
 
-            ['MAT-0001', 'Lámina de acero 1,2 mm', 'MATP', 'KG', 'IVA-13', true, false, true, '7209160000000', 'kg', '08', 'active'],
-            ['MAT-0002', 'Pintura electrostática negra', 'MATP', 'KG', 'IVA-13', true, false, true, '3208100000000', 'kg', '08', 'active'],
-            ['MAT-0003', 'Tornillería surtida', 'MATP', 'CAJ', 'IVA-13', true, false, true, '7318150000000', 'Unid', '08', 'active'],
+            ['MAT-0001', 'Lámina de acero 1,2 mm', 'MATP', 'KG', 'IVA-13', true, false, true, '4123101990200', 'Kg', '08', 'active'],
+            ['MAT-0002', 'Pintura electrostática negra', 'MATP', 'KG', 'IVA-13', true, false, true, '3511003001600', 'Kg', '08', 'active'],
+            ['MAT-0003', 'Tornillería surtida', 'MATP', 'CAJ', 'IVA-13', true, false, true, '4294401039900', 'Unid', '08', 'active'],
 
-            ['PTE-0001', 'Gabinete metálico ensamblado', 'PTER', 'UND', 'IVA-13', true, true, false, '9403200000000', 'Unid', '08', 'active'],
-            ['PTE-0002', 'Rack de servidores 42U', 'PTER', 'UND', 'IVA-13', true, true, false, '9403200000001', 'Unid', '08', 'active'],
+            ['PTE-0001', 'Gabinete metálico ensamblado', 'PTER', 'UND', 'IVA-13', true, true, false, '3814001010100', 'Unid', '08', 'active'],
+            ['PTE-0002', 'Rack de servidores 42U', 'PTER', 'UND', 'IVA-13', true, true, false, '3814001019900', 'Unid', '08', 'active'],
 
-            ['SUM-0001', 'Resma de papel bond carta', 'SUMI', 'CAJ', 'IVA-13', true, false, true, '4802560000000', 'Unid', '08', 'active'],
-            ['SUM-0002', 'Tóner negro compatible', 'SUMI', 'UND', 'IVA-13', true, false, true, '3215900000000', 'Unid', '08', 'active'],
+            ['SUM-0001', 'Resma de papel bond carta', 'SUMI', 'CAJ', 'IVA-13', true, false, true, '3219200029900', 'Unid', '08', 'active'],
+            ['SUM-0002', 'Tóner negro compatible', 'SUMI', 'UND', 'IVA-13', true, false, true, '3513099009900', 'Unid', '08', 'active'],
             // Canasta básica: tarifa reducida del 1%, para que haya al menos
             // un artículo que no vaya al 13% general.
-            ['SUM-0003', 'Café molido 1 kg (cafetería)', 'SUMI', 'KG', 'IVA-1', true, false, true, '0901210000000', 'kg', '02', 'active'],
+            ['SUM-0003', 'Café molido 1 kg (cafetería)', 'SUMI', 'KG', 'IVA-1', true, false, true, '2391102010200', 'Kg', '02', 'active'],
 
             // Servicios: NO inventariables — no generan movimiento de
             // existencias ni tocan la matriz de determinación.
-            ['SRV-0001', 'Hora de soporte técnico', 'SERV', 'HRA', 'IVA-13', false, true, false, '8020000000000', 'Sp', '08', 'active'],
-            ['SRV-0002', 'Instalación y configuración', 'SERV', 'SRV', 'IVA-13', false, true, false, '8020000000001', 'Sp', '08', 'active'],
-            ['SRV-0003', 'Capacitación exenta a entidad pública', 'SERV', 'HRA', 'IVA-0', false, true, false, '9200000000000', 'Sp', '10', 'active'],
+            ['SRV-0001', 'Hora de soporte técnico', 'SERV', 'HRA', 'IVA-13', false, true, false, '8313200000200', 'Sp', '08', 'active'],
+            ['SRV-0002', 'Instalación y configuración', 'SERV', 'SRV', 'IVA-13', false, true, false, '8733200000000', 'Sp', '08', 'active'],
+            ['SRV-0003', 'Capacitación exenta a entidad pública', 'SERV', 'HRA', 'IVA-0', false, true, false, '9291900000300', 'Sp', '10', 'active'],
 
             // Descontinuado a propósito: para probar que un artículo inactivo
             // no se ofrezca al digitar un documento.
-            ['ART-0099', 'Adaptador VGA (descontinuado)', 'MERC', 'UND', 'IVA-13', true, false, false, '8471800000000', 'Unid', '08', 'inactive'],
+            ['ART-0099', 'Adaptador VGA (descontinuado)', 'MERC', 'UND', 'IVA-13', true, false, false, '4529000000000', 'Unid', '08', 'inactive'],
         ];
 
         foreach ($items as $i) {

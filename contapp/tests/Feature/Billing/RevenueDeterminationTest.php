@@ -53,7 +53,7 @@ function determination(array $f, string $level, ?int $scopeId, string $category,
 function goodsLine(array $f): array
 {
     return [
-        'cabys_code' => '2310110000000',
+        'cabys_code' => '4526100000100',
         'description' => 'Producto de prueba',
         'unit_code' => 'Unid',
         'quantity' => 10,
@@ -189,7 +189,7 @@ it('LA PRUEBA DE LAS DOS CATEGORÍAS: mercancía y servicio van a cuentas distin
     determination($f, 'company', null, 'service_revenue', $servicios->id);
 
     $lines = [goodsLine($f), [
-        'cabys_code' => '8511010000000',
+        'cabys_code' => '5469900000000',
         'description' => 'Instalación a domicilio',
         'unit_code' => 'Sp',
         'quantity' => 1,
@@ -222,7 +222,7 @@ it('dos artículos con cuentas distintas producen dos líneas de ingreso', funct
     determination($f, 'item', $otro->id, 'service_revenue', $cuentaB->id);
 
     $lines = [goodsLine($f), [
-        'cabys_code' => '8511010000000',
+        'cabys_code' => '5469900000000',
         'description' => 'Segundo artículo',
         'unit_code' => 'Sp',
         'quantity' => 2,
@@ -254,7 +254,7 @@ it('EL INVARIANTE: repartir el ingreso en varias cuentas no descuadra el asiento
     // Un precio con decimales para forzar residuo de redondeo entre las dos
     // cuentas.
     $lines = [goodsLine($f), [
-        'cabys_code' => '8511010000000',
+        'cabys_code' => '5469900000000',
         'description' => 'Servicio con decimales',
         'unit_code' => 'Sp',
         'quantity' => 3,

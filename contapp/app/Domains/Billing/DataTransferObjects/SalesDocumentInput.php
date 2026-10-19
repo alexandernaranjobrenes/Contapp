@@ -31,7 +31,7 @@ class SalesDocumentInput
         public readonly string $branch = '001',
         public readonly string $terminal = '00001',
         public readonly string $situation = '1',
-        /** @var array<int, array{method_code: string, amount: string|float|int}> */
+        /** @var array<int, array{method_code: string, amount: string|float|int, method_other?: ?string}> */
         public readonly array $payments = [],
         /** @var array<int, array<string, mixed>> */
         public readonly array $references = [],
@@ -48,6 +48,8 @@ class SalesDocumentInput
          * reserva de lo entregado, antes de rebajar la existencia.
          */
         public readonly ?int $salesOrderId = null,
+        /** CondicionVentaOtros: qué es la condición cuando es 99 («Otros»). */
+        public readonly ?string $saleConditionOther = null,
     ) {
         $this->exchangeRate = number_format((float) $exchangeRate, 5, '.', '');
     }

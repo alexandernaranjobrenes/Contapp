@@ -533,10 +533,18 @@ function salesFixture(): array
     return $f;
 }
 
+/**
+ * CAByS reales del catálogo de Hacienda (api.hacienda.go.cr/fe/cabys): Hacienda
+ * clasifica la línea en servicios o mercancías por el código, así que una
+ * línea de servicio de prueba lleva uno de servicio.
+ */
+const TEST_CABYS_GOODS = '4526100000100';   // Teclados para computadoras, 13 %
+const TEST_CABYS_SERVICE = '8314300000000'; // Diseño y desarrollo de software originales, 13 %
+
 function saleLine(array $f, $quantity = 10, $price = 2500, array $overrides = []): SalesLineInput
 {
     return new SalesLineInput(
-        cabysCode: $overrides['cabys'] ?? '2310110000000',
+        cabysCode: $overrides['cabys'] ?? (($overrides['isService'] ?? false) ? TEST_CABYS_SERVICE : TEST_CABYS_GOODS),
         description: 'Producto de prueba',
         unitCode: 'Unid',
         quantity: $quantity,

@@ -3,21 +3,24 @@
 namespace App\Http\Controllers;
 
 use App\Domains\Accounting\Models\Currency;
-use App\Domains\Billing\Contracts\HaciendaSigner;
-use App\Domains\Billing\Contracts\HaciendaTransport;
 use App\Domains\Billing\DataTransferObjects\SalesDocumentInput;
 use App\Domains\Billing\DataTransferObjects\SalesLineInput;
 use App\Domains\Billing\DataTransferObjects\SalesTaxInput;
+use App\Domains\Billing\Exceptions\InvalidSalesDocumentException;
 use App\Domains\Billing\Exceptions\PriceOverrideNotAuthorizedException;
 use App\Domains\Billing\Models\CompanyEconomicActivity;
+use App\Domains\Billing\Models\ElectronicDocument;
 use App\Domains\Billing\Models\PriceOverrideAuthorization;
 use App\Domains\Billing\Models\SalesDocument;
 use App\Domains\Billing\Models\SalesOrder;
+use App\Domains\Billing\Services\Hacienda\ElectronicInvoicing;
+use App\Domains\Billing\Services\Hacienda\ElectronicPreflight;
 use App\Domains\Billing\Services\PostSalesDocumentService;
 use App\Domains\Billing\Services\PriceOverrideAuthorizer;
 use App\Domains\Billing\Services\PriceOverrideGuard;
 use App\Domains\Billing\Services\SalesDocumentXmlBuilder;
 use App\Domains\Billing\Support\FiscalCatalogs;
+use App\Domains\Billing\Support\HaciendaClock;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Models\DocumentType;
@@ -39,12 +42,22 @@ class SalesDocumentController extends Controller
         private readonly SalesDocumentXmlBuilder $xmlBuilder,
         private readonly PriceOverrideGuard $priceOverrideGuard,
         private readonly PriceOverrideAuthorizer $priceOverrideAuthorizer,
+        private readonly ElectronicInvoicing $electronic,
+        private readonly ElectronicPreflight $preflight,
     ) {}
 
     public function index(): Response
     {
         return Inertia::render('Billing/Sales/Index', [
-            'documents' => SalesDocument::with(['businessPartner:id,code,name', 'currency:id,code'])
+            'documents' => SalesDocument::with([
+                'businessPartner:id,code,name', 'currency:id,code',
+                // Calificadas: latestOfMany se une consigo misma, y sin la tabla
+                // las columnas quedan ambiguas.
+                'electronicDocument' => fn ($q) => $q->select([
+                    'electronic_documents.id', 'electronic_documents.sales_document_id',
+                    'electronic_documents.status', 'electronic_documents.environment',
+                ]),
+            ])
                 ->orderByDesc('posting_date')
                 ->orderByDesc('id')
                 ->limit(200)
@@ -55,6 +68,7 @@ class SalesDocumentController extends Controller
                 ]),
             'documentTypeLabels' => FiscalCatalogs::DOCUMENT_TYPES,
             'saleConditionLabels' => FiscalCatalogs::SALE_CONDITIONS,
+            'electronicLabels' => ElectronicDocument::LABELS,
         ]);
     }
 
@@ -63,7 +77,7 @@ class SalesDocumentController extends Controller
      * Los catálogos de la norma van como constantes (no son configuración);
      * los datos maestros sí salen de la base.
      */
-    public function create(Request $request, HaciendaSigner $signer, HaciendaTransport $transport): Response
+    public function create(Request $request, CurrentCompany $currentCompany): Response
     {
         return Inertia::render('Billing/Sales/Create', [
             // "Copiar a": la pantalla es la misma, precargada desde el pedido
@@ -87,6 +101,7 @@ class SalesDocumentController extends Controller
                 'referenceReasons' => FiscalCatalogs::REFERENCE_REASONS,
                 'requireReference' => FiscalCatalogs::REQUIRE_REFERENCE,
                 'situations' => FiscalCatalogs::SITUATIONS,
+                'saleConditionsNotIn' => FiscalCatalogs::SALE_CONDITIONS_NOT_IN,
             ],
             'documentTypes' => DocumentType::where('origin_module', 'ventas')
                 ->where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
@@ -102,10 +117,9 @@ class SalesDocumentController extends Controller
             'bins' => WarehouseBin::whereIn('warehouse_id', Warehouse::pluck('id'))
                 ->where('status', 'active')->orderBy('code')->get(['id', 'warehouse_id', 'code']),
             'currencies' => Currency::orderBy('code')->get(['id', 'code', 'name']),
-            'hacienda' => [
-                'signer_configured' => $signer->isConfigured(),
-                'transport_configured' => $transport->isConfigured(),
-            ],
+            // La facturación electrónica de la compañía: si está encendida, en
+            // qué ambiente, la sucursal y terminal por defecto, y lo que falta.
+            'hacienda' => $this->electronic->status(Company::findOrFail($currentCompany->id())),
             // Si quien está emitiendo ya puede liberar cambios de precio, la
             // pantalla no le pide autorización a nadie. El servidor lo
             // vuelve a comprobar: esto solo evita el trámite visual.
@@ -217,24 +231,102 @@ class SalesDocumentController extends Controller
 
         return Inertia::render('Billing/Sales/Show', [
             'document' => $document,
+            'issuedAt' => $document->issued_at ? HaciendaClock::local($document->issued_at)->format('d/m/Y H:i') : null,
+            'electronic' => $this->electronicSummary($document),
             'catalogs' => [
                 'documentTypes' => FiscalCatalogs::DOCUMENT_TYPES,
                 'saleConditions' => FiscalCatalogs::SALE_CONDITIONS,
                 'paymentMethods' => FiscalCatalogs::PAYMENT_METHODS,
                 'ivaRates' => FiscalCatalogs::IVA_RATES,
+                'referenceDocumentTypes' => FiscalCatalogs::REFERENCE_DOCUMENT_TYPES,
             ],
         ]);
     }
 
     /**
-     * Descarga el XML del comprobante. Sin firmar: firmar exige el certificado
-     * del contribuyente, y este archivo sirve para revisarlo o validarlo contra
-     * el XSD oficial antes de emitir de verdad.
+     * Lo que la pantalla muestra del comprobante ante Hacienda: el intento
+     * vigente con su historia, y los anteriores que quedaron sustituidos.
+     * Nunca el XML (se descarga aparte) ni nada de las credenciales.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function electronicSummary(SalesDocument $document): ?array
+    {
+        $attempts = ElectronicDocument::where('sales_document_id', $document->id)
+            ->with(['events.user:id,name'])
+            ->orderByDesc('id')
+            ->get();
+
+        $current = $attempts->first();
+
+        if ($current === null) {
+            return null;
+        }
+
+        $time = fn ($value) => $value ? HaciendaClock::local($value)->format('d/m/Y H:i') : null;
+
+        return [
+            'id' => $current->id,
+            'status' => $current->status,
+            'label' => $current->label(),
+            'environment' => $current->environment,
+            'environment_label' => config("hacienda.environments.{$current->environment}.label"),
+            'clave' => $current->clave,
+            'consecutive' => $current->consecutive,
+            'issued_at' => $time($current->issued_at),
+            'submitted_at' => $time($current->submitted_at),
+            'accepted_at' => $time($current->accepted_at),
+            'rejected_at' => $time($current->rejected_at),
+            'last_checked_at' => $time($current->last_checked_at),
+            'next_attempt_at' => $time($current->next_attempt_at),
+            'hacienda_status' => $current->hacienda_status,
+            'hacienda_message' => $current->hacienda_message,
+            'has_response' => filled($current->getRawOriginal('response_xml')),
+            'response_signature_valid' => $current->response_signature_valid,
+            'delivery_status' => $current->delivery_status,
+            'delivered_at' => $time($current->delivered_at),
+            'delivery_error' => $current->delivery_error,
+            'delivery_recipients' => $current->delivery_recipients,
+            'can_check' => in_array($current->status, [
+                ElectronicDocument::SUBMITTED, ElectronicDocument::SUBMIT_UNKNOWN,
+                ElectronicDocument::NEEDS_ATTENTION, ElectronicDocument::SUBMITTING,
+            ], true),
+            'can_retry' => in_array($current->status, [
+                ElectronicDocument::SIGNED, ElectronicDocument::SUBMIT_UNKNOWN, ElectronicDocument::NEEDS_ATTENTION,
+            ], true),
+            'can_reissue' => $current->canBeReissued(),
+            'can_deliver' => $current->status === ElectronicDocument::ACCEPTED,
+            'events' => $current->events->sortByDesc('id')->values()->map(fn ($event) => [
+                'id' => $event->id,
+                'to' => ElectronicDocument::LABELS[$event->to_status] ?? $event->to_status,
+                'to_status' => $event->to_status,
+                'message' => $event->message,
+                'by' => $event->user?->name ?? 'Sistema',
+                'at' => $time($event->created_at),
+            ]),
+            'previous' => $attempts->slice(1)->values()->map(fn (ElectronicDocument $attempt) => [
+                'id' => $attempt->id,
+                'consecutive' => $attempt->consecutive,
+                'clave' => $attempt->clave,
+                'label' => $attempt->label(),
+                'hacienda_message' => $attempt->hacienda_message,
+                'issued_at' => $time($attempt->issued_at),
+            ]),
+        ];
+    }
+
+    /**
+     * Descarga el XML del comprobante. Si ya es electrónico, el FIRMADO, tal
+     * como se envió a Hacienda: es el documento que vale. Si no, uno sin
+     * firmar, para revisarlo o validarlo contra el XSD oficial.
      */
     public function xml(int $salesDocument, CurrentCompany $currentCompany): StreamedResponse
     {
         $document = SalesDocument::findOrFail($salesDocument);
-        $xml = $this->xmlBuilder->build($document, Company::findOrFail($currentCompany->id()));
+        $electronic = ElectronicDocument::where('sales_document_id', $document->id)->orderByDesc('id')->first();
+
+        $xml = $electronic?->signed_xml
+            ?? $this->xmlBuilder->build($document, Company::findOrFail($currentCompany->id()));
 
         return response()->streamDownload(
             fn () => print ($xml),
@@ -262,6 +354,54 @@ class SalesDocumentController extends Controller
                 ->withInput();
         }
 
+        // Las líneas y el encabezado validan sus propias reglas al armarse (una
+        // mercancía sin bodega, un descuento «Otros» sin explicar): un error
+        // ahí vuelve al formulario con su motivo, como los de emitir, y no
+        // como una página de error.
+        try {
+            $input = $this->buildInput($validated);
+        } catch (InvalidSalesDocumentException $e) {
+            return back()->withErrors(['billing' => $e->getMessage()])->withInput();
+        }
+
+        // Con la facturación electrónica encendida, lo que Hacienda ya dijo
+        // que va a rechazar (un CAByS que no existe, una actividad que el
+        // emisor no tiene inscrita) se avisa acá, antes de gastar el
+        // consecutivo en un rechazo seguro.
+        if ($this->electronic->settings($company)?->enabled) {
+            $problems = $this->preflight->problems($company, $input);
+
+            if ($problems !== []) {
+                return back()->withErrors(['billing' => implode(' ', $problems)])->withInput();
+            }
+        }
+
+        try {
+            $document = $this->postSalesDocumentService->post(
+                $company, $input, $request->user()->id
+            );
+        } catch (\RuntimeException $e) {
+            // Toda excepción de dominio ya revirtió comprobante, movimiento de
+            // stock y asiento: acá solo se traduce a un mensaje de formulario.
+            return back()->withErrors(['billing' => $e->getMessage()])->withInput();
+        }
+
+        $this->recordPriceOverrides($document, $deviations);
+
+        $message = ElectronicDocument::where('sales_document_id', $document->id)->exists()
+            ? "Comprobante {$document->consecutive} emitido, firmado y en camino a Hacienda."
+            : "Comprobante {$document->consecutive} emitido y registrado en el ERP.";
+
+        return redirect()
+            ->route('sales-documents.show', $document->id)
+            ->with('success', $message);
+    }
+
+    /**
+     * @throws InvalidSalesDocumentException
+     */
+    private function buildInput(array $validated): SalesDocumentInput
+    {
         $lines = array_map(fn (array $line) => new SalesLineInput(
             cabysCode: $line['cabys_code'],
             description: $line['description'],
@@ -312,23 +452,10 @@ class SalesDocumentController extends Controller
             originalSalesDocumentId: isset($validated['original_sales_document_id'])
                 ? (int) $validated['original_sales_document_id'] : null,
             salesOrderId: isset($validated['sales_order_id']) ? (int) $validated['sales_order_id'] : null,
+            saleConditionOther: $validated['sale_condition_other'] ?? null,
         );
 
-        try {
-            $document = $this->postSalesDocumentService->post(
-                $company, $input, $request->user()->id
-            );
-        } catch (\RuntimeException $e) {
-            // Toda excepción de dominio ya revirtió comprobante, movimiento de
-            // stock y asiento: acá solo se traduce a un mensaje de formulario.
-            return back()->withErrors(['billing' => $e->getMessage()])->withInput();
-        }
-
-        $this->recordPriceOverrides($document, $deviations);
-
-        return redirect()
-            ->route('sales-documents.show', $document->id)
-            ->with('success', "Comprobante {$document->consecutive} emitido y registrado en el ERP.");
+        return $input;
     }
 
     /**
@@ -453,6 +580,7 @@ class SalesDocumentController extends Controller
             'currency_id' => ['required', Rule::exists('currencies', 'id')],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'sale_condition' => ['required', Rule::in(array_keys(FiscalCatalogs::SALE_CONDITIONS))],
+            'sale_condition_other' => ['nullable', 'required_if:sale_condition,99', 'string', 'min:5', 'max:100'],
             'credit_term_days' => ['nullable', 'integer', 'min:1', 'max:99999'],
             'document_date' => ['required', 'date'],
             'posting_date' => ['required', 'date'],
@@ -497,8 +625,9 @@ class SalesDocumentController extends Controller
             'payments' => ['array', 'max:'.FiscalCatalogs::MAX_PAYMENT_METHODS],
             'payments.*.method_code' => ['required', Rule::in(array_keys(FiscalCatalogs::PAYMENT_METHODS))],
             'payments.*.amount' => ['required', 'numeric', 'min:0'],
+            'payments.*.method_other' => ['nullable', 'string', 'min:3', 'max:100'],
 
-            'references' => ['array'],
+            'references' => ['array', 'max:10'],
             'references.*.document_type' => ['required', Rule::in(array_keys(FiscalCatalogs::REFERENCE_DOCUMENT_TYPES))],
             'references.*.number' => ['required', 'string', 'max:50'],
             'references.*.issued_at' => ['nullable', 'date'],

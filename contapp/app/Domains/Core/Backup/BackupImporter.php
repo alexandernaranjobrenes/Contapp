@@ -10,18 +10,26 @@ use App\Domains\Licensing\Models\License;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
- * Importa un respaldo en una compañía nueva (CLAUDE.md secc. 37). Nunca
- * encima de una que ya existe: mezclar daría dos FVE-123, códigos repetidos
- * y asientos duplicados.
+ * Importa un respaldo (CLAUDE.md secc. 37): en una compañía nueva, o
+ * completando una que ya existe con lo que le falta.
  *
- * Dos pasadas por el archivo:
+ * Pasadas por el archivo:
  * 1. inspect(): descifra, verifica el SHA-256 y la firma de esta instalación,
- *    y cuenta. No guarda nada; es lo que se muestra antes de confirmar.
- * 2. import(): todo o nada, en una transacción. Cada fila recibe un id nuevo
- *    y sus referencias se traducen (de-para por tabla). Los códigos y los
- *    números de documento se conservan: son los consecutivos legales.
+ *    que traiga lo que esta versión exige, y cuenta. No guarda nada; es lo
+ *    que se muestra antes de confirmar.
+ * 2. Para completar una compañía, merge() con $dryRun: hace todo y lo
+ *    deshace. Es la comparación (qué falta, qué ya está, qué lo impide).
+ * 3. import() o merge(): todo o nada, en una transacción. Cada fila que
+ *    entra recibe un id nuevo y sus referencias se traducen (de-para por
+ *    tabla). Los códigos y los números de documento se conservan: son los
+ *    consecutivos legales.
+ *
+ * El archivo se lee de nuevo en cada pasada, a propósito: queda cifrado en el
+ * disco, y lo descifrado nunca se escribe. Descifrar es lo de menos; lo que
+ * tarda es la base, y todo esto corre en la cola.
  *
  * - Lo contabilizado entra contabilizado, sin volver a contabilizarse.
  * - Una referencia a algo que no vino (anterior al período): si la columna
@@ -34,6 +42,9 @@ final class BackupImporter
     /** Los accesos se cargan al final, cuando ya se sabe quién cabe en la licencia. */
     private const PEOPLE_TABLES = ['company_user', 'user_roles', 'screen_permissions', 'module_permissions', 'document_type_permissions'];
 
+    /** Los que importPeople() escribe con sus propias columnas, no con las de la fila. */
+    private const PEOPLE_WRITTEN = ['company_user', 'user_roles', 'screen_permissions', 'module_permissions'];
+
     /** @var array<string, array<int|string, int>> tabla => [id viejo => id nuevo] */
     private array $map = [];
 
@@ -45,6 +56,8 @@ final class BackupImporter
 
     /** @var array<string, true> tablas ya importadas */
     private array $done = [];
+
+    private ?string $current = null;
 
     /** @var list<array{0: string, 1: int, 2: string, 3: string, 4: int}> tabla, id nuevo, columna, tabla destino, id viejo */
     private array $deferred = [];
@@ -63,20 +76,26 @@ final class BackupImporter
 
     private int $companyId;
 
+    /** Al completar una compañía que ya existe: decide qué ya está. */
+    private ?BackupMerger $merger = null;
+
     public function __construct(private readonly BackupSchema $schema) {}
 
     /**
      * Lo que trae el archivo, verificado.
      *
+     * @param  callable(int, bool=): void|null  $progress
      * @return array{manifest: array<string, mixed>, rows: array<string, int>, people: int, total: int}
      */
-    public function inspect(string $path, string $password): array
+    public function inspect(string $path, string $password, ?callable $progress = null): array
     {
         $manifest = null;
         $rows = [];
+        $columns = [];
         $people = 0;
         $close = null;
         $hash = hash_init('sha256');
+        $count = 0;
 
         foreach (BackupFile::lines($path, $password) as $line) {
             if ($close !== null) {
@@ -108,6 +127,12 @@ final class BackupImporter
             } elseif ($record['tipo'] === 'fila') {
                 $table = $this->checkTable($record);
                 $rows[$table] = ($rows[$table] ?? 0) + 1;
+                // Las columnas que traen todas sus filas.
+                $columns[$table] = isset($columns[$table]) ? array_intersect_key($columns[$table], $record['fila']) : array_fill_keys(array_keys($record['fila']), true);
+
+                if ($progress !== null && (++$count % 250) === 0) {
+                    $progress($count);
+                }
             } else {
                 throw new InvalidBackupException('El contenido del respaldo no se entiende.');
             }
@@ -131,6 +156,9 @@ final class BackupImporter
             throw new InvalidBackupException('Este respaldo no lo generó esta instalación de CONTAPP, o fue modificado: no se puede importar.');
         }
 
+        $this->checkColumns($columns);
+        $progress && $progress($count, true);
+
         return ['manifest' => $manifest, 'rows' => $rows, 'people' => $people, 'total' => array_sum($rows)];
     }
 
@@ -138,42 +166,108 @@ final class BackupImporter
      * Importa el respaldo en una compañía nueva de esa licencia.
      *
      * @param  array{legal_name: string, trade_name?: ?string, tax_id?: ?string}  $companyData
-     * @param  callable(int): void|null  $progress
+     * @param  callable(int, bool=): void|null  $progress
      * @return array{company: Company, imported: array<string, int>, dropped: array<string, int>, people: array{added: list<string>, missing: list<string>, no_quota: list<string>}}
      */
     public function import(string $path, string $password, License $license, array $companyData, ?callable $progress = null): array
     {
+        $this->reset();
+
         return DB::transaction(function () use ($path, $password, $license, $companyData, $progress) {
-            $done = 0;
-
-            foreach (BackupFile::lines($path, $password) as $line) {
-                $record = json_decode($line, true);
-
-                match ($record['tipo']) {
-                    'manifiesto' => $this->createCompany($record, $license, $companyData),
-                    'persona' => $this->person($record),
-                    'fila' => $this->row($record['tabla'], $record['fila']),
-                    default => null,
-                };
-
-                if ($record['tipo'] === 'fila' && $progress !== null && (++$done % 250) === 0) {
-                    $progress($done);
-                }
-            }
-
+            $this->read($path, $password, $progress, fn (array $manifest) => $this->createCompany($manifest, $license, $companyData));
             $this->applyDeferred();
             $people = $this->importPeople($license);
-            $company = Company::findOrFail($this->companyId);
-
-            $progress && $progress($done);
 
             return [
-                'company' => $company,
+                'company' => Company::findOrFail($this->companyId),
                 'imported' => $this->imported,
                 'dropped' => $this->dropped,
                 'people' => $people,
             ];
         });
+    }
+
+    /**
+     * Completa una compañía que ya existe con lo que le falta del respaldo
+     * (BackupMerger). Con $dryRun hace todo y lo deshace: es la comparación
+     * que se muestra antes de confirmar.
+     *
+     * @param  callable(int, bool=): void|null  $progress
+     * @return array<string, mixed> lo que muestra BackupMerger::report()
+     *
+     * @throws InvalidBackupException si algo impide completarla (sin $dryRun)
+     */
+    public function merge(string $path, string $password, Company $company, bool $dryRun = false, ?callable $progress = null): array
+    {
+        $this->reset();
+        $this->merger = new BackupMerger($this->schema, $company, $this->map);
+        $license = License::findOrFail($company->license_id);
+
+        DB::beginTransaction();
+
+        try {
+            $this->read($path, $password, $progress, fn (array $manifest) => $this->useCompany($manifest, $company));
+            $this->applyDeferred();
+            $people = $this->importPeople($license);
+            $this->merger->finish();
+            $report = $this->merger->report($this->dropped, $people);
+        } catch (Throwable $e) {
+            DB::rollBack();
+
+            throw $e;
+        }
+
+        if ($dryRun || $this->merger->hasConflicts()) {
+            DB::rollBack();
+
+            if (! $dryRun) {
+                throw new InvalidBackupException(BackupMerger::conflictMessage($report));
+            }
+
+            return $report;
+        }
+
+        DB::commit();
+
+        return $report;
+    }
+
+    private function reset(): void
+    {
+        $this->map = [];
+        $this->people = [];
+        $this->emails = [];
+        $this->done = [];
+        $this->current = null;
+        $this->deferred = [];
+        $this->imported = [];
+        $this->dropped = [];
+        $this->peopleRows = [];
+        $this->globalExists = [];
+        $this->merger = null;
+    }
+
+    /** @param callable(array): void $onManifest */
+    private function read(string $path, string $password, ?callable $progress, callable $onManifest): void
+    {
+        $done = 0;
+
+        foreach (BackupFile::lines($path, $password) as $line) {
+            $record = json_decode($line, true);
+
+            match ($record['tipo']) {
+                'manifiesto' => $onManifest($record),
+                'persona' => $this->person($record),
+                'fila' => $this->row($record['tabla'], $record['fila']),
+                default => null,
+            };
+
+            if ($record['tipo'] === 'fila' && $progress !== null && (++$done % 250) === 0) {
+                $progress($done);
+            }
+        }
+
+        $progress && $progress($done, true);
     }
 
     // ── El encabezado ───────────────────────────────────────────────────
@@ -205,6 +299,35 @@ final class BackupImporter
         return $table;
     }
 
+    /**
+     * Un respaldo de una versión anterior: lo que esta versión exige y el
+     * respaldo no trae tiene que tener con qué completarse (BackupCatalog::FILL).
+     * Si no, se dice ahora, antes de confirmar, y no a mitad de la importación.
+     *
+     * @param  array<string, array<string, true>>  $columns  tabla => columnas que traen todas sus filas
+     */
+    private function checkColumns(array $columns): void
+    {
+        $gaps = [];
+
+        foreach ($columns as $table => $present) {
+            if (in_array($table, self::PEOPLE_WRITTEN, true)) {
+                continue;
+            }
+
+            foreach ($this->schema->requiredColumns($table) as $column) {
+                if (! isset($present[$column]) && ! array_key_exists($column, BackupCatalog::FILL[$table] ?? [])) {
+                    $gaps[] = "{$table}.{$column}";
+                }
+            }
+        }
+
+        if ($gaps !== []) {
+            throw new InvalidBackupException('Este respaldo es de una versión anterior de CONTAPP y le faltan datos que esta versión exige ('
+                .implode(', ', array_slice($gaps, 0, 5)).(count($gaps) > 5 ? '…' : '').'). Avisale al equipo de CONTAPP: hay que indicar con qué completarlos antes de importarlo.');
+        }
+    }
+
     private function createCompany(array $manifest, License $license, array $data): void
     {
         $source = $manifest['compania'];
@@ -230,6 +353,14 @@ final class BackupImporter
         $this->map['companies'][(int) $source['id']] = $this->companyId;
     }
 
+    /** Completar: la compañía es la que ya existe; de la del respaldo no se toca nada. */
+    private function useCompany(array $manifest, Company $company): void
+    {
+        $this->companyId = $company->id;
+        $this->map['companies'][(int) $manifest['compania']['id']] = $company->id;
+        $this->merger->start($manifest);
+    }
+
     private function person(array $record): void
     {
         $this->emails[(int) $record['id']] = (string) $record['correo'];
@@ -253,17 +384,42 @@ final class BackupImporter
         }
 
         $oldId = $row['id'];
-        $values = $this->translate($table, $row, $later);
+        $later = $missing = $unresolved = [];
 
-        if ($values === null) {
+        if ($this->merger?->skipsOpening($table, $row)) {
+            $this->merger->observe($table, $this->translate($table, $row, $later, $missing, $unresolved));
+
+            return;
+        }
+
+        $values = $this->special($table, $this->translate($table, $row, $later, $missing, $unresolved));
+
+        if ($this->merger !== null && $values !== null) {
+            $found = $this->merger->find($table, $row, $values, $unresolved);
+
+            // Ya está: lo que cuelgue de ella apunta a la de acá.
+            if (is_int($found)) {
+                $this->map[$table][$oldId] = $found;
+            }
+
+            if ($found !== null) {
+                return;
+            }
+        }
+
+        if ($values === null || $missing !== []) {
             $this->dropped[$table] = ($this->dropped[$table] ?? 0) + 1;
 
             return;
         }
 
+        // Lo que esta versión exige y un respaldo anterior no trae.
+        $values += array_diff_key(BackupCatalog::FILL[$table] ?? [], $values);
+
         $newId = DB::table($table)->insertGetId($values);
         $this->map[$table][$oldId] = $newId;
         $this->imported[$table] = ($this->imported[$table] ?? 0) + 1;
+        $this->merger?->inserted($table, $newId, (int) $oldId < 0);
 
         foreach ($later as [$column, $target, $old]) {
             $this->deferred[] = [$table, $newId, $column, $target, $old];
@@ -271,14 +427,18 @@ final class BackupImporter
     }
 
     /**
-     * La fila con sus referencias traducidas, o null si no puede entrar.
+     * La fila con sus referencias traducidas.
      *
      * @param  list<array{0: string, 1: string, 2: int}>  $later  referencias que se completan al final
-     * @return array<string, mixed>|null
+     * @param  list<string>  $missing  columnas obligatorias sin a qué apuntar: la fila no puede entrar
+     * @param  list<string>  $unresolved  todas las referencias que no se pudieron traducir
+     * @return array<string, mixed>
      */
-    private function translate(string $table, array $row, ?array &$later): ?array
+    private function translate(string $table, array $row, ?array &$later, ?array &$missing, ?array &$unresolved): array
     {
         $later = [];
+        $missing = [];
+        $unresolved = [];
         $columns = array_flip($this->schema->columns($table));
         $values = array_intersect_key($row, $columns);
         unset($values['id']);
@@ -291,18 +451,20 @@ final class BackupImporter
             $old = $values[$column];
             $new = $this->reference($target, $old);
 
-            if ($new === null && $this->comesLater($table, $target)) {
-                $later[] = [$column, $target, (int) $old];
-            }
+            if ($new === null) {
+                $unresolved[] = $column;
 
-            if ($new === null && ! $this->schema->isNullable($table, $column) && ! $this->comesLater($table, $target)) {
-                return null;
+                if ($this->comesLater($table, $target)) {
+                    $later[] = [$column, $target, (int) $old];
+                } elseif (! $this->schema->isNullable($table, $column)) {
+                    $missing[] = $column;
+                }
             }
 
             $values[$column] = $new;
         }
 
-        return $this->special($table, $values);
+        return $values;
     }
 
     /** La referencia traducida, o null si no hay a qué apuntar. */
@@ -349,16 +511,14 @@ final class BackupImporter
 
     private function markDoneBefore(string $table): void
     {
-        if (! isset($this->current) || $this->current !== $table) {
-            if (isset($this->current)) {
+        if ($this->current !== $table) {
+            if ($this->current !== null) {
                 $this->done[$this->current] = true;
             }
 
             $this->current = $table;
         }
     }
-
-    private ?string $current = null;
 
     /**
      * Lo que no es una llave foránea: referencias según su tipo, ids
@@ -494,6 +654,9 @@ final class BackupImporter
      * instalación y cabe en la licencia. El Superusuario de la licencia
      * siempre entra.
      *
+     * Al completar una compañía, quien ya tiene acceso queda como está: no se
+     * le suman ni se le cambian permisos.
+     *
      * @return array{added: list<string>, missing: list<string>, no_quota: list<string>}
      */
     private function importPeople(License $license): array
@@ -531,8 +694,10 @@ final class BackupImporter
             $type = $roleTypes[$old] ?? null;
 
             // El Superusuario de la licencia entra solo (abajo); alguien sin
-            // rol —el Superusuario de la licencia de origen— no se suma.
-            if ($userId === (int) $license->superuser_id || $type === null) {
+            // rol —el Superusuario de la licencia de origen— no se suma; y
+            // quien ya tiene acceso a la compañía, tampoco.
+            if ($userId === (int) $license->superuser_id || $type === null
+                || DB::table('company_user')->where('company_id', $this->companyId)->where('user_id', $userId)->exists()) {
                 continue;
             }
 
@@ -577,7 +742,9 @@ final class BackupImporter
             $documentType = $this->map['document_types'][(int) $row['document_type_id']] ?? null;
             $subject = match ($row['subject_type']) {
                 'user' => $accepted[(int) $row['subject_id']] ?? null,
-                'role' => $this->reference('roles', $row['subject_id']),
+                // Los permisos de un rol, en un tipo de documento que ya
+                // estaba, son de esta compañía: no se tocan.
+                'role' => $documentType && $this->merger?->isPresent('document_types', $documentType) ? null : $this->reference('roles', $row['subject_id']),
                 default => null,
             };
 
@@ -611,20 +778,24 @@ final class BackupImporter
         return $type === 'admin' ? $license->canAddAnotherAdmin() : $license->canAddAnotherUser();
     }
 
-    /** Para la Bitácora de la compañía nueva. */
-    public static function recordImport(Company $company, ?User $user, ?string $byName, array $manifest): void
+    /**
+     * Para la Bitácora de la compañía: creada desde un respaldo, o completada
+     * con uno (con cuánto se le agregó).
+     */
+    public static function recordImport(Company $company, ?User $user, ?string $byName, array $manifest, ?int $added = null): void
     {
         AuditLog::create([
             'company_id' => $company->id,
             'user_id' => $user?->id,
-            'action' => 'company.backup_imported',
+            'action' => $added === null ? 'company.backup_imported' : 'company.backup_merged',
             'auditable_type' => Company::class,
             'auditable_id' => $company->id,
             'new_values' => array_filter([
                 'from' => $manifest['compania']['trade_name'] ?? $manifest['compania']['legal_name'] ?? null,
                 'period' => $manifest['periodo']['texto'] ?? null,
+                'added' => $added,
                 'by' => $byName,
-            ]),
+            ], fn ($value) => $value !== null),
             'created_at' => now(),
         ]);
     }

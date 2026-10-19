@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Domains\Accounting\Models\ChartOfAccount;
 use App\Domains\Accounting\Models\CostCenter;
 use App\Domains\Accounting\Models\Currency;
+use App\Domains\Billing\Support\CostaRicaTerritory;
+use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\BusinessPartners\Models\BpCategory;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
 use App\Domains\Core\Services\ScreenAccessService;
@@ -14,6 +16,7 @@ use App\Domains\Inventory\Models\PriceList;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -51,6 +54,9 @@ class BusinessPartnerController extends Controller
             // asignarle al cliente un precio que nunca va a aplicar.
             'priceLists' => PriceList::where('status', 'active')->orderBy('code')
                 ->get(['id', 'code', 'name', 'currency_id']),
+            // Para la factura electrónica (CLAUDE.md secc. 38).
+            'identificationTypes' => FiscalCatalogs::IDENTIFICATION_TYPES,
+            'territory' => CostaRicaTerritory::tree(),
             'today' => now()->format('Y-m-d'),
             // El código que sigue en cada tipo (CodeRules): se propone, y se
             // puede cambiar solo al crear.
@@ -97,6 +103,9 @@ class BusinessPartnerController extends Controller
             // asignarle al cliente un precio que nunca va a aplicar.
             'priceLists' => PriceList::where('status', 'active')->orderBy('code')
                 ->get(['id', 'code', 'name', 'currency_id']),
+            // Para la factura electrónica (CLAUDE.md secc. 38).
+            'identificationTypes' => FiscalCatalogs::IDENTIFICATION_TYPES,
+            'territory' => CostaRicaTerritory::tree(),
         ]);
     }
 
@@ -113,7 +122,7 @@ class BusinessPartnerController extends Controller
 
     private function validated(Request $request, ?int $companyId, ?int $ignoreId = null): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'code' => ['required', 'string', 'max:20', Rule::unique('business_partners')->where('company_id', $companyId)->ignore($ignoreId)],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:client,supplier,both'],
@@ -134,6 +143,27 @@ class BusinessPartnerController extends Controller
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0'],
             'status' => ['sometimes', 'in:active,inactive'],
+            // El receptor de una factura electrónica. La ubicación es
+            // opcional en el XML, pero si va, va con los códigos de Hacienda
+            // (provincia de 1 dígito, cantón y distrito de 2).
+            'identification_type' => ['nullable', Rule::in(array_keys(FiscalCatalogs::IDENTIFICATION_TYPES))],
+            // Cada código, de la tabla oficial y dentro del anterior.
+            ...CostaRicaTerritory::rules($request->all(), required: false),
+            'address_details' => ['nullable', 'string', 'max:250'],
+        ], [
+            'canton.regex' => 'El cantón es el código de dos dígitos (por ejemplo 01).',
+            'district.regex' => 'El distrito es el código de dos dígitos (por ejemplo 03).',
         ]);
+
+        // Hacienda rechaza una cédula que no tiene los dígitos de su tipo:
+        // se dice acá, no al emitir la primera factura.
+        if (filled($validated['identification_type'] ?? null) && filled($validated['tax_id'] ?? null)
+            && ! FiscalCatalogs::identificationMatchesType($validated['identification_type'], $validated['tax_id'])) {
+            throw ValidationException::withMessages([
+                'tax_id' => 'La identificación no tiene los dígitos de una '.mb_strtolower(FiscalCatalogs::IDENTIFICATION_TYPES[$validated['identification_type']]).'.',
+            ]);
+        }
+
+        return $validated;
     }
 }

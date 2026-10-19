@@ -139,7 +139,7 @@ it('la lista de artículos encuentra lo que está a medio configurar', function 
         ->and($result->rows[0]['code'])->toBe($f['item']->code);
 
     // Con CAByS ya no aparece en ese filtro.
-    $f['item']->update(['cabys_code' => '2310110000000']);
+    $f['item']->update(['cabys_code' => '4526100000100']);
 
     expect(runReport('item-catalog', $f, ['missing' => 'cabys'])->rows)->toHaveCount(0);
 });
