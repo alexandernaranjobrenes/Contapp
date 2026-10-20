@@ -3,6 +3,13 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-19 — La actividad del receptor se elige del catálogo de Hacienda
+
+**Pedido del usuario:** que la «Actividad del receptor» de la factura ofrezca todas las actividades y solo se pueda elegir de ahí, como en Parámetros de facturación.
+
+**Qué se decidió:** un select con el catálogo de TRIBU-CR, con las actividades inscritas a la cédula del cliente arriba (consultadas a Hacienda al elegirlo). Se precarga con la de la ficha del socio o, si no tiene, con la principal inscrita. Es opcional, como en el XSD. El servidor acepta solo una del catálogo o una que Hacienda le tiene inscrita al cliente. Antes, si el campo iba vacío, el servidor ponía la de la ficha del socio: eso se quitó, porque «sin actividad» también es una elección y una de la ficha que no es de TRIBU-CR se colaba al XML.
+
+---
 ## 2026-10-19 — El CAByS se elige de una lista con todo el catálogo
 
 **Pedido del usuario:** que el CAByS de un artículo sea un select con todos los códigos CAByS de Hacienda.

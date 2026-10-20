@@ -639,7 +639,7 @@ Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma
 - «Tipo de comprobante» y «Tipo de documento (ERP)».
 - «Sucursal» y «Terminal».
 - «Actividad económica del emisor».
-- «Cliente» (o «Consumidor final») y «Actividad del receptor».
+- «Cliente» (o «Consumidor final») y «Actividad del receptor». La actividad del receptor es una lista con todas las actividades de Hacienda (TRIBU-CR): arriba las que Hacienda tiene inscritas a la cédula del cliente, abajo el resto. Se precarga con la de la ficha del socio o, si no tiene, con la principal inscrita; es opcional («Sin actividad») y no se puede escribir una que no esté en la lista.
 - «Moneda» y «Tipo de cambio».
 - **«Condición de venta»**: si es a crédito, se indica el «Plazo del crédito (días)» y la venta **abre una partida por cobrar** con ese vencimiento.
 - «Fecha de emisión» y «Fecha de contabilización».

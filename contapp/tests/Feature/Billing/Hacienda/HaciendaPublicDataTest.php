@@ -415,6 +415,37 @@ it('«Emitir de nuevo» no gasta otro consecutivo si el CAByS guardado en la ven
         ->and($document->fresh()->consecutive)->toBe($document->consecutive);
 });
 
+it('la actividad del receptor se elige del catálogo de Hacienda y llega al XML', function () {
+    $f = preflightFixture();
+
+    $this->get(route('sales-documents.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('activityCatalog', fn ($catalog) => $catalog->count() === 367));
+
+    // 6209.9 no existe en TRIBU-CR.
+    $this->post(route('sales-documents.store'), [...preflightPayload($f, '4526100000100'), 'receiver_activity_code' => '6209.9'])
+        ->assertSessionHasErrors('receiver_activity_code');
+    expect(SalesDocument::where('company_id', $f['company']->id)->count())->toBe(0);
+
+    $this->post(route('sales-documents.store'), [...preflightPayload($f, '4526100000100'), 'receiver_activity_code' => '6209.0'])
+        ->assertSessionHasNoErrors();
+
+    $document = SalesDocument::where('company_id', $f['company']->id)->sole();
+    expect($document->receiver_activity_code)->toBe('6209.0')
+        ->and(haciendaValue(electronicOf($document)->signed_xml, '//fe:CodigoActividadReceptor'))->toBe('6209.0');
+});
+
+it('«sin actividad del receptor» es una elección: no se toma sola de la ficha del socio', function () {
+    $f = preflightFixture();
+    $f['customer']->update(['economic_activity_code' => '620100']);
+
+    $this->post(route('sales-documents.store'), preflightPayload($f, '4526100000100'))->assertSessionHasNoErrors();
+
+    $document = SalesDocument::where('company_id', $f['company']->id)->sole();
+    expect($document->receiver_activity_code)->toBeNull()
+        ->and(haciendaXpath(electronicOf($document)->signed_xml)->query('//fe:CodigoActividadReceptor')->length)->toBe(0);
+});
+
 it('con el CAByS y la actividad en regla, o con Hacienda sin contestar, emite', function () {
     $f = preflightFixture();
 

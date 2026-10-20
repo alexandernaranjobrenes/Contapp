@@ -10,6 +10,8 @@ const props = defineProps({
     catalogs: { type: Object, required: true },
     documentTypes: { type: Array, default: () => [] },
     activities: { type: Array, default: () => [] },
+    // Las actividades de TRIBU-CR (CIIU 4), código => nombre: la del receptor se elige de acá.
+    activityCatalog: { type: Object, default: () => ({}) },
     customers: { type: Array, default: () => [] },
     items: { type: Array, default: () => [] },
     warehouses: { type: Array, default: () => [] },
@@ -133,7 +135,11 @@ const receiverRequired = computed(() => form.fiscal_document_type !== '04');
 
 watch(() => form.business_partner_id, (id) => {
     const customer = props.customers.find((c) => c.id === id);
-    if (! customer) return;
+    if (! customer) {
+        // Consumidor final: no hay receptor del que indicar actividad.
+        form.receiver_activity_code = '';
+        return;
+    }
 
     form.receiver_activity_code = customer.economic_activity_code ?? '';
 
@@ -141,6 +147,75 @@ watch(() => form.business_partner_id, (id) => {
         form.credit_term_days = customer.payment_terms_days;
     }
 });
+
+// --- Actividad del receptor: del catálogo de Hacienda (TRIBU-CR) ---
+// Arriba, las que Hacienda tiene inscritas a la cédula del cliente
+// (HaciendaLookupController::taxpayer); abajo, el resto del catálogo. Si la
+// ficha del socio no trae actividad, se propone la principal que tiene inscrita.
+const receiverRegistered = ref(null); // null | { loading } | { available, found, activities }
+let receiverLookup = 0;
+
+async function loadReceiverActivities(customer) {
+    const mine = ++receiverLookup;
+    const identification = (customer?.tax_id ?? '').replace(/\D/g, '');
+
+    if (! identification) {
+        receiverRegistered.value = null;
+        return;
+    }
+
+    receiverRegistered.value = { loading: true };
+
+    try {
+        const res = await fetch(route('hacienda.taxpayer', { identification }), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (res.redirected || ! res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (mine !== receiverLookup) return;
+
+        const activities = (data.taxpayer?.activities ?? []).filter((a) => a.active);
+        receiverRegistered.value = { available: data.available, found: data.taxpayer?.found ?? false, activities };
+
+        if (! form.receiver_activity_code && form.business_partner_id === customer.id) {
+            const primary = activities.find((a) => a.primary) ?? (activities.length === 1 ? activities[0] : null);
+            if (primary) form.receiver_activity_code = primary.code;
+        }
+    } catch {
+        if (mine === receiverLookup) receiverRegistered.value = { available: false, found: false, activities: [] };
+    }
+}
+
+watch(() => form.business_partner_id, (id) => {
+    const customer = props.customers.find((c) => c.id === id) ?? null;
+    // Al abrir desde un pedido o un comprobante, la actividad de la ficha.
+    if (customer && ! form.receiver_activity_code) form.receiver_activity_code = customer.economic_activity_code ?? '';
+    loadReceiverActivities(customer);
+}, { immediate: true });
+
+const receiverKnown = computed(() => !! (receiverRegistered.value?.available && receiverRegistered.value.found));
+
+const receiverInscribed = computed(() => (receiverKnown.value
+    ? receiverRegistered.value.activities.map((a) => ({ code: a.code, name: props.activityCatalog[a.code] ?? a.description }))
+    : []));
+
+const receiverOthers = computed(() => {
+    const inscribed = new Set(receiverInscribed.value.map((a) => a.code));
+    return Object.entries(props.activityCatalog)
+        .filter(([code]) => ! inscribed.has(code))
+        .map(([code, name]) => ({ code, name }));
+});
+
+// Una de la ficha del socio que no es de TRIBU-CR: se muestra marcada para
+// cambiarla; el servidor no la acepta.
+const receiverUnknownCode = computed(() => {
+    const code = form.receiver_activity_code;
+    return !! code && ! props.activityCatalog[code] && ! receiverInscribed.value.some((a) => a.code === code);
+});
+
+const receiverNotInscribed = computed(() => receiverKnown.value && !! form.receiver_activity_code
+    && ! receiverUnknownCode.value && ! receiverInscribed.value.some((a) => a.code === form.receiver_activity_code));
 
 // Con la emisión electrónica encendida, solo los tipos que CONTAPP firma y
 // envía, y las condiciones de venta que el XSD de ese tipo admite.
@@ -541,8 +616,21 @@ function submit() {
                         <span v-if="form.errors.business_partner_id" class="error">{{ form.errors.business_partner_id }}</span>
                     </div>
                     <div class="field">
-                        <label>Actividad del receptor</label>
-                        <input v-model="form.receiver_activity_code" type="text" maxlength="6" placeholder="6201.0">
+                        <label for="receiver-activity">Actividad del receptor</label>
+                        <select id="receiver-activity" v-model="form.receiver_activity_code" :disabled="! form.business_partner_id">
+                            <option value="">{{ form.business_partner_id ? '— Sin actividad —' : 'Primero el cliente' }}</option>
+                            <option v-if="receiverUnknownCode" :value="form.receiver_activity_code">{{ form.receiver_activity_code }} — no está en el catálogo de Hacienda</option>
+                            <optgroup v-if="receiverInscribed.length" label="Inscritas a la cédula del cliente">
+                                <option v-for="a in receiverInscribed" :key="a.code" :value="a.code">{{ a.code }} — {{ a.name }}</option>
+                            </optgroup>
+                            <optgroup :label="receiverKnown ? 'Otras del catálogo de Hacienda (no inscritas al cliente)' : 'Catálogo de actividades de Hacienda'">
+                                <option v-for="a in receiverOthers" :key="a.code" :value="a.code">{{ a.code }} — {{ a.name }}</option>
+                            </optgroup>
+                        </select>
+                        <span v-if="form.errors.receiver_activity_code" class="error">{{ form.errors.receiver_activity_code }}</span>
+                        <span v-else-if="receiverUnknownCode" class="error">La de la ficha del socio no existe en TRIBU-CR: elegí otra.</span>
+                        <span v-else-if="receiverRegistered?.loading" class="hint small">Consultando en Hacienda las actividades del cliente…</span>
+                        <span v-else-if="receiverNotInscribed" class="hint small warn-text">Hacienda no tiene esta actividad inscrita a la cédula del cliente.</span>
                     </div>
                 </div>
 
@@ -1067,6 +1155,7 @@ th, td { padding: 0.35rem 0.4rem; }
 .tax-block { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 0.6rem; }
 .price-source { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 0.5rem; }
 .price-source.warn { color: var(--color-warning); }
+.warn-text { color: var(--color-warning); }
 
 .price-warning {
     margin-top: 1rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm);

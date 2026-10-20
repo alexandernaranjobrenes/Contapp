@@ -15,10 +15,12 @@ use App\Domains\Billing\Models\SalesDocument;
 use App\Domains\Billing\Models\SalesOrder;
 use App\Domains\Billing\Services\Hacienda\ElectronicInvoicing;
 use App\Domains\Billing\Services\Hacienda\ElectronicPreflight;
+use App\Domains\Billing\Services\Hacienda\HaciendaPublicData;
 use App\Domains\Billing\Services\PostSalesDocumentService;
 use App\Domains\Billing\Services\PriceOverrideAuthorizer;
 use App\Domains\Billing\Services\PriceOverrideGuard;
 use App\Domains\Billing\Services\SalesDocumentXmlBuilder;
+use App\Domains\Billing\Support\EconomicActivityCatalog;
 use App\Domains\Billing\Support\FiscalCatalogs;
 use App\Domains\Billing\Support\HaciendaClock;
 use App\Domains\BusinessPartners\Models\BusinessPartner;
@@ -107,6 +109,8 @@ class SalesDocumentController extends Controller
                 ->where('status', 'active')->orderBy('code')->get(['id', 'code', 'name']),
             'activities' => CompanyEconomicActivity::where('status', 'active')
                 ->orderBy('code')->get(['id', 'code', 'name', 'is_default']),
+            // Las actividades de TRIBU-CR: la del receptor se elige de acá.
+            'activityCatalog' => EconomicActivityCatalog::all(),
             'customers' => BusinessPartner::whereIn('type', ['client', 'both'])
                 ->where('status', 'active')
                 ->orderBy('code')
@@ -560,6 +564,21 @@ class SalesDocumentController extends Controller
         }
     }
 
+    private function receiverActivityRule(Request $request): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+            if (! is_string($value) || EconomicActivityCatalog::exists($value)) {
+                return;
+            }
+
+            $taxId = preg_replace('/\D/', '', (string) BusinessPartner::whereKey($request->input('business_partner_id'))->value('tax_id'));
+
+            if ($taxId === '' || app(HaciendaPublicData::class)->activityIsRegistered($taxId, $value) !== true) {
+                $fail("La actividad {$value} no está en el catálogo de actividades de Hacienda: elegila de la lista.");
+            }
+        };
+    }
+
     private function validated(Request $request, int $companyId): array
     {
         return $request->validate([
@@ -576,7 +595,9 @@ class SalesDocumentController extends Controller
                 Rule::exists('business_partners', 'id')->where('company_id', $companyId),
             ],
             'emitter_activity_code' => ['nullable', 'string', 'size:6'],
-            'receiver_activity_code' => ['nullable', 'string', 'size:6'],
+            // La actividad inscrita del receptor (CodigoActividadReceptor):
+            // del catálogo de TRIBU-CR, o una que Hacienda le tiene inscrita.
+            'receiver_activity_code' => ['nullable', 'string', 'size:6', $this->receiverActivityRule($request)],
             'currency_id' => ['required', Rule::exists('currencies', 'id')],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'sale_condition' => ['required', Rule::in(array_keys(FiscalCatalogs::SALE_CONDITIONS))],

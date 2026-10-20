@@ -336,7 +336,10 @@ class PostSalesDocumentService
             'clave' => $clave,
             'security_code' => $securityCode,
             'emitter_activity_code' => $activity->code,
-            'receiver_activity_code' => $input->receiverActivityCode ?? $partner?->economic_activity_code,
+            // La que se eligió en el comprobante (la pantalla la precarga de la
+            // ficha del socio). Sin elegir, ninguna: «sin actividad» es una
+            // elección, y una de la ficha que no es de TRIBU-CR no puede colarse.
+            'receiver_activity_code' => $input->receiverActivityCode,
             'business_partner_id' => $partner?->id,
             'currency_id' => $input->currencyId,
             'exchange_rate' => $input->exchangeRate,
