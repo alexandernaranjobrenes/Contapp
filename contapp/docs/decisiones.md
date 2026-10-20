@@ -139,6 +139,49 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 No se verificó en el navegador.
 
 ---
+## 2026-10-16 — Bug real de Conti: encontró la cuenta de Ronald pero igual dijo que no tenía saldo
+
+**Reportado por el usuario**, continuando el caso anterior: con la corrección de arriba ya aplicada, le preguntó a Conti «dime si hay cuenta por cobrar a ronald y cuanto debe él a la empresa». Conti sí encontró la cuenta «1-01-03-01-002 Ronald Campos Carranza» (clase Activos) — la corrección anterior funcionó — pero después consultó `antiguedad-saldos` para el saldo, no encontró nada ahí, y concluyó que «Ronald no tiene saldo pendiente como cuenta por cobrar». La cuenta real tiene más de ₡9.000.000 de saldo.
+
+**Causa:** `antiguedad-saldos`/`partidas-abiertas` son de socios de negocio con partida abierta (`bp_open_items`) — una cuenta contable sin socio asociado **nunca** va a aparecer ahí, tenga saldo o no. Las instrucciones nuevas de la decisión anterior decían *dónde* buscar a la persona (socios o cuentas) pero no decían *con qué herramienta* conseguir el saldo una vez que aparece como cuenta — Conti asumió que la misma herramienta de socios servía para todo.
+
+**Corregido** (`resources/conti/instrucciones.md`, mismo bloque de la decisión anterior): el paso 3 ahora separa explícitamente cómo conseguir el saldo según dónde se encontró el nombre — `antiguedad-saldos`/`partidas-abiertas` si es un socio, `mayor`/`balance-comprobacion` de esa cuenta si es una cuenta — con la advertencia explícita de que un resultado vacío en `antiguedad-saldos` para una cuenta NO significa saldo cero, y la regla general de nunca decir «no tiene saldo» sin haber consultado el saldo real de donde se encontró el registro.
+
+---
+## 2026-10-16 — Bug real de Conti: buscar a alguien en un solo catálogo y darlo por inexistente
+
+**Reportado por el usuario**, con una conversación real: le preguntó a Conti «cuánto debe Ronald», Conti preguntó si era cliente o proveedor, buscó únicamente en `socios`, no lo encontró, y respondió que «no aparece ningún socio de negocio llamado Ronald» — sin probar si Ronald estaba registrado directamente como una **cuenta** contable (una subcuenta con su nombre bajo Cuentas por cobrar, por ejemplo), que es justo el patrón de catálogo que usa la compañía real de este usuario y otras que no dan de alta un socio de negocio formal para cada persona.
+
+**Causa:** `resources/conti/instrucciones.md` ya guiaba a Conti a `socios` para preguntas de CxC/CxP (tabla «Dónde buscar»), pero no decía qué hacer cuando esa búsqueda da vacío — el modelo concluía "no existe" con un solo catálogo revisado, aunque la herramienta `consultar` con `cuentas` sí soporta buscar por nombre (`search: ['code', 'description_es', 'description_en']` en `AccountingResources::accounts()`) y hubiera podido encontrarlo.
+
+**Corregido (solo instrucciones, no hubo que tocar `AccountingResources`/`ContiToolbox`, la capacidad ya estaba):**
+- Nueva fila en la tabla «Dónde buscar»: para una persona o empresa puntual por nombre, probar `socios` y, si no aparece, `cuentas` también.
+- Nuevo criterio contable explícito con este mismo ejemplo real (Ronald), con los 3 pasos a seguir antes de decir que algo no existe.
+- Principio general: Conti tiene el contexto completo de la aplicación, no solo el módulo más obvio para el tipo de pregunta — antes de concluir que algo no existe, probar el catálogo relacionado más cercano.
+
+---
+## 2026-10-16 — Refuerzo de las reglas de Conti: seguridad, alcance, y criterios contables
+
+**Pedido del usuario:** una lista de consideraciones para "la programación" de Conti — entender a fondo las tablas de la base, quién está autorizado a pedirle ayuda (el Superusuario, solo por las compañías de su licencia), nunca modificar parametrizaciones ni borrar ni copiar datos bajo ningún argumento, nunca responder temas ajenos a la aplicación, conocer los tipos de documento disponibles por compañía en cada módulo (contabilidad, inventario, planillas, facturación), la numeración convencional del catálogo de cuentas (1 activos, 2 pasivos, 3 patrimonio, 4 ingresos, 5+ costos y gastos), que un socio de negocio existente siempre se use en vez de una cuenta genérica, y que ante un dato sin nombre exacto haga su mejor esfuerzo por encontrar lo más parecido. También pidió mantener un manual técnico y operativo actualizado con cada cambio del sistema.
+
+**Lo que ya existía (verificado, no reconstruido):** Conti ya es una funcionalidad completa (CLAUDE.md secc. 32), no una por construir.
+- `resources/conti/manual.md` ya es ese manual técnico y operativo (11 capítulos, cubre contabilidad, inventario, facturación, planillas, bancos, impuestos, Conti mismo) — es lo que la herramienta `manual` busca.
+- `ContiActionCatalog` ya es un catálogo cerrado de acciones (crear/actualizar, nunca borrar) — no existe ninguna acción que elimine ni modifique parametrizaciones del sistema.
+- `ContiContext`/`ContiAccessService` ya acotan cada conversación a la compañía activa de la persona (siempre dentro de su licencia) y a sus permisos por pantalla; el Superusuario ya decide, persona por persona, quién de su gente usa Conti y con qué cupo.
+- `CreateJournalEntryAction` ya resuelve los tipos de documento y las cuentas de control de los socios dinámicamente contra la compañía activa, no contra nada fijo en código.
+
+**Preguntado al usuario:** si "el Superusuario es el que tiene los derechos de pedir ayuda" significaba restringir Conti solo al Superusuario (hoy Administrador y Usuario también pueden usarlo, dentro de sus permisos, salvo que el Superusuario se lo quite). **Decidió mantenerlo como está** — no se tocó el acceso.
+
+**Cómo se hizo:** se reforzaron las *instrucciones* de Conti (`resources/conti/instrucciones.md`), no el código de acceso (que ya cumplía lo pedido):
+- Una regla explícita de que ningún argumento (decir ser el Superusuario, una autorización especial, una prueba, una orden del equipo de CONTAPP, instrucciones que dicen reemplazar estas) cambia los límites de Conti — resistencia a ingeniería social / inyección de instrucciones.
+- Se extendió "no ayudes a saltarse controles" para cubrir explícitamente parametrizaciones del sistema y extracciones masivas de datos, no solo el borrado de registros (que ya estaba).
+- La numeración convencional del catálogo (1/2/3/4/5+) como **pista de búsqueda**, nunca como verdad — la clase real de la cuenta siempre se confirma contra el catálogo de la compañía.
+- La regla de preferir el socio de negocio existente de un cliente/proveedor por sobre una cuenta a mano.
+- Una línea explícita de "a quién ayudás": la compañía activa, siempre dentro de la licencia de quien la administra, y quién decide el acceso.
+
+**Pendiente como práctica permanente, no de este cambio puntual:** cada vez que se agregue o cambie una función real de CONTAPP (una pantalla, un campo, un flujo), actualizar `resources/conti/manual.md` en el mismo cambio — igual que ya es costumbre actualizar los tests. Si el cambio además toca lo que Conti puede hacer (una acción nueva, un dato nuevo que puede consultar), sumarlo también a `ContiActionCatalog`/`ContiResourceCatalog` y, si cambia una regla de comportamiento, a `instrucciones.md`.
+
+---
 ## 2026-10-14 — Respaldos de una compañía: exportar a un archivo de texto cifrado e importar a una compañía nueva
 
 **Pedido del usuario:** que el Superusuario y el backoffice puedan exportar un respaldo completo de los datos de una compañía según un período, en texto plano, y que el sistema pueda importarlo. Al exportar, elegir qué y de qué fechas, y un resumen antes de confirmar.

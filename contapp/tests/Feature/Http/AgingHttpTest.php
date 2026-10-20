@@ -94,6 +94,65 @@ it('rechaza un valor de cortes que no son números y comas', function () {
         ->assertSessionHasErrors('buckets');
 });
 
+it('el formulario de antigüedad de saldos filtra por un socio específico', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpAgingCompany($company);
+    $otherClient = BusinessPartner::factory()->create([
+        'company_id' => $company->id, 'gl_account_id' => $cxc->id, 'currency_id' => $company->local_currency_id,
+    ]);
+
+    postAgingOpenSale($company, $cxc, $sales, $client, $documentType, '200', '2026-02-15');
+    postAgingOpenSale($company, $cxc, $sales, $otherClient, $documentType, '900', '2026-02-15');
+
+    $this->get(route('reports.aging.index', ['as_of' => '2026-03-01', 'business_partner_id' => $client->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('result.groups.0.rows', 1)
+            ->where('result.groups.0.rows.0.partner_code', $client->code)
+        );
+});
+
+it('el formulario de antigüedad de saldos filtra por un rango de códigos de socio', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpAgingCompany($company);
+    $client->update(['code' => 'C-010']);
+    $outOfRange = BusinessPartner::factory()->create([
+        'company_id' => $company->id, 'gl_account_id' => $cxc->id, 'currency_id' => $company->local_currency_id, 'code' => 'C-090',
+    ]);
+
+    postAgingOpenSale($company, $cxc, $sales, $client, $documentType, '200', '2026-02-15');
+    postAgingOpenSale($company, $cxc, $sales, $outOfRange, $documentType, '900', '2026-02-15');
+
+    $this->get(route('reports.aging.index', ['as_of' => '2026-03-01', 'partner_code_from' => 'C-001', 'partner_code_to' => 'C-050']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('result.groups.0.rows', 1)
+            ->where('result.groups.0.rows.0.partner_code', 'C-010')
+        );
+});
+
+it('la antigüedad de saldos trae la lista de socios de negocio de la compañía para el filtro', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    setUpAgingCompany($company);
+
+    $this->get(route('reports.aging.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->has('businessPartners', 1));
+});
+
+it('el formulario de antigüedad de saldos refleja include_documents', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    setUpAgingCompany($company);
+
+    $this->get(route('reports.aging.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('includeDocuments', false));
+
+    $this->get(route('reports.aging.index', ['include_documents' => 1]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('includeDocuments', true));
+});
+
 it('exporta la antigüedad de saldos a XLSX', function () {
     logInAsCompanyUser();
 

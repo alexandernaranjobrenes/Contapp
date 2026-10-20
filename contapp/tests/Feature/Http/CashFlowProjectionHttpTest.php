@@ -78,6 +78,65 @@ it('acepta cortes de días personalizados en la proyección', function () {
         );
 });
 
+it('la proyección filtra por un socio específico', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpCashFlowCompany($company);
+    $otherClient = BusinessPartner::factory()->create([
+        'company_id' => $company->id, 'gl_account_id' => $cxc->id, 'currency_id' => $company->local_currency_id,
+    ]);
+
+    postCashFlowReceivable($company, $cxc, $sales, $client, $documentType, '100', '2026-01-10');
+    postCashFlowReceivable($company, $cxc, $sales, $otherClient, $documentType, '900', '2026-01-10');
+
+    $this->get(route('reports.cash-flow-projection.index', ['as_of' => '2026-01-01', 'business_partner_id' => $client->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('result.collections.0.rows', 1)
+            ->where('result.collections.0.rows.0.partner_code', $client->code)
+        );
+});
+
+it('la proyección filtra por un rango de códigos de socio', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    ['cxc' => $cxc, 'sales' => $sales, 'client' => $client, 'documentType' => $documentType] = setUpCashFlowCompany($company);
+    $client->update(['code' => 'C-010']);
+    $outOfRange = BusinessPartner::factory()->create([
+        'company_id' => $company->id, 'gl_account_id' => $cxc->id, 'currency_id' => $company->local_currency_id, 'code' => 'C-090',
+    ]);
+
+    postCashFlowReceivable($company, $cxc, $sales, $client, $documentType, '100', '2026-01-10');
+    postCashFlowReceivable($company, $cxc, $sales, $outOfRange, $documentType, '900', '2026-01-10');
+
+    $this->get(route('reports.cash-flow-projection.index', ['as_of' => '2026-01-01', 'partner_code_from' => 'C-001', 'partner_code_to' => 'C-050']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('result.collections.0.rows', 1)
+            ->where('result.collections.0.rows.0.partner_code', 'C-010')
+        );
+});
+
+it('la proyección trae la lista de socios de negocio de la compañía para el filtro', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    setUpCashFlowCompany($company);
+
+    $this->get(route('reports.cash-flow-projection.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->has('businessPartners', 1));
+});
+
+it('la proyección refleja include_documents', function () {
+    ['user' => $user, 'company' => $company] = logInAsCompanyUser();
+    setUpCashFlowCompany($company);
+
+    $this->get(route('reports.cash-flow-projection.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('includeDocuments', false));
+
+    $this->get(route('reports.cash-flow-projection.index', ['include_documents' => 1]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('includeDocuments', true));
+});
+
 it('exporta la proyección de cobros y pagos a XLSX', function () {
     logInAsCompanyUser();
 

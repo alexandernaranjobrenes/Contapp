@@ -11,7 +11,11 @@ use OpenSpout\Writer\XLSX\Writer;
 
 class CashFlowProjectionExporter
 {
-    public function writeTo(string $outputPath, ReportHeader $header, CashFlowProjectionResult $result): void
+    /**
+     * $includeDocuments agrega, debajo de cada socio, el detalle de sus
+     * documentos — ver mismo criterio en AgingExporter.
+     */
+    public function writeTo(string $outputPath, ReportHeader $header, CashFlowProjectionResult $result, bool $includeDocuments = false): void
     {
         $writer = new Writer();
         $writer->openToFile($outputPath);
@@ -22,6 +26,7 @@ class CashFlowProjectionExporter
         $muted = (new Style())->setFontSize(9);
         $sectionTitle = (new Style())->setFontBold()->setFontSize(11);
         $tableHeader = (new Style())->setFontBold()->setBackgroundColor('0B1F3A')->setFontColor('FFFFFF');
+        $docHeader = (new Style())->setFontBold()->setBackgroundColor('E8EDF5');
         $totalStyle = (new Style())->setFontBold()->setBackgroundColor('F2F2F2');
 
         $writer->addRows([
@@ -34,12 +39,12 @@ class CashFlowProjectionExporter
         ]);
 
         $writer->addRow(Row::fromValues(['Cobros esperados (clientes)'], $sectionTitle));
-        $this->writeGroups($writer, $result->collections, $result->bucketLabels, $bold, $tableHeader, $totalStyle);
+        $this->writeGroups($writer, $result->collections, $result->bucketLabels, $bold, $tableHeader, $docHeader, $totalStyle, $includeDocuments);
 
         $writer->addRow(Row::fromValues([]));
 
         $writer->addRow(Row::fromValues(['Pagos esperados (proveedores)'], $sectionTitle));
-        $this->writeGroups($writer, $result->payments, $result->bucketLabels, $bold, $tableHeader, $totalStyle);
+        $this->writeGroups($writer, $result->payments, $result->bucketLabels, $bold, $tableHeader, $docHeader, $totalStyle, $includeDocuments);
 
         $writer->close();
     }
@@ -48,7 +53,7 @@ class CashFlowProjectionExporter
      * @param  ProjectionCurrencyGroup[]  $groups
      * @param  array<string, string>  $bucketLabels
      */
-    private function writeGroups(Writer $writer, array $groups, array $bucketLabels, Style $bold, Style $tableHeader, Style $totalStyle): void
+    private function writeGroups(Writer $writer, array $groups, array $bucketLabels, Style $bold, Style $tableHeader, Style $docHeader, Style $totalStyle, bool $includeDocuments): void
     {
         if (empty($groups)) {
             $writer->addRow(Row::fromValues(['— Sin partidas pendientes —']));
@@ -71,6 +76,21 @@ class CashFlowProjectionExporter
                     ...array_map(fn ($k) => (float) $row->buckets[$k], $bucketKeys),
                     (float) $row->total,
                 ]));
+
+                if ($includeDocuments && $row->documents !== []) {
+                    $writer->addRow(Row::fromValues(
+                        ['', 'Documento', 'Vencimiento', 'Monto original', 'Saldo pendiente', 'Tramo'],
+                        $docHeader
+                    ));
+
+                    foreach ($row->documents as $doc) {
+                        $writer->addRow(Row::fromValues([
+                            '', $doc->documentLabel, $doc->dueDate ?? '—',
+                            (float) $doc->originalAmount, (float) $doc->balance,
+                            $bucketLabels[$doc->bucket] ?? $doc->bucket,
+                        ]));
+                    }
+                }
             }
 
             $writer->addRow(Row::fromValues([
