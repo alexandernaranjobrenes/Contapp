@@ -30,7 +30,7 @@ class FiscalCatalogs
     ];
 
     /**
-     * Los que CONTAPP firma y envía a Hacienda desde Facturación. La factura
+     * Los que Pivox firma y envía a Hacienda desde Facturación. La factura
      * de compra (08) la emite quien compra, no quien vende: es de Compras. El
      * recibo electrónico de pago (10) no tiene XSD publicado junto con los
      * demás, y emitirlo sin validar su estructura sería adivinar.

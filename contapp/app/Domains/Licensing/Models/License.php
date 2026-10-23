@@ -124,8 +124,8 @@ class License extends Model
     public function blockedMessage(string $companyName): ?string
     {
         return match ($this->status) {
-            'revoked' => "La licencia de {$companyName} fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de CONTAPP.",
-            'suspended' => "La licencia de {$companyName} está suspendida: mientras siga así no se puede entrar a esa compañía. Para reactivarla, contactá al equipo de CONTAPP.",
+            'revoked' => "La licencia de {$companyName} fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de Pivox.",
+            'suspended' => "La licencia de {$companyName} está suspendida: mientras siga así no se puede entrar a esa compañía. Para reactivarla, contactá al equipo de Pivox.",
             default => null,
         };
     }
@@ -166,7 +166,7 @@ class License extends Model
     /**
      * Referencia parcial/enmascarada para mostrar en UI (CLAUDE.md secc.
      * 13: "nunca mostrar el identificador completo si es también la clave
-     * de validación"). CONTAPP-XXXX-XXXX-XXXX -> CONTAPP-****-****-XXXX.
+     * de validación"). PIVOX-XXXX-XXXX-XXXX -> PIVOX-****-****-XXXX.
      */
     public function maskedCode(): string
     {

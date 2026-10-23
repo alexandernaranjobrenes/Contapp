@@ -23,7 +23,7 @@ use Illuminate\Support\Carbon;
  *   último día que corrió. Una que ya existe no se toca.
  * - Cómo le fue queda en BccrSyncStatus, y se ve en Tipos de cambio.
  */
-#[Signature('contapp:sync-bccr-rates {--date= : El día, AAAA-MM-DD (por defecto, hoy en Costa Rica)} {--catch-up=7 : Días anteriores sin tasa que se completan}')]
+#[Signature('pivox:sync-bccr-rates {--date= : El día, AAAA-MM-DD (por defecto, hoy en Costa Rica)} {--catch-up=7 : Días anteriores sin tasa que se completan}')]
 #[Description('Sincroniza el tipo de cambio de referencia del BCCR (USD) para todas las compañías activas')]
 class SyncBccrExchangeRates extends Command
 {
@@ -59,7 +59,7 @@ class SyncBccrExchangeRates extends Command
         $rate = collect($results)->filter()->first()?->rate;
 
         // Lo que ve cada compañía en Tipos de cambio: el tipo de cambio, no
-        // cuántas compañías hay en CONTAPP. Eso queda en la salida del comando.
+        // cuántas compañías hay en Pivox. Eso queda en la salida del comando.
         $message = $synced > 0
             ? 'Tipo de cambio del '.$date->format('d/m/Y').($rate !== null ? ": {$rate}" : '').'.'
             : 'El BCCR todavía no tenía el tipo de cambio del '.$date->format('d/m/Y').'.';

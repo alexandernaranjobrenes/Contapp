@@ -395,13 +395,13 @@ it('si otra cuenta tomó ese correo antes de confirmar, el cambio no se aplica',
 });
 
 it('el correo de confirmación va en español, con el enlace y su vencimiento', function () {
-    $mail = (new ConfirmEmailChangeNotification('https://contapp.test/enlace-firmado', 'Ana Mora', 60))
+    $mail = (new ConfirmEmailChangeNotification('https://pivox.test/enlace-firmado', 'Ana Mora', 60))
         ->toMail(new stdClass);
     $html = (string) $mail->render();
 
     expect($mail->subject)->toBe('Confirmá tu correo nuevo de '.config('app.name'))
         ->and($html)->toContain('Hola, Ana Mora')
-        ->and($html)->toContain('https://contapp.test/enlace-firmado')
+        ->and($html)->toContain('https://pivox.test/enlace-firmado')
         ->and($html)->toContain('60 minutos');
 });
 

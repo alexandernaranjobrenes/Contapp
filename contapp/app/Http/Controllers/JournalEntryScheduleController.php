@@ -110,7 +110,7 @@ class JournalEntryScheduleController extends Controller
 
     /**
      * Disparo manual — mismo criterio que ExchangeRateController::sync():
-     * el comando de consola (contapp:process-journal-schedules) requiere un
+     * el comando de consola (pivox:process-journal-schedules) requiere un
      * cron real corriendo `schedule:run`, que este proyecto no tiene
      * configurado todavía, así que esta pantalla ofrece un botón para no
      * depender de eso mientras tanto.

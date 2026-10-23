@@ -137,9 +137,9 @@ it('el correo de cada caso dice lo que pasó', function (string $status, string 
     expect($mail->subject)->toBe($subject)
         ->and((string) $mail->render())->toContain('El Clavo');
 })->with([
-    ['suspended', 'Tu acceso en CONTAPP quedó suspendido'],
-    ['active', 'Ya podés volver a entrar a CONTAPP'],
-    ['deactivated', 'Se dio de baja tu acceso en CONTAPP'],
+    ['suspended', 'Tu acceso en Pivox quedó suspendido'],
+    ['active', 'Ya podés volver a entrar a Pivox'],
+    ['deactivated', 'Se dio de baja tu acceso en Pivox'],
 ]);
 
 it('si el correo falla, el cambio igual se hace y el mensaje lo dice', function () {

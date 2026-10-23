@@ -14,9 +14,9 @@ it('isExpiredButActive es verdadero solo para una licencia vencida y no revocada
 });
 
 it('maskedCode oculta los dos segmentos del medio del código de licencia', function () {
-    $license = License::factory()->create(['code' => 'CONTAPP-AB12-CD34-EF56']);
+    $license = License::factory()->create(['code' => 'PIVOX-AB12-CD34-EF56']);
 
-    expect($license->maskedCode())->toBe('CONTAPP-****-****-EF56');
+    expect($license->maskedCode())->toBe('PIVOX-****-****-EF56');
 });
 
 it('CurrentCompany::clear() también apaga el modo de gracia', function () {

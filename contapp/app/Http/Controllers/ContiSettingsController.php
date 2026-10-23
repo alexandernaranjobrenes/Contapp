@@ -66,7 +66,7 @@ class ContiSettingsController extends Controller
         $companyId = $currentCompany->id() ?? abort(409, 'Elegí una compañía para usar Conti.');
         $company = Company::with('license')->findOrFail($companyId);
 
-        abort_unless($usage->enabledFor($company), 403, 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de CONTAPP.');
+        abort_unless($usage->enabledFor($company), 403, 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de Pivox.');
         abort_unless($usage->enabledFor($company, $user), 403, 'No tenés acceso a Conti en esta licencia. Si lo necesitás, pedíselo al Superusuario.');
 
         return $company;

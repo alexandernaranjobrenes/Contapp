@@ -32,7 +32,7 @@ class ExchangeRateController extends Controller
             'rates' => $rates,
             'foreignCurrency' => $company->foreignCurrency()->first(['id', 'code', 'symbol']),
             'bccrConfigured' => filled(config('services.bccr.token')),
-            // La última sincronización automática (contapp:sync-bccr-rates).
+            // La última sincronización automática (pivox:sync-bccr-rates).
             'bccrLastSync' => BccrSyncStatus::last(),
             // Hoy en la compañía, no en UTC: de noche en Costa Rica, en UTC ya es mañana.
             'today' => now($company->timezone ?: config('services.bccr.timezone'))->format('Y-m-d'),

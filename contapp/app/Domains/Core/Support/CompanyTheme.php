@@ -12,7 +12,7 @@ namespace App\Domains\Core\Support;
  * coincidan.
  *
  * Una compañía sin tema elegido usa el predeterminado, Marino: el aspecto
- * original de CONTAPP.
+ * original de Pivox.
  */
 enum CompanyTheme: string
 {
@@ -60,7 +60,7 @@ enum CompanyTheme: string
     public function description(): string
     {
         return match ($this) {
-            self::Marino => 'Azul marino profundo sobre mármol cálido, con acento ámbar. El aspecto clásico de CONTAPP.',
+            self::Marino => 'Azul marino profundo sobre mármol cálido, con acento ámbar. El aspecto clásico de Pivox.',
             self::Grafito => 'Gris carbón neutro con acento turquesa. Minimalista y técnico.',
             self::Esmeralda => 'Verde profundo con detalles dorados. Sereno y distinguido.',
             self::Borgona => 'Vino tinto con cobre rosado. Cálido y ejecutivo.',

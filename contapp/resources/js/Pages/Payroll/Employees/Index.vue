@@ -437,7 +437,7 @@ const monthlyBase = computed(() => props.employees
                         <label>Código</label>
                         <input v-model="form.code" type="text" maxlength="20" required :disabled="codeLocked">
                         <span v-if="codeLocked" class="muted small">No se puede cambiar: ya tiene planillas calculadas.</span>
-                        <span v-else-if="mode === 'create'" class="muted small">Lo propone CONTAPP. Queda fijo desde su primera planilla.</span>
+                        <span v-else-if="mode === 'create'" class="muted small">Lo propone Pivox. Queda fijo desde su primera planilla.</span>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Los datos públicos de Hacienda (api.hacienda.go.cr, sin credenciales y solo
  * de lectura): un código CAByS que no esté en el catálogo oficial que trae
- * CONTAPP (CabysCatalog), y las actividades económicas inscritas de una
+ * Pivox (CabysCatalog), y las actividades económicas inscritas de una
  * cédula. Son los mismos que Hacienda usa para validar el comprobante:
  * un CAByS que no está en el catálogo se rechaza con -400, y una actividad
  * que el emisor no tiene inscrita, con -408 (docs/einvoice/rejections.md).
@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Log;
 class HaciendaPublicData
 {
     /**
-     * Un código CAByS: primero en el catálogo oficial que viene con CONTAPP
+     * Un código CAByS: primero en el catálogo oficial que viene con Pivox
      * (CabysCatalog, sin red); si no está ahí, a Hacienda, por si es más nuevo.
      * ['exists' => false] si Hacienda dice que no está; null si no se pudo
      * preguntar.

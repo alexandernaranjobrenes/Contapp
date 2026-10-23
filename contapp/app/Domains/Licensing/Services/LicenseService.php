@@ -112,7 +112,7 @@ class LicenseService
     private function generateCode(): string
     {
         do {
-            $code = 'CONTAPP-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4));
+            $code = 'PIVOX-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4));
         } while (License::where('code', $code)->exists());
 
         return $code;

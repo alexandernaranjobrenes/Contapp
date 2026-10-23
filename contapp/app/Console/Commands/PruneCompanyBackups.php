@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
  * las 24 horas se borran el archivo y su contraseña. Lo corre el
  * programador cada día.
  */
-#[Signature('contapp:prune-backups')]
+#[Signature('pivox:prune-backups')]
 #[Description('Borra los respaldos subidos que no se confirmaron a tiempo')]
 class PruneCompanyBackups extends Command
 {

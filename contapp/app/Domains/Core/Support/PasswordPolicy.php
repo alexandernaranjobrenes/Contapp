@@ -5,7 +5,7 @@ namespace App\Domains\Core\Support;
 use Closure;
 
 /**
- * Qué tiene que tener una contraseña de CONTAPP. Un solo lugar para las tres
+ * Qué tiene que tener una contraseña de Pivox. Un solo lugar para las tres
  * pantallas donde se elige una: activar la licencia, crear un usuario y
  * «Olvidé mi contraseña».
  *

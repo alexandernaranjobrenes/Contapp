@@ -38,8 +38,8 @@ class DemoCompanySeeder extends Seeder
         $company = Company::firstOrCreate(
             ['tax_id' => '3-101-000000'],
             [
-                'legal_name' => 'CONTAPP Demo S.A.',
-                'trade_name' => 'CONTAPP Demo',
+                'legal_name' => 'Pivox Demo S.A.',
+                'trade_name' => 'Pivox Demo',
                 'country_code' => 'CR',
                 'local_currency_id' => $crc->id,
                 'foreign_currency_id' => $usd->id,
@@ -65,7 +65,7 @@ class DemoCompanySeeder extends Seeder
         $admin = User::firstOrCreate(
             ['email' => 'admin@contapp.test'],
             [
-                'name' => 'Administrador CONTAPP',
+                'name' => 'Administrador Pivox',
                 'password' => Hash::make('password'),
                 'is_super_admin' => true,
                 'default_company_id' => $company->id,
@@ -80,11 +80,11 @@ class DemoCompanySeeder extends Seeder
         // entorno de desarrollo se crea igual con el mismo correo/clave que
         // el super usuario demo, solo para poder probar /backoffice/login
         // sin tener que aprovisionar una cuenta a mano cada vez. En un
-        // despliegue real sería la cuenta personal del operador de CONTAPP,
+        // despliegue real sería la cuenta personal del operador de Pivox,
         // sin relación con ningún usuario de ninguna compañía cliente.
         $propietario = Propietario::firstOrCreate(
             ['email' => 'admin@contapp.test'],
-            ['name' => 'Propietario CONTAPP', 'password' => Hash::make('password')]
+            ['name' => 'Propietario Pivox', 'password' => Hash::make('password')]
         );
 
         // Licencia real de la compañía demo (distinta de $sampleLicense más

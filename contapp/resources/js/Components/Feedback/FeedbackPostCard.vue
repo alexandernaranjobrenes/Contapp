@@ -193,7 +193,7 @@ async function destroy(reply) {
 
             <ul v-if="replies?.length" class="reply-list">
                 <li v-for="reply in replies" :key="reply.id" class="reply" :class="{ 'is-team': reply.author.is_team }">
-                    <span v-if="reply.author.is_team" class="team-mark" aria-hidden="true">C</span>
+                    <span v-if="reply.author.is_team" class="team-mark" aria-hidden="true"><img src="/images/logos/logo_pivox_corto.png" alt=""></span>
                     <UserAvatar v-else :url="reply.author.photo_url" :name="reply.author.name" :size="1.6" />
                     <div class="reply-main">
                         <div class="reply-meta">
@@ -437,7 +437,7 @@ async function destroy(reply) {
     align-self: center;
 }
 
-/* La respuesta del equipo de CONTAPP se distingue: la marca en lugar de la
+/* La respuesta del equipo de Pivox se distingue: la marca en lugar de la
    foto y un fondo del acento. */
 .reply.is-team {
     margin: 0 -0.5rem;
@@ -452,10 +452,16 @@ async function destroy(reply) {
     place-items: center;
     width: 1.6rem;
     height: 1.6rem;
+    padding: 0.28rem;
     border-radius: 50%;
-    background: var(--color-sidebar);
-    color: var(--color-on-sidebar);
-    font-size: 0.72rem;
-    font-weight: 800;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.team-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 </style>

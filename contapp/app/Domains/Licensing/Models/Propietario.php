@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /**
- * El fabricante/distribuidor de CONTAPP (CLAUDE.md secc. 11/12): un actor
+ * El fabricante/distribuidor de Pivox (CLAUDE.md secc. 11/12): un actor
  * completamente aparte de Superusuario/Administrador/Usuario, con su propia
  * tabla y su propio guard ('propietario', ver config/auth.php) — nunca
  * comparte sesión ni fila con App\Models\User. Deliberadamente mínimo: sin

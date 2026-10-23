@@ -12,7 +12,7 @@ use App\Domains\Inventory\Models\Item;
  *   avisa el formulario (Utils/barcode.js) sin impedir guardar.
  * - Solo caracteres que se pueden dibujar (ASCII imprimible): con tildes o
  *   ñ no hay código de barras que los lleve.
- * - Para lo que no trae código de fábrica, CONTAPP genera un EAN-13 interno
+ * - Para lo que no trae código de fábrica, Pivox genera un EAN-13 interno
  *   con el prefijo 200: GS1 reserva 200–299 para uso dentro del negocio, así
  *   que nunca choca con el de un producto real. Sirve para las etiquetas y
  *   los lectores propios, no para venderle a otro comercio (eso pide un

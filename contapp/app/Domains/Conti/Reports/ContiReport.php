@@ -7,7 +7,7 @@ use Closure;
 /**
  * Un reporte que Conti puede pedir (ContiReportCatalog). Corre el mismo
  * servicio que la pantalla del reporte: las cifras son las mismas que la
- * persona ve en CONTAPP.
+ * persona ve en Pivox.
  */
 final class ContiReport
 {

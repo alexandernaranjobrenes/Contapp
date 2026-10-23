@@ -15,7 +15,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Las noticias de CONTAPP desde el backoffice (guard 'propietario'):
+ * Las noticias de Pivox desde el backoffice (guard 'propietario'):
  * publicarlas, editarlas y eliminarlas. Las cuentas las leen en el panel de
  * la barra superior, pestaña «Noticias» (FeedbackController::news).
  */
@@ -112,7 +112,7 @@ class NewsController extends Controller
     }
 
     /**
-     * Una dirección completa (http o https) o una pantalla de CONTAPP que
+     * Una dirección completa (http o https) o una pantalla de Pivox que
      * empieza con «/». Nada de «javascript:» ni de «//otro-sitio»: el enlace
      * se abre al tocar la noticia.
      */
@@ -130,7 +130,7 @@ class NewsController extends Controller
                 && in_array(strtolower((string) parse_url($link, PHP_URL_SCHEME)), ['http', 'https'], true);
 
             if (! $internal && ! $external) {
-                $fail('El enlace tiene que ser una dirección completa (https://…) o una pantalla de CONTAPP que empiece con «/».');
+                $fail('El enlace tiene que ser una dirección completa (https://…) o una pantalla de Pivox que empiece con «/».');
             }
         };
     }

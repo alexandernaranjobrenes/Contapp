@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
         </div>
 
         <p class="hint">
-            El tema cambia los colores, la tipografía y las esquinas de CONTAPP para todos los que trabajan en
+            El tema cambia los colores, la tipografía y las esquinas de Pivox para todos los que trabajan en
             <strong>{{ companyName }}</strong>. Tocá un tema para verlo aplicado en toda la pantalla, y guardalo con
             «Guardar tema». Cada tema tiene su versión clara y oscura: el botón de la luna, arriba, cambia entre
             las dos. Los colores de estado —verde, rojo, ámbar— no cambian: significan lo mismo en todas las
@@ -128,11 +128,11 @@ onBeforeUnmount(() => {
                 :data-company-theme="theme.key"
                 @click="preview(theme.key)"
             >
-                <!-- Una miniatura de CONTAPP pintada con el tema: la barra lateral
+                <!-- Una miniatura de Pivox pintada con el tema: la barra lateral
                      con su acento, una tarjeta con cifras y el botón primario. -->
                 <span class="mini" aria-hidden="true">
                     <span class="mini-sidebar">
-                        <span class="mini-brand">C</span>
+                        <span class="mini-brand"><img src="/images/logos/logo_pivox_corto.png" alt=""></span>
                         <span class="mini-nav active"></span>
                         <span class="mini-nav"></span>
                         <span class="mini-nav"></span>
@@ -336,11 +336,16 @@ onBeforeUnmount(() => {
     width: 1.2rem;
     height: 1.2rem;
     margin-bottom: 0.2rem;
+    padding: 0.15rem;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.14);
-    color: var(--color-on-sidebar);
-    font-size: 0.6rem;
-    font-weight: 800;
+    background: #fff;
+}
+
+.mini-brand img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .mini-nav {

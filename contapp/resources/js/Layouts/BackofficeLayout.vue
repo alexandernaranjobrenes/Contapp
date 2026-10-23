@@ -1,6 +1,6 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
-import { KeyRoundIcon, LayersIcon, LogOutIcon, MenuIcon, MessagesSquareIcon, NewspaperIcon, PercentIcon, XIcon } from '@lucide/vue';
+import { KeyRoundIcon, LayersIcon, LibraryIcon, LogOutIcon, MenuIcon, MessagesSquareIcon, NewspaperIcon, PercentIcon, XIcon } from '@lucide/vue';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 defineProps({
@@ -16,6 +16,8 @@ const nav = [
     // Lo que se ve en el panel «Comentarios y noticias» de la aplicación.
     { label: 'Comentarios', href: route('backoffice.feedback.index'), match: ['backoffice.feedback.*'], icon: MessagesSquareIcon },
     { label: 'Noticias', href: route('backoffice.news.index'), match: ['backoffice.news.*'], icon: NewspaperIcon },
+    // Los documentos de consulta que lee Conti y ven las cuentas (Repositorio).
+    { label: 'Repositorio', href: route('backoffice.repository.index'), match: ['backoffice.repository.*'], icon: LibraryIcon },
 ];
 
 function isCurrent(patterns) {
@@ -44,8 +46,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
     <div class="backoffice-shell" :class="{ 'nav-open': navOpen }">
         <aside id="backoffice-nav" class="sidebar">
             <div class="sidebar-brand">
-                <span class="brand-mark">C</span>
-                <span class="brand-name">CONTAPP</span>
+                <span class="brand-mark"><img src="/images/logos/logo_pivox_corto.png" alt=""></span>
+                <img class="brand-name" src="/images/logos/pivox_nombre_blanco.png" alt="Pivox">
                 <span class="brand-tag">Backoffice</span>
                 <button type="button" class="nav-close" aria-label="Cerrar menú" @click="navOpen = false"><XIcon :size="18" /></button>
             </div>
@@ -138,7 +140,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
 
 .sidebar-brand {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.4rem 1.25rem;
 }
@@ -147,14 +149,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 28px;
     height: 28px;
+    padding: 4px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.12);
-    font-weight: 800;
+    background: #fff;
 }
 
-.brand-name { font-weight: 700; letter-spacing: .03em; }
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.brand-name { display: block; height: 16px; width: auto; }
 .brand-tag { font-size: 0.72rem; color: rgba(244, 246, 250, 0.6); }
 
 .sidebar-nav {

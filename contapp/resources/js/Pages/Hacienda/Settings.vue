@@ -219,7 +219,7 @@ function saveSequence() {
             <p class="hint">
                 Proveedor de sistemas que va en cada comprobante:
                 <strong>{{ systemProvider ?? `${company.tax_id} (la cédula de la compañía)` }}</strong>.
-                <template v-if="!systemProvider">Si CONTAPP lo provee un tercero, se configura en <code>HACIENDA_SYSTEM_PROVIDER_ID</code>.</template>
+                <template v-if="!systemProvider">Si Pivox lo provee un tercero, se configura en <code>HACIENDA_SYSTEM_PROVIDER_ID</code>.</template>
             </p>
         </section>
 

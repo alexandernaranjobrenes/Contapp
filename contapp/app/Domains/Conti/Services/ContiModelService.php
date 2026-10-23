@@ -38,7 +38,7 @@ class ContiModelService
         $default = $this->default();
 
         if (! isset($models[$default])) {
-            $models = [$default => ['name' => $default, 'description' => 'El modelo predeterminado de esta instalación de CONTAPP.']] + $models;
+            $models = [$default => ['name' => $default, 'description' => 'El modelo predeterminado de esta instalación de Pivox.']] + $models;
         }
 
         $catalog = [];

@@ -11,7 +11,7 @@ defineProps({
     field: { type: Object, required: true },
     inputId: { type: String, required: true },
     error: { type: String, default: null },
-    // Por qué lo sugirió CONTAPP, si el valor es el sugerido.
+    // Por qué lo sugirió Pivox, si el valor es el sugerido.
     suggestion: { type: String, default: null },
     // «documento» si se leyó de un documento escaneado.
     suggestionOrigin: { type: String, default: null },
@@ -129,7 +129,7 @@ const model = defineModel({ type: [String, Number, Boolean], default: '' });
     color: var(--color-text-muted);
 }
 
-/* Lo que sugirió CONTAPP: se ve distinto de lo que escribió la persona. */
+/* Lo que sugirió Pivox: se ve distinto de lo que escribió la persona. */
 .cf-suggested {
     display: inline-flex;
     align-items: center;

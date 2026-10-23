@@ -59,7 +59,7 @@ class ContiUsageService
     public function blockFor(User $user, Company $company): ?array
     {
         if (! $this->configured()) {
-            return [503, 'Conti todavía no está configurado en esta instalación de CONTAPP.'];
+            return [503, 'Conti todavía no está configurado en esta instalación de Pivox.'];
         }
 
         $license = $company->license;
@@ -69,7 +69,7 @@ class ContiUsageService
         }
 
         if (! $license->ai_enabled) {
-            return [403, 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de CONTAPP.'];
+            return [403, 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de Pivox.'];
         }
 
         if (! $this->access->allowed($user, $company)) {

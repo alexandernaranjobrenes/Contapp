@@ -69,7 +69,7 @@ class LicenseInvitationService
             $user = User::where('email', $email)->first();
 
             if ($user === null) {
-                throw new InvitationException('No hay ninguna cuenta con ese correo en CONTAPP. Si es una persona nueva, elegí «Cuenta nueva».', 'email');
+                throw new InvitationException('No hay ninguna cuenta con ese correo en Pivox. Si es una persona nueva, elegí «Cuenta nueva».', 'email');
             }
 
             if ($user->status !== 'active') {
@@ -88,7 +88,7 @@ class LicenseInvitationService
             ]);
         } else {
             if (User::where('email', $email)->exists()) {
-                throw new InvitationException('Ese correo ya tiene una cuenta en CONTAPP. Elegí «Cuenta existente» para asignársela a esa cuenta.', 'email');
+                throw new InvitationException('Ese correo ya tiene una cuenta en Pivox. Elegí «Cuenta existente» para asignársela a esa cuenta.', 'email');
             }
 
             $invitation->fill([
@@ -178,7 +178,7 @@ class LicenseInvitationService
             }
 
             if ($invitation->isExpired()) {
-                throw new InvitationException('El enlace venció. Pedile al equipo de CONTAPP que te reenvíe el correo.');
+                throw new InvitationException('El enlace venció. Pedile al equipo de Pivox que te reenvíe el correo.');
             }
 
             if ($invitation->requiresPassword() && ($password === null || $password === '')) {
@@ -189,7 +189,7 @@ class LicenseInvitationService
 
             if ($invitation->account_type === LicenseInvitation::NEW) {
                 if (User::where('email', $invitation->email)->exists()) {
-                    throw new InvitationException('Mientras tanto, con ese correo se creó una cuenta en CONTAPP. Pedile al equipo de CONTAPP que te reenvíe la invitación para esa cuenta.');
+                    throw new InvitationException('Mientras tanto, con ese correo se creó una cuenta en Pivox. Pedile al equipo de Pivox que te reenvíe la invitación para esa cuenta.');
                 }
 
                 $result = $this->activation->activate($license->code, $companyData, [
@@ -203,7 +203,7 @@ class LicenseInvitationService
                 // El enlace llegó al correo que la cuenta tenía al asignarla.
                 // Si la cuenta cambió de correo, ese enlace ya no prueba nada.
                 if ($user === null || strcasecmp($user->email, $invitation->email) !== 0) {
-                    throw new InvitationException('La cuenta cambió desde que se te asignó la licencia. Pedile al equipo de CONTAPP una invitación nueva.');
+                    throw new InvitationException('La cuenta cambió desde que se te asignó la licencia. Pedile al equipo de Pivox una invitación nueva.');
                 }
 
                 if ($invitation->requiresPassword()) {

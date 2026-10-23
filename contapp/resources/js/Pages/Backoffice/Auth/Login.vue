@@ -2,6 +2,7 @@
 import { useForm, Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AuthShell from '../../../Components/AuthShell.vue';
+import { startupVisit } from '../../../Utils/startup';
 import { EyeIcon, EyeOffIcon, KeyRoundIcon, LayersIcon, LockIcon, LogInIcon, MailIcon, PercentIcon } from '@lucide/vue';
 
 const form = useForm({
@@ -13,9 +14,9 @@ const form = useForm({
 const showPassword = ref(false);
 
 function submit() {
-    form.post(route('backoffice.login'), {
+    form.post(route('backoffice.login'), startupVisit({
         onFinish: () => form.reset('password'),
-    });
+    }, 'backoffice'));
 }
 
 const scope = [
@@ -31,7 +32,7 @@ const scope = [
     <AuthShell
         dark
         subtitle="Panel del Propietario"
-        lead="Acceso exclusivo del equipo que administra CONTAPP como producto. No es el acceso de ninguna compañía cliente."
+        lead="Acceso exclusivo del equipo que administra Pivox como producto. No es el acceso de ninguna compañía cliente."
     >
         <template #panel-extra>
             <ul class="scope">
@@ -43,7 +44,7 @@ const scope = [
         </template>
 
         <header class="auth-head">
-            <span class="internal-badge">Uso interno · Equipo CONTAPP</span>
+            <span class="internal-badge">Uso interno · Equipo Pivox</span>
             <h2 class="auth-title">Iniciar sesión</h2>
         </header>
 

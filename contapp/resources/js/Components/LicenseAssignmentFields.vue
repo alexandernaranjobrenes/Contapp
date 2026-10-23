@@ -87,7 +87,7 @@ watch(() => props.form.assign_email, () => { lookup.value = null; });
         <template v-else>
             <p class="assign-hint">
                 <template v-if="form.assign_to === 'existing'">
-                    Para alguien que ya entra a CONTAPP (por ejemplo, Administrador o Usuario en la licencia de otro).
+                    Para alguien que ya entra a Pivox (por ejemplo, Administrador o Usuario en la licencia de otro).
                 </template>
                 <template v-else>
                     La cuenta se crea cuando la persona acepta: ahí elige su contraseña, que solo va a saber ella.

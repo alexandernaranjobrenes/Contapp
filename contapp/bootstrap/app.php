@@ -53,14 +53,14 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // En JSON: la API, y las descargas que pide resources/js/Utils/
-        // downloads.js (cabecera X-Contapp-Download). Así un Exportar que
+        // downloads.js (cabecera X-Pivox-Download). Así un Exportar que
         // falla dice por qué —el error de validación, el motivo del 403— en
         // vez de llevarse la pantalla a una página de error. También el panel
         // «Comentarios y noticias» de la barra superior (FeedbackController),
         // que habla solo JSON: el error va junto al campo o en un aviso.
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*')
-                || $request->hasHeader('X-Contapp-Download')
+                || $request->hasHeader('X-Pivox-Download')
                 || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload', 'items.barcode-scans.*', 'items.next-barcode', 'barcode-phone.store', 'activity-log.more')
                 // Los respaldos (CLAUDE.md secc. 37): la pantalla habla JSON, y la
                 // descarga va por fetch para que un error vuelva al formulario.
@@ -101,8 +101,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 $status === 404 => 'No encontramos lo que buscabas. Puede que ya no exista.',
                 $status === 419 => 'La página estuvo abierta mucho tiempo y la sesión expiró. Volvé a intentarlo.',
                 $status === 429 => 'Demasiados intentos seguidos. Esperá un momento y volvé a probar.',
-                $status === 503 => 'CONTAPP está en mantenimiento. Probá de nuevo en unos minutos.',
-                $status >= 500 => 'Ocurrió un error en el servidor y la acción no se completó. Si se repite, avisale al equipo de CONTAPP.',
+                $status === 503 => 'Pivox está en mantenimiento. Probá de nuevo en unos minutos.',
+                $status >= 500 => 'Ocurrió un error en el servidor y la acción no se completó. Si se repite, avisale al equipo de Pivox.',
                 default => null,
             };
 

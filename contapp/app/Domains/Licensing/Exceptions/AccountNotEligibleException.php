@@ -27,7 +27,7 @@ class AccountNotEligibleException extends RuntimeException
     /** Alguien pidió crear una cuenta nueva con un correo que ya tiene una. */
     public static function emailTaken(): self
     {
-        return new self(self::EMAIL_TAKEN, 'Ese correo ya tiene una cuenta en CONTAPP. Elegí «Ya tengo una cuenta» para activar la licencia con ella.');
+        return new self(self::EMAIL_TAKEN, 'Ese correo ya tiene una cuenta en Pivox. Elegí «Ya tengo una cuenta» para activar la licencia con ella.');
     }
 
     public static function alreadyOwner(): self

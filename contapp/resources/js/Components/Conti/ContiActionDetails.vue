@@ -18,7 +18,7 @@ const emit = defineEmits(['leave']);
 const pending = computed(() => props.action.status === 'pending');
 const summary = computed(() => props.action.summary ?? {});
 
-// El enlace al resultado: una pantalla de CONTAPP.
+// El enlace al resultado: una pantalla de Pivox.
 const resultLink = computed(() => {
     const url = props.action.result?.enlace;
     if (!url) return null;

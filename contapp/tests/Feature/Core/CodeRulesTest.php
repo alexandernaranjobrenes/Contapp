@@ -18,7 +18,7 @@ use App\Domains\Payroll\Models\JobPosition;
 | Los códigos de los datos maestros (CLAUDE.md secc. 36)
 |--------------------------------------------------------------------------
 |
-| CONTAPP sugiere el que sigue; se decide al crear, y queda fijo desde que el
+| Pivox sugiere el que sigue; se decide al crear, y queda fijo desde que el
 | registro tiene movimientos (CodeRules).
 |
 */
@@ -117,7 +117,7 @@ it('cuenta contable: sugiere la que sigue a la última de esa clase, en la misma
         ->where('nextCodes.liability', null));
 });
 
-it('socio de negocio: CONTAPP propone el código según el tipo, y desde que se crea queda fijo', function () {
+it('socio de negocio: Pivox propone el código según el tipo, y desde que se crea queda fijo', function () {
     $company = codesCompany();
 
     $this->get(route('business-partners.create'))->assertInertia(fn ($page) => $page

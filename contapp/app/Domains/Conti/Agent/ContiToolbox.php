@@ -50,9 +50,10 @@ class ContiToolbox
         private readonly ContiActionService $actions,
         private readonly ContiManual $manual,
         private readonly ContiFormService $forms,
+        private readonly ContiRepository $repository,
     ) {}
 
-    /** Lo que se preparó en esta respuesta: CONTAPP le abre la ventana para confirmarlo. */
+    /** Lo que se preparó en esta respuesta: Pivox le abre la ventana para confirmarlo. */
     public function prepared(): array
     {
         return $this->prepared;
@@ -71,7 +72,7 @@ class ContiToolbox
         ];
 
         return [
-            $tool('manual', 'Busca en el manual de CONTAPP: cómo se hace algo, qué significa un campo, un estado o un mensaje de error. Usala antes de explicar cualquier cosa de la aplicación. Si una sección trae «sin_acceso», la persona no puede entrar ahí: decíselo primero.', [
+            $tool('manual', 'Busca en el manual de Pivox: cómo se hace algo, qué significa un campo, un estado o un mensaje de error. Usala antes de explicar cualquier cosa de la aplicación. Si una sección trae «sin_acceso», la persona no puede entrar ahí: decíselo primero.', [
                 'tema' => ['type' => 'string', 'description' => 'Palabras clave del tema, ej. «anular asiento» o «aguinaldo liquidación».'],
             ], ['tema']),
             $tool('contexto', 'Con ver y clave: el detalle de una consulta (filtros), un reporte (parámetros) o una acción (datos que pide). Sin parámetros: los permisos de la persona por pantalla.', [
@@ -82,15 +83,15 @@ class ContiToolbox
                 'consulta' => ['type' => 'string', 'description' => 'La clave de la consulta, ej. socios.'],
                 'parametros' => ['type' => 'object', 'description' => 'Opcionales: buscar, desde y hasta (AAAA-MM-DD), limite (hasta 100), pagina, id (id o código) y los filtros propios de la consulta.'],
             ], ['consulta']),
-            $tool('reporte', 'Corre un reporte de CONTAPP con los mismos números que su pantalla (balance-comprobacion, estado-resultados, mayor, antiguedad-saldos…).', [
+            $tool('reporte', 'Corre un reporte de Pivox con los mismos números que su pantalla (balance-comprobacion, estado-resultados, mayor, antiguedad-saldos…).', [
                 'reporte' => ['type' => 'string', 'description' => 'La clave del reporte.'],
                 'parametros' => ['type' => 'object', 'description' => 'Los parámetros del reporte; vacío para los valores por defecto.'],
             ], ['reporte']),
-            $tool('formulario', 'Muestra en el chat el formulario de una acción para registrar o editar. Es TU PRIMERA RESPUESTA siempre que la persona pida registrar, crear, agregar, anotar, cambiar o editar algo, aunque no te haya dado ningún dato: el formulario es la forma de pedírselos. Nunca le pidas los datos por mensaje. Precargá lo que sepas; CONTAPP agrega sugerencias según cómo se viene trabajando. La persona lo completa y lo envía ahí mismo, y CONTAPP le abre la ventana para confirmar. Termina tu turno.', [
+            $tool('formulario', 'Muestra en el chat el formulario de una acción para registrar o editar. Es TU PRIMERA RESPUESTA siempre que la persona pida registrar, crear, agregar, anotar, cambiar o editar algo, aunque no te haya dado ningún dato: el formulario es la forma de pedírselos. Nunca le pidas los datos por mensaje. Precargá lo que sepas; Pivox agrega sugerencias según cómo se viene trabajando. La persona lo completa y lo envía ahí mismo, y Pivox le abre la ventana para confirmar. Termina tu turno.', [
                 'accion' => ['type' => 'string', 'description' => 'La clave de la acción, ej. crear_socio.'],
                 'datos' => ['type' => 'object', 'description' => 'Lo que ya sabés, con los nombres de campo de la acción. Solo lo que dijo la persona o consultaste; nunca inventes.'],
             ], ['accion']),
-            $tool('preparar_accion', 'Prepara algo para guardar, cuando ya tenés todos los datos. No guarda: CONTAPP le abre a la persona la ventana para revisarlo y confirmarlo.', [
+            $tool('preparar_accion', 'Prepara algo para guardar, cuando ya tenés todos los datos. No guarda: Pivox le abre a la persona la ventana para revisarlo y confirmarlo.', [
                 'accion' => ['type' => 'string', 'description' => 'La clave de la acción, ej. crear_socio.'],
                 'datos' => ['type' => 'object', 'description' => 'Los datos que pide la acción.'],
             ], ['accion', 'datos']),
@@ -116,6 +117,14 @@ class ContiToolbox
             $tool('estado_accion', 'En qué quedó una acción preparada: pendiente, guardado, descartado, no se pudo guardar o vencido.', [
                 'id' => ['type' => 'string', 'description' => 'El id de la acción preparada.'],
             ], ['id']),
+            // Solo si el backoffice activó algún documento para Conti: sin
+            // nada que consultar, no se paga la definición en cada mensaje.
+            ...($this->repository->available() ? [
+                $tool('repositorio', 'Busca en los documentos de referencia que publicó el equipo de Pivox (leyes, reglamentos, resoluciones de Hacienda, artículos): devuelve los pasajes que mejor responden, con su documento, sección y artículo. Usala antes de explicar o citar cualquier norma, y citá de dónde sale.', [
+                    'tema' => ['type' => 'string', 'description' => 'Palabras clave del tema, ej. «IVA servicios profesionales» o «plazo declaración renta».'],
+                    'documento' => ['type' => 'string', 'description' => 'Opcional: el título (o parte) de un documento de la lista, para buscar solo en él.'],
+                ], ['tema']),
+            ] : []),
         ];
     }
 
@@ -132,6 +141,7 @@ class ContiToolbox
                 'formulario' => $this->showForm((string) ($arguments['accion'] ?? ''), (array) ($arguments['datos'] ?? [])),
                 'preguntar' => $this->ask((array) ($arguments['preguntas'] ?? [])),
                 'estado_accion' => $this->actionStatus((string) ($arguments['id'] ?? '')),
+                'repositorio' => $this->repository->search((string) ($arguments['tema'] ?? ''), isset($arguments['documento']) ? (string) $arguments['documento'] : null),
                 default => ['error' => "No existe la herramienta «{$name}».", 'codigo' => 404],
             };
         } catch (ValidationException $e) {
@@ -143,7 +153,7 @@ class ContiToolbox
         } catch (Throwable $e) {
             report($e);
 
-            return ['error' => 'Esa consulta falló por un error interno. Si se repite, hay que avisarle al equipo de CONTAPP.', 'codigo' => 500];
+            return ['error' => 'Esa consulta falló por un error interno. Si se repite, hay que avisarle al equipo de Pivox.', 'codigo' => 500];
         }
 
         // Lo que es para la persona (un formulario, preguntas) no lo ve el
@@ -322,7 +332,7 @@ class ContiToolbox
         ];
     }
 
-    /** Deja algo listo para que la persona lo confirme: CONTAPP le abre la ventana. */
+    /** Deja algo listo para que la persona lo confirme: Pivox le abre la ventana. */
     public function prepareAction(string $action, array $data): array
     {
         $pending = $this->actions->prepare($this->context, $action, $data);
@@ -330,7 +340,7 @@ class ContiToolbox
 
         return [
             ...ContiActionService::present($pending),
-            'mensaje' => 'Listo para confirmar. Todavía no se guardó nada: CONTAPP ya le abrió a la persona la ventana con el resumen, '
+            'mensaje' => 'Listo para confirmar. Todavía no se guardó nada: Pivox ya le abrió a la persona la ventana con el resumen, '
                 .'donde toca «Confirmar y guardar» o «Corregir». No pongas enlaces. Vence en '.ContiActionService::TTL_MINUTES.' minutos.',
         ];
     }

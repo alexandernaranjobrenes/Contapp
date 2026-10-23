@@ -7,7 +7,7 @@ import { openScanner } from '../Utils/contiScan';
 import { useNewsSeen } from '../Utils/newsSeen';
 import FeedbackPanel from '../Components/Feedback/FeedbackPanel.vue';
 import {
-    BookOpenIcon, BotIcon, Building2Icon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LogOutIcon, MenuIcon,
+    BookOpenIcon, BotIcon, Building2Icon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleUserRoundIcon, HandshakeIcon, LandmarkIcon, LayoutDashboardIcon, LibraryIcon, LogOutIcon, MenuIcon,
     MessageCircleIcon, MessagesSquareIcon, MoonIcon, PackageIcon, PanelLeftCloseIcon, PanelLeftIcon, PanelLeftOpenIcon, PanelTopIcon, PercentIcon, ReceiptIcon,
     ScanLineIcon, SettingsIcon, SunIcon, TagsIcon, UsersIcon, XIcon,
 } from '@lucide/vue';
@@ -205,6 +205,10 @@ const nav = computed(() => {
                 { screen: 'tax.tax_rates', group: 'Catálogos', label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
             ],
         },
+        // El Repositorio (CLAUDE.md secc. 39): los documentos de consulta que
+        // publica el equipo de Pivox. Para cualquier rol, como el Panel: no es
+        // una pantalla de la compañía, así que no lleva «screen».
+        { label: 'Repositorio', href: route('repository.index'), match: ['repository.*'], icon: LibraryIcon },
         // Ya no hay un grupo «Reportes» de nivel superior: cada reporte vive
         // dentro del módulo que reporta.
         //
@@ -284,7 +288,7 @@ const ROLE_LABELS = {
 
 const roleLabel = computed(() => ROLE_LABELS[page.props.auth?.user?.role_type] ?? null);
 
-const CONTAPP_VERSION = 'v1.0.0';
+const PIVOX_VERSION = 'v1.0.0';
 const currentYear = computed(() => new Date().getFullYear());
 
 const collapsed = ref(false);
@@ -301,7 +305,7 @@ const navOpen = ref(false);
 // El menú arriba o al lado (CLAUDE.md secc. 29): una preferencia de la
 // persona en este navegador, como el tema, no un dato de la base. Se lee
 // antes de pintar, así la página ya sale como la dejó.
-const LAYOUT_KEY = 'contapp-layout';
+const LAYOUT_KEY = 'pivox-layout';
 const layout = ref(typeof window !== 'undefined' && localStorage.getItem(LAYOUT_KEY) === 'top' ? 'top' : 'side');
 
 // Arriba, solo con lugar: en una pantalla angosta el menú es su panel.
@@ -644,10 +648,10 @@ function onRailKeydown(event) {
 }
 
 onMounted(() => {
-    const storedSidebar = localStorage.getItem('contapp-sidebar');
+    const storedSidebar = localStorage.getItem('pivox-sidebar');
     collapsed.value = storedSidebar === 'collapsed';
 
-    const storedTheme = localStorage.getItem('contapp-theme');
+    const storedTheme = localStorage.getItem('pivox-theme');
     theme.value = storedTheme === 'dark' ? 'dark' : (storedTheme === 'light' ? 'light' : theme.value);
 
     narrowQuery?.addEventListener('change', onNarrowChange);
@@ -674,13 +678,13 @@ onBeforeUnmount(() => {
 
 function toggleSidebar() {
     collapsed.value = !collapsed.value;
-    localStorage.setItem('contapp-sidebar', collapsed.value ? 'collapsed' : 'expanded');
+    localStorage.setItem('pivox-sidebar', collapsed.value ? 'collapsed' : 'expanded');
 }
 
 function toggleTheme() {
     theme.value = theme.value === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme.value);
-    localStorage.setItem('contapp-theme', theme.value);
+    localStorage.setItem('pivox-theme', theme.value);
 }
 
 const companies = computed(() => page.props.companies ?? []);
@@ -971,8 +975,8 @@ function toggleGroup(item) {
     <div class="app-shell" :class="{ 'is-collapsed': compact, 'nav-open': navOpen, 'layout-top': topLayout }">
         <aside id="app-nav" class="sidebar" @scroll.passive="closeFlyout">
             <div class="sidebar-brand">
-                <span class="brand-mark">C</span>
-                <span v-if="!compact" class="brand-name">CONTAPP</span>
+                <span class="brand-mark"><img src="/images/logos/logo_pivox_corto.png" :alt="compact ? 'Pivox' : ''"></span>
+                <img v-if="!compact" class="brand-name" src="/images/logos/pivox_nombre_blanco.png" alt="Pivox">
                 <!-- Con el menú arriba, el título de la pantalla va acá, junto a
                      la marca: la columna de la izquierda no tiene dónde. -->
                 <h1 v-if="topLayout" class="brand-title" :title="title">{{ title }}</h1>
@@ -1383,7 +1387,7 @@ function toggleGroup(item) {
                 <footer v-if="page.props.license" class="app-footer">
                     <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
                     <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
-                    <span class="app-footer-meta">CONTAPP {{ CONTAPP_VERSION }} · © {{ currentYear }}</span>
+                    <span class="app-footer-meta">Pivox {{ PIVOX_VERSION }} · © {{ currentYear }}</span>
                 </footer>
             </div>
         </div>
@@ -1434,6 +1438,8 @@ function toggleGroup(item) {
     padding: 0.4rem 0.4rem 1rem;
 }
 
+/* El ícono va sobre blanco: el azul del logo se perdería en las barras
+   azules de algunos temas. El nombre es la versión en blanco del logo. */
 .brand-mark {
     display: inline-flex;
     align-items: center;
@@ -1441,14 +1447,22 @@ function toggleGroup(item) {
     flex-shrink: 0;
     width: 28px;
     height: 28px;
+    padding: 4px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.12);
-    font-weight: 800;
+    background: #fff;
+}
+
+.brand-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .brand-name {
-    font-weight: 700;
-    letter-spacing: .03em;
+    display: block;
+    height: 16px;
+    width: auto;
 }
 
 .sidebar-nav {

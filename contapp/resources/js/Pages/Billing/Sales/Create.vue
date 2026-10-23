@@ -217,7 +217,7 @@ const receiverUnknownCode = computed(() => {
 const receiverNotInscribed = computed(() => receiverKnown.value && !! form.receiver_activity_code
     && ! receiverUnknownCode.value && ! receiverInscribed.value.some((a) => a.code === form.receiver_activity_code));
 
-// Con la emisión electrónica encendida, solo los tipos que CONTAPP firma y
+// Con la emisión electrónica encendida, solo los tipos que Pivox firma y
 // envía, y las condiciones de venta que el XSD de ese tipo admite.
 const documentTypeOptions = computed(() => Object.fromEntries(
     Object.entries(props.catalogs.documentTypes)
@@ -799,7 +799,7 @@ function submit() {
                     <div class="field">
                         <label>Fecha de emisión del documento</label>
                         <input v-model="reference.issued_at" type="date">
-                        <span class="hint small">Si es un comprobante de CONTAPP (su clave), se toma la suya exacta.</span>
+                        <span class="hint small">Si es un comprobante de Pivox (su clave), se toma la suya exacta.</span>
                     </div>
                 </div>
 

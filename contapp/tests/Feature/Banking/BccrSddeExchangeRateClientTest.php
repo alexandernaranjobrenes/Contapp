@@ -171,12 +171,12 @@ it('el comando sincroniza todas las compañías con una sola consulta, y si el B
     logInAsCompanyUser();
     logInAsCompanyUser();
 
-    $this->artisan('contapp:sync-bccr-rates', ['--date' => '2026-10-14', '--catch-up' => 0])->assertSuccessful();
+    $this->artisan('pivox:sync-bccr-rates', ['--date' => '2026-10-14', '--catch-up' => 0])->assertSuccessful();
 
     expect(ExchangeRate::withoutGlobalScope(CompanyScope::class)->where('source', 'bccr_api')->count())->toBe(2);
     Http::assertSentCount(1);
 
-    $this->artisan('contapp:sync-bccr-rates', ['--date' => '2026-10-15', '--catch-up' => 0])
+    $this->artisan('pivox:sync-bccr-rates', ['--date' => '2026-10-15', '--catch-up' => 0])
         ->expectsOutputToContain('El BCCR rechazó el token')
         ->assertFailed();
 });

@@ -2,12 +2,13 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AuthShell from '../../Components/AuthShell.vue';
+import { startupVisit } from '../../Utils/startup';
 import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import { ArrowRightIcon, CheckIcon, LogOutIcon, TriangleAlertIcon } from '@lucide/vue';
 
 /**
  * El enlace del correo de una invitación a una compañía
- * (CompanyInvitationService). Sin cuenta en CONTAPP, la persona elige acá
+ * (CompanyInvitationService). Sin cuenta en Pivox, la persona elige acá
  * su nombre y su contraseña; con cuenta, solo acepta. Si no acepta, no
  * entra a la compañía.
  */
@@ -36,9 +37,9 @@ const linkExpiry = computed(() => {
 });
 
 function submit() {
-    form.post(route('company-invitation.accept', props.token), {
+    form.post(route('company-invitation.accept', props.token), startupVisit({
         onFinish: () => form.reset('password', 'password_confirmation'),
-    });
+    }));
 }
 
 // Con la sesión de otra cuenta abierta: cerrarla y volver a este enlace.
@@ -55,7 +56,7 @@ function logoutAndReturn() {
     <AuthShell
         wide
         subtitle="Te invitaron a una compañía"
-        lead="Alguien te invitó a trabajar en su compañía en CONTAPP. Entrás cuando aceptás la invitación."
+        lead="Alguien te invitó a trabajar en su compañía en Pivox. Entrás cuando aceptás la invitación."
     >
         <template #panel-extra>
             <ol class="auth-steps">
@@ -119,11 +120,11 @@ function logoutAndReturn() {
                 </p>
                 <p class="account-note">
                     <template v-if="newAccount">
-                        Todavía no tenés cuenta en CONTAPP: se crea al aceptar. Elegí cómo querés que se vea tu nombre y
+                        Todavía no tenés cuenta en Pivox: se crea al aceptar. Elegí cómo querés que se vea tu nombre y
                         la contraseña con la que vas a entrar.
                     </template>
                     <template v-else>
-                        Es tu cuenta de CONTAPP: la compañía se suma a las que ya ves y entrás con tu contraseña de
+                        Es tu cuenta de Pivox: la compañía se suma a las que ya ves y entrás con tu contraseña de
                         siempre. Lo que tenés en otras compañías sigue igual.
                     </template>
                 </p>

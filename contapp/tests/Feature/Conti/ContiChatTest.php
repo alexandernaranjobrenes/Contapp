@@ -10,7 +10,7 @@ require_once __DIR__.'/helpers.php';
 
 /*
 |--------------------------------------------------------------------------
-| El chat: CONTAPP le habla a OpenAI y le da las herramientas
+| El chat: Pivox le habla a OpenAI y le da las herramientas
 |--------------------------------------------------------------------------
 |
 | El ciclo corre en el servidor: el modelo pide herramientas, se ejecutan a
@@ -33,7 +33,7 @@ it('solo aparece si la licencia lo tiene activado', function () {
     $f = contiLicensed(['ai_enabled' => false]);
 
     $this->actingAs($f['user'])->get(route('dashboard'))->assertInertia(fn ($page) => $page->where('conti.enabled', false));
-    sendToConti($this, $f)->assertForbidden()->assertJson(['message' => 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de CONTAPP.']);
+    sendToConti($this, $f)->assertForbidden()->assertJson(['message' => 'Conti no está activado en la licencia de esta compañía. Si querés usarlo, contactá al equipo de Pivox.']);
 
     $f['license']->update(['ai_enabled' => true]);
     $this->actingAs($f['user'])->get(route('dashboard'))->assertInertia(fn ($page) => $page->where('conti.enabled', true));
@@ -157,7 +157,7 @@ it('si OpenAI falla a la mitad, lo dice sin detalles técnicos y cobra lo que ya
 
     sendToConti($this, $f)
         ->assertStatus(502)
-        ->assertJson(['message' => 'Conti no pudo responder esta vez. Probá de nuevo; si se repite, avisale al equipo de CONTAPP.']);
+        ->assertJson(['message' => 'Conti no pudo responder esta vez. Probá de nuevo; si se repite, avisale al equipo de Pivox.']);
 
     expect(ContiUsage::sole()->status)->toBe('error')
         ->and(ContiUsage::sole()->prompt_tokens)->toBe(1000);
@@ -168,7 +168,7 @@ it('si la key no sirve o no hay conexión, lo dice', function () {
     $f = contiLicensed();
 
     Http::fake([OPENAI_URL => Http::response(['error' => ['message' => 'Incorrect API key']], 401)]);
-    sendToConti($this, $f)->assertStatus(503)->assertJson(['message' => 'Conti no está bien configurado (la key de OpenAI no es válida). Avisale al equipo de CONTAPP.']);
+    sendToConti($this, $f)->assertStatus(503)->assertJson(['message' => 'Conti no está bien configurado (la key de OpenAI no es válida). Avisale al equipo de Pivox.']);
 
     Http::fake(fn () => throw new ConnectionException('timeout'));
     sendToConti($this, $f)->assertStatus(503);
@@ -214,10 +214,10 @@ it('al enlace para confirmar se le quita el dominio que invente el modelo', func
     $f = contiLicensed();
     $uuid = '9448b898-6513-4866-8e8f-bd0346dfaf52';
     Http::fake([OPENAI_URL => Http::sequence()->push(openAiReply(
-        "Listo. [Revisalo y confirmalo acá](https://app.contapp.run/conti/acciones/{$uuid}). También: app.contapp.co/conti/acciones/{$uuid} y [la ayuda](https://contapp.com/ayuda).",
+        "Listo. [Revisalo y confirmalo acá](https://app.pivox.run/conti/acciones/{$uuid}). También: app.pivox.co/conti/acciones/{$uuid} y [la ayuda](https://pivox.com/ayuda).",
     ))]);
 
     sendToConti($this, $f)->assertOk()->assertJson([
-        'respuesta' => "Listo. [Revisalo y confirmalo acá](/conti/acciones/{$uuid}). También: /conti/acciones/{$uuid} y [la ayuda](https://contapp.com/ayuda).",
+        'respuesta' => "Listo. [Revisalo y confirmalo acá](/conti/acciones/{$uuid}). También: /conti/acciones/{$uuid} y [la ayuda](https://pivox.com/ayuda).",
     ]);
 });

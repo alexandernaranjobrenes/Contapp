@@ -2,7 +2,7 @@
 
 namespace App\Domains\Conti\Actions;
 
-/** Lo que quedó guardado: el mensaje y dónde verlo en CONTAPP. */
+/** Lo que quedó guardado: el mensaje y dónde verlo en Pivox. */
 final class ActionResult
 {
     public function __construct(

@@ -172,9 +172,9 @@ class CertificateInspector
             file_put_contents($path, $p12);
             @chmod($path, 0600);
 
-            $result = Process::env(['CONTAPP_P12_PIN' => $pin])
+            $result = Process::env(['PIVOX_P12_PIN' => $pin])
                 ->timeout(20)
-                ->run(['openssl', 'pkcs12', '-legacy', '-in', $path, '-nodes', '-passin', 'env:CONTAPP_P12_PIN']);
+                ->run(['openssl', 'pkcs12', '-legacy', '-in', $path, '-nodes', '-passin', 'env:PIVOX_P12_PIN']);
         } catch (\Throwable $e) {
             throw new CertificateException(
                 'La llave usa un cifrado antiguo y el servidor no tiene el comando openssl para abrirla. '.

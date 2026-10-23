@@ -1,4 +1,4 @@
-// Sistema de diseño CONTAPP: azul marino profundo (primario) + blanco mármol
+// Sistema de diseño Pivox: azul marino profundo (primario) + blanco mármol
 // (secundario), con modo claro/oscuro. Sin frameworks de terceros: la app es
 // Vue + Inertia y estos tokens son consumidos directamente por los componentes .vue.
 
@@ -274,7 +274,7 @@ $default-theme: map.get($company-themes, 'marino');
     }
 }
 
-// Sin tema elegido, Marino: el aspecto original de CONTAPP. Los tokens que
+// Sin tema elegido, Marino: el aspecto original de Pivox. Los tokens que
 // no son del tema (estados, medidas, sombras) viven solo acá.
 :root {
     @include theme-palette(map.get($default-theme, 'light'));
@@ -701,7 +701,7 @@ table {
  * es solo de este mecanismo; el clic y el envío del formulario los frena
  * busyButtons.js, y pointer-events lo frena para el mouse.
  * ──────────────────────────────────────────────────────────────────────── */
-@keyframes contapp-spin {
+@keyframes pivox-spin {
     to { transform: rotate(360deg); }
 }
 
@@ -729,7 +729,7 @@ table {
     background-color: currentColor;
     -webkit-mask: var(--lucide-loader-circle) center / contain no-repeat;
     mask: var(--lucide-loader-circle) center / contain no-repeat;
-    animation: contapp-spin .8s linear infinite;
+    animation: pivox-spin .8s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

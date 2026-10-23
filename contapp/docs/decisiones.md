@@ -1,6 +1,38 @@
-# CONTAPP — Registro de decisiones
+# Pivox — Registro de decisiones
 
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
+
+---
+## 2026-10-23 — Repositorio de documentos de consulta
+
+**Pedido del usuario:** desde el backoffice, adjuntar y eliminar archivos Markdown (reglamentaciones, códigos legales, artículos del mundo contable y tributario), agrupados en carpetas. Cada uno se activa por separado para que Conti lo consulte y para que cualquier cuenta lo vea en una sección «Repositorio», como PDF. Los archivos van en `public/repositories`.
+
+**Qué se decidió** (CLAUDE.md secc. 39):
+- **Dónde quedan los archivos:** en `public/repositories`, como se pidió, pero sin servirse directo. nginx devuelve 404 y la carpeta trae un `.htaccess` que niega todo. Una carpeta pública deja leer cualquier archivo a quien adivine su nombre, aunque esté desactivado, así que solo la aplicación los lee, y respeta los interruptores.
+- **El PDF:** se arma del Markdown con dompdf y se guarda hasta que cambie algo de lo que muestra. Sin HTML crudo ni imágenes, para que el PDF no pida nada afuera.
+- **Conti:** busca por pasajes con la misma búsqueda del manual, que pasó a `KeywordMatcher`. Cita documento, sección y artículo, y la herramienta solo se ofrece si hay documentos activados (no se paga en cada mensaje).
+- **Las carpetas:** un solo nivel, en orden alfabético. Una con documentos no se elimina. Se puede crear al subir un documento.
+- **Por defecto, todo nace sin activar:** se revisa el PDF y se activa desde la ficha.
+
+**Pendiente de decidir:** los `.md` no están en el respaldo de la base (`backup-db.ps1`) ni en el del repositorio si no se versionan. Hay que versionarlos con git o sumar la carpeta a los respaldos.
+
+---
+## 2026-10-23 — Animación de entrada al iniciar sesión
+
+**Pedido del usuario:** que al iniciar sesión siempre se vea una animación de inicio con el logo mientras arranca el sistema, parecida a la del cambio de compañía.
+
+**Qué se decidió:** una ventana con el logo (CLAUDE.md secc. 30) que aparece cuando el servidor ya inició la sesión, no al tocar «Ingresar». Así una contraseña equivocada no muestra la animación y la quita al instante. La ventana se queda mientras llega la tipografía del tema de la compañía, con un mínimo de ~1,4 s para que siempre se lea como una entrada. Se despide con el nombre de pila y la compañía, y dura en total unos 2,8 s, o ~1,6 s con movimiento reducido. Sale en el mismo ciclo en que Inertia pinta la pantalla de destino, que nunca se ve antes del logo. Se verificó contra el orden real de Inertia 2.3: `onFinish` llega después de varios `await` que siguen al cambio de página.
+
+**Dónde aplica:** login, activar una licencia, aceptar una invitación de compañía o de licencia, y el login del backoffice. No aplica al volver con «Mantener la sesión iniciada» ni al recargar la página: ahí no se inicia sesión.
+
+---
+## 2026-10-22 — La aplicación pasa a llamarse Pivox
+
+**Pedido del usuario:** cambiar el nombre de Contapp a Pivox en todos los archivos, sin dañar el sistema, y poner el logo nuevo donde corresponde.
+
+**Qué se decidió:** la marca se escribe «Pivox», como en el logo. Cambió en textos, mensajes, manual e instrucciones de Conti, documentación y tests; los comandos pasan a `pivox:*`, la cabecera de descargas a `X-Pivox-Download`, las licencias nuevas a `PIVOX-…` y `APP_NAME` a `Pivox` (con eso cambian la cookie de sesión y el prefijo de caché: cada persona inicia sesión una vez más). El logo reemplaza la «C» en las barras laterales, el acceso, el cambio de compañía, las respuestas del equipo, la vista previa de los temas y las páginas del teléfono, y hay favicon. El detalle de lo que conserva «contapp» a propósito, y dónde están los logos, está en CLAUDE.md secc. 2.
+
+**Motivo de lo que no cambió:** el nombre del proyecto de Docker define el volumen de la base (cambiarlo deja una base vacía), `bdcontapp` y el bucket de R2 existen con ese nombre, los respaldos cifrados ya descargados tienen que seguir importándose, y las claves del seeder demo ya están en la base (cambiarlas duplica filas en el próximo `db:seed`).
 
 ---
 ## 2026-10-19 — La actividad del receptor se elige del catálogo de Hacienda
@@ -14,7 +46,7 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 
 **Pedido del usuario:** que el CAByS de un artículo sea un select con todos los códigos CAByS de Hacienda.
 
-**Qué se decidió:** el catálogo completo (CAByS 2025 del BCCR, 20 506 códigos) viene con CONTAPP como archivo de datos con su hash, no se consulta en línea: la lista no depende de que el API de Hacienda conteste, y revisar un código no sale a la red. Con 20 000 opciones un `<select>` nativo no se puede usar ni pesa poco, así que es un control con aspecto de select que abre la lista agrupada por sección, la carga de a 100 desde el servidor y trae un buscador arriba. Se usa en la ficha del artículo y en la línea de la factura. Un código que no está en el archivo se le pregunta a Hacienda, por si es de una versión más nueva.
+**Qué se decidió:** el catálogo completo (CAByS 2025 del BCCR, 20 506 códigos) viene con Pivox como archivo de datos con su hash, no se consulta en línea: la lista no depende de que el API de Hacienda conteste, y revisar un código no sale a la red. Con 20 000 opciones un `<select>` nativo no se puede usar ni pesa poco, así que es un control con aspecto de select que abre la lista agrupada por sección, la carga de a 100 desde el servidor y trae un buscador arriba. Se usa en la ficha del artículo y en la línea de la factura. Un código que no está en el archivo se le pregunta a Hacienda, por si es de una versión más nueva.
 
 ---
 ## 2026-10-19 — Las actividades económicas se eligen del catálogo de Hacienda
@@ -33,7 +65,7 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 - **El API público de Hacienda** (`api.hacienda.go.cr`, sin credenciales) para el catálogo CAByS y las actividades inscritas de una cédula. **Nunca bloquea si no contesta:** solo un «no existe» dicho por Hacienda detiene algo. Así una caída de Hacienda no impide facturar ni dar de alta artículos.
 - **Antes de emitir se revisa lo que Hacienda ya dijo que rechaza** (CAByS inexistente, actividad no inscrita), para no gastar el consecutivo en un rechazo seguro. Se revisa en el controlador y no dentro de la transacción de emisión, para no tener una consulta HTTP con la base bloqueada.
 - **Servicio o mercancía lo decide el CAByS** (primer dígito, la sección de la CPC), porque así reparte Hacienda el resumen. `is_service` sigue siendo del ERP (bodega, cuenta de ingreso): un artículo inventariable con CAByS de servicio es un CAByS mal elegido, y el buscador lo muestra.
-- **Los XSD pasaron a los del ATV.** Al comparar los del repositorio (de un paquete de GitHub) con los oficiales resultaron ser una revisión anterior; lo que CONTAPP genera valida igual con los dos (`docs/einvoice/01-fuentes.md`).
+- **Los XSD pasaron a los del ATV.** Al comparar los del repositorio (de un paquete de GitHub) con los oficiales resultaron ser una revisión anterior; lo que Pivox genera valida igual con los dos (`docs/einvoice/01-fuentes.md`).
 - **Datos de ejemplo:** los artículos de demostración (seeder y los cargados en la compañía «prueba») pasaron a CAByS reales y a la unidad `Kg`. Los datos propios del usuario no se tocaron: su actividad 6209.9 (Hacienda tiene inscrita la 6209.0) y su artículo «Libro» (CAByS de un servicio de TI, unidad `Sp`) los corrige él.
 
 ---
@@ -46,7 +78,7 @@ Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe hist
 - **Administración → Facturación electrónica**, solo del Superusuario: datos del emisor, y por ambiente (pruebas y producción) el usuario y la contraseña del ATV y la llave `.p12` con su PIN, cifrados con la APP_KEY y revisados al cargarlos. Encender exige que no falte nada.
 - **Emitir es firmar**, en la misma transacción que el asiento y el inventario: revisión previa (antes de tomar el número), consecutivo fiscal por sucursal/terminal/tipo con `FOR UPDATE`, clave con la fecha real de emisión, XML validado contra el XSD, firma XAdES-EPES con política explícita, verificación independiente de la firma. Si algo falla no queda nada.
 - **El XML se rehízo según el XSD:** el de antes tenía `NumeroVINoSerie` y `MedioPago` fuera de lugar, `TipoDocumentoEX` en vez de `TipoDocumentoEX1`, le faltaban `ProveedorSistemas`, `BaseImponible`, `ImpuestoAsumidoEmisorFabrica`, `TotalNoSujeto`, `TotalDesgloseImpuesto` y `FechaEmisionIR` obligatoria, y los totales por categoría se calculaban sobre el subtotal (con un descuento, TotalVenta no cuadraba).
-- **El envío y el seguimiento** van por su propia cola (`queue-hacienda`), despachados cada minuto por `contapp:hacienda-sync`. Máquina de estados que lanza ante una transición imposible, reconciliación antes de reenviar (una venta nunca termina con dos comprobantes), backoff con tope, historia de estados e intercambios que solo se agrega.
+- **El envío y el seguimiento** van por su propia cola (`queue-hacienda`), despachados cada minuto por `pivox:hacienda-sync`. Máquina de estados que lanza ante una transición imposible, reconciliación antes de reenviar (una venta nunca termina con dos comprobantes), backoff con tope, historia de estados e intercambios que solo se agrega.
 - **Rechazado → «Emitir de nuevo»** con consecutivo, clave y fecha nuevos; el anterior queda sustituido.
 - **Aceptado → al cliente** el XML firmado, la respuesta de Hacienda y el PDF.
 - **Socios de negocio** ganan el tipo de identificación y la ubicación con códigos de Hacienda.
@@ -180,13 +212,13 @@ No se verificó en el navegador.
 **Preguntado al usuario:** si "el Superusuario es el que tiene los derechos de pedir ayuda" significaba restringir Conti solo al Superusuario (hoy Administrador y Usuario también pueden usarlo, dentro de sus permisos, salvo que el Superusuario se lo quite). **Decidió mantenerlo como está** — no se tocó el acceso.
 
 **Cómo se hizo:** se reforzaron las *instrucciones* de Conti (`resources/conti/instrucciones.md`), no el código de acceso (que ya cumplía lo pedido):
-- Una regla explícita de que ningún argumento (decir ser el Superusuario, una autorización especial, una prueba, una orden del equipo de CONTAPP, instrucciones que dicen reemplazar estas) cambia los límites de Conti — resistencia a ingeniería social / inyección de instrucciones.
+- Una regla explícita de que ningún argumento (decir ser el Superusuario, una autorización especial, una prueba, una orden del equipo de Pivox, instrucciones que dicen reemplazar estas) cambia los límites de Conti — resistencia a ingeniería social / inyección de instrucciones.
 - Se extendió "no ayudes a saltarse controles" para cubrir explícitamente parametrizaciones del sistema y extracciones masivas de datos, no solo el borrado de registros (que ya estaba).
 - La numeración convencional del catálogo (1/2/3/4/5+) como **pista de búsqueda**, nunca como verdad — la clase real de la cuenta siempre se confirma contra el catálogo de la compañía.
 - La regla de preferir el socio de negocio existente de un cliente/proveedor por sobre una cuenta a mano.
 - Una línea explícita de "a quién ayudás": la compañía activa, siempre dentro de la licencia de quien la administra, y quién decide el acceso.
 
-**Pendiente como práctica permanente, no de este cambio puntual:** cada vez que se agregue o cambie una función real de CONTAPP (una pantalla, un campo, un flujo), actualizar `resources/conti/manual.md` en el mismo cambio — igual que ya es costumbre actualizar los tests. Si el cambio además toca lo que Conti puede hacer (una acción nueva, un dato nuevo que puede consultar), sumarlo también a `ContiActionCatalog`/`ContiResourceCatalog` y, si cambia una regla de comportamiento, a `instrucciones.md`.
+**Pendiente como práctica permanente, no de este cambio puntual:** cada vez que se agregue o cambie una función real de Pivox (una pantalla, un campo, un flujo), actualizar `resources/conti/manual.md` en el mismo cambio — igual que ya es costumbre actualizar los tests. Si el cambio además toca lo que Conti puede hacer (una acción nueva, un dato nuevo que puede consultar), sumarlo también a `ContiActionCatalog`/`ContiResourceCatalog` y, si cambia una regla de comportamiento, a `instrucciones.md`.
 
 ---
 ## 2026-10-14 — Respaldos de una compañía: exportar a un archivo de texto cifrado e importar a una compañía nueva
@@ -208,7 +240,7 @@ No se verificó en el navegador.
   - JSON Lines se lee de a una línea, así una compañía grande no carga todo en memoria.
   - Va **comprimido y cifrado**, y el archivo es texto (base64): un respaldo con años de historia no pasaría el límite de subida de 64 MB.
 - **libsodium** (XChaCha20-Poly1305 por tramos y Argon2id para la clave): cada tramo se autentica, así un archivo cortado o editado no se abre. Una contraseña equivocada se detecta en el primer tramo.
-- **Una firma de la instalación** (HMAC con la APP_KEY): que solo se importe lo que CONTAPP exportó, tal cual.
+- **Una firma de la instalación** (HMAC con la APP_KEY): que solo se importe lo que Pivox exportó, tal cual.
   - Sin eso, alguien podría armar un archivo con asientos que nunca existieron y cifrarlo con su propia contraseña.
   - El costo: no sirve entre instalaciones, ni después de cambiar la APP_KEY. Eso calza con los usos que eligió el usuario.
 - **Qué lleva cada tabla se declara una vez** (`BackupCatalog`), como la Bitácora, con una prueba que exige clasificar cada tabla nueva. Las referencias se leen de la base: no hay una lista de 377 llaves foráneas que mantener.
@@ -245,16 +277,16 @@ No se verificó en el navegador.
 - **El programador ahora corre de verdad: servicio `scheduler` en `docker-compose.yml`** (`php artisan schedule:work`, que corre el programador cada minuto como el cron de un servidor).
   - Hasta hoy, `routes/console.php` declaraba tareas que nadie ejecutaba (ver 2026-08-24).
   - Usa la imagen `contapp-app` y no su entrypoint: las migraciones y la caché de rutas las hace `app`, y hacerlas dos veces a la vez se pisaría. Corre como root, igual que `docker exec`, para poder escribir `laravel.log`.
-  - **Consecuencia:** `contapp:process-journal-schedules` (borradores de los registros programados vencidos) también empieza a correr solo cada día, como se diseñó. Solo crea borradores; en la base de desarrollo no había ninguno programado.
+  - **Consecuencia:** `pivox:process-journal-schedules` (borradores de los registros programados vencidos) también empieza a correr solo cada día, como se diseñó. Solo crea borradores; en la base de desarrollo no había ninguno programado.
   - **En un servidor de producción** hace falta lo equivalente: este servicio, o el cron `* * * * * php artisan schedule:run`.
-- **`contapp:sync-bccr-rates` dos veces al día, a las 6:00 y a las 13:00 hora de Costa Rica** (`twiceDaily` con `timezone`, `withoutOverlapping`). Repetirlo no cambia nada (la tasa del día se actualiza con el mismo valor). La segunda sirve si a las 6 el BCCR no respondió.
+- **`pivox:sync-bccr-rates` dos veces al día, a las 6:00 y a las 13:00 hora de Costa Rica** (`twiceDaily` con `timezone`, `withoutOverlapping`). Repetirlo no cambia nada (la tasa del día se actualiza con el mismo valor). La segunda sirve si a las 6 el BCCR no respondió.
 - **«Hoy» es el día de Costa Rica, no el de UTC** (la aplicación corre en UTC: después de las 6 p. m. en Costa Rica, en UTC ya es mañana). Lo mismo para la fecha que propone Tipos de cambio, que ahora sale de la zona horaria de la compañía.
 - **Se completan los días que faltan** (`--catch-up`, 7 por defecto).
   - Si el servidor estuvo apagado, esos días no se quedan con la tasa del último día que corrió.
   - Solo se crea la que falta: una que ya existe, del BCCR o corregida a mano, no se toca ni se consulta.
   - Se pregunta al BCCR una vez por fecha, no por compañía.
 - **Constancia de la última vez** (`BccrSyncStatus`, en la caché): Tipos de cambio muestra cuándo fue y qué tipo de cambio trajo. Si falló, lo muestra en rojo con el motivo: un token vencido se ve el mismo día, no cuando a alguien le sale una tasa vieja.
-  - El mensaje que ve cada compañía no dice cuántas compañías hay en CONTAPP: eso queda solo en la salida del comando.
+  - El mensaje que ve cada compañía no dice cuántas compañías hay en Pivox: eso queda solo en la salida del comando.
 - **Verificado:**
   - con el token real: 4 compañías con el del 14/10/2026 (₡454,56) y los 7 días anteriores completados (el BCCR también publica los fines de semana, con el del viernes);
   - el `scheduler` corriendo, y `schedule:list` mostrando las dos horas;
@@ -322,7 +354,7 @@ No se verificó en el navegador.
   - Cuenta contable: fija con un asiento (también borrador) o un saldo inicial.
   - Socio: fijo desde que se crea; el maestro de proveedores es blanco típico de fraude, y su código está en estados de cuenta y partidas.
   - Empleado: fijo con su primera planilla; la plantilla de movimientos lo busca por código.
-  - Concepto de planilla: los de CONTAPP siempre; los propios, una vez usados.
+  - Concepto de planilla: los de Pivox siempre; los propios, una vez usados.
   - Carga social: siempre (une sus vigencias).
   - Categoría, departamento y puesto: fijos cuando ya se usan.
   - El resto de los catálogos ya no dejaba cambiarlo; ahora también sugiere el siguiente.
@@ -500,7 +532,7 @@ No se verificó en el navegador.
 
 - **El reconocimiento de voz del navegador (Web Speech API) y no la transcripción de OpenAI:**
   - es gratis y no gasta créditos de Conti;
-  - a CONTAPP no le llega audio, solo el texto que la persona envía.
+  - a Pivox no le llega audio, solo el texto que la persona envía.
   - En contra: Firefox no lo tiene (ahí el botón no aparece), y Chrome y Edge reconocen la voz en los servidores de Google o Microsoft.
   - Si hiciera falta en todos los navegadores, la alternativa es la transcripción de OpenAI, con costo en créditos.
 - **El texto queda en el campo para revisarlo,** como se acordó con el usuario: un error de reconocimiento no se manda solo. Lo dictado se suma a lo que ya estaba escrito, con mayúscula al empezar una oración.
@@ -531,7 +563,7 @@ No se verificó en el navegador.
   - Con un Administrador real de la compañía «prueba», sin acceso a Planillas, el prompt dice «Sin ningún acceso: …, Planillas…». El manual marca la sección de Empleados.
 
 ---
-## 2026-10-07 — El formulario sale a la primera, y CONTAPP lo completa según cómo se viene trabajando
+## 2026-10-07 — El formulario sale a la primera, y Pivox lo completa según cómo se viene trabajando
 
 **Pedido del usuario:**
 - con el modelo real, al pedir «registrá una cuenta contable» Conti respondía con una lista de datos que necesitaba, y el formulario aparecía recién varios mensajes después;
@@ -539,7 +571,7 @@ No se verificó en el navegador.
 
 - **El primer paso es obligatoriamente una herramienta** (`tool_choice` «required» en la primera vuelta) cuando el mensaje pide registrar o editar algo y la persona puede registrar algo. Las instrucciones ya lo pedían y el modelo no siempre hacía caso: así no tiene cómo contestar con una lista de preguntas.
   - Se decide por las palabras del mensaje (`ContiAgent::asksToRecord`). Si se equivoca, el costo es una herramienta de más: el manual ante un «¿cómo registro…?», o una consulta.
-- **Las sugerencias las calcula CONTAPP, no el modelo** (`ContiAction::suggest`). El modelo no conoce los patrones de la compañía y, si los adivina, los inventa. CONTAPP los saca de los datos:
+- **Las sugerencias las calcula Pivox, no el modelo** (`ContiAction::suggest`). El modelo no conoce los patrones de la compañía y, si los adivina, los inventa. Pivox los saca de los datos:
   - el código que sigue al último;
   - la cuenta de control y el plazo más usados;
   - el tipo de documento de los asientos manuales;
@@ -643,7 +675,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 - **En el código y no en n8n:**
   - El consumo hay que medirlo mensaje a mensaje, por licencia, compañía y persona, y cortarlo antes de llamar al modelo. Con n8n, los tokens quedaban del otro lado.
   - n8n era un servicio más para mantener y pagar (la prueba gratis era de 15 días).
-  - Ya no hace falta la API `/api/conti/*` ni los pases: las herramientas corren dentro de CONTAPP con la persona y la compañía del mensaje (`ContiContext`). Se borraron `routes/api.php`, `ContiTokenService`, `AuthenticateContiToken` y la tabla `conti_tokens`.
+  - Ya no hace falta la API `/api/conti/*` ni los pases: las herramientas corren dentro de Pivox con la persona y la compañía del mensaje (`ContiContext`). Se borraron `routes/api.php`, `ContiTokenService`, `AuthenticateContiToken` y la tabla `conti_tokens`.
 - **Una migración nueva** (`2026_10_06_100000_add_conti_usage_and_license_limits`) en vez de editar la del 2026-10-05: esa ya estaba subida, y en una base donde ya corrió, `migrate` no vuelve a correr un archivo editado.
 - **OpenAI Chat Completions con herramientas**, sin SDK: un `Http::post` con timeout (`OpenAiClient`). Cada error de OpenAI se traduce a un mensaje para la persona: key inválida, sin saldo, modelo que no existe, sin conexión. El modelo por defecto es `gpt-4.1-mini` (`OPENAI_MODEL`), por precio y porque maneja bien las herramientas.
 - **Créditos en vez de tokens:** 1 crédito = US$0,01 de lo que cobra el modelo.
@@ -656,7 +688,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 - **El manual va como herramienta, no en el prompt:** pesaba unos 30 000 tokens y se hubiera pagado en cada vuelta del agente. Ahora el prompt lleva el índice, y `manual` devuelve las secciones que se piden.
 - **El hilo de la conversación va en la caché, no en la base de datos:** 16 mensajes, 6 horas, solo texto. Los datos que devolvieron las consultas no se guardan, y la persona no tiene que mandar el historial (no se puede falsificar desde el navegador).
 - **El chat no escribe la sesión:** el pedido tarda varios segundos, y al terminar Laravel hubiera escrito la sesión que leyó al empezar, pisando, por ejemplo, un cambio de compañía hecho mientras tanto.
-- **El enlace de confirmación es relativo** (`/conti/acciones/…`): el panel lo abre dentro de CONTAPP y ya no depende de `APP_URL`.
+- **El enlace de confirmación es relativo** (`/conti/acciones/…`): el panel lo abre dentro de Pivox y ya no depende de `APP_URL`.
 - **Se confirma en un modal, sin salir de la pantalla** (pedido del usuario): el enlace del chat abre `ContiActionModal.vue` encima de donde se está, y al confirmar esa pantalla se recarga para mostrar lo guardado. La pantalla `Conti/Action.vue` queda para el enlace abierto en otra pestaña. Las dos usan el mismo controlador, con las mismas reglas: la persona dueña, su compañía activa, sus permisos y la licencia.
 - **Verificado:**
   - 55 pruebas en `tests/Feature/Conti`, con OpenAI simulado (`Http::fake`): el agente y sus vueltas, cada herramienta con sus permisos, licencia sin Conti, cada límite, el aviso del 80 %, el costo, los errores de OpenAI y el backoffice.
@@ -673,11 +705,11 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 **Pedido del usuario:** que Conti, el asistente de n8n, pueda consultar todo lo que la persona tiene registrado y opinar sobre eso, sin ver datos sensibles y respetando sus permisos. Que también pueda guardar datos, siempre que la persona lo permita y tenga el permiso.
 
 - **API propia en vez de conectar n8n a MySQL:** el filtro por compañía lo pone Laravel (`CompanyScope`) y los permisos por pantalla también. Con SQL directo el agente vería cualquier compañía y cualquier pantalla. La API (`/api/conti/*`) reutiliza los modelos, el scope, `ScreenAccessService` y los servicios de los reportes: Conti ve exactamente lo que la persona ve en el menú, con los mismos números.
-- **El chat es de CONTAPP y le habla a n8n desde el servidor.** El widget oficial de n8n pesa 1,7 MB y hubiera dejado el pase en el navegador. Así el pase no sale del servidor, y el Chat Trigger exige una contraseña que solo CONTAPP conoce: nadie más le puede hablar al agente ni gastar el modelo.
+- **El chat es de Pivox y le habla a n8n desde el servidor.** El widget oficial de n8n pesa 1,7 MB y hubiera dejado el pase en el navegador. Así el pase no sale del servidor, y el Chat Trigger exige una contraseña que solo Pivox conoce: nadie más le puede hablar al agente ni gastar el modelo.
 - **Un pase por mensaje, de 15 minutos** (`conti_tokens`, solo el hash). Se ata a la persona y a la compañía activa. Cada consulta vuelve a revisar la cuenta, la membresía y la licencia, y al cerrar sesión se revocan todos. Si se filtrara, sirve minutos y solo para lo que esa persona ya puede ver.
 - **Lista explícita de campos por conjunto, en español** (`ContiResourceCatalog`, 54 consultas), en vez de devolver filas enteras: un dato nuevo en una tabla no aparece solo en Conti. Encima, `ContiRedactor` limpia toda respuesta de correos, teléfonos, direcciones, identificación, número de asegurado, nacimiento y contraseñas, y enmascara las cuentas bancarias. Hace falta sobre todo para los reportes, que se reutilizan tal cual.
 - **El costo y el salario según la pantalla:** quien solo factura ve artículos sin costo promedio, y quien solo registra vacaciones ve la ficha del trabajador sin salario ni cuenta bancaria. Es lo mismo que pasa en sus pantallas.
-- **Guardar es preparar y confirmar.** Si el agente confirmara porque la persona escribió «sí», bastaría con convencer al modelo. Conti solo prepara (`POST /api/conti/acciones`), y la persona confirma en una pantalla de CONTAPP con su sesión. El agente no tiene cómo hacerlo.
+- **Guardar es preparar y confirmar.** Si el agente confirmara porque la persona escribió «sí», bastaría con convencer al modelo. Conti solo prepara (`POST /api/conti/acciones`), y la persona confirma en una pantalla de Pivox con su sesión. El agente no tiene cómo hacerlo.
   - **Al preparar**, la acción se prueba en seco: se ejecuta dentro de una transacción que se deshace. Así un período sin abrir, un asiento que no cuadra o una partida ya cerrada se dicen antes de que la persona abra el enlace.
   - **Al confirmar**, se revisan otra vez permisos y licencia, y se vuelve a preparar con los datos de ese momento. Solo se guarda si el resultado es idéntico (hash del payload) a lo que la persona vio.
 - **Doce acciones, las de uso diario:** asiento (preliminar por defecto), crear y actualizar socio, aplicar cobro o pago, tipo de cambio, centro de costo, cuenta contable, precios de una lista, orden de compra, anotación de un trabajador, movimiento de planilla y vacaciones. Cada una usa los mismos campos, reglas y servicios que el controlador de su pantalla. Quedaron afuera las que piden una firma o un proceso en pantalla: facturar con precio autorizado, mover inventario, cerrar períodos y calcular planillas.
@@ -764,7 +796,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 **Pedido del usuario:**
 - Que los permisos de Administradores y Usuarios sean por cada opción y subopción del menú lateral, no por módulo.
 - Que al crear a alguien le llegue una invitación por correo y no entre hasta aceptarla.
-- Si el correo no tiene cuenta en CONTAPP, que al aceptar complete sus datos y cree su contraseña: el Superusuario no escribe la contraseña ni los datos de nadie.
+- Si el correo no tiene cuenta en Pivox, que al aceptar complete sus datos y cree su contraseña: el Superusuario no escribe la contraseña ni los datos de nadie.
 
 **Permisos:**
 - **Una pantalla por opción del menú** (66, en `ScreenCatalog`), con sección, categoría y las rutas que le pertenecen. Cada una tiene tres niveles: sin acceso, lectura, y lectura y escritura.
@@ -804,25 +836,25 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 ## 2026-10-03 — Canal de comentarios y noticias en la barra superior
 
 **Pedido del usuario:**
-- Un canal donde la gente deje recomendaciones, sugerencias y comentarios sobre CONTAPP, en un panel lateral que abre un botón junto a «Salir». Votos a favor y en contra, como en Reddit, y lo más votado arriba.
+- Un canal donde la gente deje recomendaciones, sugerencias y comentarios sobre Pivox, en un panel lateral que abre un botón junto a «Salir». Votos a favor y en contra, como en Reddit, y lo más votado arriba.
 - Comentar lo de otros, con hasta dos imágenes por comentario (solo imágenes).
 - Desde el backoffice: ver, comentar como administrador, eliminar con el motivo por correo al autor, y dar por solucionado, con un agradecimiento por correo, para que deje de verse.
 - Una pestaña de noticias que publica el backoffice (una imagen, título, descripción y enlace), que se pueden editar y eliminar.
 - Las imágenes en R2: `comments/{id}_{n}` y `news/{id}_{n}`.
 
 - **Lo que se vota son las publicaciones; las respuestas no.** La lista que se ordena por votos es la de publicaciones. Las respuestas son la conversación de una publicación y se leen en el orden en que se escribieron, con las del equipo destacadas. No se vota lo propio.
-- **Publicaciones y respuestas en una sola tabla** (`feedback_comments.parent_id`): el id es único entre las dos, y las imágenes se llaman igual para ambas, `comments/{id}_{n}.{ext}`. El autor es una cuenta (`user_id`) o el equipo desde el backoffice (`propietario_id`), que se ve como «Equipo CONTAPP».
+- **Publicaciones y respuestas en una sola tabla** (`feedback_comments.parent_id`): el id es único entre las dos, y las imágenes se llaman igual para ambas, `comments/{id}_{n}.{ext}`. El autor es una cuenta (`user_id`) o el equipo desde el backoffice (`propietario_id`), que se ve como «Equipo Pivox».
 - **El puntaje** (`score`, a favor menos en contra) se recalcula desde `feedback_votes` en cada voto, con la publicación bloqueada. Así dos votos al mismo tiempo no se pisan.
 - **Global, de todas las licencias.** Del autor se muestra el nombre y la foto, nunca el correo ni la compañía. En el backoffice sí se ve el correo: es a quien se le escribe.
 - **Eliminar y solucionar no borran la fila:** la sacan de la aplicación y queda el registro (quién, cuándo, el motivo) en los filtros «Solucionadas» y «Eliminadas» del backoffice. Las imágenes de lo eliminado sí se borran del bucket. Una publicación solucionada por error se puede reabrir, sin avisarle a nadie.
 - **El autor puede borrar lo suyo** (no estaba pedido, pero sin esto no había forma de corregir un error). Eso sí se borra del todo, con sus imágenes y, si es una publicación, con sus comentarios y votos.
 - **Si el correo falla, la acción igual se hace**, y el mensaje del backoffice lo dice («…pero no se pudo enviar…»). No se encola: no hay worker de colas.
 - **Imágenes:** JPG o PNG (el GD del contenedor no tiene WebP), hasta 5 MB y 6000 px. Se vuelven a codificar (se van los metadatos, como el GPS de una foto) y se achican a 2000 px de lado si son más grandes; una captura tiene que seguir leyéndose.
-- **Como un chat:** en la pestaña Comentarios las publicaciones van arriba, con su propio desplazamiento, y el formulario para publicar queda fijo abajo («Contanos qué mejorarías de CONTAPP»). Lo recién publicado aparece primero y la lista sube hasta verlo. Corrección del usuario sobre la primera versión, que tenía el formulario arriba.
+- **Como un chat:** en la pestaña Comentarios las publicaciones van arriba, con su propio desplazamiento, y el formulario para publicar queda fijo abajo («Contanos qué mejorarías de Pivox»). Lo recién publicado aparece primero y la lista sube hasta verlo. Corrección del usuario sobre la primera versión, que tenía el formulario arriba.
 - **El panel habla JSON, no Inertia:** está en todas las pantallas, y una visita de Inertia recargaría la de atrás (un reporte, un asiento a medio cargar) en cada voto. Por eso sus rutas devuelven los errores en JSON (`bootstrap/app.php`) y el panel marca sus botones con `markBusy()`. Queda montado al cerrarlo, así no se pierde lo que se estaba escribiendo.
-- **El enlace de una noticia** es una dirección completa (http o https), que se abre en otra pestaña, o una pantalla de CONTAPP que empieza con «/», que se abre en la misma. No se acepta `javascript:` ni `//otro-sitio`.
+- **El enlace de una noticia** es una dirección completa (http o https), que se abre en otra pestaña, o una pantalla de Pivox que empieza con «/», que se abre en la misma. No se acepta `javascript:` ni `//otro-sitio`.
 - **El punto de noticias nuevas:** el servidor comparte la fecha de la última noticia (`latestNewsAt`, en caché, que se borra al publicar, editar o eliminar una). La fecha de la última que se vio queda en el navegador, por cuenta. En otro dispositivo el punto vuelve a aparecer.
-- **Modo de gracia:** escribir, votar y comentar quedan exentos (`EnforceLicenseGracePeriod`). El canal es sobre CONTAPP, no sobre la compañía vencida.
+- **Modo de gracia:** escribir, votar y comentar quedan exentos (`EnforceLicenseGracePeriod`). El canal es sobre Pivox, no sobre la compañía vencida.
 - **Límites por cuenta:** 10 publicaciones o comentarios por minuto y 60 votos por minuto, con limitadores con nombre (`AppServiceProvider`). Con `throttle:10,1`, todas las rutas que lo usan comparten un contador por cuenta, y votar dejaría a alguien sin poder publicar.
 - **De paso:**
   - `useForm` toma lo enviado como valor inicial después de un envío exitoso, y `reset()` volvía a poner el motivo de la eliminación anterior. Ahora cada campo se asigna al abrir (CLAUDE.md secc. 27).
@@ -860,7 +892,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 ---
 ## 2026-10-03 — Asignar una licencia desde el backoffice, con aceptación por correo
 
-**Pedido del usuario:** al crear una licencia en el backoffice, poder activarla de una vez a una persona —con cuenta en CONTAPP o con una cuenta nueva— mediante un correo de aceptación que dure como máximo 30 minutos. Si no la acepta, la licencia no se activa, y el backoffice puede reenviar el correo o cambiar los datos mientras no se haya activado. Si la persona ya tiene cuenta y su contraseña la puso otra persona, tiene que cambiarla para activar; si la cuenta la creó el backoffice, siempre.
+**Pedido del usuario:** al crear una licencia en el backoffice, poder activarla de una vez a una persona —con cuenta en Pivox o con una cuenta nueva— mediante un correo de aceptación que dure como máximo 30 minutos. Si no la acepta, la licencia no se activa, y el backoffice puede reenviar el correo o cambiar los datos mientras no se haya activado. Si la persona ya tiene cuenta y su contraseña la puso otra persona, tiene que cambiarla para activar; si la cuenta la creó el backoffice, siempre.
 
 - **El modelo:** `license_invitations`, una fila por licencia (`LicenseInvitationService`). Cada envío genera un token nuevo (en la base, solo su hash) que vence a los 30 minutos y deja sin efecto el anterior.
 - **Mientras no se acepte, la licencia queda reservada:** su código no sirve en la activación pública ni en «Activar una licencia», para que nadie se la gane a la persona a la que se asignó.
@@ -870,7 +902,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
   - **Cuenta existente cuya contraseña la definió otra persona** (`password_chosen_at` nulo): la cambia al aceptar, o no se activa.
   - **Cuenta existente con contraseña propia:** acepta con su contraseña de siempre.
   - Abrir el enlace prueba que la casilla es suya, así que la contraseña elegida ahí cuenta como propia.
-- **La cuenta nueva no se crea al asignar, sino al aceptar,** y el formulario del backoffice no pide contraseña. La regla exige que la persona elija la suya para activar, así que una contraseña puesta por el backoffice nunca llegaría a usarse. Crearla antes, sin poder usarse, además le bloquearía el correo a esa persona en el resto de CONTAPP (no podría activar otra licencia ni ser invitada).
+- **La cuenta nueva no se crea al asignar, sino al aceptar,** y el formulario del backoffice no pide contraseña. La regla exige que la persona elija la suya para activar, así que una contraseña puesta por el backoffice nunca llegaría a usarse. Crearla antes, sin poder usarse, además le bloquearía el correo a esa persona en el resto de Pivox (no podría activar otra licencia ni ser invitada).
 - **Validaciones al asignar:** la licencia sin dueño y vigente; para una cuenta existente, que exista, esté activa y no sea dueña de otra licencia; para una nueva, que el correo no tenga cuenta; y que el correo no tenga otra asignación esperando. Si la asignación no se puede hacer al emitir, tampoco se emite la licencia. Las mismas reglas se vuelven a comprobar al aceptar.
 - **En el backoffice:** al emitir, «Activación» con «Sin asignar» (como siempre: se entrega el código), «Cuenta existente» o «Cuenta nueva». Con un correo existente, la pantalla consulta si tiene cuenta, si ya es dueña de una licencia y si su contraseña es propia. La ficha muestra a quién está asignada, si el enlace sigue vigente y cuántas veces se envió, con «Reenviar correo», «Cambiar datos» y «Quitar asignación».
 - **Bitácora:** asignación, cambios, envíos, quitar y aceptar quedan en el historial de la licencia.
@@ -924,7 +956,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 ---
 ## 2026-10-01 — «Mi cuenta»: cada persona edita sus propios datos
 
-**Pedido del usuario:** que todo usuario de CONTAPP pueda editar desde su cuenta la información personal que guarda el sistema (nombre, apellidos, contraseña, etc.).
+**Pedido del usuario:** que todo usuario de Pivox pueda editar desde su cuenta la información personal que guarda el sistema (nombre, apellidos, contraseña, etc.).
 
 - **Qué guarda el sistema de una persona:** nombre, correo y contraseña. Los tres se editan en Mi cuenta → Mis datos (`ProfileController`, `Pages/Profile/Edit.vue`), para cualquier rol. La pantalla muestra además, solo para verlo, en qué compañías entra la cuenta y con qué rol.
 - **Nombre y apellidos van en un solo campo,** el `name` que ya existía. Separarlos en dos columnas obligaba a tocar el alta de usuarios, la activación y cada pantalla que muestra el nombre, sin que hoy nada lo necesite.
@@ -947,7 +979,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 
 - **La causa:** la activación solo sabía crear cuentas nuevas (exigía un correo sin usar) y era solo para invitados. El rol ya era por licencia desde antes (`User::isSuperAdmin()` resuelve contra la compañía activa); faltaba la puerta de entrada.
 - **Dos puertas, un servicio** (`LicenseActivationService::activateForExistingUser`):
-  - **Pública:** el formulario de activación tiene «Soy nuevo en CONTAPP» y «Ya tengo una cuenta». La segunda pide correo y contraseña actual.
+  - **Pública:** el formulario de activación tiene «Soy nuevo en Pivox» y «Ya tengo una cuenta». La segunda pide correo y contraseña actual.
   - **Con la sesión iniciada:** Administración → Activar una licencia (`LicenseRedemptionController`), para cualquier rol, visible mientras la cuenta no sea dueña de una.
 - **No toca la cuenta:** ni nombre, ni contraseña, ni sus membresías y roles en otras compañías. La compañía nueva pasa a ser la predeterminada (decidido con el usuario).
 - **No prende `users.is_super_admin`** en cuentas existentes: esa bandera solo se consulta en compañías sin licencia, y prenderla daría rango de Superusuario, de rebote, en cualquiera de esas a las que la cuenta perteneciera.
@@ -1015,7 +1047,7 @@ Siempre con los permisos y los límites de la persona y con la validación de si
 - **Sin parpadeo:** `app.blade.php` pone el tema desde el servidor en la primera pintura.
 - **Encontrado al probar:** al volver a una compañía estando en la misma página, el tema no se actualizaba. Inertia no dispara `navigate` cuando una visita termina en la misma dirección. Ahora se aplica en cada visita exitosa, y en `navigate` solo para ir atrás y adelante.
 - **Encontrado de paso:** la etiqueta del rol (SUPERUSUARIO) casi no se leía en modo oscuro, ya desde antes. Ahora mezcla el primario con el color del texto y se lee en los diez temas.
-- **Datos de prueba:** «Compañía de Prueba» quedó con el tema Esmeralda, para ver la diferencia al cambiar de compañía. CONTAPP Demo sigue en Marino.
+- **Datos de prueba:** «Compañía de Prueba» quedó con el tema Esmeralda, para ver la diferencia al cambiar de compañía. Pivox Demo sigue en Marino.
 
 ---
 ## 2026-09-30 — Transición al cambiar de compañía
@@ -2618,7 +2650,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **`propietarios` (tabla nueva) + guard `propietario` (`config/auth.php`)**: `App\Domains\Licensing\Models\Propietario` (mismo dominio que `License`/`LicenseCategory`/`CommercialProfile` — Propietario es quien los opera), deliberadamente mínimo (id/name/email/password/remember_token, sin relación con compañías ni roles). `defaults.guard` de `config/auth.php` sigue en `web` sin tocar — Propietario nunca es alcanzable por resolución default, solo por `auth:propietario` explícito. `EnsurePlatformAdmin` se retiró por completo (borrado, no reescrito): una vez que "ser Propietario" equivale exactamente a "estar autenticado en el guard `propietario`", el middleware stock `auth:propietario` de Laravel ya es el gate completo, sin flag secundario que chequear.
 
-**Prefijo `/backoffice`, no subdominio**: `docker/nginx/conf.d/app.conf` tiene `server_name _` sin ninguna infraestructura de subdominio/hosts local; CLAUDE.md ofrece ambas formas como válidas ("backoffice.contapp.app (o contapp.app/backoffice)"). Se renombró además todo `/platform/*` → `/backoffice/*` (rutas, nombres `platform.*`→`backoffice.*`, componentes Vue `Pages/Platform/*`→`Pages/Backoffice/*`): con esta entrega ya tocando todas esas pantallas para darles un layout nuevo, el costo incremental de renombrar era mínimo, y evitaba tener el login en `/backoffice/login` con las pantallas reales todavía en `/platform/*` — dos nombres para un mismo concepto que CLAUDE.md llama "backoffice" en todo el documento.
+**Prefijo `/backoffice`, no subdominio**: `docker/nginx/conf.d/app.conf` tiene `server_name _` sin ninguna infraestructura de subdominio/hosts local; CLAUDE.md ofrece ambas formas como válidas ("backoffice.pivox.app (o pivox.app/backoffice)"). Se renombró además todo `/platform/*` → `/backoffice/*` (rutas, nombres `platform.*`→`backoffice.*`, componentes Vue `Pages/Platform/*`→`Pages/Backoffice/*`): con esta entrega ya tocando todas esas pantallas para darles un layout nuevo, el costo incremental de renombrar era mínimo, y evitaba tener el login en `/backoffice/login` con las pantallas reales todavía en `/platform/*` — dos nombres para un mismo concepto que CLAUDE.md llama "backoffice" en todo el documento.
 
 **`BackofficeLayout.vue` (nuevo, deliberadamente chico)** reemplaza `AppLayout.vue` en las tres pantallas movidas (`Licenses/Index`, `LicenseCategories/Index`, `Licenses/CommercialProfile`): sin selector de compañía, sin sidebar de contabilidad, sin banner de modo de gracia — nav fija de 3 ítems (Licencias, Categorías, Indicadores de IVA) y logout contra el guard `propietario`.
 
@@ -2766,7 +2798,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Bug real encontrado antes de escribir el primer test, no después:** `HandleInertiaRequests` estaba registrado ANTES que `SetCurrentCompany` en `bootstrap/app.php`. `Inertia\Middleware::handle()` llama a `share()` ANTES de invocar `$next($request)` — así que si `HandleInertiaRequests` comparte `licenseGrace` antes de que `SetCurrentCompany` corra, siempre vería el valor por defecto (`false`), sin importar la licencia real. El único fix real es de orden: `SetCurrentCompany` ahora va primero en la lista de `append`, con un comentario explicando por qué el orden importa (para que nadie lo reordene "por prolijidad" en el futuro y reintroduzca el bug en silencio).
 
-**`License::maskedCode()`** (`CONTAPP-XXXX-XXXX-XXXX` → `CONTAPP-****-****-XXXX`) se agregó de una vez porque la propia secc. 13 lo exige ("nunca mostrar el identificador completo") y ya se estaba tocando el modelo — pero el pie de página con licencia enmascarada + versión (secc. 17) se dejó fuera de esta entrega a propósito: es un checklist item distinto, no lo que se pidió resolver ahora.
+**`License::maskedCode()`** (`PIVOX-XXXX-XXXX-XXXX` → `PIVOX-****-****-XXXX`) se agregó de una vez porque la propia secc. 13 lo exige ("nunca mostrar el identificador completo") y ya se estaba tocando el modelo — pero el pie de página con licencia enmascarada + versión (secc. 17) se dejó fuera de esta entrega a propósito: es un checklist item distinto, no lo que se pidió resolver ahora.
 
 **Verificado con 5 tests nuevos** (`LicenseGracePeriodTest`: `isExpiredButActive()` distingue vencida-no-revocada de las demás combinaciones, `maskedCode()` enmascara los dos segmentos del medio, `CurrentCompany::clear()` también apaga el modo de gracia) y **reescribiendo el test existente que asumía el comportamiento viejo** (`LicensingHttpTest`, "bloquea el login de una compañía cuya licencia venció" → dos tests: revocación sigue cerrando sesión de inmediato, vencimiento simple entra en gracia sin cerrar sesión, bloquea un POST de negocio con 403 sin llegar a validar el body, y confirma que `company-switch`/`logout` siguen funcionando) — suite completa: 447 tests, 1732 assertions. `vite build` compila el banner nuevo en `AppLayout.vue` sin errores (840 módulos). Sin verificación adicional contra Docker/MySQL real más allá de la suite: esta es una regla de sesión/middleware que los tests HTTP de Pest ya ejercitan de punta a punta (activación real, expiración real, request real bloqueada/permitida) de forma más precisa y repetible que un click-through manual.
 
@@ -2916,11 +2948,11 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Plantilla de línea deliberadamente reducida frente a una línea normal:** guarda cuenta, socio, moneda, monto, centro de costo y descripción — pero NO clave numérica electrónica, vencimiento de línea, IVA ni aplicación a partida abierta, porque esos son datos de UN documento puntual (una factura específica), no de una receta que se repite; completar eso cada vez es justo la revisión manual que el pedido exige antes de contabilizar. La pantalla de creación (`JournalEntries/Create.vue`, checkbox "Programable" en la parte de abajo del formulario) sí deja cargar esos campos por línea como siempre — simplemente no viajan a la programación si el usuario los llenó, se descartan al armar la plantilla.
 
-**Sin cron real corriendo `schedule:run` en este proyecto (mismo caso que ya existía con `contapp:sync-bccr-rates`, nunca resuelto: `ExchangeRates/Index.vue` tiene un botón de sync manual en vez de depender de un cron ausente).** Se declaró `Schedule::command('contapp:process-journal-schedules')->daily()` en `routes/console.php` de todas formas — es la forma correcta de expresar la intención en Laravel, y queda lista para cuando exista un contenedor de scheduler — pero como hoy no hay ninguna llamada real a `artisan schedule:run` en este stack Docker, "Registros programados" también expone un botón "Procesar vencidas ahora" (`JournalEntryScheduleController::processNow()`) que corre exactamente el mismo `processDue()` bajo demanda, mismo criterio que el botón de BCCR.
+**Sin cron real corriendo `schedule:run` en este proyecto (mismo caso que ya existía con `pivox:sync-bccr-rates`, nunca resuelto: `ExchangeRates/Index.vue` tiene un botón de sync manual en vez de depender de un cron ausente).** Se declaró `Schedule::command('pivox:process-journal-schedules')->daily()` en `routes/console.php` de todas formas — es la forma correcta de expresar la intención en Laravel, y queda lista para cuando exista un contenedor de scheduler — pero como hoy no hay ninguna llamada real a `artisan schedule:run` en este stack Docker, "Registros programados" también expone un botón "Procesar vencidas ahora" (`JournalEntryScheduleController::processNow()`) que corre exactamente el mismo `processDue()` bajo demanda, mismo criterio que el botón de BCCR.
 
 **Nav: "Asientos" pasó de link plano a grupo desplegable** (mismo mecanismo que "Bancos"/"Diferencial cambiario"), con "Todos los asientos" (lo que antes era el link directo) y "Registros programados" (pantalla nueva: lista de programaciones activas/vencidas/canceladas con botón "Cancelar", más la bandeja de preliminares pendientes con link directo a `journal-entries.edit` para revisar/contabilizar cada uno).
 
-**Verificado con 12 tests de servicio** (`JournalEntryScheduleServiceTest`: creación, rechazo de frecuencia/intervalo/vencimiento inválidos, generación de preliminar con `schedule_id`, no-generación si la fecha todavía no llega, avance por días y por meses sin overflow, marcado automático como `expired`, cancelación y su rechazo si ya no está activa, aislamiento entre compañías vía `processDueForAllCompanies` sin depender de `CurrentCompany` ambiental — mismo patrón ya usado por `SyncBccrExchangeRatesService`) **y 6 tests HTTP** (`JournalEntryScheduleHttpTest`: listado con programaciones + pendientes, creación sin contabilizar nada, rechazo de frecuencia inválida, "procesar ahora" de punta a punta, cancelación y su rechazo repetido) — suite completa: 375 tests, 1423 assertions. Verificado además con `php artisan schedule:list` (confirma el cron declarado) y una corrida real de `contapp:process-journal-schedules` contra la base de datos demo (0 generados, sin errores, correcto porque todavía no hay ninguna programación real cargada). Vite compila las 2 pantallas nuevas/tocadas (`JournalEntries/Create.vue`, `JournalEntrySchedules/Index.vue`) sin errores — verificado con un `vite build` completo (826 módulos, limpiado después) porque el servidor de Vite en modo dev no tenía un navegador conectado para confirmar por HMR.
+**Verificado con 12 tests de servicio** (`JournalEntryScheduleServiceTest`: creación, rechazo de frecuencia/intervalo/vencimiento inválidos, generación de preliminar con `schedule_id`, no-generación si la fecha todavía no llega, avance por días y por meses sin overflow, marcado automático como `expired`, cancelación y su rechazo si ya no está activa, aislamiento entre compañías vía `processDueForAllCompanies` sin depender de `CurrentCompany` ambiental — mismo patrón ya usado por `SyncBccrExchangeRatesService`) **y 6 tests HTTP** (`JournalEntryScheduleHttpTest`: listado con programaciones + pendientes, creación sin contabilizar nada, rechazo de frecuencia inválida, "procesar ahora" de punta a punta, cancelación y su rechazo repetido) — suite completa: 375 tests, 1423 assertions. Verificado además con `php artisan schedule:list` (confirma el cron declarado) y una corrida real de `pivox:process-journal-schedules` contra la base de datos demo (0 generados, sin errores, correcto porque todavía no hay ninguna programación real cargada). Vite compila las 2 pantallas nuevas/tocadas (`JournalEntries/Create.vue`, `JournalEntrySchedules/Index.vue`) sin errores — verificado con un `vite build` completo (826 módulos, limpiado después) porque el servidor de Vite en modo dev no tenía un navegador conectado para confirmar por HMR.
 
 ## 2026-08-24 — Anulación y duplicado de asientos: reversión con espejo exacto, activando esquema que ya existía dormido desde Fase 0
 
@@ -3148,7 +3180,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Decisión — dónde vive el vínculo "tarifa → cuenta":** `TaxType`/`TaxRate` son catálogo global del tenant (sin `company_id`, "el IVA es ley nacional"), pero `chart_of_accounts` es por compañía — un solo `TaxRate` no puede apuntar a una sola fila de `chart_of_accounts` porque cada compañía tiene cuentas distintas. Se descartó una tabla puente `company_tax_rate_accounts` y en su lugar `chart_of_accounts` gana una FK nullable `tax_rate_id` (migración `2026_08_19_150000_add_tax_rate_id_to_chart_of_accounts_table`): **la cuenta es la que declara a qué tarifa está vinculada**, no al revés. Esto resuelve solo con una columna nueva el caso que pidió el usuario ("igual tarifa, pero dos cuentas distintas: IVA Soportado si es compra, IVA Devengado si es venta") — cada compañía simplemente crea dos cuentas (una por dirección) y vincula ambas a la misma tarifa global, reutilizando el CRUD de cuentas que ya existía en vez de construir uno nuevo paralelo.
 
-**Catálogo de tarifas (`/tax-rates`, `TaxRateController`) editable, pero con escritura reservada a platform admin:** a diferencia de casi todo lo demás en CONTAPP, escribir acá afecta a **todas** las compañías del tenant a la vez (catálogo global, sin scope de compañía) — dejar que cualquier usuario edite "IVA-13" de 13% a 14% rompería silenciosamente las contabilizaciones de compañías ajenas a partir de ese momento. `index()` es visible para cualquier usuario autenticado (necesitan ver qué tarifas existen para vincular sus cuentas), pero `store`/`update`/`destroy` quedan detrás del middleware `platform-admin` ya existente (mismo mecanismo que `/platform/licenses`, no uno nuevo). Es una decisión de diseño propia, no pedida explícitamente — pero el usuario de prueba de este entorno (`admin@contapp.test`) ya es platform admin, así que no le cambia el flujo.
+**Catálogo de tarifas (`/tax-rates`, `TaxRateController`) editable, pero con escritura reservada a platform admin:** a diferencia de casi todo lo demás en Pivox, escribir acá afecta a **todas** las compañías del tenant a la vez (catálogo global, sin scope de compañía) — dejar que cualquier usuario edite "IVA-13" de 13% a 14% rompería silenciosamente las contabilizaciones de compañías ajenas a partir de ese momento. `index()` es visible para cualquier usuario autenticado (necesitan ver qué tarifas existen para vincular sus cuentas), pero `store`/`update`/`destroy` quedan detrás del middleware `platform-admin` ya existente (mismo mecanismo que `/platform/licenses`, no uno nuevo). Es una decisión de diseño propia, no pedida explícitamente — pero el usuario de prueba de este entorno (`admin@contapp.test`) ya es platform admin, así que no le cambia el flujo.
 
 **Una tarifa ya usada no se reescribe, solo se le cierra la vigencia:** `TaxRate` ya traía `effective_from`/`effective_to` y un comentario explícito ("una tarifa histórica nunca se edita, se cierra su vigencia y se crea una fila nueva") pero **nada en el código lo hacía cumplir** — ni la vigencia se validaba al contabilizar, ni existía ninguna pantalla que la respetara. `TaxRateController::update()` ahora revisa si la tarifa ya tiene algún `journal_detail_taxes`: si sí, el formulario solo deja tocar `effective_to`; si nunca se usó, se puede editar libre. Y en `PostJournalService::attachTax()` se agregó la llamada a `TaxRate::isEffectiveOn($documentDate)` que faltaba — **un bug real encontrado de paso**: sin este chequeo, "cerrar la vigencia" de una tarifa vieja era puramente cosmético, nada impedía seguir contabilizando contra un porcentaje que ya no debía aplicar. Nueva excepción `TaxRateNotEffectiveException`.
 
@@ -3212,7 +3244,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Cuando se le acaba el talonario:** no hay una acción especial de "reemplazar serie" — se crea una serie nueva a mano (ej. "PJ02", encargado "Pedro Jiménez", rango 2100-2150) igual que cualquier otra; nada en el diseño exige que el nombre del encargado sea único, así que la misma persona puede tener varias series a lo largo del tiempo (una por talonario que se le fue entregando). Es intencional: la serie vieja agotada queda en el historial tal cual (no se borra ni se reutiliza), y `PostJournalService` ya la rechaza sola por `NumberSeriesExhaustedException` en cuanto se pasa de rango.
 
-**Deliberadamente NO es una relación a `users`:** un cobrador de campo con un talonario físico normalmente no tiene ni necesita una cuenta de acceso a CONTAPP — exigir una cuenta de usuario solo para registrar de quién es un talonario habría sido una carga operativa que el pedido no justifica. `holder_name` es texto libre a propósito.
+**Deliberadamente NO es una relación a `users`:** un cobrador de campo con un talonario físico normalmente no tiene ni necesita una cuenta de acceso a Pivox — exigir una cuenta de usuario solo para registrar de quién es un talonario habría sido una carga operativa que el pedido no justifica. `holder_name` es texto libre a propósito.
 
 ## 2026-08-17 — Tipos de documento: sección de administración + numeración de dos vías (consecutivo automático + series manuales)
 
@@ -3275,9 +3307,9 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 ## 2026-08-14 — Toolbar de documento estilo SAP B1 (componente compartido, alcance deliberadamente parcial)
 
-**Decisión:** Se agregó `resources/js/Components/DocumentToolbar.vue`, una barra horizontal navy con acento inferior dorado (reutiliza `--color-warning`, no se inventó un token nuevo) que imita el toolbar clásico de documento de SAP B1 de la imagen de referencia del usuario. Trae 9 íconos SVG dibujados a mano (sin librería externa, mismo criterio que los íconos unicode ya usados en el sidebar): Buscar, Nuevo, Guardar, Imprimir, Exportar, Actualizar, Anterior, Siguiente, Adjuntos y Ayuda. Cada ícono se habilita solo si la página anfitriona le pasa el prop/handler correspondiente (`new-href`, `can-save`+`@save`, `export-href`, `prev-href`, `next-href`); Buscar/Imprimir/Actualizar siempre están activos porque son genéricos. Adjuntos y Ayuda quedan **siempre deshabilitados** — no existe todavía un módulo de adjuntos ni de ayuda en CONTAPP, y un ícono que aparenta funcionar sin hacer nada es peor que uno visiblemente reservado (mismo criterio que `requires_cost_center`, ver entrada del 2026-08-13 más abajo). Integrado por ahora en `BusinessPartners/Create.vue`, `BusinessPartners/Edit.vue` (nuevo) y `JournalEntries/Create.vue`.
+**Decisión:** Se agregó `resources/js/Components/DocumentToolbar.vue`, una barra horizontal navy con acento inferior dorado (reutiliza `--color-warning`, no se inventó un token nuevo) que imita el toolbar clásico de documento de SAP B1 de la imagen de referencia del usuario. Trae 9 íconos SVG dibujados a mano (sin librería externa, mismo criterio que los íconos unicode ya usados en el sidebar): Buscar, Nuevo, Guardar, Imprimir, Exportar, Actualizar, Anterior, Siguiente, Adjuntos y Ayuda. Cada ícono se habilita solo si la página anfitriona le pasa el prop/handler correspondiente (`new-href`, `can-save`+`@save`, `export-href`, `prev-href`, `next-href`); Buscar/Imprimir/Actualizar siempre están activos porque son genéricos. Adjuntos y Ayuda quedan **siempre deshabilitados** — no existe todavía un módulo de adjuntos ni de ayuda en Pivox, y un ícono que aparenta funcionar sin hacer nada es peor que uno visiblemente reservado (mismo criterio que `requires_cost_center`, ver entrada del 2026-08-13 más abajo). Integrado por ahora en `BusinessPartners/Create.vue`, `BusinessPartners/Edit.vue` (nuevo) y `JournalEntries/Create.vue`.
 
-**Motivo:** La imagen de referencia trae ~30 íconos de SAP B1 (find, navegación de registros, adjuntos, aprobar, etc.), la mayoría sin equivalente funcional hoy en CONTAPP. Construir 30 íconos decorativos que no hacen nada habría sido peor que no tenerlos — cada ícono de este componente, salvo los dos explícitamente marcados "próximamente", dispara una acción real. El componente es deliberadamente genérico (props, no una page-specific) para poder agregarlo al resto de las pantallas de documento (asientos existentes, conciliaciones, etc.) sin duplicar la barra.
+**Motivo:** La imagen de referencia trae ~30 íconos de SAP B1 (find, navegación de registros, adjuntos, aprobar, etc.), la mayoría sin equivalente funcional hoy en Pivox. Construir 30 íconos decorativos que no hacen nada habría sido peor que no tenerlos — cada ícono de este componente, salvo los dos explícitamente marcados "próximamente", dispara una acción real. El componente es deliberadamente genérico (props, no una page-specific) para poder agregarlo al resto de las pantallas de documento (asientos existentes, conciliaciones, etc.) sin duplicar la barra.
 
 **Bug evitado en el camino:** el primer borrador llamaba `window.print()` directo desde el `<template>`. Igual que `route()` (ver entrada de CORS/Vite del 2026-08-05), un identificador no reconocido por el compilador de SFC de Vue se resuelve contra `_ctx` (el componente), no contra `window` — habría fallado en producción con "Cannot read properties of undefined". Se corrigió envolviendo la llamada en un método `print()` dentro de `<script setup>`, donde `window` sí es el global real.
 
@@ -3285,13 +3317,13 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 ## 2026-08-13 — Socios de negocio: datos de contacto + fecha de inicio, y CRUD de edición que no existía
 
-**Decisión:** `business_partners` gana 5 columnas nuevas, todas opcionales salvo la última: `email`, `economic_activity_code` (código de actividad económica de Hacienda, para facturación electrónica futura), `phone`, `contact_name` ("encargado"), y `partner_since` (fecha, cast `date`). Al crear un socio, si no se manda `partner_since` explícito se asume **hoy**; si se manda uno (para migrar un cliente/proveedor que ya existía antes de usar CONTAPP), se respeta el valor indicado — no es un campo bloqueado al día de creación. De paso se agregó `BusinessPartnerController::edit/update` (con la misma resolución manual por id, sin binding implícito, que ya usa `ChartOfAccountController`), porque **no existía ninguna forma de editar un socio después de creado** — agregar 5 campos de contacto a un formulario de solo-alta habría sido inútil si nunca se pueden corregir después (un teléfono cambia, un encargado cambia). El estado (`active`/`inactive`) también se volvió editable ahí mismo; antes se fijaba en `'active'` y quedaba así para siempre.
+**Decisión:** `business_partners` gana 5 columnas nuevas, todas opcionales salvo la última: `email`, `economic_activity_code` (código de actividad económica de Hacienda, para facturación electrónica futura), `phone`, `contact_name` ("encargado"), y `partner_since` (fecha, cast `date`). Al crear un socio, si no se manda `partner_since` explícito se asume **hoy**; si se manda uno (para migrar un cliente/proveedor que ya existía antes de usar Pivox), se respeta el valor indicado — no es un campo bloqueado al día de creación. De paso se agregó `BusinessPartnerController::edit/update` (con la misma resolución manual por id, sin binding implícito, que ya usa `ChartOfAccountController`), porque **no existía ninguna forma de editar un socio después de creado** — agregar 5 campos de contacto a un formulario de solo-alta habría sido inútil si nunca se pueden corregir después (un teléfono cambia, un encargado cambia). El estado (`active`/`inactive`) también se volvió editable ahí mismo; antes se fijaba en `'active'` y quedaba así para siempre.
 
-**Motivo:** Pedido explícito del usuario. La fecha de inicio en particular tenía una redacción ambigua en el pedido ("que se cargue automáticamente cuando se registre"); se interpretó como "default inteligente a hoy, pero editable" en vez de "inmutable a la fecha de creación", porque una empresa que migra a CONTAPP con clientes de años atrás necesita poder decir "este cliente es nuestro desde 2019", no que el sistema le imponga la fecha de alta en CONTAPP como si fuera la fecha real de inicio de la relación comercial.
+**Motivo:** Pedido explícito del usuario. La fecha de inicio en particular tenía una redacción ambigua en el pedido ("que se cargue automáticamente cuando se registre"); se interpretó como "default inteligente a hoy, pero editable" en vez de "inmutable a la fecha de creación", porque una empresa que migra a Pivox con clientes de años atrás necesita poder decir "este cliente es nuestro desde 2019", no que el sistema le imponga la fecha de alta en Pivox como si fuera la fecha real de inicio de la relación comercial.
 
 ## 2026-08-13 — Sección de tipos de cambio (BCCR + manual), y is_locked ahora tiene efecto real
 
-**Decisión:** Nueva pantalla `/exchange-rates` (`ExchangeRateController` + `ExchangeRates/Index.vue`): historial de los últimos 90 tipos de cambio de la moneda extranjera de la compañía, botón para sincronizar contra el BCCR (reutiliza `SyncBccrExchangeRatesService`, que ya existía pero no tenía ninguna UI — solo un comando de consola `contapp:sync-bccr-rates`), y un formulario de carga/corrección manual (upsert por fecha+tipo, igual de idempotente que el sync automático). Aprovechando que se estaba tocando el flujo de guardado, se le dio efecto real a `is_locked` (columna que ya existía en el esquema desde el 2026-08-05 pero el sync la ignoraba): si una fila está bloqueada, el sync automático del BCCR **ya no la sobrescribe**; la corrección manual sí puede, porque ahí el usuario decide a propósito.
+**Decisión:** Nueva pantalla `/exchange-rates` (`ExchangeRateController` + `ExchangeRates/Index.vue`): historial de los últimos 90 tipos de cambio de la moneda extranjera de la compañía, botón para sincronizar contra el BCCR (reutiliza `SyncBccrExchangeRatesService`, que ya existía pero no tenía ninguna UI — solo un comando de consola `pivox:sync-bccr-rates`), y un formulario de carga/corrección manual (upsert por fecha+tipo, igual de idempotente que el sync automático). Aprovechando que se estaba tocando el flujo de guardado, se le dio efecto real a `is_locked` (columna que ya existía en el esquema desde el 2026-08-05 pero el sync la ignoraba): si una fila está bloqueada, el sync automático del BCCR **ya no la sobrescribe**; la corrección manual sí puede, porque ahí el usuario decide a propósito.
 
 **Motivo:** El usuario reportó que "faltaba una sección de carga para los tipos de cambio con base en el BCCR" — el backend (cliente SOAP/HTTP del BCCR, servicio de sincronización, comando de consola programable) ya existía de una fase anterior, pero nunca tuvo una pantalla; solo se podía disparar por CLI. `is_locked` sin efecto era una columna decorativa desde que se creó; como esta pantalla necesitaba ofrecer "bloquear para que el sync no me pise una corrección", tenía sentido cerrar ese cabo suelto en el mismo cambio en vez de agregar una casilla que no hacía nada.
 
@@ -3309,9 +3341,9 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 ## 2026-08-06 — Sistema de licencias en vez de registro público, y separación is_platform_admin vs is_super_admin
 
-**Decisión:** No hay registro público. La única puerta de entrada para un cliente nuevo es `/activate`, que exige un código de licencia emitido previamente por el dueño de CONTAPP (`/platform/licenses`, protegido por el nuevo flag `is_platform_admin`). Al activar, se crea la compañía + un usuario que queda como super usuario **de esa compañía** (`is_super_admin=true`), nunca como `is_platform_admin`. Cada licencia tiene `max_companies` (configurable al emitirla, no fija en 1) y `expires_at`; renovar = el platform admin extiende `expires_at` de la misma licencia (no se reemite código). El candado de vencimiento se revisa en cada request autenticado dentro de `SetCurrentCompany`: si la compañía activa nació de una licencia (`companies.license_id` no nulo) y esa licencia ya no es válida, se cierra la sesión ahí mismo. Una compañía sin `license_id` (creada por seeder/tinker) no tiene este candado — así el flujo de desarrollo/demo no depende de licencias.
+**Decisión:** No hay registro público. La única puerta de entrada para un cliente nuevo es `/activate`, que exige un código de licencia emitido previamente por el dueño de Pivox (`/platform/licenses`, protegido por el nuevo flag `is_platform_admin`). Al activar, se crea la compañía + un usuario que queda como super usuario **de esa compañía** (`is_super_admin=true`), nunca como `is_platform_admin`. Cada licencia tiene `max_companies` (configurable al emitirla, no fija en 1) y `expires_at`; renovar = el platform admin extiende `expires_at` de la misma licencia (no se reemite código). El candado de vencimiento se revisa en cada request autenticado dentro de `SetCurrentCompany`: si la compañía activa nació de una licencia (`companies.license_id` no nulo) y esa licencia ya no es válida, se cierra la sesión ahí mismo. Una compañía sin `license_id` (creada por seeder/tinker) no tiene este candado — así el flujo de desarrollo/demo no depende de licencias.
 
-**Motivo:** Es un producto B2B de contabilidad, no una app de consumo — el dueño de la plataforma necesita controlar quién entra sin que eso dependa de andar creando cada usuario a mano (lo que no escala). El punto más importante de esta decisión es que reveló una ambigüedad real en el modelo de roles: `is_super_admin` se había implementado como una bandera **global** en `users`, pero conceptualmente el brief original la definía como el rol tope **dentro de una compañía** ("super usuario capaz de gestionar y otorgar permisos" de esa empresa). Sin separar esto, cualquier usuario que activara una licencia habría quedado con privilegios de nivel plataforma (ej. poder reabrir el período fiscal cerrado de OTRA compañía, ver `FiscalPeriodPolicy`). `is_platform_admin` es exclusivamente para quien opera CONTAPP como negocio.
+**Motivo:** Es un producto B2B de contabilidad, no una app de consumo — el dueño de la plataforma necesita controlar quién entra sin que eso dependa de andar creando cada usuario a mano (lo que no escala). El punto más importante de esta decisión es que reveló una ambigüedad real en el modelo de roles: `is_super_admin` se había implementado como una bandera **global** en `users`, pero conceptualmente el brief original la definía como el rol tope **dentro de una compañía** ("super usuario capaz de gestionar y otorgar permisos" de esa empresa). Sin separar esto, cualquier usuario que activara una licencia habría quedado con privilegios de nivel plataforma (ej. poder reabrir el período fiscal cerrado de OTRA compañía, ver `FiscalPeriodPolicy`). `is_platform_admin` es exclusivamente para quien opera Pivox como negocio.
 
 **Pendiente:** `is_super_admin` sigue siendo técnicamente global en el esquema (no hay tabla `company_super_admins` separada); en la práctica no es un problema mientras cada usuario pertenezca a una sola compañía (que es como nace todo usuario vía `/activate`), pero si más adelante se permite que un mismo usuario pertenezca a varias compañías con roles distintos en cada una, este flag necesitará moverse a la tabla `user_roles` en vez de vivir en `users`. Anotado para no perderlo de vista.
 
@@ -3361,7 +3393,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Decisión:** La tabla `currencies` es un catálogo maestro simple (code, name, symbol, decimal_places), sin una columna `type` local/extranjera/sistema. El rol de cada moneda lo definen las FK de `companies` (`local_currency_id`, `foreign_currency_id`, `system_currency_id`), que pueden apuntar al mismo registro.
 
-**Motivo:** La propuesta original (`docs/propuesta-contapp.md` §4.2 y el primer `modelo-datos.dbml`) incluía `type` en `currencies`. Al implementar se confirmó que, con USD fijo como moneda de sistema y extranjera a la vez (decisión del 2026-08-04), forzar `type` habría exigido dos filas para USD con types distintos — dato redundante y propenso a inconsistencia. `docs/modelo-datos.dbml` fue actualizado para reflejar este ajuste.
+**Motivo:** La propuesta original (`docs/propuesta-pivox.md` §4.2 y el primer `modelo-datos.dbml`) incluía `type` en `currencies`. Al implementar se confirmó que, con USD fijo como moneda de sistema y extranjera a la vez (decisión del 2026-08-04), forzar `type` habría exigido dos filas para USD con types distintos — dato redundante y propenso a inconsistencia. `docs/modelo-datos.dbml` fue actualizado para reflejar este ajuste.
 
 ## 2026-08-05 — Partidas abiertas se marcan por línea (`opensItem`), no se infieren por tipo de cuenta
 
@@ -3379,7 +3411,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 **Decisión:** `ApplyPaymentService::apply()` acepta un `$exchangeRate` opcional. Si se pasa, calcula `realized_fx_difference` comparando ese tipo de cambio contra el de la línea que originó la partida (`journal_details.exchange_rate_lc_fc`). Es responsabilidad de quien llama pasarlo solo para partidas en moneda extranjera; el service no valida la moneda de la partida ni genera el asiento contable de la ganancia/pérdida realizada, solo la deja calculada y almacenada para reporte.
 
-**Motivo:** Evita que `ApplyPaymentService` necesite resolver la compañía/moneda de la partida (lo que exigiría bypasear `CompanyScope` otra vez) para una validación que el llamador ya conoce por contexto. Generar el asiento de la diferencia realizada queda pendiente para cuando se implemente el flujo completo de documentos de CxC en la capa de aplicación (controlador/UI), reutilizando `PostJournalService` con el tipo de documento que la compañía configure — mismo patrón que el diferencial cambiario no realizado de cierre (Fase 3, `docs/propuesta-contapp.md` §7).
+**Motivo:** Evita que `ApplyPaymentService` necesite resolver la compañía/moneda de la partida (lo que exigiría bypasear `CompanyScope` otra vez) para una validación que el llamador ya conoce por contexto. Generar el asiento de la diferencia realizada queda pendiente para cuando se implemente el flujo completo de documentos de CxC en la capa de aplicación (controlador/UI), reutilizando `PostJournalService` con el tipo de documento que la compañía configure — mismo patrón que el diferencial cambiario no realizado de cierre (Fase 3, `docs/propuesta-pivox.md` §7).
 
 ## 2026-08-05 — Nada se asume conciliado por defecto al abrir un corte bancario
 
@@ -3409,7 +3441,7 @@ Reusar la bisagra en las dos vueltas hace que la prueba central del módulo siga
 
 ## 2026-08-05 — Autorización de reapertura de período: en la Policy, no en el service
 
-**Decisión:** `PeriodCloseService::reopen()` ejecuta la transición mecánicamente; no valida QUIÉN puede pedirla. La regla de `docs/propuesta-contapp.md` (§4.4, "desbloqueo... reapertura de un cierre solo por super usuario, no delegable") queda pendiente de implementar como una Policy, siguiendo el mismo patrón ya usado en `JournalEntryPolicy` para el borrado de asientos contabilizados.
+**Decisión:** `PeriodCloseService::reopen()` ejecuta la transición mecánicamente; no valida QUIÉN puede pedirla. La regla de `docs/propuesta-pivox.md` (§4.4, "desbloqueo... reapertura de un cierre solo por super usuario, no delegable") queda pendiente de implementar como una Policy, siguiendo el mismo patrón ya usado en `JournalEntryPolicy` para el borrado de asientos contabilizados.
 
 **Motivo:** Mantener el service enfocado en el mecanismo (qué cambia en la BD) separado de la autorización (quién puede pedirlo), igual que se decidió para `JournalEntryPolicy`. Documentado aquí explícitamente para que quede como pendiente rastreable, no como un olvido silencioso.
 

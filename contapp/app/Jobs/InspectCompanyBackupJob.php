@@ -37,6 +37,6 @@ class InspectCompanyBackupJob extends CompanyBackupJob
 
     protected function unexpected(): string
     {
-        return 'El archivo no se pudo leer como un respaldo de CONTAPP.';
+        return 'El archivo no se pudo leer como un respaldo de Pivox.';
     }
 }

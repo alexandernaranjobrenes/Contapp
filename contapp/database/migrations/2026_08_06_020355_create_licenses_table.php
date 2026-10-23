@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('licenses', function (Blueprint $table) {
             $table->id();
-            $table->string('code')->unique()->comment('código que el cliente activa, ej. CONTAPP-XXXX-XXXX-XXXX');
+            $table->string('code')->unique()->comment('código que el cliente activa, ej. PIVOX-XXXX-XXXX-XXXX');
             $table->unsignedSmallInteger('max_companies')->default(1);
             $table->date('expires_at');
             $table->string('status')->default('active')->comment('active|revoked');

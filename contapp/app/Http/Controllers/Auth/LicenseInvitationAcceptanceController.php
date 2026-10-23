@@ -55,7 +55,7 @@ class LicenseInvitationAcceptanceController extends Controller
         $invitation = $service->findByToken($token);
 
         if ($invitation === null) {
-            return back()->withErrors(['invitation' => 'Este enlace no es válido. Revisá que lo hayas copiado entero, o pedile al equipo de CONTAPP que te reenvíe el correo.']);
+            return back()->withErrors(['invitation' => 'Este enlace no es válido. Revisá que lo hayas copiado entero, o pedile al equipo de Pivox que te reenvíe el correo.']);
         }
 
         $validated = $request->validate([

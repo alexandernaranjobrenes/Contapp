@@ -25,7 +25,7 @@ use function Illuminate\Support\defer;
  * ── La respuesta es la misma exista o no el correo ───────────────────────
  *
  * Decir «ese correo no está registrado» convertiría esta pantalla en una
- * forma de averiguar quién tiene cuenta en CONTAPP. Por eso responde igual
+ * forma de averiguar quién tiene cuenta en Pivox. Por eso responde igual
  * en todos los casos: correo desconocido, enlace enviado, o enlace pedido
  * hace menos de un minuto (el broker no manda otro tan seguido).
  *

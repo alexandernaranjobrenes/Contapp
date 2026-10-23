@@ -14,7 +14,7 @@ class AgingExporter
      * $includeDocuments agrega, debajo de cada socio, el detalle de sus
      * documentos (número, vencimiento, monto original, saldo, tramo) — lo
      * mismo que la ficha que se abre al tocar un socio en pantalla, para
-     * quien necesita el XLSX/PDF con ese nivel sin tener que abrir CONTAPP.
+     * quien necesita el XLSX/PDF con ese nivel sin tener que abrir Pivox.
      */
     public function writeTo(string $outputPath, ReportHeader $header, AgingResult $result, bool $includeDocuments = false): void
     {

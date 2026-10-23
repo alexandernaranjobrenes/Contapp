@@ -129,7 +129,7 @@ class ContiChatController extends Controller
         }
 
         foreach ($reply->actions as $pending) {
-            $notes[] = '(Preparé «'.($pending->summary['titulo'] ?? $pending->action)."» (id {$pending->uuid}): CONTAPP le abrió la ventana para confirmarlo.)";
+            $notes[] = '(Preparé «'.($pending->summary['titulo'] ?? $pending->action)."» (id {$pending->uuid}): Pivox le abrió la ventana para confirmarlo.)";
         }
 
         return trim($reply->text."\n\n".implode("\n", $notes));

@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Cierre/bloqueo/reapertura de períodos. La AUTORIZACIÓN de quién puede
  * reabrir un período Cerrado (solo super usuario, no delegable, según
- * docs/propuesta-contapp.md §4.4) es responsabilidad de la Policy que llame
+ * docs/propuesta-pivox.md §4.4) es responsabilidad de la Policy que llame
  * a este service — igual patrón que JournalEntryPolicy con el borrado de
  * asientos: el service ejecuta el mecanismo, la Policy decide quién puede pedirlo.
  */

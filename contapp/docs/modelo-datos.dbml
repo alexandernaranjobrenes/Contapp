@@ -1,9 +1,9 @@
-// CONTAPP — Modelo de datos propuesto
-// Ver docs/propuesta-contapp.md para el razonamiento de cada dominio.
+// Pivox — Modelo de datos propuesto
+// Ver docs/propuesta-pivox.md para el razonamiento de cada dominio.
 // Convención: toda tabla transaccional/de configuración lleva company_id
 // (excepto las marcadas como globales) y aplica CompanyScope en Eloquent.
 
-Project contapp {
+Project pivox {
   database_type: 'MySQL'
   note: 'ERP contable SaaS multi-empresa para Costa Rica'
 }

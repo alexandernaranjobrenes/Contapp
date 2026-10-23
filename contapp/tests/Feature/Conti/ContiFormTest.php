@@ -19,7 +19,7 @@ require_once __DIR__.'/helpers.php';
 |
 | Para registrar o editar, Conti muestra el formulario de la acción en el
 | chat con lo que ya sabe; al enviarlo se prepara (las mismas validaciones
-| de siempre) y CONTAPP abre la ventana para confirmar. Para que la persona
+| de siempre) y Pivox abre la ventana para confirmar. Para que la persona
 | elija, le hace preguntas con opciones. Ni el formulario ni las preguntas
 | las ve el modelo: van directo al chat.
 |

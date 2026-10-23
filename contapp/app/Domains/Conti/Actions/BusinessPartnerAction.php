@@ -29,7 +29,7 @@ abstract class BusinessPartnerAction extends BaseContiAction
     protected function partnerFields(): array
     {
         return [
-            'codigo' => 'código del socio (CLI-0001, PRV-0001…); lo propone CONTAPP y no se cambia después de crearlo',
+            'codigo' => 'código del socio (CLI-0001, PRV-0001…); lo propone Pivox y no se cambia después de crearlo',
             'nombre' => 'nombre o razón social',
             'tipo' => 'cliente | proveedor | ambos',
             'cedula' => 'cédula física o jurídica (opcional)',
@@ -55,7 +55,7 @@ abstract class BusinessPartnerAction extends BaseContiAction
         $required = ! $editing;
 
         return [
-            $this->field('codigo', 'Código', 'texto', ['requerido' => $required, 'ayuda' => 'Lo propone CONTAPP según el tipo (CLI-0001, PRV-0001). Después de crear el socio no se cambia.']),
+            $this->field('codigo', 'Código', 'texto', ['requerido' => $required, 'ayuda' => 'Lo propone Pivox según el tipo (CLI-0001, PRV-0001). Después de crear el socio no se cambia.']),
             $this->field('nombre', 'Nombre o razón social', 'texto', ['requerido' => $required]),
             $this->field('tipo', 'Tipo', 'opciones', ['requerido' => $required, 'opciones' => self::TYPES, 'recalcula' => ! $editing]),
             $this->field('cuenta_control', 'Cuenta de control (CxC o CxP)', 'buscar', ['requerido' => $required, 'fuente' => 'cuentas', 'filtros' => ['acepta_movimientos' => 'sí']]),

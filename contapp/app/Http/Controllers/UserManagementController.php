@@ -155,7 +155,7 @@ class UserManagementController extends Controller
     }
 
     /**
-     * Antes de invitar: ¿el correo ya tiene cuenta en CONTAPP? Si la tiene, se
+     * Antes de invitar: ¿el correo ya tiene cuenta en Pivox? Si la tiene, se
      * muestra su nombre, para que quien invita reconozca a la persona. Nunca
      * crea nada.
      */

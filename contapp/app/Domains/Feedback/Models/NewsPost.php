@@ -7,12 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Una noticia de CONTAPP —una actualización, un aviso— que publica el
+ * Una noticia de Pivox —una actualización, un aviso— que publica el
  * backoffice y ven todas las cuentas en el panel de la barra superior
  * (pestaña «Noticias»). Global, sin compañía.
  *
  * link_url es opcional: una dirección completa (https://…), que se abre en
- * otra pestaña, o una pantalla de CONTAPP (/dashboard), que se abre en la
+ * otra pestaña, o una pantalla de Pivox (/dashboard), que se abre en la
  * misma.
  */
 class NewsPost extends Model
@@ -31,7 +31,7 @@ class NewsPost extends Model
         return $this->belongsTo(Propietario::class, 'created_by');
     }
 
-    /** ¿El enlace es una pantalla de CONTAPP y no otro sitio? */
+    /** ¿El enlace es una pantalla de Pivox y no otro sitio? */
     public function hasInternalLink(): bool
     {
         return $this->link_url !== null && str_starts_with($this->link_url, '/');

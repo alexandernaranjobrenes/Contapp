@@ -18,7 +18,7 @@ return new class extends Migration
      * filas por pantalla.
      *
      * company_invitations: la invitación de un Superusuario o Administrador a
-     * una persona —tenga o no cuenta en CONTAPP— para trabajar en una
+     * una persona —tenga o no cuenta en Pivox— para trabajar en una
      * compañía (CompanyInvitationService). Hasta que la acepta desde el correo
      * no entra: la cuenta (si es nueva), el acceso a la compañía, el rol y los
      * permisos se crean al aceptar, con lo que guarda esta fila.

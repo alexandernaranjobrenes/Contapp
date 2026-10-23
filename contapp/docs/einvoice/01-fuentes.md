@@ -30,7 +30,7 @@ CDN de Hacienda no permitía la descarga automatizada. Al compararla con la ofic
 anterior: `Proporcion` y `ProporcionSurtido` con 5 dígitos y 2 decimales (la oficial: 10 y 5), una sola `ds:Signature`
 (la oficial: hasta 5), `NumTelefono` desde 10000000 (la oficial: desde 100), la cédula del MensajeReceptor de 9 a 12
 dígitos (la oficial: hasta 20 caracteres), y monedas que la oficial ya no acepta (XAU, XAG, XPD, XPT, XBA-XBD, XTS,
-XXX). Todo lo que CONTAPP genera valida igual con las dos.
+XXX). Todo lo que Pivox genera valida igual con las dos.
 
 Las etiquetas de los catálogos de `FiscalCatalogs` salen de la documentación de cada `<xs:enumeration>` de estos XSD.
 

@@ -80,6 +80,18 @@ return [
             'report' => false,
         ],
 
+        // Los documentos del Repositorio (los .md que sube el backoffice). Van
+        // en public/repositories, pero no se sirven desde ahí: nginx y el
+        // .htaccess de la carpeta niegan el acceso directo. Se leen solo
+        // desde la aplicación (el PDF para las cuentas, Conti), que respeta
+        // si cada uno está activo.
+        'repositories' => [
+            'driver' => 'local',
+            'root' => public_path('repositories'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

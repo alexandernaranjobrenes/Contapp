@@ -93,12 +93,12 @@ it('una descarga pedida por la aplicación contesta sus errores en JSON, con el 
     logInAsCompanyUser(null, ['is_super_admin' => true]);
 
     // Una fecha que no es fecha: el reporte no se puede armar.
-    $this->get(route('reports.trial-balance.export', ['from' => 'no-es-una-fecha']), ['X-Contapp-Download' => '1'])
+    $this->get(route('reports.trial-balance.export', ['from' => 'no-es-una-fecha']), ['X-Pivox-Download' => '1'])
         ->assertStatus(422)
         ->assertJsonStructure(['message', 'errors']);
 
     // Una que sí se puede: el archivo, como siempre.
-    $this->get(route('reports.trial-balance.export', ['from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString()]), ['X-Contapp-Download' => '1'])
+    $this->get(route('reports.trial-balance.export', ['from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString()]), ['X-Pivox-Download' => '1'])
         ->assertOk()
         ->assertHeader('Content-Disposition');
 });
@@ -111,7 +111,7 @@ it('una descarga sin permiso contesta 403 en JSON', function () {
     $user->forceFill(['default_company_id' => $company->id])->save();
     $this->actingAs($user);
 
-    $this->get(route('reports.trial-balance.export'), ['X-Contapp-Download' => '1'])
+    $this->get(route('reports.trial-balance.export'), ['X-Pivox-Download' => '1'])
         ->assertForbidden()
         ->assertJsonStructure(['message']);
 });

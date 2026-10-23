@@ -59,7 +59,7 @@ function printNow() {
 
 function closeTab() {
     window.close();
-    // Si la pestaña no la abrió CONTAPP, el navegador no deja cerrarla.
+    // Si la pestaña no la abrió Pivox, el navegador no deja cerrarla.
     history.back();
 }
 </script>

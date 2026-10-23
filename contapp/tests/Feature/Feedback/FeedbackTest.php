@@ -15,7 +15,7 @@ use Illuminate\Support\Testing\Fakes\NotificationFake;
 
 /*
 |--------------------------------------------------------------------------
-| El canal de comentarios sobre CONTAPP
+| El canal de comentarios sobre Pivox
 |--------------------------------------------------------------------------
 |
 | Desde la aplicación (panel de la barra superior, JSON): publicar con hasta
@@ -293,7 +293,7 @@ it('el backoffice ve las publicaciones abiertas, con el correo del autor y sus r
         ->assertInertia(fn ($page) => $page->where('posts.data.0.body', 'Ya resuelta'));
 });
 
-it('el backoffice responde como equipo de CONTAPP, y la respuesta se ve en la aplicación', function () {
+it('el backoffice responde como equipo de Pivox, y la respuesta se ve en la aplicación', function () {
     $beto = User::factory()->create(['status' => 'active']);
     $post = feedbackPost($beto);
     $propietario = loginAsPropietario(['name' => 'Kevin']);
@@ -322,20 +322,20 @@ it('el backoffice quita una publicación: deja de verse, se borran sus imágenes
 
     $propietario = loginAsPropietario();
 
-    $this->post(route('backoffice.feedback.remove', $post), ['reason' => 'No es un comentario sobre CONTAPP.'])
+    $this->post(route('backoffice.feedback.remove', $post), ['reason' => 'No es un comentario sobre Pivox.'])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('success', fn ($message) => str_contains($message, 'ana@example.com'));
 
     $post->refresh();
     expect($post->status)->toBe(FeedbackComment::REMOVED)
         ->and($post->removed_by)->toBe($propietario->id)
-        ->and($post->removal_reason)->toBe('No es un comentario sobre CONTAPP.')
+        ->and($post->removal_reason)->toBe('No es un comentario sobre Pivox.')
         ->and(Storage::disk('s3')->allFiles())->toBe([]);
 
     Notification::assertSentTo($ana, FeedbackRemovedNotification::class, function ($notification) use ($ana) {
         $mail = $notification->toMail($ana);
 
-        return $mail->viewData['reason'] === 'No es un comentario sobre CONTAPP.'
+        return $mail->viewData['reason'] === 'No es un comentario sobre Pivox.'
             && $mail->viewData['what'] === 'tu publicación';
     });
 

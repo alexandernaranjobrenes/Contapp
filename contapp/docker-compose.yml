@@ -70,7 +70,7 @@ services:
   # electrónicos, consultar su estado y entregarlos al cliente. Aparte de
   # «backups», que con un respaldo grande puede ocupar su worker una hora: un
   # comprobante no puede esperar eso. Lo que toca hacer lo despacha cada minuto
-  # el servicio `scheduler` (contapp:hacienda-sync).
+  # el servicio `scheduler` (pivox:hacienda-sync).
   queue-hacienda:
     image: contapp-app
     container_name: contapp_queue_hacienda

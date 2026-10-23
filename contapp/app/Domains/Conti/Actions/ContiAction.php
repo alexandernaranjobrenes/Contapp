@@ -9,7 +9,7 @@ use App\Models\User;
  * Algo que Conti puede guardar (ContiActionCatalog).
  *
  * Nunca se guarda en el momento: Conti lo prepara (prepare, que valida y
- * resuelve los códigos), la persona lo revisa en CONTAPP y, si lo confirma,
+ * resuelve los códigos), la persona lo revisa en Pivox y, si lo confirma,
  * recién ahí se ejecuta (execute) —con sus permisos de ese momento y los
  * mismos servicios y reglas que usa la pantalla correspondiente—.
  */
@@ -46,7 +46,7 @@ interface ContiAction
     public function formValues(array $values, Company $company): array;
 
     /**
-     * Lo que CONTAPP sugiere para los campos vacíos, según cómo se viene
+     * Lo que Pivox sugiere para los campos vacíos, según cómo se viene
      * trabajando en la compañía (el código que sigue, la cuenta que más se
      * usa…). Campo => ['valor' => …, 'motivo' => por qué]. Se recalcula
      * cuando cambia un campo marcado con «recalcula».

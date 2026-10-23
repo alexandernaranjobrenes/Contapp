@@ -111,7 +111,7 @@ final class BackupFile
     }
 
     /**
-     * Que sea un respaldo de CONTAPP y que la contraseña sea la suya: el
+     * Que sea un respaldo de Pivox y que la contraseña sea la suya: el
      * encabezado y el primer tramo, nada más. Lo hace la subida, que tiene
      * que contestar enseguida; la revisión completa (descifrar todo, el
      * SHA-256 y la firma) va en la cola.
@@ -236,7 +236,7 @@ final class BackupFile
         $first = fgets($handle);
 
         if ($first === false || trim($first) !== self::MAGIC) {
-            throw new InvalidBackupException('Este archivo no es un respaldo de CONTAPP.');
+            throw new InvalidBackupException('Este archivo no es un respaldo de Pivox.');
         }
 
         $header = [];
@@ -261,7 +261,7 @@ final class BackupFile
         }
 
         if ((int) $header['version'] !== 1) {
-            throw new InvalidBackupException('Este respaldo es de una versión de CONTAPP que esta no conoce.');
+            throw new InvalidBackupException('Este respaldo es de una versión de Pivox que esta no conoce.');
         }
 
         if ((int) $header['ops'] < 1 || (int) $header['ops'] > self::MAX_OPS || (int) $header['mem'] < 8192 || (int) $header['mem'] > self::MAX_MEM) {

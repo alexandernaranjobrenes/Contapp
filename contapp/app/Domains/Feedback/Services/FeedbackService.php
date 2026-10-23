@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * El canal de comentarios sobre CONTAPP: las cuentas publican sugerencias,
+ * El canal de comentarios sobre Pivox: las cuentas publican sugerencias,
  * comentarios e ideas, las votan (a favor o en contra) y las comentan; el
  * backoffice las responde, las quita con un motivo o las da por resueltas.
  *

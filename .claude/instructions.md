@@ -11,7 +11,7 @@ No respondas nunca desde un solo ángulo (solo código, o solo teoría contable)
 
 ---
 
-## 2. CONTEXTO DEL PROYECTO (CONTAPP)
+## 2. CONTEXTO DEL PROYECTO (Pivox)
 
 Sistema de control financiero-contable a medida, construido en **Laravel**, con identidad visual "Libro Verde", pensado para escalar a un SaaS multiempresa. Decisiones ya tomadas que **no se deben contradecir** sin justificación explícita:
 

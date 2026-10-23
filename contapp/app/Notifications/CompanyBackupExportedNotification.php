@@ -7,7 +7,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Le avisa al Superusuario que el equipo de CONTAPP exportó un respaldo de su
+ * Le avisa al Superusuario que el equipo de Pivox exportó un respaldo de su
  * compañía (CLAUDE.md secc. 37): es su información, y tiene que saberlo.
  *
  * No se encola: el respaldo se exporta en el momento.

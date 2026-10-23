@@ -25,7 +25,7 @@ require_once __DIR__.'/helpers.php';
 |--------------------------------------------------------------------------
 |
 | Conti prepara (con su herramienta, a nombre de la persona) y la persona
-| confirma en CONTAPP (con su sesión). Nada se escribe al preparar; al
+| confirma en Pivox (con su sesión). Nada se escribe al preparar; al
 | confirmar se vuelve a revisar todo.
 |
 */
@@ -43,7 +43,7 @@ function partnersOf(Company $company)
     return BusinessPartner::withoutGlobalScope(CompanyScope::class)->where('company_id', $company->id);
 }
 
-it('preparar no guarda nada: deja la acción pendiente, con su resumen, y sin enlace (CONTAPP abre la ventana)', function () {
+it('preparar no guarda nada: deja la acción pendiente, con su resumen, y sin enlace (Pivox abre la ventana)', function () {
     $f = contiPartnerFixture();
 
     $response = contiPrepare($f, 'crear_socio', [
@@ -58,7 +58,7 @@ it('preparar no guarda nada: deja la acción pendiente, con su resumen, y sin en
         ->and(ContiAction::first()->status)->toBe('pending');
 });
 
-it('al confirmar en CONTAPP se guarda con su usuario, y el agente ve el resultado', function () {
+it('al confirmar en Pivox se guarda con su usuario, y el agente ve el resultado', function () {
     $f = contiPartnerFixture();
     $uuid = contiPrepare($f, 'crear_socio', [
         'codigo' => 'C-100', 'nombre' => 'Ferretería Central', 'tipo' => 'ambos', 'cuenta_control' => '1-01-02-001', 'plazo_dias' => 30,

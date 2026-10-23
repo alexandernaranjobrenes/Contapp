@@ -27,7 +27,7 @@ use Throwable;
  *    una transacción que se deshace—, así un período cerrado o un asiento
  *    que no cuadra se dicen antes de molestar a la persona. Queda pendiente,
  *    sin escribir nada.
- * 2. Confirmar (CONTAPP, con la sesión de la persona): vuelve a revisar sus
+ * 2. Confirmar (Pivox, con la sesión de la persona): vuelve a revisar sus
  *    permisos y la licencia, lo prepara de nuevo con los datos de ese momento
  *    y, solo si sale exactamente lo mismo que se le mostró, lo guarda.
  *
@@ -69,7 +69,7 @@ class ContiActionService
     }
 
     /**
-     * La persona confirmó en CONTAPP. Devuelve la acción con su estado final
+     * La persona confirmó en Pivox. Devuelve la acción con su estado final
      * (guardada o fallida, con el motivo). Corta con 403 si hoy ya no puede.
      */
     public function confirm(PendingAction $pending, User $user): PendingAction
@@ -153,9 +153,9 @@ class ContiActionService
             },
             'estado_texto' => PendingAction::STATUSES[$status] ?? $status,
             'resumen' => $pending->summary,
-            // Sin enlace: CONTAPP le abre la ventana a la persona (el modelo
+            // Sin enlace: Pivox le abre la ventana a la persona (el modelo
             // no tiene nada que copiar ni que inventar).
-            'confirmacion' => $status === 'pending' ? 'CONTAPP le abrió a la persona la ventana para revisarlo y confirmarlo.' : null,
+            'confirmacion' => $status === 'pending' ? 'Pivox le abrió a la persona la ventana para revisarlo y confirmarlo.' : null,
             'vence' => $pending->localTime($pending->expires_at),
             'resultado' => $pending->result,
             'error' => $pending->error,
@@ -197,7 +197,7 @@ class ContiActionService
         if ($e instanceof QueryException) {
             report($e);
 
-            return 'Ocurrió un error en la base de datos y no se guardó. Si se repite, avisale al equipo de CONTAPP.';
+            return 'Ocurrió un error en la base de datos y no se guardó. Si se repite, avisale al equipo de Pivox.';
         }
 
         if ($e instanceof ValidationException) {

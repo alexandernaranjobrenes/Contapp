@@ -33,7 +33,7 @@ const filtered = computed(() => {
 });
 
 // --- alta/edición de indicadores PROPIOS (el catálogo nacional, is_global,
-// es de solo lectura acá — se administra desde el panel de CONTAPP) --------
+// es de solo lectura acá — se administra desde el panel de Pivox) --------
 
 // Al crear se puede escoger un tipo de impuesto existente o inventar uno
 // nuevo; se manda solo lo del modo elegido.
@@ -123,7 +123,7 @@ function destroy() {
 
         <p class="hint">
             Los indicadores <strong>nacionales</strong> (IVA 13%, 1%, 2%, 4%, exento) son ley y están compartidos por todas las
-            compañías — se administran desde el panel de CONTAPP, acá se ven de solo lectura. También podés crear tus
+            compañías — se administran desde el panel de Pivox, acá se ven de solo lectura. También podés crear tus
             <strong>propios indicadores</strong> (ej. un impuesto municipal) que solo afectan a esta compañía, y editarlos o
             eliminarlos libremente mientras no se hayan usado todavía. Para usar cualquier indicador en los asientos, vinculalo
             a una cuenta contable desde el <a :href="route('chart-of-accounts.index')">catálogo de cuentas</a> (campo
@@ -211,7 +211,7 @@ function destroy() {
                     </div>
                 </dl>
                 <p v-if="selected.is_global" class="muted small modal-note">
-                    Indicador nacional: se administra desde el panel de CONTAPP.
+                    Indicador nacional: se administra desde el panel de Pivox.
                 </p>
             </template>
 

@@ -24,7 +24,7 @@ require_once __DIR__.'/helpers.php';
 | Cada acción de Conti, de punta a punta
 |--------------------------------------------------------------------------
 |
-| Preparar por la API y confirmar en CONTAPP guarda lo mismo que guardaría
+| Preparar por la API y confirmar en Pivox guarda lo mismo que guardaría
 | la pantalla correspondiente.
 |
 */

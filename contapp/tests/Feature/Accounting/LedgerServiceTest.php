@@ -14,7 +14,7 @@ use App\Domains\Core\Models\Company;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 it('calcula saldo inicial, movimientos y saldo final de una cuenta débito-normal dentro de un rango', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $service->post($company, $documentType, new DateTime('2026-01-05'), new DateTime('2026-01-05'), [
@@ -39,7 +39,7 @@ it('calcula saldo inicial, movimientos y saldo final de una cuenta débito-norma
 });
 
 it('invierte el signo del saldo para una cuenta crédito-normal', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
 
     $payable = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '2-01-01-01-001',
@@ -57,7 +57,7 @@ it('invierte el signo del saldo para una cuenta crédito-normal', function () {
 });
 
 it('el mayor de un socio de negocio usa la naturaleza de su cuenta contable vinculada', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
 
     $payable = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '2-01-01-01-001',
@@ -81,7 +81,7 @@ it('el mayor de un socio de negocio usa la naturaleza de su cuenta contable vinc
 });
 
 it('el mayor de un centro de costo usa convención saldo deudor', function () {
-    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $gasto = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '6-01-01-01-001', 'accepts_posting' => true]);
     $cc = CostCenter::factory()->create(['company_id' => $company->id, 'code' => '01']);
@@ -100,7 +100,7 @@ it('el mayor de un centro de costo usa convención saldo deudor', function () {
 });
 
 it('no cuenta asientos en borrador, solo los contabilizados', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'period' => $period] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'period' => $period] = pivoxFixture();
 
     app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-05'), new DateTime('2026-01-05'), [
         new JournalLineInput($cash->id, $company->local_currency_id, debit: 100, credit: 0),
@@ -128,7 +128,7 @@ it('un asiento anulado y su reversión netean exactamente en cero en el saldo, n
     // status='voided' del todo, así que el espejo de reverse() (que SÍ
     // queda 'posted', con signo contrario) no tenía nada que cancelar y el
     // saldo quedaba descuadrado por el monto completo de la reversión.
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $service->post($company, $documentType, new DateTime('2026-01-05'), new DateTime('2026-01-05'), [
@@ -190,13 +190,13 @@ it('excluye el asiento de cierre anual del mayor de cuentas de resultados, pero 
 });
 
 it('lanza una excepción para una dimensión de mayor desconocida', function () {
-    ['company' => $company, 'cash' => $cash] = contappFixture();
+    ['company' => $company, 'cash' => $cash] = pivoxFixture();
 
     app(LedgerService::class)->build($company, 'unknown-thing', $cash->id, null, null);
 })->throws(InvalidArgumentException::class);
 
 it('lanza not-found para un id que pertenece a otra compañía', function () {
-    ['company' => $company] = contappFixture();
+    ['company' => $company] = pivoxFixture();
     $otherCompany = Company::factory()->create();
     $otherAccount = ChartOfAccount::factory()->create(['company_id' => $otherCompany->id]);
 

@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AuthShell from '../../Components/AuthShell.vue';
+import { startupVisit } from '../../Utils/startup';
 import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import { ArrowRightIcon, CheckIcon, TriangleAlertIcon } from '@lucide/vue';
 
@@ -38,9 +39,9 @@ const linkExpiry = computed(() => {
 });
 
 function submit() {
-    form.post(route('license-invitation.accept', props.token), {
+    form.post(route('license-invitation.accept', props.token), startupVisit({
         onFinish: () => form.reset('password', 'password_confirmation'),
-    });
+    }));
 }
 </script>
 
@@ -49,8 +50,8 @@ function submit() {
 
     <AuthShell
         wide
-        subtitle="Aceptá tu licencia de CONTAPP"
-        lead="El equipo de CONTAPP te asignó una licencia. Se activa cuando la aceptás: con los datos de tu primera compañía, y tu contraseña si hace falta."
+        subtitle="Aceptá tu licencia de Pivox"
+        lead="El equipo de Pivox te asignó una licencia. Se activa cuando la aceptás: con los datos de tu primera compañía, y tu contraseña si hace falta."
     >
         <template #panel-extra>
             <ol class="auth-steps">
@@ -69,7 +70,7 @@ function submit() {
             </h2>
             <p class="auth-subtitle">
                 <template v-if="state === 'expired'">
-                    El enlace dura 30 minutos. La licencia no se activó: pedile al equipo de CONTAPP que te reenvíe el
+                    El enlace dura 30 minutos. La licencia no se activó: pedile al equipo de Pivox que te reenvíe el
                     correo, y aceptala desde el enlace nuevo.
                 </template>
                 <template v-else>
@@ -84,7 +85,7 @@ function submit() {
             <header class="auth-head">
                 <h2 class="auth-title">Aceptar licencia</h2>
                 <p class="auth-subtitle">
-                    Licencia <strong>{{ invitation.license.category ?? 'de CONTAPP' }}</strong>: hasta
+                    Licencia <strong>{{ invitation.license.category ?? 'de Pivox' }}</strong>: hasta
                     {{ invitation.license.max_companies }} {{ invitation.license.max_companies === 1 ? 'compañía' : 'compañías' }},
                     vigente hasta el {{ invitation.license.expires_at }}.
                     <template v-if="linkExpiry">Este enlace sirve hasta las {{ linkExpiry }}.</template>
@@ -103,11 +104,11 @@ function submit() {
                         Se crea al aceptar. Elegí la contraseña con la que vas a entrar.
                     </template>
                     <template v-else-if="invitation.requires_password">
-                        Es tu cuenta de CONTAPP, pero su contraseña la definió otra persona. Para que solo vos puedas entrar
+                        Es tu cuenta de Pivox, pero su contraseña la definió otra persona. Para que solo vos puedas entrar
                         a tu licencia, elegí una nueva: desde ahora vas a entrar con ella.
                     </template>
                     <template v-else>
-                        Es tu cuenta de CONTAPP: la licencia queda a su nombre y entrás con tu contraseña de siempre. Lo que
+                        Es tu cuenta de Pivox: la licencia queda a su nombre y entrás con tu contraseña de siempre. Lo que
                         tenés en otras compañías sigue igual.
                     </template>
                 </p>

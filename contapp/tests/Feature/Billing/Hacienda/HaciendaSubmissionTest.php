@@ -257,7 +257,7 @@ it('cada cambio de estado queda en la historia del comprobante', function () {
 it('el programador despacha lo que toca: los firmados y los que tienen consulta vencida', function () {
     Queue::fake();
 
-    $this->artisan('contapp:hacienda-sync')->assertSuccessful();
+    $this->artisan('pivox:hacienda-sync')->assertSuccessful();
 
     Queue::assertPushed(SubmitElectronicDocumentJob::class, fn ($job) => $job->electronicDocumentId === $this->electronic->id);
 });

@@ -14,7 +14,7 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Respaldos desde el backoffice (CLAUDE.md secc. 37): el equipo de CONTAPP,
+ * Respaldos desde el backoffice (CLAUDE.md secc. 37): el equipo de Pivox,
  * para cualquier compañía de una licencia. Si exporta, al Superusuario le
  * llega un correo.
  */

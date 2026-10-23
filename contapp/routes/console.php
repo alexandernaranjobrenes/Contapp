@@ -14,7 +14,7 @@ Artisan::command('inspire', function () {
 // (este proyecto no tiene ese proceso corriendo todavía — ver
 // docs/decisiones.md 2026-08-24) — mientras tanto, "Registros pendientes
 // programados" también ofrece un botón para dispararlo a mano.
-Schedule::command('contapp:process-journal-schedules')->daily();
+Schedule::command('pivox:process-journal-schedules')->daily();
 
 // El tipo de cambio del día, del BCCR, para todas las compañías (el BCCR lo
 // publica la tarde anterior). Dos veces: si a las 6 el BCCR no respondió, a
@@ -23,23 +23,23 @@ Schedule::command('contapp:process-journal-schedules')->daily();
 // (schedule:work); en un servidor, el cron de `schedule:run` cada minuto.
 // Los respaldos subidos que nadie confirmó: el archivo y su contraseña no
 // quedan guardados más de un día (CLAUDE.md secc. 37).
-Schedule::command('contapp:prune-backups')->hourly();
+Schedule::command('pivox:prune-backups')->hourly();
 
 // Facturación electrónica (CLAUDE.md secc. 38): cada minuto se despacha a la
 // cola «hacienda» lo que toca enviar, consultar o entregar. La máquina de
 // estados deja la hora de cada uno en next_attempt_at; esto la cumple.
-Schedule::command('contapp:hacienda-sync')
+Schedule::command('pivox:hacienda-sync')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
 // Las llaves criptográficas de Hacienda por vencer: aviso al Superusuario a
 // los 30, 15, 7 y 1 día.
-Schedule::command('contapp:hacienda-certificates')
+Schedule::command('pivox:hacienda-certificates')
     ->dailyAt('07:00')
     ->timezone('America/Costa_Rica');
 
-Schedule::command('contapp:sync-bccr-rates')
+Schedule::command('pivox:sync-bccr-rates')
     ->twiceDaily(6, 13)
     ->timezone('America/Costa_Rica')
     ->withoutOverlapping();

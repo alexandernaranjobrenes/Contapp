@@ -13,6 +13,7 @@ use App\Domains\Inventory\Models as Inv;
 use App\Domains\Licensing\Models as Lic;
 use App\Domains\Payroll\Models as Pay;
 use App\Domains\Reporting\Models as Rep;
+use App\Domains\Repository\Models as Repo;
 use App\Domains\Tax\Models as Tax;
 use App\Models\User;
 use BackedEnum;
@@ -185,9 +186,11 @@ final class AuditCatalog
         Conti\ContiAction::class => 'Es lo que Conti prepara: lo que se confirma queda con sus registros.',
         Conti\ContiUsage::class => 'Es el consumo de cada mensaje, no un cambio de datos.',
         Conti\ContiUserSetting::class => 'El acceso a Conti ya lo anota ContiAccessService.',
-        Feedback\FeedbackComment::class => 'Comentarios y noticias son de CONTAPP, no de la compañía.',
-        Feedback\FeedbackVote::class => 'Comentarios y noticias son de CONTAPP, no de la compañía.',
-        Feedback\NewsPost::class => 'Comentarios y noticias son de CONTAPP, no de la compañía.',
+        Feedback\FeedbackComment::class => 'Comentarios y noticias son de Pivox, no de la compañía.',
+        Feedback\FeedbackVote::class => 'Comentarios y noticias son de Pivox, no de la compañía.',
+        Feedback\NewsPost::class => 'Comentarios y noticias son de Pivox, no de la compañía.',
+        Repo\RepositoryFolder::class => 'El Repositorio es de Pivox: lo arma el backoffice.',
+        Repo\RepositoryDocument::class => 'El Repositorio es de Pivox: lo arma el backoffice.',
         Lic\CommercialFollowUp::class => 'Backoffice: tiene su propia bitácora.',
         Lic\CommercialInteraction::class => 'Backoffice: tiene su propia bitácora.',
         Lic\CommercialProfile::class => 'Backoffice: tiene su propia bitácora.',

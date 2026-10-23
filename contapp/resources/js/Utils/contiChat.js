@@ -71,7 +71,7 @@ function persist() {
 
 /** La conversación de esta persona en esta compañía. */
 export function useConversation(userId, companyId) {
-    const key = `contapp:conti:${userId}:${companyId}`;
+    const key = `pivox:conti:${userId}:${companyId}`;
     if (conti.key === key) return;
 
     const saved = load(key);
@@ -198,7 +198,7 @@ export function pushForm(formulario, save = true) {
         role: 'form',
         formulario,
         valores: JSON.parse(JSON.stringify(formulario.valores ?? {})),
-        // Lo que sugirió CONTAPP según cómo se viene trabajando, y lo que se
+        // Lo que sugirió Pivox según cómo se viene trabajando, y lo que se
         // leyó de un documento escaneado: campo => { valor, motivo, origen? }.
         sugeridos: {
             ...(formulario.sugeridos ?? {}),

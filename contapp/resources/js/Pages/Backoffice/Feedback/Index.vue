@@ -14,7 +14,7 @@ import { CircleCheckBigIcon, ImagePlusIcon, RotateCcwIcon, SearchIcon, SendIcon,
  * superior (FeedbackModerationController).
  *
  * La fila abre la publicación completa, con sus comentarios (CLAUDE.md
- * secc. 20). Desde ahí se responde como Equipo CONTAPP, se elimina —una
+ * secc. 20). Desde ahí se responde como Equipo Pivox, se elimina —una
  * publicación o un comentario— con el motivo que le llega por correo al
  * autor, y se marca como solucionada, con un agradecimiento por correo.
  */
@@ -299,7 +299,7 @@ function votesLabel(post) {
                 <p v-if="!selected.replies.length" class="muted small">Todavía nadie comentó esta publicación.</p>
                 <ul v-else class="reply-list">
                     <li v-for="reply in selected.replies" :key="reply.id" class="reply" :class="{ 'is-team': reply.author.is_team, 'is-removed': reply.status === 'removed' }">
-                        <span v-if="reply.author.is_team" class="team-mark" aria-hidden="true">C</span>
+                        <span v-if="reply.author.is_team" class="team-mark" aria-hidden="true"><img src="/images/logos/logo_pivox_corto.png" alt=""></span>
                         <UserAvatar v-else :url="reply.author.photo_url" :name="reply.author.name" :size="1.8" />
                         <div class="reply-main">
                             <div class="reply-meta">
@@ -325,7 +325,7 @@ function votesLabel(post) {
 
                 <form v-if="selected.status === 'open'" class="team-reply" @submit.prevent="submitReply">
                     <div class="field">
-                        <label for="team-reply-body">Responder como Equipo CONTAPP</label>
+                        <label for="team-reply-body">Responder como Equipo Pivox</label>
                         <textarea id="team-reply-body" v-model="replyForm.body" rows="3" maxlength="2000" required @input="replyForm.clearErrors('body')" />
                         <span v-if="replyForm.errors.body" class="error">{{ replyForm.errors.body }}</span>
                     </div>
@@ -534,11 +534,17 @@ function votesLabel(post) {
     place-items: center;
     width: 1.8rem;
     height: 1.8rem;
+    padding: 0.32rem;
     border-radius: 50%;
-    background: var(--color-sidebar);
-    color: var(--color-on-sidebar);
-    font-size: 0.75rem;
-    font-weight: 800;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.team-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .team-reply {

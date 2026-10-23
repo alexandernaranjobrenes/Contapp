@@ -307,7 +307,7 @@ class ElectronicInvoicing
                 }
 
                 if ($tax->exonerationDocumentType === '99' || $tax->exonerationInstitution === '99') {
-                    $errors[] = "La exoneración de la línea {$number} usa el código «Otros», que exige describirlo y CONTAPP todavía no lo captura.";
+                    $errors[] = "La exoneración de la línea {$number} usa el código «Otros», que exige describirlo y Pivox todavía no lo captura.";
                 }
 
                 $documentNumber = mb_strlen(trim((string) $tax->exonerationDocumentNumber));

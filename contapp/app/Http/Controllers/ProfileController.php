@@ -238,7 +238,7 @@ class ProfileController extends Controller
      * Primer paso del cambio de correo: manda el enlace a la casilla nueva.
      * El correo de la cuenta NO cambia acá.
      *
-     * Hay que confirmar la casilla porque en CONTAPP el correo es la
+     * Hay que confirmar la casilla porque en Pivox el correo es la
      * identidad: es adonde llega el enlace para recuperar la contraseña, y es
      * por correo que un Superusuario invita a una cuenta existente a su
      * compañía. Sin confirmación, alguien podría ponerse el correo de otra
@@ -259,7 +259,7 @@ class ProfileController extends Controller
             'current_password' => ['required', 'string', 'current_password:web'],
         ], [
             'email.not_in' => 'Ese ya es tu correo.',
-            'email.unique' => 'Ese correo ya lo usa otra cuenta de CONTAPP.',
+            'email.unique' => 'Ese correo ya lo usa otra cuenta de Pivox.',
         ], ['current_password' => 'contraseña actual']);
 
         $newEmail = $validated['email'];
@@ -317,7 +317,7 @@ class ProfileController extends Controller
 
         // Entre el pedido y la confirmación otra cuenta pudo tomar ese correo.
         if (User::where('email', $newEmail)->whereKeyNot($user->id)->exists()) {
-            return redirect()->route($destination)->with('error', 'Ese correo ya lo usa otra cuenta de CONTAPP.');
+            return redirect()->route($destination)->with('error', 'Ese correo ya lo usa otra cuenta de Pivox.');
         }
 
         DB::transaction(function () use ($user, $newEmail, $request) {

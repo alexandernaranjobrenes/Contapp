@@ -121,7 +121,7 @@ final class CompanyBackupService
         } catch (Throwable $e) {
             Storage::disk('local')->delete($path);
 
-            throw $e instanceof InvalidBackupException ? $e : new InvalidBackupException('El archivo no se pudo leer como un respaldo de CONTAPP.', previous: $e);
+            throw $e instanceof InvalidBackupException ? $e : new InvalidBackupException('El archivo no se pudo leer como un respaldo de Pivox.', previous: $e);
         }
 
         $backup = CompanyBackup::create([
@@ -292,7 +292,7 @@ final class CompanyBackupService
 
     /**
      * Queda en la Bitácora de la compañía. Si lo exportó el equipo de
-     * CONTAPP, también se le avisa al Superusuario por correo: es su
+     * Pivox, también se le avisa al Superusuario por correo: es su
      * información.
      */
     private function recordExport(BackupOptions $options, array $by, ?string $ip): void
@@ -306,7 +306,7 @@ final class CompanyBackupService
             'action' => 'company.backup_exported',
             'auditable_type' => Company::class,
             'auditable_id' => $company->id,
-            'new_values' => $values + (isset($by['propietario_id']) ? ['by' => "Equipo de CONTAPP ({$by['name']})"] : []),
+            'new_values' => $values + (isset($by['propietario_id']) ? ['by' => "Equipo de Pivox ({$by['name']})"] : []),
             'ip_address' => $ip,
             'created_at' => now(),
         ]);

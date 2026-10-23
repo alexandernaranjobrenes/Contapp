@@ -10,7 +10,7 @@ import { ArrowLeftIcon, MailIcon } from '@lucide/vue';
 /**
  * Dar de alta a una persona es invitarla (CompanyInvitationService): acá se
  * pone su correo, su rol y sus permisos por pantalla del menú. Le llega un
- * correo para aceptar; si no tiene cuenta en CONTAPP, ahí elige su nombre y
+ * correo para aceptar; si no tiene cuenta en Pivox, ahí elige su nombre y
  * su contraseña. Quien invita nunca pone la contraseña de nadie.
  *
  * Un perfil del rol (Contador, Vendedor…) precarga los permisos; no se envía.
@@ -39,7 +39,7 @@ const form = useForm({
     ...(props.conti ? { conti: { enabled: true, daily_credits: '', weekly_credits: '', models: [...props.conti.current.models] } } : {}),
 });
 
-// ¿El correo ya tiene cuenta en CONTAPP? Solo para avisar qué va a pasar.
+// ¿El correo ya tiene cuenta en Pivox? Solo para avisar qué va a pasar.
 const lookup = ref(null); // { exists, name, member } | null
 const lookupLoading = ref(false);
 let lookupToken = 0;
@@ -79,7 +79,7 @@ function submit() {
 
         <div class="card form-card">
             <p class="intro">
-                Le enviamos un correo con un enlace para aceptar. Si todavía no tiene cuenta en CONTAPP, ahí elige su
+                Le enviamos un correo con un enlace para aceptar. Si todavía no tiene cuenta en Pivox, ahí elige su
                 nombre y su contraseña. Hasta que acepte no entra a la compañía. El enlace vence en {{ expiresInDays }} días.
             </p>
 
@@ -89,7 +89,7 @@ function submit() {
             </p>
 
             <p v-if="!grantableRoleTypes.length" class="error">
-                Tu licencia ya alcanzó el cupo de administradores y usuarios. Contactá al soporte de CONTAPP si necesitás más cupo.
+                Tu licencia ya alcanzó el cupo de administradores y usuarios. Contactá al soporte de Pivox si necesitás más cupo.
             </p>
 
             <form id="invite-form" @submit.prevent="submit">
@@ -109,11 +109,11 @@ function submit() {
                         <p v-else-if="lookupLoading" class="hint">Buscando…</p>
                         <p v-else-if="lookup?.member" class="notice">Esa persona ya tiene acceso a esta compañía.</p>
                         <p v-else-if="lookup?.exists" class="notice">
-                            Ya tiene cuenta en CONTAPP: <strong>{{ lookup.name }}</strong>. Al aceptar, esta compañía se suma
+                            Ya tiene cuenta en Pivox: <strong>{{ lookup.name }}</strong>. Al aceptar, esta compañía se suma
                             a las que ya ve, con su misma contraseña. Si no reconocés a esta persona, revisá el correo.
                         </p>
                         <p v-else-if="lookup && !lookup.exists" class="hint">
-                            No tiene cuenta en CONTAPP: la crea al aceptar, con su nombre y su contraseña.
+                            No tiene cuenta en Pivox: la crea al aceptar, con su nombre y su contraseña.
                         </p>
                     </div>
                     <div class="field">

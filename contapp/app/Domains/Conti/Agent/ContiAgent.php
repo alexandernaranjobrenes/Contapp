@@ -44,6 +44,7 @@ class ContiAgent
         private readonly ContiContext $context,
         private readonly ContiManual $manual,
         private readonly ContiModelService $models,
+        private readonly ContiRepository $repository,
     ) {}
 
     /**
@@ -133,9 +134,9 @@ class ContiAgent
     }
 
     /**
-     * El enlace para confirmar lo que Conti preparó es una ruta de CONTAPP
+     * El enlace para confirmar lo que Conti preparó es una ruta de Pivox
      * («/conti/acciones/…»), y así tiene que llegar al chat. El modelo a
-     * veces le inventa un dominio («https://app.contapp.run/conti/…»): con
+     * veces le inventa un dominio («https://app.pivox.run/conti/…»): con
      * eso el enlace se abre en otra pestaña, contra un sitio que no existe.
      */
     /**
@@ -214,7 +215,7 @@ class ContiAgent
 
         $none = 'ninguna con sus permisos actuales';
 
-        return implode("\n\n", [
+        return implode("\n\n", array_filter([
             (string) file_get_contents(resource_path('conti/instrucciones.md')),
             implode("\n", [
                 '## Esta conversación',
@@ -232,7 +233,12 @@ class ContiAgent
                 .'- Reportes: '.($reports ? implode(', ', $reports) : $none).".\n"
                 .'- Acciones para preparar: '.($actions ? implode(', ', $actions) : $none).'.',
             "## Temas del manual (herramienta «manual»)\n".$this->manual->tableOfContents(),
-        ]);
+            // Los documentos que el backoffice activó para Conti (CLAUDE.md
+            // secc. 39). Sin ninguno, la sección no va.
+            $this->repository->available()
+                ? "## Documentos del repositorio (herramienta «repositorio»)\n".$this->repository->index()
+                : null,
+        ]));
     }
 
     /**

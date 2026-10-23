@@ -4,7 +4,7 @@ import { onBeforeUnmount, ref } from 'vue';
  * Dictado por voz para un campo de texto (el chat de Conti, CLAUDE.md
  * secc. 32). La voz se convierte en texto en el navegador, con su
  * reconocimiento de voz (Web Speech API): no pasa por el modelo de Conti ni
- * gasta créditos, y a CONTAPP no le llega audio, solo el texto que la
+ * gasta créditos, y a Pivox no le llega audio, solo el texto que la
  * persona decide enviar.
  *
  * - Lo tienen Chrome, Edge y Safari; Firefox no. Sin él, el botón no se
@@ -69,7 +69,7 @@ export function useSpeechInput(text, { lang = 'es-CR', maxLength = 4000, onEnd =
         };
 
         recognition.onerror = (event) => {
-            // «aborted» es el que corta el propio CONTAPP (al enviar, al cerrar).
+            // «aborted» es el que corta el propio Pivox (al enviar, al cerrar).
             if (event.error !== 'aborted') {
                 error.value = ERRORS[event.error] ?? 'No se pudo reconocer la voz. Probá de nuevo o escribí el mensaje.';
             }

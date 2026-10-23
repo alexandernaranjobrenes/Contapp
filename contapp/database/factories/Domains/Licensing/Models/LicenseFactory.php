@@ -13,7 +13,7 @@ class LicenseFactory extends Factory
     public function definition(): array
     {
         return [
-            'code' => 'CONTAPP-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)),
+            'code' => 'PIVOX-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)).'-'.strtoupper(Str::random(4)),
             'max_companies' => 1,
             'max_admins' => 3,
             'max_users' => 10,

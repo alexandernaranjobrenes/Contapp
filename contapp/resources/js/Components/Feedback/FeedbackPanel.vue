@@ -14,7 +14,7 @@ import { fullDate, timeAgo } from '../../Utils/relativeTime';
  * (AppLayout.vue). Se despliega a la derecha, debajo de la barra, sin tapar
  * el resto de la pantalla.
  *
- * - Comentarios: lo que la gente propone sobre CONTAPP, con votos a favor y
+ * - Comentarios: lo que la gente propone sobre Pivox, con votos a favor y
  *   en contra —lo más votado arriba— y comentarios. Ver FeedbackService.
  * - Noticias: las actualizaciones que publica el backoffice.
  *
@@ -134,7 +134,7 @@ async function loadNews({ reset = false, button = null } = {}) {
     newsLoaded.value = true;
 }
 
-// Una pantalla de CONTAPP se abre acá mismo, con Inertia (y el panel se
+// Una pantalla de Pivox se abre acá mismo, con Inertia (y el panel se
 // cierra con el cambio de pantalla); otro sitio, en otra pestaña.
 function openNews(item, event) {
     if (!item.link_url || !item.link_is_internal) return;
@@ -307,11 +307,11 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="panel-compose">
-                        <p class="panel-intro">Contanos qué mejorarías de CONTAPP</p>
+                        <p class="panel-intro">Contanos qué mejorarías de Pivox</p>
                         <FeedbackComposer
                             :url="route('feedback.store')"
                             label="Tu publicación"
-                            placeholder="Una idea, una sugerencia, algo que te gustaría que CONTAPP hiciera…"
+                            placeholder="Una idea, una sugerencia, algo que te gustaría que Pivox hiciera…"
                             submit-label="Publicar"
                             :limits="limits"
                             @created="onPostCreated"
@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
                         <button type="button" class="btn btn-ghost" @click="loadNews({ reset: true, button: $event.currentTarget })">Reintentar</button>
                     </p>
                     <p v-else-if="newsLoaded && !news.length" class="panel-state muted">
-                        Todavía no hay noticias. Acá vas a ver las novedades de CONTAPP.
+                        Todavía no hay noticias. Acá vas a ver las novedades de Pivox.
                     </p>
 
                     <article v-for="item in news" :key="item.id" class="news-card">

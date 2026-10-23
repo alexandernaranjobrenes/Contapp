@@ -1,4 +1,4 @@
-# Facturación electrónica — CONTAPP
+# Facturación electrónica — Pivox
 
 Implementación de la emisión de comprobantes electrónicos v4.4 ante el Ministerio de Hacienda, a partir de la guía
 `../../../guia_agente_facturacionElectronica_Hacienda.md` (la implementación de referencia en App Arrendamientos). Las
@@ -11,15 +11,15 @@ reglas de trabajo están en `CLAUDE.md` secc. 38.
 
 | # | Decisión | Lo que se hizo | Por qué |
 |---|---|---|---|
-| 1 | Stack | El de CONTAPP: Laravel 13, PHP 8.5, Inertia + Vue 3, MySQL, cola en base de datos. Firma con DOM + `openssl`, sin librerías nuevas. | Monolito modular (secc. 2). Una librería XMLDSig genérica no arma la parte XAdES de todos modos. |
-| 2 | Modelo de negocio | SaaS multiempresa. **Cada compañía con sus credenciales**, que carga solo su Superusuario. | Pedido del usuario. `ProveedorSistemas` sale de `HACIENDA_SYSTEM_PROVIDER_ID` (la cédula de quien provee CONTAPP); vacío, la del emisor. |
+| 1 | Stack | El de Pivox: Laravel 13, PHP 8.5, Inertia + Vue 3, MySQL, cola en base de datos. Firma con DOM + `openssl`, sin librerías nuevas. | Monolito modular (secc. 2). Una librería XMLDSig genérica no arma la parte XAdES de todos modos. |
+| 2 | Modelo de negocio | SaaS multiempresa. **Cada compañía con sus credenciales**, que carga solo su Superusuario. | Pedido del usuario. `ProveedorSistemas` sale de `HACIENDA_SYSTEM_PROVIDER_ID` (la cédula de quien provee Pivox); vacío, la del emisor. |
 | 3 | Tipos de comprobante | Factura (01), nota de débito (02), nota de crédito (03), tiquete (04) y exportación (09). | La factura de compra (08) la emite quien compra (Compras). El recibo de pago (10) no tiene XSD publicado con los demás. |
 | 4 | Custodia de secretos | Cast `encrypted` de Laravel (APP_KEY), en la base; nada en el disco ni en el `.env`. | No hay KMS en la infraestructura actual. Si cambia la APP_KEY, el Superusuario vuelve a cargar las credenciales. |
 | 5 | Firma | Implementación propia (`XadesEpesSigner`), verificada por un verificador independiente (`XmlSignatureVerifier`). | Mismo algoritmo que la referencia aceptada en sandbox, con la política explícita que la implementación anterior no tenía (C2). |
 | 6 | PDF y correo | dompdf y el SMTP de la instalación. | Ya están en el proyecto (comprobante de pago de planilla). |
 | 7 | Archivo legal | El XML firmado y el MensajeHacienda en la base (`electronic_documents`, con SHA-256), solo agregar. | Sin almacenamiento WORM por ahora. Pendiente: copia en el bucket con retención. |
-| 8 | Tipo de cambio | El del comprobante (el que ya usa CONTAPP, del BCCR o digitado). | Sin cambios. |
-| 9 | Clasificación tributaria | Se mantiene la de CONTAPP: tarifa 10 exento, 11 no sujeto, el resto gravado; exonerado según su documento. | **Pendiente de validar con un contador** (guía, punto de control de la Fase 6). |
+| 8 | Tipo de cambio | El del comprobante (el que ya usa Pivox, del BCCR o digitado). | Sin cambios. |
+| 9 | Clasificación tributaria | Se mantiene la de Pivox: tarifa 10 exento, 11 no sujeto, el resto gravado; exonerado según su documento. | **Pendiente de validar con un contador** (guía, punto de control de la Fase 6). |
 | 10 | Integración | El comprobante electrónico nace de la venta de siempre (`PostSalesDocumentService`), en la misma transacción. | Sin un segundo flujo de facturación que mantener. |
 | 11 | Contingencia | No implementada: situación 1 (normal). | Fase 14 de la guía. |
 | 12 | Producción | Por compañía, la enciende y la pasa a producción su Superusuario. | Pedido del usuario. |

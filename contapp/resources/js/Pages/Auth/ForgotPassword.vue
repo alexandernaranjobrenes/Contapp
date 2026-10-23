@@ -71,7 +71,7 @@ function useAnotherEmail() {
     >
         <template #panel-extra>
             <ol class="auth-steps">
-                <li><span class="auth-step-number">1</span> Escribí el correo con el que ingresás a CONTAPP</li>
+                <li><span class="auth-step-number">1</span> Escribí el correo con el que ingresás a Pivox</li>
                 <li><span class="auth-step-number">2</span> Abrí el enlace que te llega: dura {{ expiresInMinutes }} minutos</li>
                 <li><span class="auth-step-number">3</span> Elegí tu contraseña nueva e ingresá con ella</li>
             </ol>
@@ -114,7 +114,7 @@ function useAnotherEmail() {
 
             <h2 ref="sentTitle" class="auth-title" tabindex="-1">Revisá tu correo</h2>
             <p class="auth-subtitle" role="status">
-                Si <strong class="sent-email">{{ sentTo }}</strong> tiene una cuenta en CONTAPP,
+                Si <strong class="sent-email">{{ sentTo }}</strong> tiene una cuenta en Pivox,
                 en un momento te llega un enlace para elegir una contraseña nueva.
             </p>
 

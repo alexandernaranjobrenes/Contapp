@@ -8,7 +8,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * Los códigos de los registros (CLAUDE.md secc. 36, docs/decisiones.md
  * 2026-10-14): los documentos se numeran solos; los datos maestros se
- * decide al crearlos —CONTAPP sugiere el siguiente— y quedan fijos desde que
+ * decide al crearlos —Pivox sugiere el siguiente— y quedan fijos desde que
  * tienen movimientos, porque el código es la llave con que los reconocen las
  * personas, los reportes, las plantillas, Conti y los papeles ya impresos.
  */

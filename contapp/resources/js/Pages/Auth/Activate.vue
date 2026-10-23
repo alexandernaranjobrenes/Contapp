@@ -1,6 +1,7 @@
 <script setup>
 import { useForm, Head, Link } from '@inertiajs/vue3';
 import AuthShell from '../../Components/AuthShell.vue';
+import { startupVisit } from '../../Utils/startup';
 import PasswordRequirements from '../../Components/PasswordRequirements.vue';
 import { ArrowRightIcon, CheckIcon } from '@lucide/vue';
 
@@ -10,7 +11,7 @@ defineProps({
 
 const form = useForm({
     // 'new': alguien nuevo, se le crea la cuenta. 'existing': alguien que ya
-    // tiene cuenta en CONTAPP (Administrador o Usuario en la licencia de otra
+    // tiene cuenta en Pivox (Administrador o Usuario en la licencia de otra
     // persona) y activa la suya con ella: solo correo y contraseña actual.
     account: 'new',
     code: '',
@@ -34,9 +35,9 @@ function setAccount(account) {
 }
 
 function submit() {
-    form.post(route('license-activation.store'), {
+    form.post(route('license-activation.store'), startupVisit({
         onFinish: () => form.reset('password', 'password_confirmation'),
-    });
+    }));
 }
 </script>
 
@@ -50,9 +51,9 @@ function submit() {
     >
         <template #panel-extra>
             <ol class="auth-steps">
-                <li><span class="auth-step-number">1</span> El código de licencia que recibiste al contratar CONTAPP</li>
+                <li><span class="auth-step-number">1</span> El código de licencia que recibiste al contratar Pivox</li>
                 <li><span class="auth-step-number">2</span> Los datos básicos de tu compañía</li>
-                <li><span class="auth-step-number">3</span> Tu cuenta: una nueva, o la que ya tenés en CONTAPP</li>
+                <li><span class="auth-step-number">3</span> Tu cuenta: una nueva, o la que ya tenés en Pivox</li>
             </ol>
         </template>
 
@@ -64,7 +65,7 @@ function submit() {
         <form @submit.prevent="submit">
             <div class="field">
                 <label for="code">Código de licencia</label>
-                <input id="code" v-model="form.code" type="text" placeholder="CONTAPP-XXXX-XXXX-XXXX" required>
+                <input id="code" v-model="form.code" type="text" placeholder="PIVOX-XXXX-XXXX-XXXX" required>
                 <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
             </div>
 
@@ -88,7 +89,7 @@ function submit() {
 
             <h3 class="section-title">Tu cuenta</h3>
 
-            <div class="account-switch" role="group" aria-label="¿Ya tenés una cuenta en CONTAPP?">
+            <div class="account-switch" role="group" aria-label="¿Ya tenés una cuenta en Pivox?">
                 <button
                     type="button"
                     class="btn"
@@ -96,7 +97,7 @@ function submit() {
                     :aria-pressed="form.account === 'new'"
                     @click="setAccount('new')"
                 >
-                    Soy nuevo en CONTAPP
+                    Soy nuevo en Pivox
                 </button>
                 <button
                     type="button"

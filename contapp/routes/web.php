@@ -14,6 +14,8 @@ use App\Http\Controllers\Backoffice\AuthenticatedSessionController as Backoffice
 use App\Http\Controllers\Backoffice\CompanyBackupController as BackofficeCompanyBackupController;
 use App\Http\Controllers\Backoffice\FeedbackModerationController;
 use App\Http\Controllers\Backoffice\NewsController;
+use App\Http\Controllers\Backoffice\RepositoryController as BackofficeRepositoryController;
+use App\Http\Controllers\Backoffice\RepositoryFolderController;
 use App\Http\Controllers\BalanceSheetController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankReconciliationController;
@@ -97,6 +99,7 @@ use App\Http\Controllers\ProductionOrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReorderController;
+use App\Http\Controllers\RepositoryController;
 use App\Http\Controllers\ElectronicDocumentController;
 use App\Http\Controllers\HaciendaLookupController;
 use App\Http\Controllers\HaciendaSettingsController;
@@ -224,6 +227,13 @@ Route::middleware('auth')->group(function () {
     Route::put('feedback/{comment}/vote', [FeedbackController::class, 'vote'])->middleware('throttle:feedback-vote')->name('feedback.vote');
     Route::delete('feedback/{comment}', [FeedbackController::class, 'destroy'])->name('feedback.destroy');
     Route::get('news', [FeedbackController::class, 'news'])->name('news.index');
+
+    // El Repositorio (CLAUDE.md secc. 39): los documentos de consulta que el
+    // backoffice activó para las cuentas, como PDF. Cualquier cuenta, con
+    // cualquier rol. Armar un PDF largo pesa: el primero se guarda, y el
+    // límite cuida al servidor de quien pide muchos seguidos.
+    Route::get('repository', [RepositoryController::class, 'index'])->name('repository.index');
+    Route::get('repository/{document}/pdf', [RepositoryController::class, 'pdf'])->middleware('throttle:30,1')->name('repository.pdf');
 
     // Conti, el asistente (CLAUDE.md secc. 32). Cualquier rol: lo que Conti
     // puede ver o guardar lo deciden los permisos de la persona, en cada
@@ -1047,4 +1057,18 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('news', [NewsController::class, 'store'])->name('news.store');
     Route::put('news/{news}', [NewsController::class, 'update'])->name('news.update');
     Route::delete('news/{news}', [NewsController::class, 'destroy'])->name('news.destroy');
+
+    // El Repositorio (CLAUDE.md secc. 39): documentos en Markdown, en
+    // carpetas, que Conti consulta y las cuentas ven como PDF, cada uno por
+    // separado. Con un archivo, editar llega como POST con _method=put.
+    Route::get('repository', [BackofficeRepositoryController::class, 'index'])->name('repository.index');
+    Route::post('repository/documents', [BackofficeRepositoryController::class, 'store'])->name('repository.documents.store');
+    Route::put('repository/documents/{document}', [BackofficeRepositoryController::class, 'update'])->name('repository.documents.update');
+    Route::put('repository/documents/{document}/availability', [BackofficeRepositoryController::class, 'availability'])->name('repository.documents.availability');
+    Route::delete('repository/documents/{document}', [BackofficeRepositoryController::class, 'destroy'])->name('repository.documents.destroy');
+    Route::get('repository/documents/{document}/pdf', [BackofficeRepositoryController::class, 'pdf'])->name('repository.documents.pdf');
+    Route::get('repository/documents/{document}/markdown', [BackofficeRepositoryController::class, 'markdown'])->name('repository.documents.markdown');
+    Route::post('repository/folders', [RepositoryFolderController::class, 'store'])->name('repository.folders.store');
+    Route::put('repository/folders/{folder}', [RepositoryFolderController::class, 'update'])->name('repository.folders.update');
+    Route::delete('repository/folders/{folder}', [RepositoryFolderController::class, 'destroy'])->name('repository.folders.destroy');
 });

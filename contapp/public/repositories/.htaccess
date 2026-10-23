@@ -1,0 +1,9 @@
+# Los documentos del Repositorio (CLAUDE.md secc. 39) no se sirven directo:
+# los lee la aplicación, que respeta si cada uno está activo. En Docker lo
+# niega nginx (docker/nginx/conf.d/app.conf); esto es para Apache.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Deny from all
+</IfModule>

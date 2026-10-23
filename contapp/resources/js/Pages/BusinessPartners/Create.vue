@@ -68,7 +68,7 @@ function submit() {
                 <div class="field">
                     <label for="code">Código</label>
                     <input id="code" v-model="form.code" type="text" placeholder="CLI-0001" required>
-                    <span class="hint small">Lo propone CONTAPP según el tipo. Podés cambiarlo ahora; después queda fijo.</span>
+                    <span class="hint small">Lo propone Pivox según el tipo. Podés cambiarlo ahora; después queda fijo.</span>
                     <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                 </div>
 

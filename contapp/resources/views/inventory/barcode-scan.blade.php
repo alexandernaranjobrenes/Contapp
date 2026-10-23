@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex, nofollow">
-    <title>Escanear un código de barras — CONTAPP</title>
+    <title>Escanear un código de barras — Pivox</title>
     {{--
         La página que abre en el teléfono el QR del código de barras de un
         artículo (ItemBarcodePhoneController, CLAUDE.md secc. 33). El código se
@@ -36,7 +36,7 @@
         }
         main { max-width: 30rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
         .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; }
-        .brand-mark { display: inline-grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 0.85rem; }
+        .brand-logo { display: block; height: 1.9rem; width: auto; }
         .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
         h1 { margin: 0; font-size: 1.15rem; }
         p { margin: 0; }
@@ -60,7 +60,12 @@
 </head>
 <body>
 <main>
-    <div class="brand"><span class="brand-mark">C</span> CONTAPP</div>
+    <div class="brand">
+        <picture>
+            <source srcset="{{ asset('images/logos/logo_pivox_blanco.png') }}" media="(prefers-color-scheme: dark)">
+            <img class="brand-logo" src="{{ asset('images/logos/logo_pivox.png') }}" alt="Pivox">
+        </picture>
+    </div>
 
     @if ($scan === null)
         <section class="card">
@@ -242,7 +247,7 @@
                             credentials: 'same-origin',
                         });
                     } catch {
-                        setStatus($('send-status'), 'No hay conexión con CONTAPP. Revisá que el teléfono esté en la misma red y probá de nuevo.', true);
+                        setStatus($('send-status'), 'No hay conexión con Pivox. Revisá que el teléfono esté en la misma red y probá de nuevo.', true);
                         $('send').disabled = $('again').disabled = false;
                         return;
                     }

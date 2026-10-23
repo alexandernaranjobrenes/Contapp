@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Las noticias de CONTAPP que publica el backoffice: título, descripción, un
+ * Las noticias de Pivox que publica el backoffice: título, descripción, un
  * enlace opcional y una imagen opcional, en el bucket como news/{id}_1.{ext}.
  */
 class NewsService

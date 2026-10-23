@@ -14,13 +14,13 @@ use App\Domains\Core\Models\Company;
  * (ContiAction::form), con lo que ya se sabe precargado.
  *
  * Además de lo que dijo la persona, el formulario llega con sugerencias de
- * CONTAPP según cómo se viene trabajando en la compañía (ContiAction::
+ * Pivox según cómo se viene trabajando en la compañía (ContiAction::
  * suggest): el código que sigue, la cuenta de control que usan los demás…
  * Van marcadas, con su motivo, y se recalculan al cambiar un campo clave.
  *
  * El formulario no guarda nada: al enviarlo se prepara la acción
  * (ContiActionService::prepare, con las mismas validaciones de siempre) y
- * CONTAPP abre la ventana para confirmarla.
+ * Pivox abre la ventana para confirmarla.
  */
 class ContiFormService
 {

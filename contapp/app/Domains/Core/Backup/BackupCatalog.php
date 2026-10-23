@@ -53,7 +53,7 @@ final class BackupCatalog
      * tabla => [sección, forma, opciones]. Opciones: 'date' (la columna que
      * ubica la fila en el período), 'parent' (la columna hacia la fila de la
      * que cuelga), 'owned' (solo las de la compañía: hay filas globales de
-     * CONTAPP en la misma tabla).
+     * Pivox en la misma tabla).
      *
      * @var array<string, array{0: string, 1: string, 2?: array<string, mixed>}>
      */
@@ -186,8 +186,8 @@ final class BackupCatalog
     public const EXCLUDED = [
         'companies' => 'Es la compañía misma: va en el encabezado, y al importar se crea una nueva.',
         'users' => 'Las cuentas son de las personas, no de la compañía: se reconocen por su correo.',
-        'currencies' => 'Catálogo de CONTAPP: se referencia.',
-        'modules' => 'Catálogo de CONTAPP: se referencia.',
+        'currencies' => 'Catálogo de Pivox: se referencia.',
+        'modules' => 'Catálogo de Pivox: se referencia.',
         'company_modules' => 'Los módulos de una compañía los decide su licencia.',
         'company_invitations' => 'Una invitación lleva un enlace con token: no se respalda.',
         'saved_reports' => 'Son preferencias de cada persona, no datos de la compañía.',
@@ -201,9 +201,11 @@ final class BackupCatalog
         'commercial_interactions' => 'Backoffice.',
         'commercial_follow_ups' => 'Backoffice.',
         'propietarios' => 'Backoffice.',
-        'news_posts' => 'Comentarios y noticias son de CONTAPP.',
-        'feedback_comments' => 'Comentarios y noticias son de CONTAPP.',
-        'feedback_votes' => 'Comentarios y noticias son de CONTAPP.',
+        'news_posts' => 'Comentarios y noticias son de Pivox.',
+        'feedback_comments' => 'Comentarios y noticias son de Pivox.',
+        'feedback_votes' => 'Comentarios y noticias son de Pivox.',
+        'repository_folders' => 'El Repositorio es de Pivox.',
+        'repository_documents' => 'El Repositorio es de Pivox.',
         'company_backups' => 'Las importaciones mismas.',
         // Facturación electrónica (CLAUDE.md secc. 38).
         'hacienda_settings' => 'La facturación electrónica se vuelve a configurar en la compañía: encendida sin sus credenciales, no dejaría facturar.',
@@ -241,7 +243,7 @@ final class BackupCatalog
     /** Se referencian por su id, que es el mismo en toda la instalación. */
     public const GLOBAL_TABLES = ['currencies', 'modules'];
 
-    /** Tablas con filas de CONTAPP (company_id NULL) y de la compañía: las de CONTAPP se referencian. */
+    /** Tablas con filas de Pivox (company_id NULL) y de la compañía: las de Pivox se referencian. */
     public const MIXED_TABLES = ['tax_types', 'tax_rates', 'roles'];
 
     /**

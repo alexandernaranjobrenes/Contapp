@@ -140,7 +140,7 @@ trait HandlesCompanyBackups
     {
         $mode = $request->validate(['mode' => ['nullable', Rule::in(['new', 'merge'])]])['mode'] ?? 'new';
         $actor = $this->backupActor($request);
-        $by = isset($actor['propietario_id']) ? "Equipo de CONTAPP ({$actor['name']})" : null;
+        $by = isset($actor['propietario_id']) ? "Equipo de Pivox ({$actor['name']})" : null;
 
         if ($mode === 'merge') {
             $backup = $this->pendingBackup($license, $uuid, ['compared']);

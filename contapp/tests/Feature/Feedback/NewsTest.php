@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Storage;
 
 /*
 |--------------------------------------------------------------------------
-| Las noticias de CONTAPP
+| Las noticias de Pivox
 |--------------------------------------------------------------------------
 |
 | Las publica, edita y elimina el backoffice; las cuentas las leen en el
@@ -60,7 +60,7 @@ it('el backoffice publica una noticia con imagen, en news/{id}_1', function () {
     Storage::disk('s3')->assertExists("news/{$news->id}_1.jpg");
 });
 
-it('acepta un enlace a otro sitio o a una pantalla de CONTAPP, y nada más', function (?string $link, bool $valid) {
+it('acepta un enlace a otro sitio o a una pantalla de Pivox, y nada más', function (?string $link, bool $valid) {
     loginAsPropietario();
 
     $response = $this->post(route('backoffice.news.store'), newsPayload(['link_url' => $link]));
@@ -74,12 +74,12 @@ it('acepta un enlace a otro sitio o a una pantalla de CONTAPP, y nada más', fun
     }
 })->with([
     'sin enlace' => [null, true],
-    'https' => ['https://contapp.cr/novedades', true],
-    'pantalla de CONTAPP' => ['/dashboard', true],
+    'https' => ['https://pivox.cr/novedades', true],
+    'pantalla de Pivox' => ['/dashboard', true],
     'javascript' => ['javascript:alert(1)', false],
     'otro sitio sin esquema' => ['//otro-sitio.com', false],
     'ftp' => ['ftp://archivos.com/x', false],
-    'texto suelto' => ['contapp punto com', false],
+    'texto suelto' => ['pivox punto com', false],
 ]);
 
 it('exige título y descripción, y una sola imagen', function () {
@@ -136,7 +136,7 @@ it('al eliminar una noticia se borra su imagen', function () {
 
 it('las cuentas leen las noticias de la más nueva a la más vieja, y el punto de la barra se entera', function () {
     loginAsPropietario();
-    $this->post(route('backoffice.news.store'), newsPayload(['title' => 'Primera', 'link_url' => 'https://contapp.cr']));
+    $this->post(route('backoffice.news.store'), newsPayload(['title' => 'Primera', 'link_url' => 'https://pivox.cr']));
     $this->travel(1)->minutes();
     $this->post(route('backoffice.news.store'), newsPayload(['title' => 'Segunda', 'image' => newsImage()]));
     Auth::guard('propietario')->logout();

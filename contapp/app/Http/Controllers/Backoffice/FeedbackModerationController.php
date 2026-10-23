@@ -17,7 +17,7 @@ use Inertia\Response;
 
 /**
  * El canal de comentarios visto desde el backoffice (guard 'propietario'):
- * leer lo que escribe la gente, responder como equipo de CONTAPP, quitar lo
+ * leer lo que escribe la gente, responder como equipo de Pivox, quitar lo
  * que no corresponde —con el motivo por correo al autor— y dar por resuelto
  * lo que ya se atendió —con un agradecimiento por correo—. Ver
  * FeedbackService.
@@ -88,7 +88,7 @@ class FeedbackModerationController extends Controller
         ]);
     }
 
-    /** Una respuesta del equipo de CONTAPP a una publicación a la vista. */
+    /** Una respuesta del equipo de Pivox a una publicación a la vista. */
     public function reply(Request $request, FeedbackComment $comment): RedirectResponse
     {
         abort_unless($comment->isPost(), 404);

@@ -194,7 +194,7 @@ it('sin cupo en la licencia no se importa', function () {
 
 it('el backoffice exporta cualquier compañía, y al Superusuario le llega un correo', function () {
     $f = httpBackupFixture();
-    $propietario = loginAsPropietario(['name' => 'Soporte CONTAPP']);
+    $propietario = loginAsPropietario(['name' => 'Soporte Pivox']);
 
     $this->get(route('backoffice.licenses.backups.index', $f['license']->id))->assertOk()
         ->assertInertia(fn ($page) => $page->component('Backoffice/Licenses/Backups')->where('superuser.email', 'dueno@example.com'));
@@ -206,8 +206,8 @@ it('el backoffice exporta cualquier compañía, y al Superusuario le llega un co
 
     Notification::assertSentTo($f['superuser'], CompanyBackupExportedNotification::class);
 
-    // En la Bitácora de la compañía, a nombre del equipo de CONTAPP; y en el historial de la licencia.
-    expect(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->value('new_values')['by'])->toBe('Equipo de CONTAPP (Soporte CONTAPP)')
+    // En la Bitácora de la compañía, a nombre del equipo de Pivox; y en el historial de la licencia.
+    expect(AuditLog::where('company_id', $f['company']->id)->where('action', 'company.backup_exported')->value('new_values')['by'])->toBe('Equipo de Pivox (Soporte Pivox)')
         ->and(AuditLog::where('propietario_id', $propietario->id)->where('action', 'license_company_backup_exported')->exists())->toBeTrue();
 });
 
@@ -294,7 +294,7 @@ it('un respaldo subido que nadie confirma se borra a las 24 horas', function () 
     expect(Storage::disk('local')->allFiles('backups'))->toHaveCount(1);
 
     $this->travel(25)->hours();
-    $this->artisan('contapp:prune-backups')->assertSuccessful();
+    $this->artisan('pivox:prune-backups')->assertSuccessful();
 
     $backup = CompanyBackup::where('uuid', $uuid)->sole();
     expect($backup->status)->toBe('expired')

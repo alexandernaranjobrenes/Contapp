@@ -1,13 +1,13 @@
 ## 1. Conceptos generales
 
 ### 1.1 Licencias y compañías
-- No hay registro público: el equipo de CONTAPP emite cada **licencia** con un código. Quien la activa crea su compañía y queda como **Superusuario**, el dueño de la licencia.
+- No hay registro público: el equipo de Pivox emite cada **licencia** con un código. Quien la activa crea su compañía y queda como **Superusuario**, el dueño de la licencia.
 - La pantalla de activación pide:
   - el «Código de licencia»;
   - los datos de la compañía: «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional);
   - los datos de la persona: nombre, correo y contraseña. Si ya tiene cuenta, elige «Ya tengo una cuenta».
 - **Una cuenta puede ser dueña de una sola licencia.** Una licencia puede tener varias compañías, hasta el máximo de su categoría. Cada categoría define cuántas empresas, administradores y usuarios admite, y su duración.
-- **Agregar compañías:** en **Administración → Agregar compañía** (solo el Superusuario) se completa «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional). Si ya se llegó al máximo, aparece «Ya alcanzaste el máximo de compañías de tu licencia»; para más cupo hay que contactar al equipo de CONTAPP.
+- **Agregar compañías:** en **Administración → Agregar compañía** (solo el Superusuario) se completa «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional). Si ya se llegó al máximo, aparece «Ya alcanzaste el máximo de compañías de tu licencia»; para más cupo hay que contactar al equipo de Pivox.
 - **Activar una licencia propia:** una persona que es Administrador o Usuario en la licencia de otro puede activar la suya en **Mi cuenta → Activar una licencia**. Esa opción solo aparece mientras la cuenta no sea dueña de una licencia. Si la cuenta la creó otra persona, primero hay que confirmar el correo con «Enviarme el enlace».
 - Una persona puede tener acceso a **varias compañías**, propias o de otras licencias por invitación. Su **rol es por compañía**.
 
@@ -18,11 +18,11 @@
 ### 1.3 Estados de la licencia
 Se ven en el pie de página y en el selector de compañía:
 - **Vigente**: normal.
-- **Por vencer**: faltan 30 días o menos. Conviene renovar con el equipo de CONTAPP.
+- **Por vencer**: faltan 30 días o menos. Conviene renovar con el equipo de Pivox.
 - **Vencida**: se entra en **modo de gracia**. Se puede consultar y exportar, pero no crear ni modificar nada. El mensaje es: «La licencia de tu compañía está vencida. Podés consultar y exportar información, pero no crear ni modificar registros hasta renovarla.»
   - En modo de gracia sí se puede: editar los datos personales en Mi cuenta, cambiar de compañía, cerrar sesión, aceptar invitaciones y usar el panel de comentarios.
-  - Se renueva con el equipo de CONTAPP.
-- **Suspendida** o **Revocada**: no se puede entrar a esa compañía. Aparece deshabilitada en el selector, con un mensaje que explica el motivo. Hay que contactar al equipo de CONTAPP.
+  - Se renueva con el equipo de Pivox.
+- **Suspendida** o **Revocada**: no se puede entrar a esa compañía. Aparece deshabilitada en el selector, con un mensaje que explica el motivo. Hay que contactar al equipo de Pivox.
 
 ### 1.4 Roles
 - **Superusuario** (dueño de la licencia): tiene acceso total a sus compañías. Es el único que puede:
@@ -72,7 +72,7 @@ Se ven en el pie de página y en el selector de compañía:
   - «Cancelar invitación» invalida el enlace.
   - Una vencida se reenvía.
 - **«La invitación ya no es válida»**: el enlace venció, se canceló, se reenvió (y la persona abrió el viejo) o ya se aceptó. La solución es pedir que la reenvíen.
-- **Cupos:** las invitaciones pendientes también cuentan contra el máximo de administradores o usuarios de la licencia. Si no hay cupo, se puede cancelar una invitación pendiente, desactivar a alguien, o pedir más cupo al equipo de CONTAPP.
+- **Cupos:** las invitaciones pendientes también cuentan contra el máximo de administradores o usuarios de la licencia. Si no hay cupo, se puede cancelar una invitación pendiente, desactivar a alguien, o pedir más cupo al equipo de Pivox.
 - **Permisos de alguien ya activo:** botón «Permisos» → «Editar permisos» → «Guardar».
 - **Cambiar el rol** con «Hacer Administrador» o «Hacer Usuario» (solo el Superusuario).
 - **Suspender**: la persona no entra hasta que la reactiven, y sus permisos quedan guardados.
@@ -89,7 +89,7 @@ Se ven en el pie de página y en el selector de compañía:
 ### 1.8 Mi cuenta → Mis datos
 - **Foto de perfil**: se ve junto al nombre en las listas de usuarios. Se quita con «Quitar foto».
 - **Nombre y apellidos**: es como te ven en todas las compañías.
-- **Correo**: para cambiarlo, CONTAPP manda un enlace al correo nuevo. El cambio se hace al abrir ese enlace, y mientras tanto se sigue entrando con el actual.
+- **Correo**: para cambiarlo, Pivox manda un enlace al correo nuevo. El cambio se hace al abrir ese enlace, y mientras tanto se sigue entrando con el actual.
 - **Contraseña**: se pide la actual, la nueva y la repetición. Al cambiarla se cierran las sesiones abiertas en otros dispositivos.
 - **Política de contraseña**: al menos 8 caracteres, con 4 letras, 4 números, una mayúscula, una minúscula y un carácter especial. Si falta algo, el mensaje dice exactamente qué: «A la contraseña le falta tener al menos: …».
 - **Compañías**: muestra el rol en cada una. El rol no se cambia desde acá, porque lo asigna quien administra la compañía.
@@ -104,14 +104,14 @@ Se ven en el pie de página y en el selector de compañía:
   - el botón **Comentarios y noticias** (un punto avisa que hay noticias nuevas);
   - el botón «Salir».
 - Si la licencia tiene Conti, el asistente, su botón es el redondo con un robot, en la esquina inferior derecha.
-- El menú lateral se puede colapsar. Está organizado en secciones: Contabilidad, Centros de costo y cambiario, Inventario, Facturación, Planillas, Socios de negocio, Bancos, Impuestos, Administración y Mi cuenta. Dentro de cada sección, las opciones se agrupan en Operación, Reportes, Catálogos y Configuración. **No hay un menú general de reportes:** cada reporte vive en el módulo al que pertenece.
+- El menú lateral se puede colapsar. Está organizado en secciones: Contabilidad, Centros de costo y cambiario, Inventario, Facturación, Planillas, Socios de negocio, Bancos, Impuestos, Repositorio (documentos de consulta, ver 1.16), Administración y Mi cuenta. Dentro de cada sección, las opciones se agrupan en Operación, Reportes, Catálogos y Configuración. **No hay un menú general de reportes:** cada reporte vive en el módulo al que pertenece.
 - El **Panel** es la página de inicio y muestra los documentos contabilizados recientes.
 
 ### 1.10 Comentarios y noticias
 - **Comentarios**: para proponer mejoras o reportar algo. Se escribe un texto y se pueden adjuntar imágenes (JPG o PNG de hasta 5 MB). Se puede votar a favor o en contra, y comentar; lo más votado queda arriba.
-- **Lo publicado lo ven todas las cuentas de CONTAPP**, no solo tu compañía: no hay que poner datos sensibles.
-- Cuando el equipo de CONTAPP marca una publicación como solucionada o la elimina, su autor recibe un correo.
-- **Noticias**: las novedades de CONTAPP que publica el equipo.
+- **Lo publicado lo ven todas las cuentas de Pivox**, no solo tu compañía: no hay que poner datos sensibles.
+- Cuando el equipo de Pivox marca una publicación como solucionada o la elimina, su autor recibe un correo.
+- **Noticias**: las novedades de Pivox que publica el equipo.
 
 ### 1.11 Comportamientos comunes en todas las pantallas
 - «Crear nuevo» abre el formulario. Tocar una fila abre su **ficha**, con las acciones disponibles (Editar, Eliminar, Ver…).
@@ -123,9 +123,9 @@ Se ven en el pie de página y en el selector de compañía:
   - exportación a Excel.
 
   Solo cuenta lo contabilizado.
-- **Códigos:** al crear, CONTAPP propone el que sigue al último (con el mismo formato que ya usa la compañía) y se puede cambiar en ese momento. Después:
+- **Códigos:** al crear, Pivox propone el que sigue al último (con el mismo formato que ya usa la compañía) y se puede cambiar en ese momento. Después:
   - no se cambian nunca: artículos, grupos, almacenes, ubicaciones, unidades, listas de precios y de materiales, centros de costo, normas de reparto, tipos de documento, lotes, socios de negocio y cargas sociales;
-  - se pueden corregir **hasta que el registro se usa**: cuentas contables (hasta su primer asiento o saldo inicial), empleados (hasta su primera planilla), conceptos de planilla propios, categorías de socios, departamentos y puestos. Los conceptos que trae CONTAPP no se cambian.
+  - se pueden corregir **hasta que el registro se usa**: cuentas contables (hasta su primer asiento o saldo inicial), empleados (hasta su primera planilla), conceptos de planilla propios, categorías de socios, departamentos y puestos. Los conceptos que trae Pivox no se cambian.
 
   Un código fijo se ve deshabilitado, con el motivo debajo. Si está mal, se crea otro registro y se inactiva el anterior.
 - **Lo que ya tiene movimientos no se elimina**: se inactiva.
@@ -134,7 +134,7 @@ Se ven en el pie de página y en el selector de compañía:
 ### 1.12 Monedas y tipo de cambio
 - Cada compañía tiene una **moneda local** (normalmente colones, CRC), una **moneda extranjera** (normalmente dólares, USD) y una **moneda de sistema**, que siempre es USD.
 - Cada asiento guarda sus montos en las tres monedas.
-- Para convertir, CONTAPP usa el **último tipo de cambio registrado en o antes de la fecha de contabilización**. Sin tipo de cambio cargado, no se puede contabilizar (ver la sección 3.1).
+- Para convertir, Pivox usa el **último tipo de cambio registrado en o antes de la fecha de contabilización**. Sin tipo de cambio cargado, no se puede contabilizar (ver la sección 3.1).
 
 ### 1.13 Conti, el asistente
 - El botón redondo del robot, en la esquina inferior derecha, se abre en dos al pasar el mouse por encima (o al tocarlo en el teléfono): **«Chat»** y **«Escanear»**. El panel del chat queda a la derecha y la conversación sigue al pasar de una pantalla a otra. «Nueva conversación» (la flecha circular) empieza de cero.
@@ -152,7 +152,7 @@ Se ven en el pie de página y en el selector de compañía:
   - registrar un movimiento de planilla (horas extra, bonos, rebajos) en un período abierto;
   - registrar vacaciones (disfrute, pago o ajuste).
 - **Para registrar o editar, Conti muestra un formulario en el chat**, con lo que ya sabe precargado. Se completa ahí mismo; en los campos de código (cuentas, socios, artículos…) aparecen sugerencias al escribir. En un asiento, abajo de las líneas se ve si cuadran los débitos y los créditos.
-- **Los campos marcados «Sugerido»** los completa CONTAPP según cómo se viene trabajando en la compañía: el código que sigue al último, la cuenta de control que usan los demás clientes, el tipo de documento de siempre, la última tasa de cambio… Debajo de cada uno dice por qué. Se pueden cambiar como cualquier otro campo.
+- **Los campos marcados «Sugerido»** los completa Pivox según cómo se viene trabajando en la compañía: el código que sigue al último, la cuenta de control que usan los demás clientes, el tipo de documento de siempre, la última tasa de cambio… Debajo de cada uno dice por qué. Se pueden cambiar como cualquier otro campo.
 - **Nada se guarda sin confirmar.** Al enviar el formulario (o cuando Conti ya tenía todos los datos), se abre sola una ventana encima de la pantalla en que se está, con el resumen:
   - «Confirmar y guardar» lo guarda, con el usuario de la persona y las mismas validaciones que la pantalla correspondiente; la pantalla de atrás se actualiza.
   - «Corregir» lo devuelve al chat como formulario para cambiar lo que haga falta.
@@ -165,21 +165,21 @@ Se ven en el pie de página y en el selector de compañía:
 - **Escanear un documento** («Escanear», en el botón de Conti): Conti lee una foto del documento y llena el formulario.
   - Primero se elige qué registrar: una factura de gasto o compra (asiento), una cotización o pedido a un proveedor (orden de compra), los datos de un cliente o proveedor nuevo, o un comprobante de pago (aplicar el pago). Solo aparece lo que la persona puede registrar con sus permisos.
   - En el teléfono se abre la cámara ahí mismo. En la computadora aparece un código QR: se escanea con la cámara del teléfono, se toma la foto (hasta 3 páginas) y se envía. El formulario aparece solo en la computadora. El código sirve una sola vez y por 10 minutos, y en el teléfono no hace falta iniciar sesión. También se puede subir una imagen que ya esté en la computadora.
-  - Lo leído del documento va marcado «Del documento». Lo que Conti no encontró en CONTAPP (un proveedor o un artículo que no está registrado) queda vacío, con una nota arriba: hay que buscarlo o crearlo primero.
+  - Lo leído del documento va marcado «Del documento». Lo que Conti no encontró en Pivox (un proveedor o un artículo que no está registrado) queda vacío, con una nota arriba: hay que buscarlo o crearlo primero.
   - Revisá cada dato y corregí lo que haga falta antes de enviarlo; después viene la ventana de confirmación de siempre.
-  - Las fotos no se guardan en CONTAPP: se leen y se descartan. Leer un documento gasta créditos, como un mensaje.
+  - Las fotos no se guardan en Pivox: se leen y se descartan. Leer un documento gasta créditos, como un mensaje.
   - En el teléfono, el documento completo, de frente y con buena luz se lee mejor.
 - **Cuando Conti necesita que elijas** (un período, entre dos cuentas parecidas…), te muestra opciones para tocar, de una o varias, y siempre podés escribir otra respuesta.
 - Para cualquier otra cosa (facturar, mover inventario, cerrar períodos, calcular planillas…), Conti explica cómo hacerlo en la pantalla.
 - Con la licencia vencida, Conti responde y consulta, pero no prepara nada para guardar.
-- **Conti es parte de la licencia.** El equipo de CONTAPP lo activa o lo desactiva para cada licencia, y le puede poner límites de uso en créditos: por día y por semana para toda la licencia (todas sus compañías y personas juntas), y por persona al día. Si la licencia no lo tiene, el botón Conti no aparece.
+- **Conti es parte de la licencia.** El equipo de Pivox lo activa o lo desactiva para cada licencia, y le puede poner límites de uso en créditos: por día y por semana para toda la licencia (todas sus compañías y personas juntas), y por persona al día. Si la licencia no lo tiene, el botón Conti no aparece.
 - **El cupo de la licencia es compartido:** lo usan todas las personas de la licencia, el Superusuario incluido. Si alguien lo gasta, nadie más puede usar Conti hasta que se renueve.
 - **El Superusuario lo reparte.** Al invitar a alguien o en **Administración → Usuarios → Editar permisos**, en la sección «Conti, el asistente», decide para cada Administrador o Usuario:
   - si puede usar Conti;
   - su límite por día y por semana, en créditos, que no puede pasar los de la licencia;
   - qué modelos puede elegir.
   Esa sección solo la ve el Superusuario, y la ficha de cada persona muestra lo que gastó hoy y en la semana. Si alguien no ve el botón de Conti, es que el Superusuario no le dio acceso.
-- **Al llegar a un límite**, Conti avisa y deja de responder hasta que se renueve: el diario se renueva a las 00:00 y el semanal el lunes a las 00:00 (hora de Costa Rica). Cuando falta poco para el límite, Conti avisa en el chat. Para más cupo, hay que contactar al equipo de CONTAPP.
+- **Al llegar a un límite**, Conti avisa y deja de responder hasta que se renueve: el diario se renueva a las 00:00 y el semanal el lunes a las 00:00 (hora de Costa Rica). Cuando falta poco para el límite, Conti avisa en el chat. Para más cupo, hay que contactar al equipo de Pivox.
 - Cada mensaje consume según cuánto trabajo le cuesta a Conti responder: una pregunta simple gasta poco; una que corre varios reportes, más.
 - **Modelo y consumo** (el ícono del medidor, arriba en el chat):
   - Cada persona elige con qué modelo de OpenAI le responde Conti. Los más capaces (GPT-4.1, GPT-5) razonan o analizan mejor, pero gastan más créditos por mensaje; GPT-4.1 nano es el más económico. La elección es personal: no cambia la de las demás personas.
@@ -205,7 +205,7 @@ Se ven en el pie de página y en el selector de compañía:
 
 ### 1.15 Respaldos (Administración → Respaldos)
 - Un respaldo es **toda la información de una compañía** —o la de un período— en un archivo de texto cifrado. Sirve para guardarla aparte, para pasar una compañía a otra licencia o para completar una compañía con lo que le falta.
-- Lo hace **solo el Superusuario**, con las compañías de su licencia. El equipo de CONTAPP también puede, desde su panel; si exporta, al Superusuario le llega un correo.
+- Lo hace **solo el Superusuario**, con las compañías de su licencia. El equipo de Pivox también puede, desde su panel; si exporta, al Superusuario le llega un correo.
 - **Exportar:**
   1. Elegí la compañía, **qué exportar** (Contabilidad y socios de negocio va siempre; Bancos, Inventario, Facturación, Planillas, Personas y permisos, Bitácora) y el **período**: «Todo el historial» o «Un período» con «Desde» y «Hasta» (vacío, hasta hoy).
   2. Tocá «Revisar»: aparece el **resumen** con cuántos asientos, socios, artículos, comprobantes, empleados… lleva, y te pregunta si estás seguro.
@@ -214,22 +214,30 @@ Se ven en el pie de página y en el selector de compañía:
   - Con un período, los catálogos (cuentas, socios, artículos, empleados) van completos y los movimientos, los del período. También van los **saldos del día anterior**: el saldo de cada cuenta, las partidas abiertas, las existencias y las vacaciones, para que la compañía arranque bien si se importa.
   - No lleva fotos ni el logo.
 - **Importar:**
-  1. Elegí el archivo, escribí su contraseña y tocá «Revisar». CONTAPP verifica que lo haya generado esta instalación y que nadie lo haya modificado; con un archivo grande tarda, y la pantalla muestra el avance.
+  1. Elegí el archivo, escribí su contraseña y tocá «Revisar». Pivox verifica que lo haya generado esta instalación y que nadie lo haya modificado; con un archivo grande tarda, y la pantalla muestra el avance.
   2. Revisá el resumen y elegí **dónde importarlo**:
      - **En una compañía nueva:** escribí su razón social, nombre comercial y cédula, y la contraseña de tu cuenta. Tocá «Sí, importar». Ocupa un cupo de compañía de la licencia.
-     - **Completar una compañía que ya existe:** elegila y tocá «Comparar». CONTAPP muestra qué le falta, qué ya tiene y qué tiene distinto, sin guardar nada. Si se puede, escribí la contraseña de tu cuenta y tocá «Sí, completar».
+     - **Completar una compañía que ya existe:** elegila y tocá «Comparar». Pivox muestra qué le falta, qué ya tiene y qué tiene distinto, sin guardar nada. Si se puede, escribí la contraseña de tu cuenta y tocá «Sí, completar».
   - Se importa en segundo plano: podés salir de la pantalla. Al terminar, dice cuántos registros entraron y quién quedó con acceso.
   - Lo contabilizado entra contabilizado, con los mismos números de documento.
-  - Las personas entran por su correo si ya tienen cuenta en CONTAPP y caben en la licencia; a las demás hay que invitarlas desde Usuarios.
+  - Las personas entran por su correo si ya tienen cuenta en Pivox y caben en la licencia; a las demás hay que invitarlas desde Usuarios.
 - **Completar una compañía:**
   - Cada cosa se reconoce por su código o su número (una cuenta por su código, un asiento por su tipo y número). **Lo que ya está no se cambia**, aunque tenga otros datos: queda lo de la compañía, y la comparación dice cuántos son distintos.
   - Un documento entra entero, con sus líneas; a uno que ya está no se le agrega nada.
   - Los saldos de partidas, las existencias, el costo promedio y los consecutivos se recalculan con lo que entra.
   - **No se puede completar** si un documento ya está con otros datos (por ejemplo, en borrador acá y contabilizado en el respaldo, o con el mismo número y otro contenido), o si lo que falta del kardex de un artículo es de antes de su último movimiento: traerlo duplicaría o cambiaría lo ya contabilizado. La comparación dice cuál; se resuelve en la compañía, o se importa el respaldo en una compañía nueva.
   - Un respaldo «desde» una fecha trae los saldos del día anterior: entran solo si la compañía no tiene movimientos antes de esa fecha.
-- **«Este respaldo no lo generó esta instalación de CONTAPP, o fue modificado»**: el archivo fue editado o viene de otro lado; no se puede importar.
+- **«Este respaldo no lo generó esta instalación de Pivox, o fue modificado»**: el archivo fue editado o viene de otro lado; no se puede importar.
 - **«La contraseña no es la de este respaldo»**: revisá la contraseña del archivo (no la de tu cuenta).
-- **«Este respaldo es de una versión anterior de CONTAPP y le faltan datos que esta versión exige»**: hay que avisarle al equipo de CONTAPP.
+- **«Este respaldo es de una versión anterior de Pivox y le faltan datos que esta versión exige»**: hay que avisarle al equipo de Pivox.
+
+### 1.16 Repositorio (menú lateral → Repositorio)
+- Documentos de consulta que publica el equipo de Pivox: leyes, reglamentos, resoluciones de Hacienda y artículos del mundo contable y tributario. Los ve **cualquier cuenta, con cualquier rol**: no depende de los permisos de la compañía.
+- Están **agrupados en carpetas** (por ejemplo «Leyes» o «Resoluciones»). Arriba se busca por título o tema y se filtra por carpeta.
+- Cada documento se abre como **PDF**: «Ver PDF» lo abre en otra pestaña y «Descargar» lo guarda. Muestra la fecha de su última actualización.
+- Los documentos los sube y actualiza el equipo de Pivox: desde Pivox no se pueden subir ni editar. Para pedir uno, se propone en **Comentarios y noticias**.
+- Conti también consulta los documentos que el equipo activó para él, y cita de cuál sale lo que dice. Los enlaces que da llevan a esta pantalla, con el documento marcado.
+- Es material de consulta: las decisiones tributarias y legales las confirma el contador o asesor de la empresa.
 ---
 
 ## 2. Contabilidad
@@ -348,8 +356,8 @@ La primera corrida es la fecha de contabilización. Cada corrida genera un **pre
 - Los asientos generados quedan como **preliminares** en Registros, para revisarlos y contabilizarlos.
 
 ### 2.6 Saldos iniciales (Contabilidad → Saldos iniciales)
-Sirve para arrancar en CONTAPP una compañía que ya operaba en otro sistema.
-1. Fijá la **«Fecha del asiento de apertura»** **antes** de subir el archivo, porque el archivo se contabiliza apenas se elige. Normalmente es el primer día del período en que se empieza a usar CONTAPP.
+Sirve para arrancar en Pivox una compañía que ya operaba en otro sistema.
+1. Fijá la **«Fecha del asiento de apertura»** **antes** de subir el archivo, porque el archivo se contabiliza apenas se elige. Normalmente es el primer día del período en que se empieza a usar Pivox.
 2. Si querés, escribí una «Descripción».
 3. Tocá **«Descargar plantilla»**. Trae una fila por cada cuenta y cada socio de negocio.
 4. Completá los saldos y tocá **«Subir XLSX y contabilizar»**.
@@ -366,7 +374,7 @@ Reglas:
 - **«Cerrar año»**:
   1. Elegí la cuenta de **Utilidades acumuladas**.
   2. Todos los períodos del año, **menos el último**, tienen que estar cerrados.
-  3. CONTAPP contabiliza el asiento de cierre (tipo ACC) en el último período, que lleva las cuentas de resultados contra utilidades acumuladas, y cierra ese período y el año.
+  3. Pivox contabiliza el asiento de cierre (tipo ACC) en el último período, que lleva las cuentas de resultados contra utilidades acumuladas, y cierra ese período y el año.
 - Si al contabilizar aparece «No existe un período fiscal configurado para la fecha…», falta crear el año fiscal.
 
 ### 2.8 Reportes contables (Contabilidad, grupo Reportes)
@@ -389,7 +397,7 @@ Reglas:
   - Trae el **tipo de cambio de referencia de venta** del dólar que publica el Banco Central (el que usa Hacienda) y lo guarda como «Referencia», con origen BCCR. Una tasa bloqueada no se toca.
   - El BCCR publica el de cada día la tarde anterior: una fecha más adelante todavía no está, y se carga a mano.
   - Solo trae el del dólar. Si la moneda extranjera de la compañía es otra, se carga a mano.
-  - Necesita el token del BCCR, que configura el equipo de CONTAPP. Sin él, el botón no está disponible y la pantalla lo avisa. Si el BCCR rechaza el token (por ejemplo, porque venció), el mensaje lo dice: hay que generar uno nuevo en el sitio de Indicadores Económicos del BCCR.
+  - Necesita el token del BCCR, que configura el equipo de Pivox. Sin él, el botón no está disponible y la pantalla lo avisa. Si el BCCR rechaza el token (por ejemplo, porque venció), el mensaje lo dice: hay que generar uno nuevo en el sitio de Indicadores Económicos del BCCR.
   - **Se sincroniza solo todos los días**, para todas las compañías, a las 6:00 a. m. y otra vez a la 1:00 p. m. (por si a la primera el BCCR no respondió). Si algún día no corrió, al siguiente se completan los días que faltan de la última semana, sin tocar los que ya estaban.
   - Debajo del botón dice cuándo fue la última sincronización automática y qué tipo de cambio trajo. Si falló, lo dice en rojo, con el motivo.
   - El botón sirve para traer el de otra fecha o para reintentar a mano.
@@ -431,7 +439,7 @@ Revalúa los saldos en moneda extranjera de clientes, proveedores y cuentas al t
 
 ### 4.1 Ficha del socio (Socios de negocio → Socios de negocio)
 - Campos de la ficha:
-  - **Código**: CONTAPP propone el que sigue según el tipo (CLI-0001 para clientes, PRV-0001 para proveedores, SOC-0001 para ambos, o el formato que ya use la compañía). Se puede cambiar al crear; **después queda fijo**, porque es la llave de sus estados de cuenta y sus partidas.
+  - **Código**: Pivox propone el que sigue según el tipo (CLI-0001 para clientes, PRV-0001 para proveedores, SOC-0001 para ambos, o el formato que ya use la compañía). Se puede cambiar al crear; **después queda fijo**, porque es la llave de sus estados de cuenta y sus partidas.
   - **Tipo**: Cliente, Proveedor o Ambos.
   - **Nombre**, **Cédula**, **Correo electrónico**, **Teléfono**, **Nombre del encargado** y **Código de actividad económica** (formato 6201.0).
   - **Tipo de identificación** (cédula física, jurídica, DIMEX, NITE, extranjero no domiciliado o no contribuyente): **obligatorio para recibir una factura electrónica**, y la cédula tiene que tener los dígitos de su tipo (9 la física, 10 la jurídica).
@@ -523,7 +531,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
   - «Predeterminada (la usan los clientes sin lista propia)».
   - «Estado».
   - En la pantalla de precios, **dejar un precio vacío quita el artículo de la lista**, y **poner cero significa regalarlo**. El margen contra el costo solo se muestra si la lista está en moneda local. Una lista no se convierte de moneda.
-- **¿Qué lista de precios se aplica a un cliente?** La de la ficha del cliente; si no tiene, la de su categoría; si no, la predeterminada de la compañía. Si el artículo **no está** en la lista que aplica, **no hay precio sugerido**: CONTAPP no busca en otra lista.
+- **¿Qué lista de precios se aplica a un cliente?** La de la ficha del cliente; si no tiene, la de su categoría; si no, la predeterminada de la compañía. Si el artículo **no está** en la lista que aplica, **no hay precio sugerido**: Pivox no busca en otra lista.
 - **Determinación de cuentas** (Inventario → Configuración): reglas con «Alcance», «Aplica a», «Categoría contable», «Cuenta contable» y «Norma de reparto». La norma es obligatoria si la cuenta la exige. El alcance y la categoría de una regla no se cambian.
 
 ### 6.3 Movimientos (Inventario → Movimientos)
@@ -531,7 +539,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
   - **Ajuste de entrada de mercancía**: existencias iniciales, sobrantes, donaciones.
   - **Entrada por compra (pendiente de facturar)**: la deuda queda en la **cuenta puente GR/IR** hasta que llega la factura del proveedor.
   - **Salida de mercancía**: consumo, mermas, faltantes.
-  - **Ajuste por conteo físico**: en este caso, **la cantidad es lo contado**, no la diferencia. CONTAPP calcula el ajuste.
+  - **Ajuste por conteo físico**: en este caso, **la cantidad es lo contado**, no la diferencia. Pivox calcula el ajuste.
 - Encabezado: «Operación», «Tipo de documento», «Fecha del documento», «Fecha de contabilización», «Proveedor», «Orden de compra (opcional)» y «Descripción».
 - **Importaciones**: en una entrada por compra se marca «Esta entrada es una importación» y se completan los datos del DUA: «Número de DUA», «Aduana», «Fecha del DUA», «Documento de transporte» y «País de origen». Solo las importaciones admiten después rubros de nacionalización.
 - Líneas: «Artículo», «Almacén», «Ubicación», «Lote» o serie, cantidad y «Costo unitario». Se registra con «Contabilizar movimiento».
@@ -633,7 +641,7 @@ Se configuran antes de facturar:
 - 09 Factura electrónica de exportación
 - 10 Recibo electrónico de pago
 
-Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma y envía: 01, 02, 03, 04 y 09.
+Con la facturación electrónica encendida solo se ofrecen los que Pivox firma y envía: 01, 02, 03, 04 y 09.
 
 **El encabezado:**
 - «Tipo de comprobante» y «Tipo de documento (ERP)».
@@ -674,7 +682,7 @@ Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma
 ### 7.3 Comprobantes (Facturación → Comprobantes)
 - La lista de lo emitido: «Consecutivo», «Fecha», «Cliente», «Total» y «Estado». Al tocar uno se ve el detalle.
 - En un comprobante electrónico, el «Estado» es el de Hacienda:
-  - **Firmado, por enviar** / **Enviando** / **En proceso en Hacienda**: va en camino. CONTAPP lo envía y consulta solo, con esperas cada vez más largas.
+  - **Firmado, por enviar** / **Enviando** / **En proceso en Hacienda**: va en camino. Pivox lo envía y consulta solo, con esperas cada vez más largas.
   - **Aceptado**: vale. Si el Superusuario lo dejó así, al cliente le llegan por correo el XML firmado, la respuesta de Hacienda y el PDF.
   - **Rechazado** o **Hacienda no lo recibió**: el detalle dice por qué. Se corrige lo que indica (los datos del cliente o del emisor) y se usa **«Emitir de nuevo»**, que lo vuelve a emitir con consecutivo y clave nuevos. Una clave ya procesada no se puede reenviar. Si lo que está mal son los montos, se anula con una nota de crédito y se emite otra factura.
   - **Envío sin confirmar** / **Requiere atención**: no se sabe si llegó, o Hacienda no respondió. «Reintentar envío» consulta primero si Hacienda ya lo tiene (nunca lo envía dos veces).
@@ -708,8 +716,8 @@ Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma
 - **Encender**: solo cuando no falta nada; la pantalla lista lo que falta. Se recomienda probar primero en **Pruebas**, en una compañía de prueba, porque cada comprobante igual queda registrado en el ERP.
 - **Pasar a Producción**: con la emisión encendida, solo si las credenciales y la llave de producción ya están cargadas. Rige desde el próximo comprobante.
 - **Apagar**: los comprobantes nuevos dejan de enviarse; los que ya iban en camino siguen.
-- La llave vence: CONTAPP le avisa al Superusuario por correo a los 30, 15, 7 y 1 día.
-- **Antes de emitir**, con la emisión encendida, CONTAPP le pregunta a Hacienda lo que ya sabe que va a rechazar: si un **CAByS** de las líneas no está en el catálogo (rechazo -400) o si la **actividad económica** no está inscrita a la cédula de la compañía (rechazo -408). En ese caso el comprobante no se emite y el formulario dice qué corregir; no se gasta el consecutivo. Si Hacienda no contesta, se emite igual.
+- La llave vence: Pivox le avisa al Superusuario por correo a los 30, 15, 7 y 1 día.
+- **Antes de emitir**, con la emisión encendida, Pivox le pregunta a Hacienda lo que ya sabe que va a rechazar: si un **CAByS** de las líneas no está en el catálogo (rechazo -400) o si la **actividad económica** no está inscrita a la cédula de la compañía (rechazo -408). En ese caso el comprobante no se emite y el formulario dice qué corregir; no se gasta el consecutivo. Si Hacienda no contesta, se emite igual.
 - **Servicio o mercancía** lo decide el CAByS de la línea (los que empiezan con 5 a 9 son servicios), porque así suma Hacienda los totales. Un artículo de bodega con un CAByS de servicio tiene el CAByS mal elegido.
 - Si alguien que no es el Superusuario pregunta cómo configurar la facturación electrónica, decile que lo hace el Superusuario de la compañía en esta pantalla.
 
@@ -750,12 +758,12 @@ Con la facturación electrónica encendida solo se ofrecen los que CONTAPP firma
   - «Entra a la base de aguinaldo, vacaciones y cesantía».
 
   Marcarlas mal produce una planilla que no cuadra con la Caja.
-- **El código** es la columna de la plantilla de movimientos y queda copiado en las boletas: el de un concepto que trae CONTAPP no se cambia, y el de uno propio, solo mientras no se haya usado.
+- **El código** es la columna de la plantilla de movimientos y queda copiado en las boletas: el de un concepto que trae Pivox no se cambia, y el de uno propio, solo mientras no se haya usado.
 - **El código de una carga social** (SEM, IVM…) une sus vigencias y no se cambia. Para una tasa nueva se agrega una vigencia con el mismo código.
 
 ### 8.2 Empleados (Planillas → Empleados)
 - **Identificación:** «Código», «Tipo de identificación», «Número», nombre y apellidos, fecha de nacimiento, correo y teléfono.
-  - El código lo propone CONTAPP (EMP-0001 y los que siguen). Se puede corregir hasta la primera planilla del empleado; después queda fijo, porque la plantilla de movimientos lo busca por código.
+  - El código lo propone Pivox (EMP-0001 y los que siguen). Se puede corregir hasta la primera planilla del empleado; después queda fijo, porque la plantilla de movimientos lo busca por código.
 - **Foto (opcional):** se agrega al crear o editar al empleado, o desde su ficha completa.
   - Acepta JPG o PNG de hasta 4 MB, y se guarda cuadrada, sin los datos de ubicación que trae una foto del teléfono.
   - «Cambiar foto» reemplaza a la anterior y «Quitar» la borra; la anterior no queda guardada en ningún lado.
@@ -788,7 +796,7 @@ La ficha del empleado muestra también:
 
 ### 8.3 Períodos de planilla (Planillas → Períodos de planilla)
 - Para crear un período: «Año», «Frecuencia», «Número», «Desde», «Hasta», **«Fecha de pago»** y «Nombre». La fecha de pago manda para el asiento y para las tasas vigentes, y puede caer en el mes siguiente.
-  - El «Número» lo propone CONTAPP: el que sigue en ese año y esa frecuencia. **No se puede saltar uno.** El primero del año puede ser cualquiera, para quien empieza a usar CONTAPP a mitad de año.
+  - El «Número» lo propone Pivox: el que sigue en ese año y esa frecuencia. **No se puede saltar uno.** El primero del año puede ser cualquiera, para quien empieza a usar Pivox a mitad de año.
 - **Estados:** **abierta → calculada → aprobada → contabilizada**. Solo se recalcula en los dos primeros.
 
 **Flujo:**
@@ -888,7 +896,7 @@ Además, desde el período de planilla se obtienen los **Comprobantes de pago** 
 ## 9. Impuestos
 
 - **Indicadores de impuesto** (Impuestos → Indicadores de impuesto):
-  - Los **indicadores nacionales** (IVA 13 %, 4 %, 2 %, 1 %, etc.) son comunes a todas las compañías y los administra el equipo de CONTAPP. Aparecen como «Indicador nacional».
+  - Los **indicadores nacionales** (IVA 13 %, 4 %, 2 %, 1 %, etc.) son comunes a todas las compañías y los administra el equipo de Pivox. Aparecen como «Indicador nacional».
   - Cada compañía puede crear **indicadores propios**, de un tipo de impuesto existente o de un tipo nuevo. Campos: «Código», «Porcentaje», «Nombre», «Da derecho a crédito fiscal», «Detalle del crédito fiscal», «Vigente desde» y «Vigente hasta».
   - Un indicador **ya usado en asientos no se elimina ni cambia su porcentaje**: solo se le cierra la vigencia. Para un porcentaje nuevo se crea otro indicador.
 - **Reporte de IVA**: «Desde» y «Hasta», por fecha de contabilización. Muestra la «Clasificación», la «Base gravable» y el «Impuesto».
@@ -918,11 +926,11 @@ Además, desde el período de planilla se obtienen los **Comprobantes de pago** 
 - **¿Cómo cargo las existencias iniciales?** En Inventario → Movimientos, con la operación «Ajuste de entrada de mercancía», con cantidades y costos.
 - **¿Por qué una factura me pide usuario y contraseña de otra persona?** Porque el precio se apartó de la lista de precios. Lo tiene que liberar un Administrador o el Superusuario.
 - **¿Por qué no se precarga el precio?** Porque el artículo no está en la lista de precios que aplica a ese cliente, o la lista no está vigente o activa.
-- **El tipo de cambio de un asiento salió distinto al que esperaba.** CONTAPP usa el último registrado en o antes de la fecha de contabilización. Se puede escribir uno manual en el asiento, que rige solo para ese asiento.
+- **El tipo de cambio de un asiento salió distinto al que esperaba.** Pivox usa el último registrado en o antes de la fecha de contabilización. Se puede escribir uno manual en el asiento, que rige solo para ese asiento.
 - **¿Cómo registro un cobro de un cliente?** En Socios de negocio, abrí la ficha del cliente → «Partidas abiertas» → «Aplicar pago».
 - **¿Dónde veo cuánto me deben o debo por antigüedad?** En Socios de negocio → Antigüedad de saldos. Para ver lo que viene, Bancos → Proyección de cobros y pagos.
 - **¿Cómo creo un asiento que se repite cada mes?** Marcá «Programable» en el formulario del asiento.
-- **¿Qué pasa si la licencia vence?** Se puede consultar y exportar, pero no crear ni modificar hasta renovar con el equipo de CONTAPP.
+- **¿Qué pasa si la licencia vence?** Se puede consultar y exportar, pero no crear ni modificar hasta renovar con el equipo de Pivox.
 
 ---
 
@@ -945,9 +953,9 @@ Además, desde el período de planilla se obtienen los **Comprobantes de pago** 
 - **«…ya tiene cobros/pagos aplicados a su partida…; no se puede anular directamente.»**: primero deshacé las aplicaciones de esa partida.
 - **«…ya forma parte de una reconciliación interna; deshacé esa reconciliación primero.»**: andá a la reconciliación de esa cuenta y usá «Deshacer».
 - **No se puede cerrar el período porque hay preliminares**: contabilizá o eliminá los asientos preliminares con fecha dentro del período.
-- **«La licencia de tu compañía está vencida. Podés consultar y exportar información, pero no crear ni modificar registros hasta renovarla.»**: es el modo de gracia. Hay que renovar con el equipo de CONTAPP.
-- **«La licencia de … está suspendida…»** o **«…fue revocada…»**: no se puede entrar a esa compañía. Hay que contactar al equipo de CONTAPP.
-- **«Ya alcanzaste el máximo de compañías de tu licencia.»**: pedí más cupo al equipo de CONTAPP.
+- **«La licencia de tu compañía está vencida. Podés consultar y exportar información, pero no crear ni modificar registros hasta renovarla.»**: es el modo de gracia. Hay que renovar con el equipo de Pivox.
+- **«La licencia de … está suspendida…»** o **«…fue revocada…»**: no se puede entrar a esa compañía. Hay que contactar al equipo de Pivox.
+- **«Ya alcanzaste el máximo de compañías de tu licencia.»**: pedí más cupo al equipo de Pivox.
 - **«A la contraseña le falta tener al menos: …»**: cumplí la política de contraseña (8 caracteres, 4 letras, 4 números, una mayúscula, una minúscula y un carácter especial).
 - **La invitación «ya no es válida»**: pedí que te la reenvíen. Pudo haber vencido (dura 7 días), haberse cancelado, haberse reenviado, o ya estar aceptada.
 - **Sin permiso o error 403 al abrir una pantalla**: falta el permiso de esa opción del menú, o es de solo lectura y se intentó modificar. Pedile el acceso a un Administrador o al Superusuario.

@@ -58,8 +58,8 @@ export function messageForStatus(status) {
     if (status === 404) return 'No encontramos lo que buscabas. Puede que ya no exista.';
     if (status === 419) return 'La página estuvo abierta mucho tiempo y la sesión expiró. Volvé a intentarlo.';
     if (status === 429) return 'Demasiados intentos seguidos. Esperá un momento y volvé a probar.';
-    if (status === 503) return 'CONTAPP está en mantenimiento. Probá de nuevo en unos minutos.';
-    if (status >= 500) return 'Ocurrió un error en el servidor y la acción no se completó. Si se repite, avisale al equipo de CONTAPP.';
+    if (status === 503) return 'Pivox está en mantenimiento. Probá de nuevo en unos minutos.';
+    if (status >= 500) return 'Ocurrió un error en el servidor y la acción no se completó. Si se repite, avisale al equipo de Pivox.';
 
     return 'La acción no se completó. Probá de nuevo.';
 }

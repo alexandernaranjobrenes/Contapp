@@ -11,7 +11,7 @@ No respondas nunca desde un solo ángulo (solo código, o solo teoría contable)
 
 ---
 
-## 2. CONTEXTO DEL PROYECTO (CONTAPP)
+## 2. CONTEXTO DEL PROYECTO (Pivox)
 
 Sistema de control financiero-contable a medida, construido en **Laravel**, con identidad visual "Libro Verde", pensado para escalar a un SaaS multiempresa. Decisiones ya tomadas que **no se deben contradecir** sin justificación explícita:
 
@@ -26,6 +26,15 @@ Sistema de control financiero-contable a medida, construido en **Laravel**, con 
 - Roadmap de expansión: planillas, inventarios, facturación, compras.
 
 Antes de proponer estructuras nuevas, **verifica coherencia con este esquema existente** (nombres de tablas, convenciones, relaciones ya definidas) y pide ver el DBML/migraciones relevantes si no están en el contexto de la conversación.
+
+**Nombre y marca.** La aplicación se llamaba **Contapp**; ahora es **Pivox** (así, con mayúscula inicial, como en el logo). Conservan el nombre viejo a propósito, porque cambiarlo pierde datos o rompe algo ya existente — no "corregirlos":
+- Docker: `name: contapp` en `docker-compose.yml`, contenedores `contapp_*`, imagen `contapp-app` y volúmenes (`contapp_contapp_db_data` es la base).
+- La base `bdcontapp` y su usuario `contapp`; el bucket `contapp` de Cloudflare R2 (`AWS_BUCKET`).
+- El formato de respaldo cifrado (`BackupFile::MAGIC`, `BackupExporter::FORMAT`, la etiqueta HMAC de `BackupSignature`): los respaldos ya descargados tienen que seguir importándose.
+- Las claves de `DemoCompanySeeder` (`admin@contapp.test`, `CONTAPP-DEMO-…`), las licencias emitidas antes del cambio (`CONTAPP-…`; las nuevas salen `PIVOX-…`), las carpetas reales del disco (`contapp/`, `Respaldos\CONTAPP`) y el repositorio de GitHub.
+- `app.blade.php` pasa una sola vez las claves `contapp-*`/`contapp:*` del navegador a `pivox-*`/`pivox:*`.
+
+Logos: los originales están en `resources/images/logos/`; los que se sirven, en `public/images/logos/` (`logo_pivox.png` para fondos claros, `logo_pivox_blanco.png` para oscuros, `logo_pivox_corto.png` el ícono solo y `pivox_nombre_blanco.png` el nombre en blanco que va junto al ícono en las barras). Sobre las barras laterales el ícono va en un recuadro blanco: el azul del logo se pierde en los temas azules. Nunca dentro de `public/build/`, que Vite vacía en cada build.
 
 ---
 
@@ -130,7 +139,7 @@ Cuando diseñes o programes un reporte de esta lista, indícame explícitamente 
 - [ ] ¿La misma fuente de datos alimenta XLSX y PDF?
 - [ ] ¿El logo y datos de encabezado de la empresa se resuelven dinámicamente?
 - [ ] ¿Quedó documentado qué norma NIIF o requisito fiscal justifica el cálculo o el desglose?
-- [ ] ¿Es coherente con el esquema y convenciones ya existentes en CONTAPP?
+- [ ] ¿Es coherente con el esquema y convenciones ya existentes en Pivox?
 
 ---
 ---
@@ -141,7 +150,7 @@ Cuando diseñes o programes un reporte de esta lista, indícame explícitamente 
 
 ## 10. ROL Y PERFIL DE EXPERTICIA (para este módulo)
 
-Mantén el mismo perfil híbrido ya establecido para CONTAPP (contador NIIF/fiscal CR + arquitecto de software + conocedor de SAP/Odoo/Oracle), y **súmale** para este módulo:
+Mantén el mismo perfil híbrido ya establecido para Pivox (contador NIIF/fiscal CR + arquitecto de software + conocedor de SAP/Odoo/Oracle), y **súmale** para este módulo:
 
 - **Arquitectura de licenciamiento de software** (modelos de suscripción, activación, vigencia, categorías por capacidad de uso — patrón común en ERPs comerciales que licencian "por empresa/compañía habilitada").
 - **Control de acceso jerárquico (RBAC con delegación)**: diseño de roles que no solo autorizan, sino que **delegan** autoridad de un actor a otro con límites heredados.
@@ -149,9 +158,9 @@ Mantén el mismo perfil híbrido ya establecido para CONTAPP (contador NIIF/fisc
 
 ## 11. CONTEXTO — DOS CAPAS QUE NO DEBEN MEZCLARSE
 
-CONTAPP tendrá dos planos de administración completamente separados en cuanto a alcance y acceso:
+Pivox tendrá dos planos de administración completamente separados en cuanto a alcance y acceso:
 
-1. **Plano del Propietario** (tú, quien programa y distribuye CONTAPP como producto): gestiona las **licencias** que se otorgan a los clientes. Es el "backoffice" del fabricante del software, invisible para cualquier cliente.
+1. **Plano del Propietario** (tú, quien programa y distribuye Pivox como producto): gestiona las **licencias** que se otorgan a los clientes. Es el "backoffice" del fabricante del software, invisible para cualquier cliente.
 2. **Plano operativo del cliente licenciado**: dentro de una licencia ya activa, el **Superusuario** y, por delegación, el **Administrador**, gestionan personas y derechos de uso **dentro de su propia licencia** (empresas/contabilidades habilitadas, administradores, usuarios finales).
 
 Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (nunca compartir la misma capa de autenticación ni las mismas rutas), porque tienen dueños distintos y superficies de riesgo distintas.
@@ -160,8 +169,8 @@ Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (
 
 | Actor | Quién es | Alcance de sus facultades |
 |---|---|---|
-| **Propietario** | El fabricante/distribuidor de CONTAPP (rol exclusivo, un solo actor o un equipo interno tuyo) | Único que accede al módulo de licencias. Crea, renueva, suspende y categoriza licencias. No participa en la operación contable del cliente. |
-| **Superusuario** | Dueño de la licencia (el cliente que contrató CONTAPP) | El **derecho de ingresar al sistema lo otorga la licencia**. Una vez dentro, crea y otorga derechos **solo a Administradores**, dentro de los límites de su licencia (ej. cantidad de empresas habilitadas). |
+| **Propietario** | El fabricante/distribuidor de Pivox (rol exclusivo, un solo actor o un equipo interno tuyo) | Único que accede al módulo de licencias. Crea, renueva, suspende y categoriza licencias. No participa en la operación contable del cliente. |
+| **Superusuario** | Dueño de la licencia (el cliente que contrató Pivox) | El **derecho de ingresar al sistema lo otorga la licencia**. Una vez dentro, crea y otorga derechos **solo a Administradores**, dentro de los límites de su licencia (ej. cantidad de empresas habilitadas). |
 | **Administrador** | Delegado del Superusuario | Crea y delega derechos a **Usuarios finales**, actuando "a nombre" del Superusuario, y **nunca puede otorgar más de lo que el Superusuario le concedió a él**. |
 | **Usuario final** | Operador del sistema | Ejecuta registros y funciones **según los derechos que el Administrador le haya asignado**. No delega nada. |
 
@@ -175,7 +184,7 @@ Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (
 - **Se entra a la licencia de otro solo por invitación** (Administración → Usuarios → Crear nuevo, `CompanyInvitationService`).
   - **Quien invita pone el correo, el rol y los permisos por pantalla.** Nunca pone el nombre ni la contraseña de nadie.
   - **La persona acepta desde el correo.** El enlace dura 7 días y se puede reenviar; al reenviarlo, el anterior deja de servir.
-  - **Sin cuenta en CONTAPP:** al aceptar elige su nombre y su contraseña, y la cuenta se crea recién ahí.
+  - **Sin cuenta en Pivox:** al aceptar elige su nombre y su contraseña, y la cuenta se crea recién ahí.
   - **Con cuenta:** la compañía se suma a las que ya tiene, sin tocarle nada más.
   - **Hasta que acepta no entra.** El cupo de la licencia cuenta las invitaciones sin aceptar.
   - **Al aceptar se vuelve a revisar** que quien invitó todavía pueda dar ese rol y esos permisos.
@@ -211,7 +220,7 @@ Diseña el licenciamiento con estos atributos como mínimo:
 
 ## 14. ARQUITECTURA TÉCNICA PROPUESTA
 
-**Entidades sugeridas (ajustar a la convención ya usada en CONTAPP):**
+**Entidades sugeridas (ajustar a la convención ya usada en Pivox):**
 
 - `categorias_licencia` — nombre, max_empresas, duracion_meses, descripcion, activa.
 - `licencias` — superusuario_id (FK a usuario), categoria_id, codigo_licencia, fecha_emision, fecha_vencimiento, estado, creada_por (Propietario), observaciones.
@@ -221,11 +230,11 @@ Diseña el licenciamiento con estos atributos como mínimo:
 
 **Separación de paneles (recomendado si usas Filament, dado que ya lo tienes definido para el MVP):**
 - Panel `propietario` (guard propio, ruta/subdominio distinto) → solo gestión de licencias y categorías.
-- Panel operativo de CONTAPP → visible según rol autenticado: el Superusuario ve gestión de Administradores + estado de su licencia; el Administrador ve gestión de Usuarios y solo los módulos/derechos que el Superusuario le habilitó; el Usuario ve únicamente la operación diaria.
+- Panel operativo de Pivox → visible según rol autenticado: el Superusuario ve gestión de Administradores + estado de su licencia; el Administrador ve gestión de Usuarios y solo los módulos/derechos que el Superusuario le habilitó; el Usuario ve únicamente la operación diaria.
 
 **Decisión confirmada — dos puertas de entrada, una sola aplicación:**
-- `backoffice.contapp.app` (o `contapp.app/backoffice`) → login exclusivo del Propietario, modelo `Propietario`, guard `propietario`.
-- `app.contapp.app` → login de Superusuario/Administrador/Usuario, modelo `Usuario`, guard `usuario` (el ya definido en la jerarquía de la sección 12).
+- `backoffice.pivox.app` (o `pivox.app/backoffice`) → login exclusivo del Propietario, modelo `Propietario`, guard `propietario`.
+- `app.pivox.app` → login de Superusuario/Administrador/Usuario, modelo `Usuario`, guard `usuario` (el ya definido en la jerarquía de la sección 12).
 - Ambos guards leen y escriben sobre la misma base de datos; lo que los separa es exclusivamente la capa de autenticación y el conjunto de rutas/recursos visibles, nunca los datos en sí.
 
 **Ese backoffice del Propietario, en un monolito único con SaaS centralizado, se resuelve así (sin separar en otra aplicación):**
@@ -261,7 +270,7 @@ Confirmado: el panel del Propietario incluye, además de la administración téc
 
 Mostrar en el pie de página, de forma discreta pero visible:
 - Referencia de la licencia (parcial/enmascarada) y su vigencia (fecha de vencimiento, no la fecha de emisión, que es la que le importa al usuario).
-- Versión de CONTAPP.
+- Versión de Pivox.
 
 **Versión confirmada: `v1.0.0`**, siguiendo versionado semántico (`MAJOR.MINOR.PATCH`), reservando:
 - `MAJOR` (1 → 2) para cambios que rompan compatibilidad o rediseños grandes (ej. migración a Inertia + Vue 3).
@@ -355,7 +364,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Tamaño y trazo:** 16px y trazo 2 por defecto para toda la app (`app.provide(LUCIDE_CONTEXT, …)` en `resources/js/app.js`). `:size` solo cuando hace falta otro: 18 en el menú lateral. El color sale del texto (`currentColor`).
 - **Accesibilidad:** Lucide marca el ícono como decorativo (`aria-hidden`) si no lleva etiqueta. Un botón con solo ícono lleva `aria-label`, y `title` para el tooltip. Un ícono que por sí solo dice algo —el check de «sí» en una celda— lleva `aria-label` y `role="img"`.
 - **Desde CSS** (`::before`, `::after`, donde no hay plantilla): el SVG de lucide.dev como máscara, con las variables `--lucide-*` de `resources/css/app.scss`. Un ícono nuevo se agrega a `$lucide-icons`.
-- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; exportar o descargar `Download`; importar o subir `Upload`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`; reabrir `RotateCcw`; contabilizar `BookOpen`; adjuntar una imagen `ImagePlus`; votar a favor y en contra `ArrowBigUp` y `ArrowBigDown`; borrar lo propio `Trash2`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Administración `Settings`, Mi cuenta `CircleUserRound`. Barra superior: Comentarios y noticias `MessagesSquare` (y en el panel, la pestaña Noticias `Newspaper`). Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`, Comentarios `MessagesSquare`, Noticias `Newspaper`.
+- **El mismo concepto, el mismo ícono:** crear o agregar `Plus`; cerrar o quitar `X`; volver `ArrowLeft`; abrir una ficha `ChevronRight`; desplegar `ChevronDown`; exportar o descargar `Download`; importar o subir `Upload`; imprimir `Printer`; correo `Mail`; advertencia `TriangleAlert`; sí o hecho `Check`; editar `Pencil`; buscar `Search`; reabrir `RotateCcw`; contabilizar `BookOpen`; adjuntar una imagen `ImagePlus`; votar a favor y en contra `ArrowBigUp` y `ArrowBigDown`; borrar lo propio `Trash2`. Menú lateral: Panel `LayoutDashboard`, Contabilidad `BookOpen`, Centros de costo y cambiario `Tags`, Inventario `Package`, Facturación `Receipt`, Planillas `Users`, Socios de negocio `Handshake`, Bancos `Landmark`, Impuestos `Percent`, Repositorio `Library`, Administración `Settings`, Mi cuenta `CircleUserRound`. Barra superior: Comentarios y noticias `MessagesSquare` (y en el panel, la pestaña Noticias `Newspaper`). Backoffice: Licencias `KeyRound`, Categorías `Layers`, Indicadores de IVA `Percent`, Comentarios `MessagesSquare`, Noticias `Newspaper`, Repositorio `Library`. Una carpeta `Folder` (abierta, `FolderOpen`), un documento `FileText`, ver `Eye`.
 
 **No son íconos (se quedan como están):** los caracteres tipográficos dentro de un texto —la flecha entre dos valores («Básica → Profesional», «USD → CRC», un rango de fechas, «borrador → aprobada»), las comillas «», el § de una cita de norma, el × de una fórmula, la raya y el punto medio—; los gráficos de datos (el minigráfico de `LedgerPanel`); y los documentos PDF, donde una advertencia se escribe con palabras («Atención: …»).
 
@@ -404,7 +413,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **El error, siempre dicho:**
   - **Validación:** junto a cada campo, como siempre.
   - **Acción que escribe y el servidor rechaza** (403, 404, sesión vencida, error interno): vuelve a la pantalla con el motivo como mensaje arriba (`bootstrap/app.php`), en vez de la página de error encima de la aplicación. Un `abort(403, 'motivo')` muestra ese motivo.
-  - **Descarga que falla:** un aviso abajo a la derecha (`ToastHost.vue`), con el motivo que manda el servidor en JSON (las descargas llevan la cabecera `X-Contapp-Download`).
+  - **Descarga que falla:** un aviso abajo a la derecha (`ToastHost.vue`), con el motivo que manda el servidor en JSON (las descargas llevan la cabecera `X-Pivox-Download`).
   - **Visita GET que falla, o sin conexión:** el mismo aviso (`requestErrors.js`). En desarrollo, un error interno se deja ver con la página de Laravel.
   - **Para mostrar un error desde el navegador:** `notifyError('…')` (`resources/js/Utils/notify.js`).
 - **Para que funcione, la acción tiene que ser una visita de Inertia** (`router.post/put/delete/get` o `useForm`) disparada por un `<button>` o un `.btn`, o una descarga por un `<a href>`: no un `fetch` suelto ni un `<a>` que hace POST. Además se mantiene `:disabled="form.processing"` en el botón de enviar.
@@ -449,7 +458,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - **Pieza:** está en `AppLayout.vue` (`.sidebar-flyout`), teletransportada a `<body>` para que el desplazamiento de la barra no la recorte. No se usa `title` en los íconos: el tooltip nativo taparía la ventana.
   - **En una pantalla táctil** (sin «pasar por encima»): el primer toque en una sección abre su ventana y el segundo entra a la sección. Tocar fuera la cierra.
 - **Arriba o al lado:** desde 1025px, cada persona elige el menú arriba con el botón «Menú arriba» de la barra superior (`PanelTop`; de vuelta, «Menú al lado», `PanelLeft`).
-  - **Es una preferencia de su navegador**, como el tema: `localStorage` (`contapp-layout`: `side` o `top`), no la base. Se lee antes de pintar.
+  - **Es una preferencia de su navegador**, como el tema: `localStorage` (`pivox-layout`: `side` o `top`), no la base. Se lee antes de pintar.
   - **Arriba**, la barra del menú mide lo mismo que la barra superior (`--topbar-height`: los paneles de la derecha se abren debajo). Lleva la marca y el título de la pantalla (`.brand-title`, se corta con puntos suspensivos), y después las secciones.
   - **Cada sección** es su ícono y su nombre, y abre debajo la misma ventana flotante del modo colapsado, con las mismas categorías. El teclado: izquierda y derecha pasan de sección, abajo entra a la ventana. Una sección sin pantallas (el Panel) no abre nada.
   - **Las que no caben**, en «Más», que abre la ventana con todas ellas: la barra nunca se desplaza de lado. Se mide con un `ResizeObserver`; las que sobran quedan en la barra, invisibles y fuera del flujo, para poder medirlas otra vez.
@@ -474,6 +483,11 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - «Cerrar sesión». Con la sesión vencida es la única salida. Si hasta eso falla, se va directo al login.
 - **Piezas:** `resources/js/Utils/companySwitch.js` (estado y lógica) y `resources/js/Components/CompanySwitchHost.vue` (la ventana), montado al lado de la página en `app.js`, porque el cambio termina en otra página y una ventana dentro del layout desaparecería con ella. No usar `router.put(route('company-switch'))` directo: siempre `startCompanySwitch()`.
 
+**La entrada al iniciar sesión** es de la misma familia. Cuando el servidor inicia la sesión, la pantalla se cubre con el logo de Pivox (ícono con anillo que gira, el nombre que se escribe, «Iniciando sesión»), en el tema de la compañía. Se queda mientras llega la tipografía del tema, con un mínimo de ~1,4 s y un tope de 4 s. Se despide con «¡Hola, {nombre}!» y «Entrando a {compañía}», o «Entrando al backoffice».
+- **Solo con la sesión ya iniciada:** unas credenciales incorrectas vuelven al formulario sin animación.
+- **Sin un cuadro de la pantalla de destino antes del logo:** `StartupHost` vigila quién tiene la sesión con un `watch`, que corre en el mismo ciclo en que Inertia pinta la página nueva. Por eso la ventana aparece sin fundido; solo se va con uno.
+- **Piezas:** `resources/js/Utils/startup.js` y `resources/js/Components/StartupHost.vue`, montado en `app.js`. Todo formulario que inicie sesión envía con `form.post(url, startupVisit({ … }))`: login, activar licencia, aceptar una invitación de compañía o de licencia, y el login del backoffice con `startupVisit({ … }, 'backoffice')`. Uno nuevo que se olvide de hacerlo entra sin animación.
+
 ## 31. TEMAS DE COMPAÑÍA: DIEZ, UNO POR COMPAÑÍA
 
 **Regla:** cada compañía tiene su tema visual, que elige su Superusuario o un Administrador en Administración → Apariencia. Hay diez: Marino (el predeterminado, el aspecto original), Grafito, Esmeralda, Borgoña, Petróleo, Índigo, Cobalto, Terracota, Salvia y Ónix. Todos siguen la estética de la aplicación: moderna, elegante y profesional.
@@ -489,17 +503,17 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Las tipografías: `vite.config.js`. Solo se precarga la del predeterminado; las demás se descargan cuando un tema las usa.
   - Un test verifica que las tres listas coincidan.
 - **Cómo se aplica:** con `data-company-theme` en `<html>`. Lo pone `app.blade.php` en la primera carga, para que no haya un parpadeo, y `app.js` después de cada visita, con el `companyTheme` que comparte el servidor. El mismo atributo en cualquier elemento lo pinta con otro tema: las tarjetas de Apariencia y la ventana del cambio de compañía.
-- **Apariencia:** cada tema se muestra en una miniatura de CONTAPP con sus colores y su tipografía. Tocarlo lo aplica a toda la pantalla como vista previa; «Guardar tema» lo deja para todos, con registro en la bitácora. Salir sin guardar vuelve al tema guardado.
+- **Apariencia:** cada tema se muestra en una miniatura de Pivox con sus colores y su tipografía. Tocarlo lo aplica a toda la pantalla como vista previa; «Guardar tema» lo deja para todos, con registro en la bitácora. Salir sin guardar vuelve al tema guardado.
 - **Un tema nuevo** necesita las tres piezas: el caso del enum, la paleta clara y oscura en `$company-themes`, y la tipografía en `vite.config.js`. El tope es diez.
 
 ## 32. CONTI, EL ASISTENTE: VE LO QUE LA PERSONA VE, Y NO GUARDA NADA SIN SU CONFIRMACIÓN
 
-**Regla:** Conti es el chat que abre el botón flotante del robot (`BotIcon`), en la esquina inferior derecha. El agente está en el código (`app/Domains/Conti/Agent`) y usa la API de OpenAI. Consulta y prepara a nombre de la persona, con sus permisos por pantalla, en su compañía activa. Nunca ve datos sensibles y nunca escribe sin que la persona confirme en CONTAPP. Se activa por licencia, con límites de uso.
+**Regla:** Conti es el chat que abre el botón flotante del robot (`BotIcon`), en la esquina inferior derecha. El agente está en el código (`app/Domains/Conti/Agent`) y usa la API de OpenAI. Consulta y prepara a nombre de la persona, con sus permisos por pantalla, en su compañía activa. Nunca ve datos sensibles y nunca escribe sin que la persona confirme en Pivox. Se activa por licencia, con límites de uso.
 
 - **El camino de un mensaje:** `ContiPanel.vue` → `POST /conti/mensajes` (`ContiChatController`) → `ContiUsageService::blockFor()` (¿la licencia lo tiene?, ¿queda cupo?) → `ContiAgent::reply()` → OpenAI (`OpenAiClient`, Chat Completions con herramientas).
-  - El agente da vueltas, hasta `conti.max_iterations`, pidiendo herramientas de `ContiToolbox`: `manual`, `contexto`, `consultar`, `reporte`, `formulario`, `preparar_accion`, `preguntar` y `estado_accion`.
+  - El agente da vueltas, hasta `conti.max_iterations`, pidiendo herramientas de `ContiToolbox`: `manual`, `contexto`, `consultar`, `reporte`, `formulario`, `preparar_accion`, `preguntar` y `estado_accion`. Además, `repositorio` (secc. 39), solo si el backoffice activó algún documento para Conti.
   - `formulario` y `preguntar` terminan el turno: devuelven `{interaccion}`, que va directo al chat y no al modelo. Lo que la persona conteste o envíe llega después.
-  - Las herramientas corren dentro de CONTAPP con el `ContiContext` del mensaje (persona, compañía, modo de gracia). No hay API ni pase: el modelo solo pide, y CONTAPP decide qué devuelve.
+  - Las herramientas corren dentro de Pivox con el `ContiContext` del mensaje (persona, compañía, modo de gracia). No hay API ni pase: el modelo solo pide, y Pivox decide qué devuelve.
 - **El prompt:** `resources/conti/instrucciones.md`, más un bloque armado en cada mensaje: quién es la persona, la compañía, la pantalla, la fecha, las consultas, reportes y acciones que tiene permitidos, y el índice del manual. El manual de uso (`resources/conti/manual.md`) no va entero: el modelo busca la sección con la herramienta `manual` (`ContiManual`).
 - **Los permisos** los decide `ContiContext::authorize()` con `ScreenAccessService`: consultar pide Lectura en la pantalla del menú; preparar, Lectura y escritura. Una licencia vencida deja consultar y no preparar.
   - **Conti los conoce antes de responder:** el prompt trae en cada mensaje «Permisos de esta persona» (`ContiAgent::permissions`), por sección del menú y con las secciones sin ningún acceso.
@@ -535,7 +549,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Reportes:** `ContiReportCatalog` corre los mismos servicios que las pantallas. Los tabulares de Inventario y Planillas entran solos desde sus registros, sin las columnas sensibles y con un tope de 300 filas.
 - **Guardar:** cada acción es una clase (`app/Domains/Conti/Actions`, registrada en `ContiActionCatalog`). Se valida y se resuelven los códigos con los mismos campos y reglas que el controlador de la pantalla, y se usan sus servicios, no se reimplementan. `ContiActionService`:
   - **prepara**: valida, prueba en seco (ejecuta dentro de una transacción que se deshace) y deja la acción pendiente 30 minutos;
-  - **confirma** solo desde CONTAPP, con la sesión de su dueño y en su compañía: revisa otra vez permisos y licencia, vuelve a preparar y guarda solo si el resultado es idéntico (hash del payload) a lo que se mostró. El modelo no tiene ninguna herramienta para confirmar.
+  - **confirma** solo desde Pivox, con la sesión de su dueño y en su compañía: revisa otra vez permisos y licencia, vuelve a preparar y guarda solo si el resultado es idéntico (hash del payload) a lo que se mostró. El modelo no tiene ninguna herramienta para confirmar.
 - **Una acción nueva** necesita:
   - la clase con `prepare()`/`execute()` y su `form()`: los mismos campos de `fields()`, con su tipo (`BaseContiAction::field`); una prueba lo compara;
   - su lugar en `ContiActionCatalog`;
@@ -545,7 +559,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Para registrar o editar, Conti muestra el formulario de la acción con lo que sabe precargado (`ContiFormService::build`; al editar, también los valores actuales, sin datos sensibles).
   - Los campos «buscar» sugieren mientras se escribe: `GET /conti/opciones`, de las consultas de Conti y con los permisos de la persona; sin permiso, quedan como texto.
   - Al enviarlo (`POST /conti/formularios`, `ContiFormController`) se prepara la acción con las mismas validaciones, sin pasar por el modelo ni gastar créditos. Los errores vuelven campo por campo, también por línea (`lineas.0.cuenta`).
-  - **Sugerencias de CONTAPP** (`ContiAction::suggest`): el formulario llega con lo que se puede deducir de cómo se viene trabajando en la compañía:
+  - **Sugerencias de Pivox** (`ContiAction::suggest`): el formulario llega con lo que se puede deducir de cómo se viene trabajando en la compañía:
     - el código que sigue al último (cuentas de esa clase, socios de ese tipo);
     - la cuenta de control, la moneda y el plazo que más usan los demás socios;
     - el tipo de documento de los asientos manuales;
@@ -577,7 +591,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - **La lectura:** pasa por `ContiUsageService::blockFor()` y cuenta en el consumo como un mensaje. Usa el modelo de la persona, si está entre los que tiene permitidos, y `response_format` con un esquema estricto armado de los campos del formulario. Los campos «buscar» se resuelven contra las consultas de Conti (el proveedor, primero por cédula); si no hay una sola coincidencia exacta, el campo queda vacío y va una nota.
   - **Después, el formulario de siempre:** llega al chat (`pushForm`), con los campos leídos marcados «Del documento» y la nota «revisá cada dato». La persona corrige a mano, lo envía, y viene la ventana de confirmación habitual. La computadora recibe el formulario consultando el estado cada 2,5 segundos, y se entrega una sola vez.
 - **Dictar por voz** (el micrófono al lado de «Enviar», `Utils/speechInput.js`):
-  - La voz se convierte en texto en el navegador (Web Speech API, es-CR): no pasa por el modelo de Conti ni gasta créditos, y a CONTAPP no le llega audio.
+  - La voz se convierte en texto en el navegador (Web Speech API, es-CR): no pasa por el modelo de Conti ni gasta créditos, y a Pivox no le llega audio.
   - El texto va apareciendo en el campo y queda ahí para revisarlo: nunca se envía solo.
   - El permiso del micrófono lo pide el navegador recién al tocar el botón.
   - Sin soporte (Firefox) el botón no aparece. En Chrome y Edge, la voz la reconocen los servidores de Google o Microsoft.
@@ -587,7 +601,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - «Corregir» (`POST /conti/acciones/{uuid}/corregir`) descarta lo preparado y lo devuelve al chat como formulario, con los mismos datos.
   - Al confirmar, la pantalla de atrás se recarga (`router.reload()`) para que se vea lo guardado.
   - La conversación anota cómo quedó: confirmado, descartado o por qué no se guardó.
-  - El enlace es una ruta relativa, y el modelo a veces le inventa un dominio («https://app.contapp.run/conti/…»). `ContiAgent::tidyLinks()` se lo quita a la respuesta, y `contiMarkdown.js` también, para lo que ya estaba guardado en el chat.
+  - El enlace es una ruta relativa, y el modelo a veces le inventa un dominio («https://app.pivox.run/conti/…»). `ContiAgent::tidyLinks()` se lo quita a la respuesta, y `contiMarkdown.js` también, para lo que ya estaba guardado en el chat.
 - **Sin `OPENAI_API_KEY`**, o con la licencia sin Conti, el botón no aparece. El modelo sale de `OPENAI_MODEL` (por defecto `gpt-4.1-mini`); uno nuevo se agrega a `conti.pricing` con su precio, para que el consumo salga bien.
 - **Las pruebas** no tocan OpenAI: usan `Http::fake` con `openAiReply()` (`tests/Feature/Conti/helpers.php`), y las herramientas se prueban directo con `contiTools()`. Para probar en el navegador sin gastar, sirve un OpenAI simulado en el contenedor de Node, apuntado con `OPENAI_BASE_URL`.
 
@@ -658,7 +672,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Inicios y cierres de sesión** (eventos `Login`/`Logout`, solo del guard `web`; los del backoffice, guard `propietario`, no): uno en cada compañía en la que la persona está activa.
 - **`AuditCatalog`:**
   - MODELS trae cada modelo con su nombre en español, si es línea o derivado (no encabeza la fila) y su pantalla.
-  - IGNORED trae lo que no va, con el motivo: lo que ya anota su propia acción (usuarios, permisos, la compañía), lo de CONTAPP y el backoffice.
+  - IGNORED trae lo que no va, con el motivo: lo que ya anota su propia acción (usuarios, permisos, la compañía), lo de Pivox y el backoffice.
   - **Un modelo nuevo va en una de las dos listas**: una prueba lo exige.
   - Nunca se guardan los campos con `password`, `token`, `secret`, `api_key` ni `security_code`, ni los `$hidden`. Las cuentas bancarias, con los últimos cuatro dígitos.
 - **Cómo se lee** (`ActivityLogService`, `ActivityLog/Index.vue`):
@@ -683,7 +697,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 **Regla:** el código es la llave con la que reconocen un registro las personas, los reportes, las plantillas de Excel, Conti y los papeles ya impresos. Por eso:
 
 - **Documentos** (asientos, comprobantes, órdenes, movimientos…): número automático, correlativo, inalterable y que nunca se reutiliza. Se anulan, no se borran. Ya era así; no se toca.
-- **Datos maestros:** CONTAPP sugiere el siguiente código al crear, la persona lo puede ajustar en ese momento, y queda fijo desde que el registro tiene movimientos.
+- **Datos maestros:** Pivox sugiere el siguiente código al crear, la persona lo puede ajustar en ese momento, y queda fijo desde que el registro tiene movimientos.
 - **Códigos que vienen de afuera** (lote del fabricante, serie, código de barras, CAByS, actividad de Hacienda): los escribe la persona, se validan, y quedan fijos al usarse.
 
 **`CodeRules`** (`app/Domains/Core/Support`) es la única forma de hacerlo:
@@ -698,7 +712,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 | Cuenta contable | El que sigue a la última hoja de esa clase, en la misma cuenta madre (`nextCodes`) | Con un asiento (también borrador) o un saldo inicial (`ChartOfAccount::codeLockReason`) |
 | Socio de negocio | `CLI-0001` / `PRV-0001` / `SOC-0001` según el tipo (`BusinessPartner::nextCode`) | Siempre, desde que se crea (`CODE_LOCKED`) |
 | Empleado | `EMP-0001` | Con su primera boleta (`payroll_entries`) |
-| Concepto de planilla | — | Si es de los que trae CONTAPP (`CostaRicaPayrollDefaults::CONCEPTS`), o si ya se usó en una boleta, un movimiento o un rubro fijo |
+| Concepto de planilla | — | Si es de los que trae Pivox (`CostaRicaPayrollDefaults::CONCEPTS`), o si ya se usó en una boleta, un movimiento o un rubro fijo |
 | Carga social | — | Siempre: el código une sus vigencias. Un cambio de tasa es una vigencia nueva con el mismo código |
 | Indicador de impuesto propio | — | Con su primer uso (ya era así: usado, solo se le cierra la vigencia) |
 | Categoría de socios | El que sigue | Con socios adentro |
@@ -728,11 +742,11 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 **Regla:** el respaldo de una compañía (Administración → Respaldos, y en el backoffice, la ficha de la licencia → Respaldos) lo exportan e importan **solo el Superusuario** (de las compañías de su licencia) y **el backoffice** (de cualquiera). Los Administradores no: es toda la información de la compañía. Se importa **en una compañía nueva**, o **completando una que ya existe con lo que le falta**: nunca se sobrescribe nada de lo que ya está.
 
-- **Para qué:** guardar una compañía aparte, mover una compañía a otra licencia y completar una compañía con lo que le falta (lo perdido, o un período que todavía no tiene). No sirve para pasarla a otra instalación de CONTAPP (ver la firma).
+- **Para qué:** guardar una compañía aparte, mover una compañía a otra licencia y completar una compañía con lo que le falta (lo perdido, o un período que todavía no tiene). No sirve para pasarla a otra instalación de Pivox (ver la firma).
 - **Qué lleva** (`App\Domains\Core\Backup\BackupCatalog`): cada tabla de la base es de una sección o está en EXCLUDED con su motivo; una prueba lo exige (como AuditCatalog).
   - Secciones que se eligen: Contabilidad y socios (siempre), Bancos, Inventario, Facturación (necesita Inventario), Planillas, Personas y permisos, Bitácora.
   - Formas: `catalog` (todo, como está hoy), `movement` (por su fecha, en el período), `child` (lo que cuelga de algo que va), `state` (existencias, partidas abiertas: como estaban al cierre).
-  - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo. Las monedas y lo de CONTAPP se referencian por su id.
+  - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo. Las monedas y lo de Pivox se referencian por su id.
   - Las referencias se leen de la base (`BackupSchema`: `Schema::getForeignKeys`, igual en MySQL y SQLite). Las que no son llave foránea (un tipo y un id, ids adentro de un JSON) van en `AFTER` y las traduce `BackupImporter::special()`.
 - **El período:** «Todo el historial», o «Desde» y «Hasta» (vacío = hoy).
   - Con «Desde»: los saldos al día anterior (`BackupOpening`). Son un asiento APE contabilizado con el saldo de cada cuenta por socio y moneda (como el balance de comprobación), una línea por partida abierta, las existencias y el costo promedio como primeras filas del kardex, y el saldo de vacaciones como un ajuste. Las planillas traen además los 12 meses anteriores (aguinaldo, liquidaciones).
@@ -740,7 +754,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **El archivo** (`BackupFile`): texto. Un encabezado legible (compañía, período, cómo se deriva la clave) y líneas base64 con el contenido: JSON Lines (`BackupExporter`), comprimido con gzip y cifrado por tramos con XChaCha20-Poly1305 (libsodium secretstream), con la clave derivada de la contraseña con Argon2id.
   - Adentro: el encabezado (`manifiesto`), las personas (id, correo, nombre), una línea por fila, y el cierre con cuántas filas, el SHA-256 y la firma.
   - **La firma** (`BackupSignature`) es un HMAC con una clave derivada de la APP_KEY: solo se importa lo que esta instalación exportó, tal cual. Un archivo armado o editado a mano no pasa aunque se sepa la contraseña. Si cambia la APP_KEY, los respaldos anteriores ya no se importan.
-  - La contraseña del archivo la elige quien exporta (al menos 10 caracteres). CONTAPP no la guarda ni la puede recuperar.
+  - La contraseña del archivo la elige quien exporta (al menos 10 caracteres). Pivox no la guarda ni la puede recuperar.
 - **Importar** (`BackupImporter`, todo en la cola `backups`: `InspectCompanyBackupJob`, `CompareCompanyBackupJob`, `ImportCompanyBackupJob`, con su base `CompanyBackupJob`):
   - Al subirlo solo se comprueba que sea un respaldo y su contraseña, con el encabezado y el primer tramo (`BackupFile::check`): la subida contesta enseguida.
   1. `inspect()`, en la cola: descifra, verifica el SHA-256 y la firma, y cuenta, sin guardar nada. También revisa que cada fila traiga las columnas que esta versión exige (sin vacío ni valor por defecto): un respaldo de una versión anterior al que le falta una se rechaza ahí, diciendo cuál, salvo que `BackupCatalog::FILL` diga con qué completarla. **Una migración que agrega una columna obligatoria sin valor por defecto a una tabla del respaldo la suma a FILL.**
@@ -780,7 +794,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Cada paso de la cola muestra su avance, con una barra.
   - Las rutas JSON están en `shouldRenderJsonWhen`.
   - Las compañías de la licencia viajan como `licenseCompanies`: `companies` es el nombre de las del selector de la barra superior, y lo taparía.
-- **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`contapp:prune-backups`, cada hora, también los que quedaron revisándose o comparándose).
+- **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`pivox:prune-backups`, cada hora, también los que quedaron revisándose o comparándose).
   - **Exportar queda en la Bitácora cuando el archivo salió entero:** si la descarga se corta, no se anota.
   - Si exporta el backoffice, va también al historial de la licencia y al Superusuario le llega un correo.
 - **Docker:** el servicio `queue` atiende solo la cola `backups` (los comprobantes de pago encolados siguen como estaban). En un servidor hace falta un worker de esa cola.
@@ -810,7 +824,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Los datos de Hacienda, no inventados** (los tres rechazos del primer comprobante de prueba, `docs/einvoice/rejections.md`):
   - **Ubicación:** la tabla oficial `Codificacionubicacion_V4.4` (`resources/hacienda/ubicacion/v4.4.php`, generada del .xlsx del ATV). `CostaRicaTerritory::rules()` exige que cada código exista dentro del anterior, en el emisor y en el socio; la pantalla los ofrece por nombre.
   - **API público** (`HaciendaPublicData`, `api.hacienda.go.cr`, sin credenciales): un CAByS que no esté en el catálogo local (`/fe/cabys?codigo=`) y actividades inscritas de una cédula (`/fe/ae`), en caché. **Si no contesta, nada se bloquea**: solo cuenta un «no existe» dicho por Hacienda. En las pruebas está apagado (`HACIENDA_PUBLIC_API_ENABLED=false` en phpunit.xml) y se simula con `Http::fake`.
-  - **CAByS:** el catálogo oficial completo viene con CONTAPP (`CabysCatalog`, `resources/hacienda/cabys/cabys-2025.php`, del archivo del BCCR: 20 506 códigos). En la ficha del artículo y en la línea de la factura es una lista con todo el catálogo (`CabysPicker.vue`, `hacienda.cabys`: de a 100, con buscador por código o palabras). Un código se revisa primero ahí y solo si no está se le pregunta a Hacienda (`HaciendaPublicData::cabys`); la ficha no guarda uno que no existe (`cabysRule`). Cuando el BCCR publique una versión nueva, se regenera el archivo de su Excel.
+  - **CAByS:** el catálogo oficial completo viene con Pivox (`CabysCatalog`, `resources/hacienda/cabys/cabys-2025.php`, del archivo del BCCR: 20 506 códigos). En la ficha del artículo y en la línea de la factura es una lista con todo el catálogo (`CabysPicker.vue`, `hacienda.cabys`: de a 100, con buscador por código o palabras). Un código se revisa primero ahí y solo si no está se le pregunta a Hacienda (`HaciendaPublicData::cabys`); la ficha no guarda uno que no existe (`cabysRule`). Cuando el BCCR publique una versión nueva, se regenera el archivo de su Excel.
   - **Antes de emitir** (`ElectronicPreflight`, desde `SalesDocumentController::store` con la emisión encendida): un CAByS que no está en el catálogo (-400) o una actividad que la cédula no tiene inscrita (-408) vuelven al formulario sin gastar consecutivo; lo mismo antes de «Emitir de nuevo» (`problemsForDocument`), que reusa el CAByS y la actividad guardados en la venta. Parámetros de facturación marca cada actividad «Inscrita / No inscrita» y ofrece agregar las inscritas.
   - **Actividades:** el código y el nombre se eligen de dos listas enlazadas: las inscritas a la cédula y el resto del catálogo de TRIBU-CR (`EconomicActivityCatalog`, de la tabla oficial CIIU 3 → CIIU 4). El servidor no acepta un código v4.4 que no sea del catálogo ni esté inscrito. La **actividad del receptor** de la factura es la misma lista (las inscritas a la cédula del cliente arriba), opcional, validada igual (`SalesDocumentController::receiverActivityRule`); ya no se toma sola de la ficha del socio: la pantalla la precarga y lo elegido es lo que va.
   - **Servicio o mercancía lo decide el CAByS** (`FiscalCatalogs::cabysIsService`: primer dígito 5-9 = servicio, como la CPC), porque así cruza Hacienda los totales del resumen (-111). `is_service` de la línea sigue decidiendo lo del ERP: si sale de bodega y a qué cuenta de ingreso va.
@@ -823,9 +837,35 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - «Procesando» se consulta con `hacienda.poll_backoff` (de 20 s a un día) y, agotado, pasa a `needs_attention`.
   - Rechazado o no recibido se corrige con `ElectronicDocumentReissuer`: consecutivo, clave y fecha nuevos, el XML armado otra vez con los datos actuales; el anterior queda `superseded`. La venta (montos, asiento, inventario) no cambia: si lo malo son los montos, va una nota de crédito.
   - El token (`HaciendaTokenProvider`) se guarda cifrado por compañía y ambiente, y se pide bajo un candado.
-- **La cola y el programador:** la cola `hacienda` la atiende su propio worker (`queue-hacienda` en docker-compose). `contapp:hacienda-sync` corre **cada minuto** y despacha lo que tiene `next_attempt_at` vencido; es el único que programa trabajo a futuro (el servicio no se encola a sí mismo: con la cola en `sync` se llamaría en cadena). Los jobs viajan con el id, fijan la compañía del comprobante mientras corren y la sueltan. `contapp:hacienda-certificates` avisa al Superusuario de la llave por vencer (30/15/7/1 días).
+- **La cola y el programador:** la cola `hacienda` la atiende su propio worker (`queue-hacienda` en docker-compose). `pivox:hacienda-sync` corre **cada minuto** y despacha lo que tiene `next_attempt_at` vencido; es el único que programa trabajo a futuro (el servicio no se encola a sí mismo: con la cola en `sync` se llamaría en cadena). Los jobs viajan con el id, fijan la compañía del comprobante mientras corren y la sueltan. `pivox:hacienda-certificates` avisa al Superusuario de la llave por vencer (30/15/7/1 días).
 - **Al cliente** (`ElectronicDocumentDelivery`, `ElectronicDocumentMail`): solo un comprobante aceptado, con el XML firmado, la respuesta de Hacienda y el PDF (`ElectronicDocumentPdf`, `reports/electronic-document.blade.php`; el QR no va, la resolución lo suspendió). Una vez automático; reenviar a mano desde la ficha.
 - **En pantalla** (`Billing/Sales/Show.vue`): el estado ante Hacienda con su mensaje e historia; «Consultar estado» (con Lectura en «Comprobantes»), y «Reintentar envío», «Enviar al cliente» y «Emitir de nuevo», que son emitir: sus rutas son de la pantalla «Nueva factura» en `ScreenCatalog` y piden Lectura y escritura ahí («Comprobantes» es de solo consulta). El listado muestra el estado de Hacienda y marca lo de «Pruebas». El XML que se descarga de un comprobante electrónico es el firmado.
 - **Socios de negocio:** el receptor de una factura necesita `identification_type`; la ubicación (provincia, cantón y distrito de la tabla oficial) es opcional, pero si viene es completa y coherente, y va al XML solo si está completa (`PartnerFiscalFields.vue`). «Consultar la cédula en Hacienda» trae el tipo de identificación y, si están vacíos, el nombre y la actividad principal.
 - **No viajan en un respaldo** (`BackupCatalog::EXCLUDED`): las credenciales, la configuración y el archivo fiscal; una copia de la compañía podría volver a enviar sus comprobantes. Tampoco van a la Bitácora (`AuditCatalog::IGNORED`): tienen su propia historia.
 - **Las pruebas** (`tests/Feature/Billing/Hacienda`) no tocan a Hacienda: la llave es autofirmada (`haciendaP12()`), el IDP y el API se simulan con `Http::fake` y `preventStrayRequests`. Cada escenario se valida contra el XSD oficial **firmado**, y cada rechazo real de la guía (L1–L16) tiene su prueba.
+
+## 39. REPOSITORIO: DOCUMENTOS DE CONSULTA QUE SUBE EL BACKOFFICE, QUE CONTI CONSULTA Y LAS CUENTAS VEN COMO PDF
+
+**Regla:** el Repositorio son documentos de referencia (leyes, reglamentos, resoluciones de Hacienda, artículos) que el backoffice sube en Markdown y agrupa en carpetas. Cada uno tiene dos interruptores independientes: **Conti lo consulta** (`conti_enabled`) y **las cuentas lo ven** (`public_enabled`). Es de Pivox, global, sin compañía.
+
+- **Dónde viven los archivos:** en el disco `repositories` (`public/repositories`, `config/filesystems.php`), como `{título}-{azar}.md`. Al reemplazar el archivo se pisa el mismo; al eliminar el documento, se borra. **No se sirven directo:** nginx devuelve 404 en `/repositories/` (`docker/nginx/conf.d/app.conf`) y la carpeta trae un `.htaccess` que niega todo. Se leen solo desde la aplicación, que respeta los interruptores. Un archivo editado a mano en la carpeta sale bien en el próximo PDF y en Conti.
+- **Tablas:** `repository_folders` (nombre único) y `repository_documents` (carpeta obligatoria, `file_updated_at` = cuándo se subió el archivo, lo que las cuentas ven como «Actualizado»). Una carpeta con documentos no se elimina. Las dos están en `BackupCatalog::EXCLUDED` y en `AuditCatalog::IGNORED`: no son de la compañía.
+- **Backoffice → Repositorio** (`Backoffice/RepositoryController`, `RepositoryFolderController`, `RepositoryService`; ícono `Library`):
+  - **«Crear nuevo»** sube el `.md` (hasta 5 MB). Pide la carpeta, o «Nueva carpeta…» en el mismo formulario. Sin título, sale del primer encabezado del archivo, o del nombre del archivo. Un archivo en Windows-1252 se pasa a UTF-8; uno con bytes nulos no es texto y se rechaza.
+  - **La ficha** tiene los dos interruptores, que se guardan al tocarlos, y «Ver PDF» (la vista previa, esté activo o no), «Descargar .md», «Editar» (título, carpeta, descripción, reemplazar el archivo) y «Eliminar».
+  - **«Carpetas»** abre su ventana: crear, renombrar, eliminar las vacías.
+- **Las cuentas → Repositorio** (`RepositoryController`, `Pages/Repository/Index.vue`, en el menú lateral después de Impuestos):
+  - **Para cualquier rol:** no es una pantalla de `ScreenCatalog` ni lleva `screen`.
+  - **Solo los documentos visibles**, en sus carpetas (alfabéticas); una carpeta sin nada visible no aparece. Se busca y se filtra por carpeta en el navegador.
+  - **El PDF:** «Ver PDF» lo abre en otra pestaña y «Descargar» lo baja (`repository/{id}/pdf`, `?download=1`; límite de 30 por minuto). Uno oculto da 404.
+  - **Desde un enlace de Conti** (`/repository?document={id}`) la pantalla señala ese documento.
+- **El PDF** (`RepositoryPdf`, `resources/views/repository/document.blade.php`):
+  - **Contenido:** el Markdown en HTML (`Str::markdown` con `html_input: strip` y sin enlaces inseguros), sin imágenes (queda su texto alternativo) y sin el primer `#` si repite el título.
+  - **Encabezado y pie:** el logo, la carpeta y la fecha arriba, y «Página N de M» abajo. Sin GD (el PHP del host), el logo sale como texto.
+  - **Guardado:** queda en el disco local (`repository-pdfs/{id}-{huella}.pdf`) y se rehace solo si cambia el texto, el título, la carpeta, la fecha o `TEMPLATE_VERSION`. Con subconjunto de fuentes, un documento corto pesa decenas de KB.
+- **Conti** (`ContiRepository`; ver secc. 32):
+  - **La herramienta `repositorio` y la lista de documentos** («Carpeta › Título») en el mensaje de sistema van solo si hay alguno con `conti_enabled`.
+  - **La búsqueda es por palabras** (`KeywordMatcher`, la misma del manual). Cada documento se parte en pasajes por encabezados y, lo largo, por párrafos de hasta ~2500 caracteres.
+  - **Cada pasaje** trae documento, carpeta, sección, el artículo con que empieza («Artículo 8») y `enlace` solo si las cuentas lo ven.
+  - **Las instrucciones** le piden citar de dónde sale y no citar normas de memoria.
+- **Pruebas:** `tests/Feature/Repository` y `tests/Feature/Conti/ContiRepositoryTest.php`, con `Storage::fake('repositories')` y `Storage::fake('local')`. `repositoryDocument()` (en `tests/Feature/Repository/helpers.php`) crea uno con su archivo.

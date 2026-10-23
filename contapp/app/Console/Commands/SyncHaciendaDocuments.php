@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class SyncHaciendaDocuments extends Command
 {
-    protected $signature = 'contapp:hacienda-sync {--limit=200 : cuántos comprobantes por corrida}';
+    protected $signature = 'pivox:hacienda-sync {--limit=200 : cuántos comprobantes por corrida}';
 
     protected $description = 'Envía, consulta y entrega los comprobantes electrónicos pendientes ante Hacienda';
 

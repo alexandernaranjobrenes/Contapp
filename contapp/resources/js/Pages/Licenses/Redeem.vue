@@ -69,7 +69,7 @@ function sendPasswordLink() {
                 <div class="form-grid">
                     <div class="field">
                         <label for="code">Código de licencia</label>
-                        <input id="code" v-model="form.code" type="text" placeholder="CONTAPP-XXXX-XXXX-XXXX" required>
+                        <input id="code" v-model="form.code" type="text" placeholder="PIVOX-XXXX-XXXX-XXXX" required>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
                     <div class="field">

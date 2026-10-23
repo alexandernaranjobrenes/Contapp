@@ -2,6 +2,7 @@
 import { useForm, Head, Link } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AuthShell from '../../Components/AuthShell.vue';
+import { startupVisit } from '../../Utils/startup';
 import {
     ArrowRightIcon, Building2Icon, EyeIcon, EyeOffIcon, LandmarkIcon, LockIcon, LogInIcon, MailIcon, ScaleIcon,
 } from '@lucide/vue';
@@ -15,9 +16,9 @@ const form = useForm({
 const showPassword = ref(false);
 
 function submit() {
-    form.post(route('login'), {
+    form.post(route('login'), startupVisit({
         onFinish: () => form.reset('password'),
-    });
+    }));
 }
 
 const highlights = [

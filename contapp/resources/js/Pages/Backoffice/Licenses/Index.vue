@@ -944,7 +944,7 @@ th, td { text-align: left; padding: 0.55rem 0.65rem; border-top: 1px solid var(-
     th:first-child, td:first-child { padding-left: 1rem; }
     th:last-child, td:last-child { padding-right: 1rem; }
 }
-/* El código y la fecha no se parten: "CONTAPP-****-" en una línea y el
+/* El código y la fecha no se parten: "PIVOX-****-" en una línea y el
    resto en otra no se lee como un código. */
 .code-cell, .date-cell { white-space: nowrap; }
 .code-cell { font-variant-numeric: tabular-nums; font-weight: 600; }

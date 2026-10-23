@@ -209,7 +209,7 @@ class PayrollPeriodController extends Controller
 
         // En orden y sin saltos (CodeRules): el que sigue al último del año.
         // El primero del año puede ser cualquiera (una compañía que empieza a
-        // usar CONTAPP a mitad de año).
+        // usar Pivox a mitad de año).
         $last = PayrollPeriod::where('year', $validated['year'])->where('frequency', $validated['frequency'])->max('number');
 
         if ($last !== null && (int) $validated['number'] > $last + 1) {

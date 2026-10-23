@@ -33,7 +33,7 @@ use Illuminate\Support\Facades\Cache;
  * ── Quién llama ──────────────────────────────────────────────────────────
  *
  * La cola (SubmitElectronicDocumentJob, PollElectronicDocumentJob), que lanza
- * el programador cada minuto con lo que está pendiente (contapp:hacienda-sync),
+ * el programador cada minuto con lo que está pendiente (pivox:hacienda-sync),
  * y la pantalla del comprobante cuando alguien pide «Consultar estado» o
  * «Reintentar envío». Este servicio no se encola a sí mismo: con la cola en
  * modo sync, cada «procesando» volvería a llamarse en el acto, en cadena.

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * El canal de comentarios sobre CONTAPP y las noticias del backoffice
+     * El canal de comentarios sobre Pivox y las noticias del backoffice
      * (FeedbackService). Global, sin compañía: es de toda la aplicación, no
      * de una licencia.
      *
@@ -15,7 +15,7 @@ return new class extends Migration
      * tabla (parent_id), así el id es único entre las dos y las imágenes del
      * bucket se llaman igual para ambas: comments/{id}_{n}.{ext}.
      *
-     * - Autor: una cuenta de la aplicación (user_id) o el equipo de CONTAPP
+     * - Autor: una cuenta de la aplicación (user_id) o el equipo de Pivox
      *   desde el backoffice (propietario_id). Uno de los dos.
      * - score: votos a favor menos votos en contra. Se recalcula desde
      *   feedback_votes en cada voto, y ordena la lista.
@@ -57,7 +57,7 @@ return new class extends Migration
 
         // Las noticias que publica el backoffice. Una imagen como mucho:
         // news/{id}_1.{ext}. link_url es una dirección completa (https://…) o
-        // una pantalla de CONTAPP (/dashboard).
+        // una pantalla de Pivox (/dashboard).
         Schema::create('news_posts', function (Blueprint $table) {
             $table->id();
             $table->string('title', 150);

@@ -24,7 +24,7 @@ use Inertia\Response;
 
 /**
  * Protegido por el guard 'propietario' (routes/web.php, prefijo /backoffice):
- * License es global, sin CompanyScope, a propósito — el dueño de CONTAPP
+ * License es global, sin CompanyScope, a propósito — el dueño de Pivox
  * necesita ver/emitir licencias de TODAS las compañías, no de una sola.
  *
  * Cada acción queda en la bitácora con el Propietario que la hizo (ver

@@ -62,7 +62,7 @@ function processNow() {
 
         <p class="hint">
             Una programación genera un asiento <strong>preliminar</strong> cada vez que llega su fecha — nunca se contabiliza solo.
-            "Procesar vencidas ahora" corre el mismo proceso que el comando programado <code>contapp:process-journal-schedules</code>
+            "Procesar vencidas ahora" corre el mismo proceso que el comando programado <code>pivox:process-journal-schedules</code>
             (declarado a diario en <code>routes/console.php</code>; usá este botón mientras no haya un cron real corriendo <code>schedule:run</code>).
         </p>
 

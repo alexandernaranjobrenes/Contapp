@@ -18,7 +18,7 @@ use Throwable;
  */
 class WarnExpiringHaciendaCertificates extends Command
 {
-    protected $signature = 'contapp:hacienda-certificates';
+    protected $signature = 'pivox:hacienda-certificates';
 
     protected $description = 'Avisa a los Superusuarios de las llaves de Hacienda por vencer';
 

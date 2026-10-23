@@ -135,7 +135,7 @@ it('sin un código válido no sirve para probar contraseñas ni para saber qué 
     memberOfAnotherLicense();
 
     $response = $this->post(route('license-activation.store'), array_merge([
-        'code' => 'CONTAPP-NOPE-NOPE-NOPE',
+        'code' => 'PIVOX-NOPE-NOPE-NOPE',
         'legal_name' => 'Empresa de Kevin S.A.',
         'email' => 'kevin@example.com',
     ], $payload));
@@ -375,7 +375,7 @@ it('con la sesión iniciada rechaza un código inválido', function () {
     $this->actingAs($f['member']);
 
     $this->post(route('license-redemption.store'), [
-        'code' => 'CONTAPP-NOPE-NOPE-NOPE',
+        'code' => 'PIVOX-NOPE-NOPE-NOPE',
         'legal_name' => 'Empresa de Kevin S.A.',
     ])->assertSessionHasErrors('code');
 

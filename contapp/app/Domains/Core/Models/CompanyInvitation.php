@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * La invitación a trabajar en una compañía, con un rol y permisos por
  * pantalla, que la persona acepta desde el correo (CompanyInvitationService).
  * Hasta entonces no entra: no hay acceso a la compañía, y si no tenía cuenta
- * en CONTAPP, tampoco cuenta.
+ * en Pivox, tampoco cuenta.
  */
 class CompanyInvitation extends Model
 {

@@ -6,6 +6,7 @@ import ConfirmHost from './Components/ConfirmHost.vue';
 import ContiActionModal from './Components/Conti/ContiActionModal.vue';
 import ContiScanModal from './Components/Conti/ContiScanModal.vue';
 import ContiPanel from './Components/Conti/ContiPanel.vue';
+import StartupHost from './Components/StartupHost.vue';
 import ToastHost from './Components/ToastHost.vue';
 // Botón ocupado mientras dura la operación que disparó, también en las
 // descargas, y el error dicho en pantalla si falla (CLAUDE.md secc. 27).
@@ -32,19 +33,20 @@ router.on('success', (event) => applyCompanyTheme(event.detail.page));
 router.on('navigate', (event) => applyCompanyTheme(event.detail.page));
 
 createInertiaApp({
-    title: (title) => (title ? `${title} — CONTAPP` : 'CONTAPP'),
+    title: (title) => (title ? `${title} — Pivox` : 'Pivox'),
     resolve: (name) => {
         const pages = import.meta.glob('./Pages/**/*.vue', { eager: true });
         return pages[`./Pages/${name}.vue`];
     },
     setup({ el, App, props, plugin }) {
-        // ConfirmHost, CompanySwitchHost y ToastHost van al lado de la
-        // página, no adentro: la confirmación de confirmAction(), la ventana
-        // del cambio de compañía y los avisos siguen a la vista aunque la
-        // acción termine en otra página. El chat de Conti, igual: la
-        // conversación sigue abierta al pasar de pantalla, y el modal para
-        // confirmar lo que preparó se abre encima de cualquiera.
-        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ContiActionModal), h(ContiScanModal), h(ConfirmHost), h(CompanySwitchHost), h(ToastHost)] });
+        // ConfirmHost, CompanySwitchHost, StartupHost y ToastHost van al lado
+        // de la página, no adentro: la confirmación de confirmAction(), la
+        // ventana del cambio de compañía, la entrada al iniciar sesión y los
+        // avisos siguen a la vista aunque la acción termine en otra página.
+        // El chat de Conti, igual: la conversación sigue abierta al pasar de
+        // pantalla, y el modal para confirmar lo que preparó se abre encima
+        // de cualquiera.
+        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ContiActionModal), h(ContiScanModal), h(ConfirmHost), h(CompanySwitchHost), h(StartupHost), h(ToastHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada

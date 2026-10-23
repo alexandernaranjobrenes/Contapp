@@ -5,13 +5,13 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Conti, el asistente de CONTAPP (CLAUDE.md secc. 32).
+ * Conti, el asistente de Pivox (CLAUDE.md secc. 32).
  *
  * - conti_tokens: el pase con el que el agente de n8n consulta la API de
  *   Conti a nombre de una persona, en una compañía. Se emite por mensaje y
  *   dura minutos; se guarda solo su hash.
  * - conti_actions: lo que Conti prepara para guardar. Nada se escribe hasta
- *   que la persona lo confirma en CONTAPP; la fila queda como registro de
+ *   que la persona lo confirma en Pivox; la fila queda como registro de
  *   qué se pidió, quién lo confirmó y qué resultó.
  */
 return new class extends Migration

@@ -73,7 +73,7 @@ function save(blob, filename) {
 
 /**
  * El mensaje de una respuesta fallida. Las descargas mandan la cabecera
- * X-Contapp-Download, y el servidor contesta sus errores en JSON (ver
+ * X-Pivox-Download, y el servidor contesta sus errores en JSON (ver
  * bootstrap/app.php): un 422 trae el error de validación, un 403 el motivo.
  */
 async function errorMessage(response) {
@@ -105,7 +105,7 @@ async function download(anchor) {
             // Una redirección no se sigue: suele ser la vuelta a la pantalla
             // con un mensaje de error en la sesión, o al login.
             redirect: 'manual',
-            headers: { 'X-Contapp-Download': '1' },
+            headers: { 'X-Pivox-Download': '1' },
         });
 
         if (response.type === 'opaqueredirect') {

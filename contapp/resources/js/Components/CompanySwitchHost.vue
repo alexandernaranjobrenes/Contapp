@@ -40,7 +40,7 @@ watch(() => companySwitch.status, async (status) => {
                 <div v-if="companySwitch.status !== 'error'" class="switch-stage" role="status" aria-live="polite">
                     <div class="switch-mark" :class="{ done: companySwitch.status === 'done' || companySwitch.status === 'leaving' }">
                         <span class="switch-ring" aria-hidden="true"></span>
-                        <span class="switch-mark-letter">C</span>
+                        <img class="switch-mark-letter" src="/images/logos/logo_pivox_corto.png" alt="">
                         <span class="switch-mark-check"><CheckIcon :size="28" :stroke-width="3" /></span>
                     </div>
 
@@ -139,8 +139,10 @@ watch(() => companySwitch.status, async (status) => {
     animation: switch-sink 0.25s ease both;
 }
 
-/* La marca de CONTAPP dentro de un anillo que gira mientras carga; al
-   terminar, el anillo se cierra y la letra da paso a un check. */
+/* El ícono de Pivox, sobre blanco, dentro de un anillo que gira mientras
+   carga; al terminar, el anillo se cierra y el ícono da paso a un check. El
+   fondo vuelve a ser translúcido para que el check, del color de acento, se
+   lea. */
 .switch-mark {
     position: relative;
     display: grid;
@@ -149,9 +151,18 @@ watch(() => companySwitch.status, async (status) => {
     height: 4.25rem;
     margin: 0.75rem 0 1.5rem;
     border-radius: 18px;
+    background: #fff;
+    transition: background-color 0.3s ease;
+}
+
+.switch-mark.done {
     background: rgba(255, 255, 255, 0.10);
-    font-size: 1.6rem;
-    font-weight: 800;
+}
+
+.switch-mark-letter {
+    width: 2.6rem;
+    height: 2.6rem;
+    object-fit: contain;
 }
 
 .switch-ring {

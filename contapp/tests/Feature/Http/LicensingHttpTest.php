@@ -8,7 +8,7 @@ use App\Models\User;
 
 it('rechaza activar con un código que no existe', function () {
     $this->post(route('license-activation.store'), [
-        'code' => 'CONTAPP-NOPE-NOPE-NOPE',
+        'code' => 'PIVOX-NOPE-NOPE-NOPE',
         'legal_name' => 'Mi Empresa',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',

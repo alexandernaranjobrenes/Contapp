@@ -9,7 +9,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
-#[Signature('contapp:process-journal-schedules {--date=}')]
+#[Signature('pivox:process-journal-schedules {--date=}')]
 #[Description('Genera los borradores pendientes de las programaciones de asientos ("Programable") cuya fecha ya llegó, para todas las compañías activas')]
 class ProcessJournalEntrySchedules extends Command
 {

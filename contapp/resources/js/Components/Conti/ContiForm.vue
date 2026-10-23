@@ -70,7 +70,7 @@ function emptyRow(field) {
     }));
 }
 
-// ── Lo que sugirió CONTAPP ──────────────────────────────────────────────
+// ── Lo que sugirió Pivox ──────────────────────────────────────────────
 // Se marca mientras el valor sea el sugerido: si la persona lo cambia, deja
 // de ser una sugerencia.
 const sameValue = (a, b) => String(a ?? '') === String(b ?? '');

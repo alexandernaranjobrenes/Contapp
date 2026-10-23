@@ -2,10 +2,11 @@
 
 namespace App\Domains\Conti\Agent;
 
+use App\Domains\Conti\Support\KeywordMatcher;
 use Illuminate\Support\Str;
 
 /**
- * El manual de CONTAPP para Conti (resources/conti/manual.md), por secciones.
+ * El manual de Pivox para Conti (resources/conti/manual.md), por secciones.
  *
  * No va entero en cada mensaje (son miles de tokens que se pagarían en cada
  * llamada al modelo): el modelo ve la lista de temas y pide las secciones
@@ -17,12 +18,6 @@ class ContiManual
     private const MAX_RESULTS = 3;
 
     private const MAX_SECTION_CHARS = 6000;
-
-    private const STOPWORDS = [
-        'que', 'como', 'con', 'para', 'por', 'los', 'las', 'del', 'una', 'uno', 'unos', 'unas', 'sus', 'mis', 'esta', 'este',
-        'esto', 'ese', 'esa', 'hay', 'hace', 'hago', 'puedo', 'donde', 'cual', 'cuales', 'cuando', 'sobre', 'entre', 'sin',
-        'mas', 'muy', 'pero', 'porque', 'quiero', 'tengo', 'tiene', 'son', 'ser', 'esta', 'estan', 'contapp',
-    ];
 
     /** @var list<array{title: string, path: string, body: string}>|null */
     private ?array $sections = null;
@@ -74,7 +69,7 @@ class ContiManual
     /** Las secciones que mejor responden a un tema. */
     public function search(string $topic): array
     {
-        $terms = $this->terms($topic);
+        $terms = KeywordMatcher::terms($topic);
 
         if ($terms === []) {
             return ['error' => 'Indicá el tema a buscar con una o más palabras clave.', 'codigo' => 422];
@@ -83,13 +78,7 @@ class ContiManual
         $scored = [];
 
         foreach ($this->sections() as $section) {
-            $title = $this->normalize($section['path']);
-            $body = $this->normalize($section['body']);
-            $score = 0;
-
-            foreach ($terms as $term) {
-                $score += substr_count($title, $term) * 6 + min(substr_count($body, $term), 8);
-            }
+            $score = KeywordMatcher::score($terms, $section['path'], $section['body']);
 
             if ($score > 0) {
                 $scored[] = ['score' => $score, 'section' => $section];
@@ -109,27 +98,5 @@ class ContiManual
                 'texto' => Str::limit(trim($s['section']['body']), self::MAX_SECTION_CHARS),
             ], array_slice($scored, 0, self::MAX_RESULTS)),
         ];
-    }
-
-    /** @return list<string> */
-    private function terms(string $topic): array
-    {
-        $words = preg_split('/[^a-z0-9ñ]+/u', $this->normalize($topic), -1, PREG_SPLIT_NO_EMPTY);
-
-        $words = array_filter($words, fn (string $w) => mb_strlen($w) >= 3 && ! in_array($w, self::STOPWORDS, true));
-
-        // Una raíz y no la palabra entera: «anulación» encuentra «anular» y
-        // «socios», «socio».
-        return array_values(array_unique(array_map(fn (string $w) => match (true) {
-            mb_strlen($w) >= 8 => mb_substr($w, 0, 5),
-            mb_strlen($w) >= 5 => mb_substr($w, 0, max(4, mb_strlen($w) - 2)),
-            default => $w,
-        }, $words)));
-    }
-
-    private function normalize(string $text): string
-    {
-        // Sin tildes y en minúscula: «anulación» encuentra «anulacion».
-        return Str::lower(strtr($text, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u']));
     }
 }

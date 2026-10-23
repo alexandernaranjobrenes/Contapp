@@ -54,10 +54,10 @@ class OpenAiClient
         report(new \RuntimeException("Conti: OpenAI respondió {$response->status()}: ".mb_substr((string) $detail, 0, 500)));
 
         throw match (true) {
-            $response->status() === 401 => new ContiAgentException('Conti no está bien configurado (la key de OpenAI no es válida). Avisale al equipo de CONTAPP.', 503),
-            $response->status() === 429 => new ContiAgentException('Conti está recibiendo demasiadas consultas o se agotó el saldo del servicio de IA. Probá de nuevo en unos minutos; si se repite, avisale al equipo de CONTAPP.', 503),
-            $response->status() === 404 => new ContiAgentException('El modelo de IA elegido no está disponible. Elegí otro en «Modelo y consumo», arriba en el chat; si se repite, avisale al equipo de CONTAPP.', 503),
-            default => new ContiAgentException('Conti no pudo responder esta vez. Probá de nuevo; si se repite, avisale al equipo de CONTAPP.', 502),
+            $response->status() === 401 => new ContiAgentException('Conti no está bien configurado (la key de OpenAI no es válida). Avisale al equipo de Pivox.', 503),
+            $response->status() === 429 => new ContiAgentException('Conti está recibiendo demasiadas consultas o se agotó el saldo del servicio de IA. Probá de nuevo en unos minutos; si se repite, avisale al equipo de Pivox.', 503),
+            $response->status() === 404 => new ContiAgentException('El modelo de IA elegido no está disponible. Elegí otro en «Modelo y consumo», arriba en el chat; si se repite, avisale al equipo de Pivox.', 503),
+            default => new ContiAgentException('Conti no pudo responder esta vez. Probá de nuevo; si se repite, avisale al equipo de Pivox.', 502),
         };
     }
 

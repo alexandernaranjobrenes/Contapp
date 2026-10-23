@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Http;
 | El tipo de cambio del BCCR, solo, todos los días
 |--------------------------------------------------------------------------
 |
-| El programador corre contapp:sync-bccr-rates dos veces al día en hora de
+| El programador corre pivox:sync-bccr-rates dos veces al día en hora de
 | Costa Rica (en Docker, el servicio `scheduler`). Trae el de hoy, completa
 | los días anteriores que falten y deja constancia de cómo le fue.
 |
@@ -49,7 +49,7 @@ function bccrRatesOf($company): array
 
 it('el programador lo corre dos veces al día, en hora de Costa Rica', function () {
     $event = collect(app(Schedule::class)->events())
-        ->first(fn ($event) => str_contains((string) $event->command, 'contapp:sync-bccr-rates'));
+        ->first(fn ($event) => str_contains((string) $event->command, 'pivox:sync-bccr-rates'));
 
     expect($event)->not->toBeNull()
         ->and($event->expression)->toBe('0 6,13 * * *')
@@ -65,7 +65,7 @@ it('trae el de hoy y completa los días anteriores que faltan, sin tocar los que
         'rate_type' => 'reference', 'rate' => '999', 'source' => 'manual', 'is_locked' => false,
     ]);
 
-    $this->artisan('contapp:sync-bccr-rates', ['--date' => '2026-10-14', '--catch-up' => 3])
+    $this->artisan('pivox:sync-bccr-rates', ['--date' => '2026-10-14', '--catch-up' => 3])
         ->expectsOutputToContain('1 compañía(s) al día. Se completaron 2 tasa(s) de días anteriores que faltaban.')
         ->assertSuccessful();
 
@@ -93,7 +93,7 @@ it('sin fecha toma el día de Costa Rica: de noche, en UTC ya es mañana', funct
     ['company' => $company] = logInAsCompanyUser();
     $this->travelTo(Carbon::parse('2026-10-15 01:30:00', 'UTC'));
 
-    $this->artisan('contapp:sync-bccr-rates', ['--catch-up' => 0])->assertSuccessful();
+    $this->artisan('pivox:sync-bccr-rates', ['--catch-up' => 0])->assertSuccessful();
 
     expect(array_keys(bccrRatesOf($company)))->toBe(['2026-10-14']);
 });
@@ -102,7 +102,7 @@ it('si el BCCR falla, queda constancia y Tipos de cambio lo muestra', function (
     Http::fake([BCCR_AUTO_URL => Http::response(['CodigoError' => '401'], 401)]);
     logInAsCompanyUser();
 
-    $this->artisan('contapp:sync-bccr-rates', ['--date' => '2026-10-14'])->assertFailed();
+    $this->artisan('pivox:sync-bccr-rates', ['--date' => '2026-10-14'])->assertFailed();
 
     expect(BccrSyncStatus::last())->toMatchArray(['ok' => false, 'date' => '2026-10-14']);
 

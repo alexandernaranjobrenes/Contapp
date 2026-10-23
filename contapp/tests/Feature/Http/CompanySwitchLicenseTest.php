@@ -37,7 +37,7 @@ it('a una compañía con la licencia revocada no se pasa, y se dice por qué', f
     $license->update(['status' => 'revoked']);
 
     $this->put(route('company-switch'), ['company_id' => $other->id])
-        ->assertSessionHasErrors(['license' => 'La licencia de El Clavo fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de CONTAPP.']);
+        ->assertSessionHasErrors(['license' => 'La licencia de El Clavo fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de Pivox.']);
 
     expect(session('current_company_id'))->toBe($own->id);
 });
@@ -47,7 +47,7 @@ it('ni a una con la licencia suspendida', function () {
     $license->update(['status' => 'suspended']);
 
     $this->put(route('company-switch'), ['company_id' => $other->id])
-        ->assertSessionHasErrors(['license' => 'La licencia de El Clavo está suspendida: mientras siga así no se puede entrar a esa compañía. Para reactivarla, contactá al equipo de CONTAPP.']);
+        ->assertSessionHasErrors(['license' => 'La licencia de El Clavo está suspendida: mientras siga así no se puede entrar a esa compañía. Para reactivarla, contactá al equipo de Pivox.']);
 
     expect(session('current_company_id'))->toBe($own->id);
 });
@@ -83,7 +83,7 @@ it('si la licencia de la compañía en la que estaba se revoca, pasa a otra dici
 
     $this->get(route('dashboard'))->assertInertia(fn ($page) => $page
         ->where('currentCompanyId', $own->id)
-        ->where('flash.error', 'La licencia de El Clavo fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de CONTAPP. Seguís en Kevin Comercial S.A.'));
+        ->where('flash.error', 'La licencia de El Clavo fue revocada, así que ya no se puede entrar a esa compañía. Si creés que es un error, contactá al equipo de Pivox. Seguís en Kevin Comercial S.A.'));
 
     // Solo esa vez: en la siguiente visita ya no hay nada que avisar.
     $this->get(route('dashboard'))->assertInertia(fn ($page) => $page->where('flash.error', null));

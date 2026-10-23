@@ -198,7 +198,7 @@ it('el Superusuario rechaza un cambio pendiente, y él cambia la cuenta directo'
     Notification::assertNothingSent();
 });
 
-it('conceptos: los que trae CONTAPP y los ya usados no cambian de código', function () {
+it('conceptos: los que trae Pivox y los ya usados no cambian de código', function () {
     ['company' => $company] = logInAsCompanyUser();
     app(CurrentCompany::class)->set($company->id);
     app(CostaRicaPayrollDefaults::class)->load($company, '2026-01-01');
@@ -210,7 +210,7 @@ it('conceptos: los que trae CONTAPP y los ya usados no cambian de código', func
 
     $default = PayrollConcept::where('code', CostaRicaPayrollDefaults::CONCEPTS[0]['code'])->sole();
     $this->put(route('payroll-settings.concepts.update', $default->id), $form($default, 'OTRO'))
-        ->assertSessionHasErrors(['code' => 'El código no se puede cambiar: es un concepto que trae CONTAPP.']);
+        ->assertSessionHasErrors(['code' => 'El código no se puede cambiar: es un concepto que trae Pivox.']);
 
     $own = PayrollConcept::create([
         'company_id' => $company->id, 'code' => 'BONO-X', 'name' => 'Bono de ventas', 'type' => 'earning',
@@ -263,7 +263,7 @@ it('períodos: van en orden y sin saltos; el primero del año puede ser cualquie
         ];
     };
 
-    // Una compañía que empieza a usar CONTAPP a mitad de año.
+    // Una compañía que empieza a usar Pivox a mitad de año.
     $this->post(route('payroll-periods.store'), $form(7))->assertSessionHasNoErrors();
 
     $this->post(route('payroll-periods.store'), $form(9))

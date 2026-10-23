@@ -184,7 +184,7 @@ function changePassword() {
             </div>
             <form class="card-body" @submit.prevent="requestEmailChange">
                 <p class="muted hint">
-                    Con este correo entrás a CONTAPP y ahí te llega el enlace para recuperar la contraseña. Para cambiarlo,
+                    Con este correo entrás a Pivox y ahí te llega el enlace para recuperar la contraseña. Para cambiarlo,
                     te mandamos un enlace al correo nuevo: el cambio se hace cuando lo abrís (dura {{ emailLinkMinutes }}
                     minutos) y hasta entonces seguís entrando con el actual.
                 </p>

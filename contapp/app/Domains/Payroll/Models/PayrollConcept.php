@@ -69,7 +69,7 @@ class PayrollConcept extends Model
     public function codeLockReason(): ?string
     {
         if (in_array($this->getOriginal('code'), array_column(CostaRicaPayrollDefaults::CONCEPTS, 'code'), true)) {
-            return 'es un concepto que trae CONTAPP';
+            return 'es un concepto que trae Pivox';
         }
 
         $used = $this->entryLines()->exists()

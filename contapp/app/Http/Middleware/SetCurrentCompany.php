@@ -112,8 +112,8 @@ class SetCurrentCompany
             $request->session()->regenerateToken();
 
             $message = $eligible->isEmpty()
-                ? 'Tu acceso a CONTAPP fue suspendido. Contactá a quien administra tu cuenta.'
-                : 'La licencia de tu compañía está suspendida o fue revocada. Contactá a CONTAPP.';
+                ? 'Tu acceso a Pivox fue suspendido. Contactá a quien administra tu cuenta.'
+                : 'La licencia de tu compañía está suspendida o fue revocada. Contactá a Pivox.';
 
             return redirect()->route('login')->withErrors(['email' => $message]);
         }

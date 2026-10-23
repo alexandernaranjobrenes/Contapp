@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Tabla deliberadamente separada de users (CLAUDE.md secc. 11/14): el
-     * Propietario es el fabricante/distribuidor de CONTAPP, un actor sin
+     * Propietario es el fabricante/distribuidor de Pivox, un actor sin
      * relación con las compañías/licencias que administra más que ser quien
      * las opera — nunca comparte guard, sesión ni fila con los usuarios de
      * una compañía cliente.

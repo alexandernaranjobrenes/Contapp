@@ -27,7 +27,7 @@ function submit() {
             </p>
 
             <p v-if="!license.can_activate_another" class="muted empty-state">
-                Ya alcanzaste el máximo de compañías de tu licencia. Contactá al soporte de CONTAPP si necesitás más cupo.
+                Ya alcanzaste el máximo de compañías de tu licencia. Contactá al soporte de Pivox si necesitás más cupo.
             </p>
 
             <form v-else @submit.prevent="submit">

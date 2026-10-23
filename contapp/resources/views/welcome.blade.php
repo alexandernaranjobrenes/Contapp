@@ -4,7 +4,8 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>{{ config('app.name', 'CONTAPP') }}</title>
+        <title>{{ config('app.name', 'Pivox') }}</title>
+        <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
 
         @fonts
 
@@ -13,7 +14,9 @@
     <body class="d-flex flex-column min-vh-100">
         <nav class="navbar navbar-expand navbar-dark bg-dark">
             <div class="container">
-                <a class="navbar-brand fw-semibold" href="{{ url('/') }}">{{ config('app.name', 'CONTAPP') }}</a>
+                <a class="navbar-brand fw-semibold" href="{{ url('/') }}">
+                    <img src="{{ asset('images/logos/logo_pivox_blanco.png') }}" alt="{{ config('app.name', 'Pivox') }}" height="32">
+                </a>
 
                 @if (Route::has('login'))
                     <div class="d-flex gap-2">
@@ -33,7 +36,7 @@
 
         <main class="flex-grow-1 d-flex align-items-center">
             <div class="container py-5 text-center">
-                <h1 class="display-5 fw-bold">{{ config('app.name', 'CONTAPP') }}</h1>
+                <h1 class="display-5 fw-bold">{{ config('app.name', 'Pivox') }}</h1>
                 <p class="lead text-body-secondary">Tu aplicación está lista y corriendo en Docker.</p>
             </div>
         </main>

@@ -1,4 +1,4 @@
-# CONTAPP — Propuesta de Sistema
+# Pivox — Propuesta de Sistema
 
 **Estado:** Propuesta inicial para validación
 **Fecha:** 2026-08-04

@@ -37,7 +37,7 @@ use App\Domains\Core\Support\CurrentCompany;
 use App\Domains\Tax\Models\TaxRate;
 use App\Models\User;
 
-function contappFixture(): array
+function pivoxFixture(): array
 {
     $company = Company::factory()->create();
 
@@ -79,7 +79,7 @@ function contappFixture(): array
 }
 
 it('contabiliza un asiento balanceado en las 3 monedas', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $service = app(PostJournalService::class);
 
@@ -107,7 +107,7 @@ it('contabiliza un asiento balanceado en las 3 monedas', function () {
 });
 
 it('guarda un documento de referencia y su fecha distintos por línea, para un asiento que junta varios documentos', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post(
         $company,
@@ -140,7 +140,7 @@ it('guarda un documento de referencia y su fecha distintos por línea, para un a
 });
 
 it('guarda un asiento en borrador (saveDraft) con documento de referencia y fecha por línea', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->saveDraft(
         $company,
@@ -164,7 +164,7 @@ it('guarda un asiento en borrador (saveDraft) con documento de referencia y fech
 });
 
 it('rechaza un asiento que no cuadra', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $service = app(PostJournalService::class);
 
@@ -181,7 +181,7 @@ it('rechaza un asiento que no cuadra', function () {
 })->throws(UnbalancedJournalEntryException::class);
 
 it('rechaza contabilizar contra una cuenta que no acepta movimientos', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
 
     $summary = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
@@ -204,7 +204,7 @@ it('rechaza contabilizar contra una cuenta que no acepta movimientos', function 
 })->throws(NonPostingAccountException::class);
 
 it('rechaza contabilizar en un período cerrado', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'fiscalYear' => $fiscalYear] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'fiscalYear' => $fiscalYear] = pivoxFixture();
 
     FiscalPeriod::query()->where('fiscal_year_id', $fiscalYear->id)->update(['status' => 'closed']);
 
@@ -223,7 +223,7 @@ it('rechaza contabilizar en un período cerrado', function () {
 })->throws(ClosedFiscalPeriodException::class);
 
 it('rechaza contabilizar en una fecha sin período fiscal configurado', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $service = app(PostJournalService::class);
 
@@ -240,7 +240,7 @@ it('rechaza contabilizar en una fecha sin período fiscal configurado', function
 })->throws(NoOpenFiscalPeriodException::class);
 
 it('numera los documentos de forma correlativa por tipo de documento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $service = app(PostJournalService::class);
 
@@ -259,7 +259,7 @@ it('numera los documentos de forma correlativa por tipo de documento', function 
 });
 
 it('rechaza contabilizar sin socio de negocio en una cuenta que lo exige', function () {
-    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $cxc = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
@@ -277,7 +277,7 @@ it('rechaza contabilizar sin socio de negocio en una cuenta que lo exige', funct
 })->throws(MissingBusinessPartnerException::class);
 
 it('rechaza contabilizar sin norma de reparto en una cuenta que lo exige', function () {
-    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $gasto = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
@@ -295,7 +295,7 @@ it('rechaza contabilizar sin norma de reparto en una cuenta que lo exige', funct
 })->throws(MissingCostAllocationRuleException::class);
 
 it('contabiliza una línea con norma de reparto: la explota en una fila real por centro de costo', function () {
-    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $gasto = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
@@ -326,7 +326,7 @@ it('contabiliza una línea con norma de reparto: la explota en una fila real por
 });
 
 it('reparte una línea con redondeo entre 8 centros de costo y reconcilia exacto contra el monto original', function () {
-    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $gasto = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
@@ -364,7 +364,7 @@ it('rechaza combinar norma de reparto con apertura de partida en la misma línea
 })->throws(InvalidArgumentException::class);
 
 it('no asigna número de serie si no se indica ninguna', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
         new JournalLineInput($cash->id, $company->local_currency_id, debit: 100, credit: 0),
@@ -376,7 +376,7 @@ it('no asigna número de serie si no se indica ninguna', function () {
 });
 
 it('asigna el número de una serie manual cuando se indica, sin tocar el consecutivo interno', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $documentType->id,
         'range_from' => 100, 'range_to' => 200, 'next_number' => 100,
@@ -394,7 +394,7 @@ it('asigna el número de una serie manual cuando se indica, sin tocar el consecu
 });
 
 it('asigna números sucesivos de la misma serie en posteos consecutivos', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $documentType->id,
         'range_from' => 1, 'range_to' => 10, 'next_number' => 1,
@@ -416,7 +416,7 @@ it('asigna números sucesivos de la misma serie en posteos consecutivos', functi
 });
 
 it('rechaza contabilizar contra una serie que ya agotó su rango', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $documentType->id,
         'range_from' => 1, 'range_to' => 5, 'next_number' => 6, // ya se usaron todos
@@ -429,7 +429,7 @@ it('rechaza contabilizar contra una serie que ya agotó su rango', function () {
 })->throws(NumberSeriesExhaustedException::class);
 
 it('rechaza contabilizar contra una serie inactiva', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $documentType->id, 'is_active' => false,
     ]);
@@ -441,7 +441,7 @@ it('rechaza contabilizar contra una serie inactiva', function () {
 })->throws(NumberSeriesExhaustedException::class);
 
 it('rechaza contabilizar contra una serie que pertenece a otro tipo de documento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $otherType = DocumentType::factory()->create(['company_id' => $company->id, 'code' => 'OTR']);
     $series = DocumentTypeNumberSeries::factory()->create([
         'company_id' => $company->id, 'document_type_id' => $otherType->id,
@@ -454,7 +454,7 @@ it('rechaza contabilizar contra una serie que pertenece a otro tipo de documento
 })->throws(NumberSeriesExhaustedException::class);
 
 it('rechaza contabilizar contra una norma de reparto que no existe en la compañía', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
         new JournalLineInput($cash->id, $company->local_currency_id, debit: 100, credit: 0, costAllocationRuleId: 999999),
@@ -463,7 +463,7 @@ it('rechaza contabilizar contra una norma de reparto que no existe en la compañ
 })->throws(CostCenterNotPostableException::class);
 
 it('rechaza contabilizar contra una norma de reparto inactiva', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $cc = CostCenter::factory()->create(['company_id' => $company->id, 'code' => 'CC-01']);
     $rule = CostAllocationRule::factory()->create(['company_id' => $company->id, 'code' => 'NORMA1', 'is_active' => false]);
@@ -476,7 +476,7 @@ it('rechaza contabilizar contra una norma de reparto inactiva', function () {
 })->throws(CostCenterNotPostableException::class);
 
 it('rechaza contabilizar contra una norma de reparto fuera de su vigencia en la fecha del asiento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $cc = CostCenter::factory()->create(['company_id' => $company->id, 'code' => 'CC-01']);
     $rule = CostAllocationRule::factory()->create([
@@ -493,7 +493,7 @@ it('rechaza contabilizar contra una norma de reparto fuera de su vigencia en la 
 })->throws(CostCenterNotPostableException::class);
 
 it('rechaza contabilizar contra una norma de reparto que referencia un centro de costo inactivo', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $cc = CostCenter::factory()->create(['company_id' => $company->id, 'code' => 'CC-01', 'is_active' => false]);
     $rule = CostAllocationRule::factory()->create(['company_id' => $company->id, 'code' => 'NORMA1']);
@@ -506,7 +506,7 @@ it('rechaza contabilizar contra una norma de reparto que referencia un centro de
 })->throws(CostCenterNotPostableException::class);
 
 it('permite contabilizar contra una norma de reparto dentro de su vigencia en la fecha del asiento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $cc = CostCenter::factory()->create(['company_id' => $company->id, 'code' => 'CC-01']);
     $rule = CostAllocationRule::factory()->create([
@@ -526,7 +526,7 @@ it('permite contabilizar contra una norma de reparto dentro de su vigencia en la
 // --- Borradores ("guardar como preliminar") -------------------------------
 
 it('guarda un borrador con líneas incompletas: sin monto y sin cuadrar', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->saveDraft(
         $company,
@@ -551,7 +551,7 @@ it('guarda un borrador con líneas incompletas: sin monto y sin cuadrar', functi
 });
 
 it('un borrador se puede guardar en una fecha sin período fiscal configurado', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->saveDraft(
         $company,
@@ -566,7 +566,7 @@ it('un borrador se puede guardar en una fecha sin período fiscal configurado', 
 });
 
 it('un borrador puede referenciar una cuenta que no acepta movimientos: esa regla solo aplica al contabilizar', function () {
-    ['company' => $company, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'documentType' => $documentType] = pivoxFixture();
     $summary = ChartOfAccount::factory()->create([
         'company_id' => $company->id,
         'code' => '1-01-01-01-000',
@@ -581,7 +581,7 @@ it('un borrador puede referenciar una cuenta que no acepta movimientos: esa regl
 });
 
 it('rechaza guardar un borrador con una cuenta que no existe en la compañía', function () {
-    ['company' => $company, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'documentType' => $documentType] = pivoxFixture();
     $otherCompany = Company::factory()->create();
     $foreignAccount = ChartOfAccount::factory()->create(['company_id' => $otherCompany->id]);
 
@@ -591,7 +591,7 @@ it('rechaza guardar un borrador con una cuenta que no existe en la compañía', 
 })->throws(NonPostingAccountException::class);
 
 it('editar un borrador existente reemplaza por completo sus líneas anteriores', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -618,7 +618,7 @@ it('editar un borrador existente reemplaza por completo sus líneas anteriores',
 });
 
 it('rechaza volver a guardar como borrador un asiento que ya fue contabilizado', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $posted = $service->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -632,8 +632,8 @@ it('rechaza volver a guardar como borrador un asiento que ya fue contabilizado',
 })->throws(JournalEntryNotDraftException::class);
 
 it('rechaza editar como borrador un asiento que pertenece a otra compañía', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
-    $fixtureB = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
+    $fixtureB = pivoxFixture();
 
     $draftB = app(PostJournalService::class)->saveDraft(
         $fixtureB['company'],
@@ -651,7 +651,7 @@ it('rechaza editar como borrador un asiento que pertenece a otra compañía', fu
 // --- Contabilizar formalmente un borrador (post() con $draftToFinalize) ---
 
 it('contabiliza formalmente un borrador: asigna numeración y período, y reemplaza sus líneas por los montos definitivos', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -681,7 +681,7 @@ it('contabiliza formalmente un borrador: asigna numeración y período, y reempl
 });
 
 it('conserva quién creó el borrador y registra por separado quién lo contabiliza', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $creator = User::factory()->create();
     $poster = User::factory()->create();
     $service = app(PostJournalService::class);
@@ -700,7 +700,7 @@ it('conserva quién creó el borrador y registra por separado quién lo contabil
 });
 
 it('rechaza contabilizar formalmente un asiento que ya no está en borrador', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $posted = $service->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -715,8 +715,8 @@ it('rechaza contabilizar formalmente un asiento que ya no está en borrador', fu
 })->throws(JournalEntryNotDraftException::class);
 
 it('rechaza contabilizar formalmente un borrador que pertenece a otra compañía', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
-    $fixtureB = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
+    $fixtureB = pivoxFixture();
 
     $draftB = app(PostJournalService::class)->saveDraft(
         $fixtureB['company'],
@@ -733,7 +733,7 @@ it('rechaza contabilizar formalmente un borrador que pertenece a otra compañía
 })->throws(JournalEntryNotDraftException::class);
 
 it('un borrador que no cuadra sigue rechazándose al contabilizarlo formalmente', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -747,7 +747,7 @@ it('un borrador que no cuadra sigue rechazándose al contabilizarlo formalmente'
 })->throws(UnbalancedJournalEntryException::class);
 
 it('tras un intento fallido de contabilizar, el borrador sigue intacto', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -773,7 +773,7 @@ it('tras un intento fallido de contabilizar, el borrador sigue intacto', functio
 // --- Tipo de cambio manual (anula el automático solo para este asiento) ---
 
 it('sin tipo de cambio manual, usa el automático de exchange_rates según la fecha (520.00 del fixture)', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
         new JournalLineInput($cash->id, $company->local_currency_id, debit: 520, credit: 0),
@@ -787,7 +787,7 @@ it('sin tipo de cambio manual, usa el automático de exchange_rates según la fe
 });
 
 it('un tipo de cambio manual anula el automático para todas las líneas del asiento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     // El fixture ya tiene un TC automático de 520.00 para esta fecha — se
     // pide explícitamente uno distinto (500.00) y debe ganar el manual.
@@ -806,7 +806,7 @@ it('un tipo de cambio manual anula el automático para todas las líneas del asi
 });
 
 it('el tipo de cambio manual también se aplica a una línea digitada en moneda extranjera', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
         new JournalLineInput($cash->id, $company->foreign_currency_id, debit: 2, credit: 0),
@@ -820,7 +820,7 @@ it('el tipo de cambio manual también se aplica a una línea digitada en moneda 
 });
 
 it('el tipo de cambio manual no afecta el factor a moneda de sistema cuando extranjera = sistema (sigue en 1.00)', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     expect($company->foreign_currency_id)->toBe($company->system_currency_id); // supuesto del fixture, ver CompanyFactory
 
@@ -836,7 +836,7 @@ it('el tipo de cambio manual no afecta el factor a moneda de sistema cuando extr
 });
 
 it('el tipo de cambio manual también se puede usar al contabilizar formalmente un borrador', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -857,7 +857,7 @@ it('el tipo de cambio manual también se puede usar al contabilizar formalmente 
 // --- Vigencia de tarifas de IVA al contabilizar (attachTax) ---------------
 
 it('rechaza contabilizar con una tarifa de IVA que ya venció para la fecha del asiento', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $ivaSoportado = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-04-01-001']);
     $taxRate = TaxRate::factory()->create([
         'code' => 'IVA-13', 'percentage' => '13.00',
@@ -875,7 +875,7 @@ it('rechaza contabilizar con una tarifa de IVA que ya venció para la fecha del 
 })->throws(TaxRateNotEffectiveException::class);
 
 it('rechaza contabilizar con una tarifa de IVA que todavía no empieza a regir', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $ivaSoportado = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-04-01-001']);
     $taxRate = TaxRate::factory()->create([
         'code' => 'IVA-NUEVA', 'percentage' => '13.00',
@@ -893,7 +893,7 @@ it('rechaza contabilizar con una tarifa de IVA que todavía no empieza a regir',
 })->throws(TaxRateNotEffectiveException::class);
 
 it('permite contabilizar con una tarifa vigente justo en los límites de su rango', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $ivaSoportado = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-04-01-001']);
     $taxRate = TaxRate::factory()->create([
         'code' => 'IVA-13', 'percentage' => '13.00',
@@ -918,7 +918,7 @@ it('permite contabilizar con una tarifa vigente justo en los límites de su rang
 // vive en JournalLineInput/journal_details, no en JournalEntry.
 
 it('guarda la clave electrónica de una línea al contabilizar', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $key = str_repeat('1', 50);
 
     $entry = app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -931,7 +931,7 @@ it('guarda la clave electrónica de una línea al contabilizar', function () {
 });
 
 it('guarda la clave electrónica de una línea al guardar un borrador', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $key = str_repeat('2', 50);
 
     $draft = app(PostJournalService::class)->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -942,7 +942,7 @@ it('guarda la clave electrónica de una línea al guardar un borrador', function
 });
 
 it('un asiento sin clave electrónica la guarda en null (la mayoría de los documentos no la necesitan)', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
         new JournalLineInput($cash->id, $company->local_currency_id, debit: 100, credit: 0),
@@ -953,7 +953,7 @@ it('un asiento sin clave electrónica la guarda en null (la mayoría de los docu
 });
 
 it('un mismo asiento puede juntar varias facturas de compra, cada una con su propia clave electrónica', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $expense1 = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '5-01-01-01-001', 'accepts_posting' => true]);
     $expense2 = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '5-01-01-01-002', 'accepts_posting' => true]);
     $key1 = str_repeat('1', 50);
@@ -973,7 +973,7 @@ it('un mismo asiento puede juntar varias facturas de compra, cada una con su pro
 // --- Tres fechas: documento (informativa), contabilización (rectora), vencimiento (encabezado + línea) ---
 
 it('la fecha de contabilización, no la de documento, determina el período fiscal', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'period' => $period] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType, 'period' => $period] = pivoxFixture();
 
     // document_date cae en diciembre 2025, donde el fixture no configura
     // ningún período fiscal (solo crea enero 2026) — si document_date
@@ -994,7 +994,7 @@ it('la fecha de contabilización, no la de documento, determina el período fisc
 });
 
 it('la fecha de contabilización, no la de documento, determina el tipo de cambio aplicado', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     // El fixture ya deja un TC de 520 vigente desde el 2026-01-01; se agrega
     // uno más nuevo a partir del 2026-01-20.
@@ -1019,7 +1019,7 @@ it('la fecha de contabilización, no la de documento, determina el tipo de cambi
 });
 
 it('una fecha de vencimiento de encabezado respalda a las líneas que no traen la suya propia', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
 
     $entry = app(PostJournalService::class)->post(
         $company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'),
@@ -1036,7 +1036,7 @@ it('una fecha de vencimiento de encabezado respalda a las líneas que no traen l
 });
 
 it('una línea que abre partida sin vencimiento propio hereda el de encabezado en la partida abierta', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $cxc = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '1-01-02-01-001', 'requires_business_partner' => true,
     ]);
@@ -1067,7 +1067,7 @@ it('una línea que abre partida sin vencimiento propio hereda el de encabezado e
 // anula con asiento de reversión" ------------------------------------------
 
 it('anula un asiento contabilizado con un espejo exacto y lo marca voided', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $original = $service->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -1091,7 +1091,7 @@ it('anula un asiento contabilizado con un espejo exacto y lo marca voided', func
 });
 
 it('rechaza anular un borrador', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $draft = $service->saveDraft($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -1102,7 +1102,7 @@ it('rechaza anular un borrador', function () {
 })->throws(JournalEntryNotPostedException::class);
 
 it('rechaza anular un asiento que ya fue anulado (queda voided, no posted)', function () {
-    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'capital' => $capital, 'documentType' => $documentType] = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $original = $service->post($company, $documentType, new DateTime('2026-01-15'), new DateTime('2026-01-15'), [
@@ -1115,7 +1115,7 @@ it('rechaza anular un asiento que ya fue anulado (queda voided, no posted)', fun
 })->throws(JournalEntryNotPostedException::class);
 
 it('anular una línea que abrió partida sin pagos aplicados cierra esa partida', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $cxc = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '1-01-02-01-001', 'requires_business_partner' => true,
     ]);
@@ -1137,7 +1137,7 @@ it('anular una línea que abrió partida sin pagos aplicados cierra esa partida'
 });
 
 it('rechaza anular una línea cuya partida ya tiene pagos aplicados', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $cxc = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '1-01-02-01-001', 'requires_business_partner' => true,
     ]);
@@ -1162,7 +1162,7 @@ it('rechaza anular una línea cuya partida ya tiene pagos aplicados', function (
 })->throws(UnreversibleJournalEntryException::class);
 
 it('anular un asiento de pago deshace sus aplicaciones y restablece el saldo de la partida original', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $cxc = ChartOfAccount::factory()->create([
         'company_id' => $company->id, 'code' => '1-01-02-01-001', 'requires_business_partner' => true,
     ]);
@@ -1192,7 +1192,7 @@ it('anular un asiento de pago deshace sus aplicaciones y restablece el saldo de 
 });
 
 it('rechaza anular una línea que ya forma parte de una reconciliación interna', function () {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
     $suspense = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-09-01-001']);
     $service = app(PostJournalService::class);
 
@@ -1219,8 +1219,8 @@ it('rechaza anular una línea que ya forma parte de una reconciliación interna'
 })->throws(UnreversibleJournalEntryException::class);
 
 it('rechaza anular un asiento de otra compañía', function () {
-    ['company' => $company, 'documentType' => $documentType] = contappFixture();
-    $fixtureB = contappFixture();
+    ['company' => $company, 'documentType' => $documentType] = pivoxFixture();
+    $fixtureB = pivoxFixture();
     $service = app(PostJournalService::class);
 
     $originalB = $service->post(
@@ -1240,7 +1240,7 @@ it('rechaza anular un asiento de otra compañía', function () {
 
 function bpControlFixture(): array
 {
-    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = contappFixture();
+    ['company' => $company, 'cash' => $cash, 'documentType' => $documentType] = pivoxFixture();
 
     $cxc = ChartOfAccount::factory()->create(['company_id' => $company->id, 'code' => '1-01-02-01-001']);
 

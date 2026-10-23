@@ -8,7 +8,7 @@ use App\Models\User;
 /**
  * Reabrir un período Cerrado es la contraparte de borrar un asiento
  * contabilizado: reservado al super usuario y no delegable (ver
- * docs/propuesta-contapp.md §4.4 y la nota pendiente en
+ * docs/propuesta-pivox.md §4.4 y la nota pendiente en
  * docs/decisiones.md 2026-08-05 sobre PeriodCloseService). Cerrar,
  * bloquear y desbloquear SÍ son delegables vía document_type_permissions
  * a futuro; por ahora cualquier usuario autenticado con acceso a la

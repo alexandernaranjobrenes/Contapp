@@ -77,7 +77,7 @@ const {
 
 /** La pantalla en la que está la persona: Conti la usa de contexto. */
 function currentScreen() {
-    const title = document.title.replace(/\s+—\s+CONTAPP$/, '');
+    const title = document.title.replace(/\s+—\s+Pivox$/, '');
     let name = null;
     try {
         name = window.route().current();
@@ -138,7 +138,7 @@ watch(() => conti.view, (view) => {
 
 const ACTION_LINK = /^\/conti\/acciones\/([A-Za-z0-9-]+)\/?$/;
 
-// Un enlace de CONTAPP se abre acá mismo, sin recargar; uno de afuera, en
+// Un enlace de Pivox se abre acá mismo, sin recargar; uno de afuera, en
 // otra pestaña. El de confirmar lo que Conti preparó, en un modal encima de
 // la pantalla en que se está (ContiActionModal.vue): no hay que irse de ella.
 function onMessageClick(event) {
@@ -197,13 +197,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             class="conti-panel"
             role="dialog"
             aria-modal="false"
-            aria-label="Conti, el asistente de CONTAPP"
+            aria-label="Conti, el asistente de Pivox"
         >
             <header class="conti-head">
                 <span class="conti-avatar" aria-hidden="true"><BotIcon :size="18" /></span>
                 <div class="conti-title">
                     <strong>Conti</strong>
-                    <span>{{ inSettings ? 'Modelo y consumo' : (modelName ? `Asistente de CONTAPP · ${modelName}` : 'Asistente de CONTAPP') }}</span>
+                    <span>{{ inSettings ? 'Modelo y consumo' : (modelName ? `Asistente de Pivox · ${modelName}` : 'Asistente de Pivox') }}</span>
                 </div>
                 <button
                     type="button"
@@ -238,7 +238,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             <div v-show="!inSettings" ref="list" class="conti-messages" aria-live="polite" @click="onMessageClick">
                 <div v-if="!conti.messages.length" class="conti-welcome">
                     <div class="bubble from-conti">
-                        <p>¡Hola{{ userName ? `, ${userName}` : '' }}! Soy Conti, el asistente de CONTAPP.</p>
+                        <p>¡Hola{{ userName ? `, ${userName}` : '' }}! Soy Conti, el asistente de Pivox.</p>
                         <p>
                             Preguntame cómo hacer algo o qué significa un campo, o pedime datos de {{ companyName }}:
                             saldos, facturas, existencias, planilla… Solo veo lo que tus permisos te dejan ver.

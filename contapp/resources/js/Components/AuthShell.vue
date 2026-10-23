@@ -36,8 +36,8 @@ const flash = computed(() => page.props.flash ?? {});
     <div class="auth-shell" :class="{ 'is-dark': dark, 'is-wide': wide }">
         <aside class="auth-panel">
             <div class="auth-brand">
-                <span class="brand-mark">C</span>
-                <span class="brand-name">CONTAPP</span>
+                <span class="brand-mark"><img src="/images/logos/logo_pivox_corto.png" alt=""></span>
+                <img class="brand-name" src="/images/logos/pivox_nombre_blanco.png" alt="Pivox">
             </div>
 
             <div class="auth-panel-body">
@@ -50,7 +50,7 @@ const flash = computed(() => page.props.flash ?? {});
             </div>
 
             <p class="auth-panel-footer">
-                © {{ year }} CONTAPP · Hecho por
+                © {{ year }} Pivox · Hecho por
                 <a href="https://ncodedigital.com" target="_blank" rel="noopener">NcodeDigital</a>
             </p>
         </aside>
@@ -117,7 +117,7 @@ const flash = computed(() => page.props.flash ?? {});
 
 .auth-shell.is-dark .auth-panel {
     /* Deliberadamente distinto al de la marca: esta puerta es exclusiva del
-       fabricante de CONTAPP, nunca de un cliente, así que no debe poder
+       fabricante de Pivox, nunca de un cliente, así que no debe poder
        confundirse con el plano operativo. Grafito con acento ámbar. */
     background-color: #14171c;
     background-image:
@@ -132,22 +132,30 @@ const flash = computed(() => page.props.flash ?? {});
     gap: 0.7rem;
 }
 
+/* El ícono va sobre blanco: así se lee igual sobre el fondo de cualquier
+   tema y sobre el grafito del backoffice. */
 .brand-mark {
     display: inline-grid;
     place-items: center;
     width: 42px;
     height: 42px;
+    padding: 7px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-    font-weight: 800;
-    font-size: 1.15rem;
+    background: #fff;
+    box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.45);
+}
+
+.brand-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .brand-name {
-    font-size: 1.3rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
+    display: block;
+    height: 24px;
+    width: auto;
 }
 
 .auth-panel-body {
@@ -403,12 +411,12 @@ const flash = computed(() => page.props.flash ?? {});
     .brand-mark {
         width: 36px;
         height: 36px;
+        padding: 6px;
         border-radius: 10px;
-        font-size: 1rem;
     }
 
     .brand-name {
-        font-size: 1.1rem;
+        height: 20px;
     }
 
     .auth-form-side {

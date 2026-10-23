@@ -5,12 +5,12 @@ use App\Domains\Accounting\Models\JournalEntry;
 use App\Domains\Accounting\Services\JournalEntryScheduleService;
 use App\Domains\Core\Scopes\CompanyScope;
 
-// contappFixture() viene de PostJournalServiceTest.php (mismo directorio,
+// pivoxFixture() viene de PostJournalServiceTest.php (mismo directorio,
 // Pest carga todas las funciones globales del suite junto) — company,
 // cash, capital, documentType, fiscalYear, period listos para postear.
 
 it('crea una programación activa con la fecha de inicio como próxima corrida', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -31,7 +31,7 @@ it('crea una programación activa con la fecha de inicio como próxima corrida',
 });
 
 it('rechaza una frecuencia inválida', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $service->create(
@@ -45,7 +45,7 @@ it('rechaza una frecuencia inválida', function () {
 })->throws(InvalidArgumentException::class);
 
 it('rechaza un intervalo menor a 1', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $service->create(
@@ -59,7 +59,7 @@ it('rechaza un intervalo menor a 1', function () {
 })->throws(InvalidArgumentException::class);
 
 it('rechaza una fecha de vencimiento anterior a la fecha de inicio', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $service->create(
@@ -74,7 +74,7 @@ it('rechaza una fecha de vencimiento anterior a la fecha de inicio', function ()
 })->throws(InvalidArgumentException::class);
 
 it('processDue genera un borrador con schedule_id cuando la próxima corrida ya llegó', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -95,7 +95,7 @@ it('processDue genera un borrador con schedule_id cuando la próxima corrida ya 
 });
 
 it('processDue no genera nada si la próxima corrida todavía es en el futuro', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $service->create(
@@ -113,7 +113,7 @@ it('processDue no genera nada si la próxima corrida todavía es en el futuro', 
 });
 
 it('processDue avanza next_run_date en días según el intervalo configurado', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -131,7 +131,7 @@ it('processDue avanza next_run_date en días según el intervalo configurado', f
 });
 
 it('processDue avanza next_run_date en meses según el intervalo configurado', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -152,7 +152,7 @@ it('processDue avanza next_run_date en meses según el intervalo configurado', f
 });
 
 it('processDue marca la programación como expired cuando la próxima corrida supera el vencimiento', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -173,7 +173,7 @@ it('processDue marca la programación como expired cuando la próxima corrida su
 });
 
 it('cancel() marca la programación como cancelled y deja de generar borradores', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -192,7 +192,7 @@ it('cancel() marca la programación como cancelled y deja de generar borradores'
 });
 
 it('rechaza cancelar una programación que no está activa', function () {
-    $fx = contappFixture();
+    $fx = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $schedule = $service->create(
@@ -209,8 +209,8 @@ it('rechaza cancelar una programación que no está activa', function () {
 })->throws(InvalidArgumentException::class);
 
 it('processDueForAllCompanies procesa cada compañía por separado, sin depender de CurrentCompany ambiental', function () {
-    $fxA = contappFixture();
-    $fxB = contappFixture();
+    $fxA = pivoxFixture();
+    $fxB = pivoxFixture();
     $service = app(JournalEntryScheduleService::class);
 
     $service->create(

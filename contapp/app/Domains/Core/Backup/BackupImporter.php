@@ -153,7 +153,7 @@ final class BackupImporter
         }
 
         if (! BackupSignature::verify($digest, (string) ($close['firma'] ?? ''))) {
-            throw new InvalidBackupException('Este respaldo no lo generó esta instalación de CONTAPP, o fue modificado: no se puede importar.');
+            throw new InvalidBackupException('Este respaldo no lo generó esta instalación de Pivox, o fue modificado: no se puede importar.');
         }
 
         $this->checkColumns($columns);
@@ -276,13 +276,13 @@ final class BackupImporter
     private function checkManifest(array $manifest): array
     {
         if (($manifest['formato'] ?? null) !== BackupExporter::FORMAT || (int) ($manifest['version'] ?? 0) !== BackupExporter::VERSION) {
-            throw new InvalidBackupException('Este archivo no es un respaldo de CONTAPP que esta versión entienda.');
+            throw new InvalidBackupException('Este archivo no es un respaldo de Pivox que esta versión entienda.');
         }
 
-        // Un respaldo de una versión más nueva de CONTAPP (con tablas o
+        // Un respaldo de una versión más nueva de Pivox (con tablas o
         // columnas que esta todavía no tiene) no se importa a medias.
         if (! DB::table('migrations')->where('migration', (string) ($manifest['esquema'] ?? ''))->exists()) {
-            throw new InvalidBackupException('Este respaldo es de una versión más nueva de CONTAPP. Actualizá esta instalación antes de importarlo.');
+            throw new InvalidBackupException('Este respaldo es de una versión más nueva de Pivox. Actualizá esta instalación antes de importarlo.');
         }
 
         return $manifest;
@@ -293,7 +293,7 @@ final class BackupImporter
         $table = (string) ($record['tabla'] ?? '');
 
         if (! BackupCatalog::includes($table) || ! is_array($record['fila'] ?? null)) {
-            throw new InvalidBackupException('El respaldo trae datos que esta versión de CONTAPP no reconoce.');
+            throw new InvalidBackupException('El respaldo trae datos que esta versión de Pivox no reconoce.');
         }
 
         return $table;
@@ -323,8 +323,8 @@ final class BackupImporter
         }
 
         if ($gaps !== []) {
-            throw new InvalidBackupException('Este respaldo es de una versión anterior de CONTAPP y le faltan datos que esta versión exige ('
-                .implode(', ', array_slice($gaps, 0, 5)).(count($gaps) > 5 ? '…' : '').'). Avisale al equipo de CONTAPP: hay que indicar con qué completarlos antes de importarlo.');
+            throw new InvalidBackupException('Este respaldo es de una versión anterior de Pivox y le faltan datos que esta versión exige ('
+                .implode(', ', array_slice($gaps, 0, 5)).(count($gaps) > 5 ? '…' : '').'). Avisale al equipo de Pivox: hay que indicar con qué completarlos antes de importarlo.');
         }
     }
 
@@ -481,7 +481,7 @@ final class BackupImporter
         };
     }
 
-    /** Un registro de CONTAPP (moneda, módulo, tarifa nacional): el mismo id, si existe. */
+    /** Un registro de Pivox (moneda, módulo, tarifa nacional): el mismo id, si existe. */
     private function global(string $table, mixed $id): ?int
     {
         if ($id === null) {

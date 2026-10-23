@@ -25,7 +25,7 @@ use Illuminate\Validation\Rule;
  *   el modelo: no consume créditos.
  * - options: las sugerencias de un campo «buscar» (cuentas, socios,
  *   artículos…), de las consultas de Conti, con los permisos de la persona.
- * - suggest: lo que CONTAPP sugiere para los campos vacíos, según cómo se
+ * - suggest: lo que Pivox sugiere para los campos vacíos, según cómo se
  *   viene trabajando, cuando cambia un campo clave del formulario.
  */
 class ContiFormController extends Controller
@@ -58,7 +58,7 @@ class ContiFormController extends Controller
                 $company->id,
                 $validated['sesion'],
                 ['role' => 'user', 'content' => "(Completé el formulario y lo envié: quedó preparado «{$title}».)"],
-                ['role' => 'assistant', 'content' => "(CONTAPP le abrió la ventana para confirmar «{$title}» (id {$pending->uuid}).)"],
+                ['role' => 'assistant', 'content' => "(Pivox le abrió la ventana para confirmar «{$title}» (id {$pending->uuid}).)"],
             );
         }
 

@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Schema;
  * préstamo y se acreditaron vacaciones. Por eso la anulación exige razón y
  * queda ligada al asiento de reversión que la respalda.
  *
- * Nada se borra: es la misma regla con la que CONTAPP trata cualquier
+ * Nada se borra: es la misma regla con la que Pivox trata cualquier
  * documento contabilizado.
  */
 return new class extends Migration

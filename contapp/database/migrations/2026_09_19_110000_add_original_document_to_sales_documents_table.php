@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * La referencia fiscal (sales_references) ya existe y es la que exige
  * Hacienda, pero es texto libre: puede apuntar a una factura de papel o a una
- * emitida antes de CONTAPP. Este enlace es otra cosa —el documento nuestro—,
+ * emitida antes de Pivox. Este enlace es otra cosa —el documento nuestro—,
  * y es lo que permite devolver la mercancía AL COSTO CON QUE SALIÓ y acreditar
  * contra la partida abierta de esa venta.
  */

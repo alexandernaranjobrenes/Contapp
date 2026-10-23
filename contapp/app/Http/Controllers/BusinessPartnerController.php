@@ -73,7 +73,7 @@ class BusinessPartnerController extends Controller
 
         // "Fecha de inicio como cliente o proveedor": si no se indica una
         // fecha distinta (ej. migrando un socio que ya era cliente antes de
-        // usar CONTAPP), se asume que arranca hoy.
+        // usar Pivox), se asume que arranca hoy.
         $validated['partner_since'] ??= now()->format('Y-m-d');
 
         $partner = BusinessPartner::create([...$validated, 'status' => $validated['status'] ?? 'active']);

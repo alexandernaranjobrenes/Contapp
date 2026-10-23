@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
  * docs/decisiones.md, 2026-10-06).
  *
  * - conti_tokens se va: el agente ya no consulta una API con un pase, sus
- *   herramientas corren dentro de CONTAPP.
+ *   herramientas corren dentro de Pivox.
  * - conti_usage: lo que consumió cada mensaje (tokens, costo y créditos),
  *   sin el texto de la conversación. Con esto se aplican los límites por
  *   licencia y el backoffice ve el consumo.

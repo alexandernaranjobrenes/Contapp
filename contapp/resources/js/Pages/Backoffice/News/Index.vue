@@ -8,9 +8,9 @@ import { fullDate, timeAgo } from '../../../Utils/relativeTime';
 import { ExternalLinkIcon, ImageIcon, PencilIcon, PlusIcon, Trash2Icon, UploadIcon, XIcon } from '@lucide/vue';
 
 /**
- * Las noticias de CONTAPP (NewsController): las que todas las cuentas ven en
+ * Las noticias de Pivox (NewsController): las que todas las cuentas ven en
  * la pestaña «Noticias» del panel de la barra superior. Título, descripción,
- * un enlace opcional (otro sitio, o una pantalla de CONTAPP) y una imagen
+ * un enlace opcional (otro sitio, o una pantalla de Pivox) y una imagen
  * opcional.
  *
  * Tabla, ficha y formulario en el mismo modal (CLAUDE.md secc. 20 y 21).
@@ -139,7 +139,7 @@ function destroy() {
 
 function linkLabel(link) {
     if (!link) return '—';
-    if (link.startsWith('/')) return `Pantalla de CONTAPP (${link})`;
+    if (link.startsWith('/')) return `Pantalla de Pivox (${link})`;
 
     try {
         return new URL(link).host;
@@ -162,7 +162,7 @@ onBeforeUnmount(clearPreview);
         </div>
 
         <p class="hint">
-            Las novedades de CONTAPP que ven todas las cuentas en la pestaña «Noticias» del panel de la barra superior,
+            Las novedades de Pivox que ven todas las cuentas en la pestaña «Noticias» del panel de la barra superior,
             de la más nueva a la más vieja. Una noticia nueva le enciende un punto a ese botón hasta que se ve.
         </p>
 
@@ -262,7 +262,7 @@ onBeforeUnmount(clearPreview);
                         <label for="news-link">Enlace (opcional)</label>
                         <input id="news-link" v-model="form.link_url" type="text" maxlength="500" placeholder="https://… o /dashboard" aria-describedby="news-link-hint">
                         <span id="news-link-hint" class="field-hint muted">
-                            Una dirección completa se abre en otra pestaña. Una pantalla de CONTAPP (que empieza con «/»)
+                            Una dirección completa se abre en otra pestaña. Una pantalla de Pivox (que empieza con «/»)
                             se abre en la misma.
                         </span>
                         <span v-if="form.errors.link_url" class="error">{{ form.errors.link_url }}</span>

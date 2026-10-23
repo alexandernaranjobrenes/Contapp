@@ -14,7 +14,7 @@ const seenAt = ref(null);
 let loadedFor = null;
 
 function storageKey(userId) {
-    return `contapp-news-seen:${userId}`;
+    return `pivox-news-seen:${userId}`;
 }
 
 export function useNewsSeen() {

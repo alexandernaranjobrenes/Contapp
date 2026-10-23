@@ -25,7 +25,7 @@ use Throwable;
  *
  * - Le llega un correo con un enlace. Hasta que lo acepta no entra a la
  *   compañía.
- * - Si el correo no tiene cuenta en CONTAPP, la cuenta se crea al aceptar,
+ * - Si el correo no tiene cuenta en Pivox, la cuenta se crea al aceptar,
  *   con el nombre y la contraseña que la persona elige. Quien invita nunca
  *   sabe ni pone la contraseña de nadie.
  * - Si ya tiene cuenta, al aceptar se le suma la compañía; su contraseña,
@@ -76,7 +76,7 @@ class CompanyInvitationService
             $this->assertNotMember($company, $account);
 
             if ($account->status !== 'active') {
-                throw new CompanyInvitationException('Esa cuenta de CONTAPP no está activa: no se la puede invitar.');
+                throw new CompanyInvitationException('Esa cuenta de Pivox no está activa: no se la puede invitar.');
             }
         }
 
@@ -152,7 +152,7 @@ class CompanyInvitationService
         return CompanyInvitation::with(['company', 'inviter'])->where('token_hash', hash('sha256', $token))->first();
     }
 
-    /** La cuenta de CONTAPP con ese correo, sin importar mayúsculas. */
+    /** La cuenta de Pivox con ese correo, sin importar mayúsculas. */
     public function accountFor(string $email): ?User
     {
         return User::whereRaw('lower(email) = ?', [Str::lower(trim($email))])->first();
@@ -200,7 +200,7 @@ class CompanyInvitationService
                 }
 
                 if ($account->status !== 'active') {
-                    throw new CompanyInvitationException('Tu cuenta de CONTAPP no está activa: no se puede aceptar la invitación.', 'invitation');
+                    throw new CompanyInvitationException('Tu cuenta de Pivox no está activa: no se puede aceptar la invitación.', 'invitation');
                 }
 
                 $this->assertNotMember($company, $account, 'invitation');

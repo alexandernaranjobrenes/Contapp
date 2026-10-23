@@ -6,11 +6,11 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Cómo le fue a la última sincronización automática con el BCCR (el comando
- * contapp:sync-bccr-rates, que corre solo cada día). Tipos de cambio la
+ * pivox:sync-bccr-rates, que corre solo cada día). Tipos de cambio la
  * muestra: si el token vence o el BCCR se cae, se ve ahí, y no recién
  * cuando a alguien le sale un tipo de cambio viejo.
  *
- * Una sola para todo CONTAPP: el tipo de cambio es el mismo para todas las
+ * Una sola para todo Pivox: el tipo de cambio es el mismo para todas las
  * compañías.
  */
 final class BccrSyncStatus

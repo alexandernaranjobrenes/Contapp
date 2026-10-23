@@ -94,7 +94,7 @@ class LicenseActivationController extends Controller
 
         return redirect()->route('dashboard')->with('success', $existingAccount
             ? "Licencia activada: ya sos Superusuario de {$result['company']->legal_name}"
-            : 'Compañía activada. ¡Bienvenido a CONTAPP!');
+            : 'Compañía activada. ¡Bienvenido a Pivox!');
     }
 
     /**

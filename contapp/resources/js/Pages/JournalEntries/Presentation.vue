@@ -105,7 +105,7 @@ function printNow() {
             </div>
 
             <footer class="voucher-footer">
-                Generado por {{ header.generated_by_name }} el {{ header.generated_at }} — CONTAPP
+                Generado por {{ header.generated_by_name }} el {{ header.generated_at }} — Pivox
             </footer>
         </div>
     </div>

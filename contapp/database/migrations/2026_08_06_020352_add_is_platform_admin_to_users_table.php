@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             // Distinto de is_super_admin: is_super_admin es el rol tope
             // DENTRO de las compañías a las que el usuario pertenece;
-            // is_platform_admin es quien opera CONTAPP como negocio (emite
+            // is_platform_admin es quien opera Pivox como negocio (emite
             // y renueva licencias, ve todas las compañías). Casi siempre
             // solo lo tiene el dueño de la plataforma, nunca un cliente.
             $table->boolean('is_platform_admin')->default(false)->after('is_super_admin');

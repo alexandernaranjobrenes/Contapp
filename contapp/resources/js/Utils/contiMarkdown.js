@@ -5,7 +5,7 @@
  *
  * Primero se escapa TODO el texto y después se arman solo las etiquetas de
  * acá: nada de lo que escriba el agente llega como HTML. Un enlace solo vale
- * si es http(s) o una ruta de CONTAPP («/…»); los de CONTAPP se marcan con
+ * si es http(s) o una ruta de Pivox («/…»); los de Pivox se marcan con
  * data-internal para abrirlos sin recargar la aplicación.
  */
 
@@ -25,8 +25,8 @@ function isInternal(href) {
     }
 }
 
-// El enlace para confirmar lo que Conti preparó es siempre de CONTAPP. Si el
-// modelo le inventó un dominio («https://app.contapp.run/conti/acciones/…»),
+// El enlace para confirmar lo que Conti preparó es siempre de Pivox. Si el
+// modelo le inventó un dominio («https://app.pivox.run/conti/acciones/…»),
 // se le quita: si no, se abriría en otra pestaña, contra un sitio que no existe.
 const ACTION_HREF = /^(?:(?:https?:\/\/)?[^/\s]+)?(\/conti\/acciones\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 

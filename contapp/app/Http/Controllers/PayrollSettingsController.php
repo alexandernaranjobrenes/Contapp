@@ -41,7 +41,7 @@ class PayrollSettingsController extends Controller
         $settings = PayrollSetting::where('company_id', $currentCompany->id())->first();
 
         // Los conceptos con el código fijo (CodeRules): los usados, en tres
-        // consultas para toda la lista, y los que trae CONTAPP.
+        // consultas para toda la lista, y los que trae Pivox.
         $conceptIds = PayrollConcept::pluck('id');
         $lockedConcepts = array_fill_keys([
             ...PayrollEntryLine::whereIn('payroll_concept_id', $conceptIds)->distinct()->pluck('payroll_concept_id')->all(),
@@ -113,7 +113,7 @@ class PayrollSettingsController extends Controller
                 ->get()
                 ->map(fn (PayrollConcept $c) => [
                     'id' => $c->id, 'code' => $c->code, 'name' => $c->name, 'type' => $c->type,
-                    // Usado o de los que trae CONTAPP: el código es fijo (CodeRules).
+                    // Usado o de los que trae Pivox: el código es fijo (CodeRules).
                     'code_locked' => isset($lockedConcepts[$c->id]) || in_array($c->code, $defaultConcepts, true),
                     'affects_ccss' => (bool) $c->affects_ccss,
                     'affects_income_tax' => (bool) $c->affects_income_tax,
@@ -435,7 +435,7 @@ class PayrollSettingsController extends Controller
         $model = PayrollConcept::findOrFail($concept);
         $validated = $request->validate($this->conceptRules($currentCompany->id(), $model->id));
 
-        // Usado en planillas, o de los que trae CONTAPP: el código es fijo (CodeRules).
+        // Usado en planillas, o de los que trae Pivox: el código es fijo (CodeRules).
         CodeRules::ensureUnchanged($model->codeLockReason(), $model->code, $validated['code']);
 
         $model->update($this->normalizeConcept($validated));

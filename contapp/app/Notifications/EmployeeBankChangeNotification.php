@@ -12,7 +12,7 @@ use Illuminate\Notifications\Notification;
  * un empleado, y que espera su aprobación (EmployeeBankChangeService).
  *
  * Las cuentas van enmascaradas: un correo se reenvía y se guarda en lugares
- * que CONTAPP no controla. El detalle completo está en la ficha.
+ * que Pivox no controla. El detalle completo está en la ficha.
  *
  * No se encola: no hay worker de colas.
  */

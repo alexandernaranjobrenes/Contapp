@@ -99,7 +99,7 @@ class ImportCompanyBackupJob extends CompanyBackupJob
 
     protected function unexpected(): string
     {
-        return 'No se pudo importar: ocurrió un error y no se guardó nada. Si se repite, avisale al equipo de CONTAPP.';
+        return 'No se pudo importar: ocurrió un error y no se guardó nada. Si se repite, avisale al equipo de Pivox.';
     }
 
     protected function after(CompanyBackup $backup): void
@@ -107,7 +107,7 @@ class ImportCompanyBackupJob extends CompanyBackupJob
         CompanyBackupService::forget($backup);
     }
 
-    /** En el historial de la licencia, si lo hizo el equipo de CONTAPP. */
+    /** En el historial de la licencia, si lo hizo el equipo de Pivox. */
     private function recordForLicense(CompanyBackup $backup, Company $company, string $action): void
     {
         if (! $backup->requested_by_propietario_id) {

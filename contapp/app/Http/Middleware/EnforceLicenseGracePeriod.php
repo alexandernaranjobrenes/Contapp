@@ -45,7 +45,7 @@ class EnforceLicenseGracePeriod
         'profile.companies.update',
         // Aceptar una invitación a otra compañía: es de la persona.
         'company-invitation.accept',
-        // El canal de comentarios sobre CONTAPP: no es de la compañía, y
+        // El canal de comentarios sobre Pivox: no es de la compañía, y
         // quien tiene la licencia vencida también tiene algo que decir.
         'feedback.store',
         'feedback.replies.store',

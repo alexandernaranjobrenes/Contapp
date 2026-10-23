@@ -183,7 +183,7 @@
     <div class="legal">
         Comprobante electrónico versión 4.4, emitido conforme a la Resolución MH-DGT-RES-0027-2024 de la Dirección General
         de Tributación. El documento válido es el XML firmado, que se entrega junto con este PDF y con la respuesta de
-        Hacienda. Generado por CONTAPP el {{ $generated_at }}.
+        Hacienda. Generado por Pivox el {{ $generated_at }}.
     </div>
 </body>
 </html>

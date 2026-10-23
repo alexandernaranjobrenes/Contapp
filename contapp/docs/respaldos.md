@@ -1,4 +1,4 @@
-# CONTAPP — Respaldos y recuperación
+# Pivox — Respaldos y recuperación
 
 ## Qué está respaldado y qué no
 

@@ -47,6 +47,6 @@ class CompareCompanyBackupJob extends CompanyBackupJob
 
     protected function unexpected(): string
     {
-        return 'No se pudo comparar: ocurrió un error. Si se repite, avisale al equipo de CONTAPP.';
+        return 'No se pudo comparar: ocurrió un error. Si se repite, avisale al equipo de Pivox.';
     }
 }

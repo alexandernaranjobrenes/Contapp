@@ -7,7 +7,7 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
-## CONTAPP — respaldos y recuperación
+## Pivox — respaldos y recuperación
 
 La base de datos **no está en el repositorio ni en OneDrive**: vive en un
 volumen de Docker, así que ni GitHub ni la sincronización de archivos la

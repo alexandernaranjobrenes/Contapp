@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Respalda la base de datos de CONTAPP en un archivo comprimido y verificado.
+    Respalda la base de datos de Pivox en un archivo comprimido y verificado.
 
 .DESCRIPTION
     La base de datos NO vive en el repositorio ni en OneDrive: vive en un

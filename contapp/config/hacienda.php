@@ -43,7 +43,7 @@ return [
     /*
     | ProveedorSistemas: «la cédula del proveedor de sistemas que se está
     | utilizando para emitir» (anotación del XSD). En un SaaS es la de quien
-    | provee CONTAPP, no la de cada cliente. Vacío, se usa la del emisor (lo
+    | provee Pivox, no la de cada cliente. Vacío, se usa la del emisor (lo
     | correcto solo si el emisor desarrolla su propio sistema).
     */
     'system_provider_id' => env('HACIENDA_SYSTEM_PROVIDER_ID'),

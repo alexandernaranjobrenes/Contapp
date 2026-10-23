@@ -245,7 +245,7 @@ it('cada tabla de la base está en el respaldo o tiene su motivo para no estar',
     }
 
     // Y cada referencia de lo que va apunta a algo que también va, a algo
-    // de CONTAPP o a una persona (por su correo).
+    // de Pivox o a una persona (por su correo).
     $schema = app(BackupSchema::class);
 
     foreach (array_keys(BackupCatalog::TABLES) as $table) {
@@ -360,7 +360,7 @@ it('un respaldo de otra instalación (otra APP_KEY) no se importa', function () 
     config(['app.key' => $realKey]);
 
     expect(fn () => app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD))
-        ->toThrow(InvalidBackupException::class, 'no lo generó esta instalación de CONTAPP');
+        ->toThrow(InvalidBackupException::class, 'no lo generó esta instalación de Pivox');
     unlink($path);
 });
 

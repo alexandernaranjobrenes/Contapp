@@ -66,7 +66,7 @@ class BccrSddeExchangeRateClient implements BccrExchangeRateClient
         try {
             $response = Http::withToken($token)
                 ->acceptJson()
-                ->withUserAgent('CONTAPP')
+                ->withUserAgent('Pivox')
                 ->timeout(15)
                 ->retry(2, 500, fn (Throwable $e) => $e instanceof ConnectionException, throw: false)
                 ->get(rtrim((string) config('services.bccr.base_url'), '/')."/indicadoresEconomicos/{$indicator}/series", [

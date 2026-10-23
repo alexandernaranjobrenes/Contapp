@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Restaura la base de datos de CONTAPP desde un respaldo comprimido.
+    Restaura la base de datos de Pivox desde un respaldo comprimido.
 
 .DESCRIPTION
     Esta operación BORRA la base actual y la reemplaza. No hay deshacer.

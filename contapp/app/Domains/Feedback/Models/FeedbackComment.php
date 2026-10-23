@@ -10,10 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Una publicación del canal de comentarios sobre CONTAPP, o una respuesta a
+ * Una publicación del canal de comentarios sobre Pivox, o una respuesta a
  * una (parent_id). Ver FeedbackService.
  *
- * Global, sin compañía: la ven todas las cuentas de CONTAPP, sea cual sea su
+ * Global, sin compañía: la ven todas las cuentas de Pivox, sea cual sea su
  * licencia. Por eso de su autor se muestra el nombre y la foto, nunca la
  * compañía ni el correo.
  */
@@ -93,7 +93,7 @@ class FeedbackComment extends Model
         return $this->status === self::OPEN;
     }
 
-    /** ¿Lo escribió el equipo de CONTAPP desde el backoffice? */
+    /** ¿Lo escribió el equipo de Pivox desde el backoffice? */
     public function isFromTeam(): bool
     {
         return $this->propietario_id !== null;

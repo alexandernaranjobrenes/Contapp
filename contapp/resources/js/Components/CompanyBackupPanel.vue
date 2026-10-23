@@ -30,7 +30,7 @@ const props = defineProps({
     // { preview, export, import, compare, confirm, status }: nombres de ruta; params, los que llevan todas.
     routes: { type: Object, required: true },
     routeParams: { type: Object, default: () => ({}) },
-    accountLabel: { type: String, default: 'Tu contraseña de CONTAPP' },
+    accountLabel: { type: String, default: 'Tu contraseña de Pivox' },
     backoffice: { type: Boolean, default: false },
 });
 
@@ -602,7 +602,7 @@ function xsrfToken() {
 
             <form v-else-if="importStep === 'review'" class="summary" @submit.prevent="destination === 'new' ? confirmImport() : compareImport()">
                 <h3>¿Qué hacer con este respaldo?</h3>
-                <p class="verified"><ShieldCheckIcon aria-hidden="true" /> Lo generó esta instalación de CONTAPP y no fue modificado.</p>
+                <p class="verified"><ShieldCheckIcon aria-hidden="true" /> Lo generó esta instalación de Pivox y no fue modificado.</p>
                 <dl class="facts">
                     <div><dt>Compañía de origen</dt><dd>{{ pending.summary.company.trade_name || pending.summary.company.legal_name }}{{ pending.summary.company.tax_id ? ` (${pending.summary.company.tax_id})` : '' }}</dd></div>
                     <div><dt>Período</dt><dd>{{ pending.summary.period }}</dd></div>
@@ -657,7 +657,7 @@ function xsrfToken() {
                         </div>
                     </div>
                     <p class="hint small">
-                        Las personas entran por su correo, si ya tienen cuenta en CONTAPP y caben en la licencia. Lo contabilizado entra contabilizado,
+                        Las personas entran por su correo, si ya tienen cuenta en Pivox y caben en la licencia. Lo contabilizado entra contabilizado,
                         con los mismos números de documento.
                     </p>
                 </template>
@@ -747,7 +747,7 @@ function xsrfToken() {
                 <p v-if="openingNote(comparison.opening)" class="hint">{{ openingNote(comparison.opening) }}</p>
                 <ul class="result">
                     <li v-if="comparison.people?.added?.length">Entrarían: {{ comparison.people.added.join(', ') }}.</li>
-                    <li v-if="comparison.people?.missing?.length">Sin cuenta en CONTAPP (invitalas desde Usuarios): {{ comparison.people.missing.join(', ') }}.</li>
+                    <li v-if="comparison.people?.missing?.length">Sin cuenta en Pivox (invitalas desde Usuarios): {{ comparison.people.missing.join(', ') }}.</li>
                     <li v-if="comparison.people?.no_quota?.length">No caben en la licencia: {{ comparison.people.no_quota.join(', ') }}.</li>
                     <li v-if="comparison.totals.dropped">
                         {{ number(comparison.totals.dropped) }} registros no entran: dependen de algo que no tiene ni esta compañía ni el respaldo.
@@ -784,7 +784,7 @@ function xsrfToken() {
                 <ul class="result">
                     <li v-if="pending.result?.people?.added?.length">Con acceso: {{ pending.result.people.added.join(', ') }}.</li>
                     <li v-if="pending.result?.people?.missing?.length">
-                        Sin cuenta en CONTAPP (invitalas desde Usuarios): {{ pending.result.people.missing.join(', ') }}.
+                        Sin cuenta en Pivox (invitalas desde Usuarios): {{ pending.result.people.missing.join(', ') }}.
                     </li>
                     <li v-if="pending.result?.people?.no_quota?.length">
                         No cupieron en la licencia: {{ pending.result.people.no_quota.join(', ') }}.

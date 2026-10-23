@@ -1,5 +1,5 @@
 {{--
-    El equipo de CONTAPP exportó un respaldo de la compañía (CLAUDE.md secc.
+    El equipo de Pivox exportó un respaldo de la compañía (CLAUDE.md secc.
     37): el Superusuario se entera en el momento.
 --}}
 <x-mail::message>
@@ -7,7 +7,7 @@
 
 Hola{{ $name ? ', '.$name : '' }}:
 
-El equipo de CONTAPP (**{{ $by }}**) exportó un respaldo de **{{ $company }}** el {{ $at }}.
+El equipo de Pivox (**{{ $by }}**) exportó un respaldo de **{{ $company }}** el {{ $at }}.
 
 <x-mail::panel>
 Período: **{{ $period }}**
