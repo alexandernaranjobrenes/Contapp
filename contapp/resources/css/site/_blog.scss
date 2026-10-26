@@ -1,0 +1,738 @@
+// El blog: el índice, las categorías y el artículo (CLAUDE.md secc. 41). La
+// página de privacidad usa la misma tipografía de artículo.
+
+// ── Migas de pan ─────────────────────────────────────────────────────────
+
+.site-breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 1.25rem;
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+}
+
+.site-breadcrumbs a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+}
+
+.site-breadcrumbs a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+}
+
+.site-breadcrumbs svg {
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+}
+
+.site-breadcrumbs [aria-current] {
+    overflow: hidden;
+    color: var(--color-text);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// ── Índice ───────────────────────────────────────────────────────────────
+
+.blog-hero {
+    padding-block: clamp(2.25rem, 5vw, 3.5rem) clamp(1.75rem, 4vw, 2.5rem);
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.blog-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.75rem;
+}
+
+.blog-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.25rem;
+    padding: 0.35rem 0.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.blog-chip span {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.blog-chip:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+}
+
+.blog-chip.is-active {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.blog-chip.is-active span {
+    color: color-mix(in srgb, var(--color-on-primary) 75%, transparent);
+}
+
+.blog-list {
+    padding-top: clamp(2rem, 4vw, 3rem);
+}
+
+.blog-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+    gap: 1.25rem;
+}
+
+.blog-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.blog-card:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+    box-shadow: var(--shadow-md);
+}
+
+.blog-card-media {
+    display: block;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--color-surface-alt);
+}
+
+.blog-card-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.blog-card:hover .blog-card-media img {
+    transform: scale(1.03);
+}
+
+.blog-card-placeholder {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    color: var(--color-text-muted);
+}
+
+.blog-card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1.15rem 1.25rem 1.35rem;
+}
+
+.blog-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+}
+
+.blog-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--color-primary-soft);
+    color: color-mix(in srgb, var(--color-primary) 78%, var(--color-text));
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.blog-tag:hover {
+    text-decoration: underline;
+}
+
+.blog-card-title {
+    margin: 0;
+    font-size: 1.12rem;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.blog-card-title a {
+    color: var(--color-text);
+    text-decoration: none;
+}
+
+// Toda la tarjeta se abre desde su título: el enlace la cubre entera.
+.blog-card {
+    position: relative;
+}
+
+.blog-card-title a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+
+.blog-card .blog-tag {
+    position: relative;
+    z-index: 1;
+}
+
+.blog-card-title a:focus-visible {
+    outline: none;
+}
+
+.blog-card:has(.blog-card-title a:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.blog-card-excerpt {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 0.94rem;
+    line-height: 1.55;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+// El primero del índice, grande: la imagen al lado del texto.
+.blog-card.is-featured {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    margin-bottom: 1.25rem;
+}
+
+.blog-card.is-featured .blog-card-media {
+    aspect-ratio: auto;
+    min-height: 100%;
+}
+
+.blog-card.is-featured .blog-card-body {
+    justify-content: center;
+    padding: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.blog-card.is-featured .blog-card-title {
+    font-size: clamp(1.35rem, 1.6vw + 0.8rem, 1.9rem);
+    line-height: 1.2;
+}
+
+.blog-card.is-featured .blog-card-excerpt {
+    font-size: 1rem;
+    -webkit-line-clamp: 4;
+}
+
+@media (max-width: 760px) {
+    .blog-card.is-featured {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .blog-card.is-featured .blog-card-media {
+        aspect-ratio: 16 / 9;
+    }
+}
+
+.blog-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 2.5rem;
+}
+
+.blog-pagination ol {
+    display: flex;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.blog-page {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2.4rem;
+    height: 2.4rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.blog-page.is-current {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.blog-page.is-gap {
+    border-color: transparent;
+    background: none;
+}
+
+.blog-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 3rem 1rem;
+    border: 1px dashed var(--color-control-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+.blog-empty p {
+    margin: 0;
+}
+
+// ── El artículo ──────────────────────────────────────────────────────────
+
+.blog-preview-banner {
+    position: sticky;
+    top: var(--site-header-height);
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.blog-preview-banner a {
+    color: inherit;
+}
+
+.article-header {
+    padding-block: clamp(2rem, 5vw, 3.25rem) clamp(1.5rem, 3vw, 2rem);
+}
+
+// El ancho de lectura: unos 70 caracteres por línea.
+.article-narrow {
+    max-width: 50rem;
+}
+
+.article-title {
+    margin: 0.9rem 0 0;
+    font-size: clamp(1.9rem, 3vw + 0.9rem, 3rem);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+.article-lead {
+    margin: 1rem 0 0;
+    color: var(--color-text-muted);
+    font-size: clamp(1.05rem, 0.5vw + 0.95rem, 1.25rem);
+    line-height: 1.55;
+    text-wrap: pretty;
+}
+
+.article-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    margin-top: 1.4rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+.article-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.article-cover {
+    margin-block: 0 clamp(1.75rem, 4vw, 2.75rem);
+}
+
+.article-cover img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 34rem;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-alt);
+}
+
+.article-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 46rem);
+    justify-content: center;
+    gap: 3rem;
+    padding-bottom: clamp(3rem, 6vw, 4.5rem);
+}
+
+.article-layout.has-toc {
+    grid-template-columns: minmax(12rem, 16rem) minmax(0, 46rem);
+}
+
+@media (max-width: 1024px) {
+    .article-layout.has-toc {
+        grid-template-columns: minmax(0, 46rem);
+        gap: 1.5rem;
+    }
+}
+
+.article-main {
+    min-width: 0;
+}
+
+// El índice: al lado y fijo en escritorio; arriba, plegable, en un teléfono.
+.article-toc details {
+    position: sticky;
+    top: calc(var(--site-header-height) + 1.5rem);
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+}
+
+.article-toc summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    list-style: none;
+}
+
+.article-toc summary::-webkit-details-marker {
+    display: none;
+}
+
+.article-toc ol {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0.9rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.article-toc li.is-sub {
+    padding-left: 0.9rem;
+    font-size: 0.86rem;
+}
+
+.article-toc a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+}
+
+.article-toc a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+}
+
+// ── El texto del artículo (lo que escribe el editor) ─────────────────────
+
+.article-content {
+    color: var(--color-text);
+    font-size: 1.08rem;
+    line-height: 1.75;
+    overflow-wrap: break-word;
+}
+
+.article-content > :first-child {
+    margin-top: 0;
+}
+
+.article-content :where(p, ul, ol, blockquote, pre, figure, .article-table, hr) {
+    margin: 0 0 1.35rem;
+}
+
+.article-content :where(h2, h3, h4) {
+    margin: 2.25rem 0 0.85rem;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+    scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+.article-content h2 {
+    font-size: clamp(1.45rem, 1vw + 1.1rem, 1.8rem);
+}
+
+.article-content h3 {
+    font-size: 1.3rem;
+}
+
+.article-content h4 {
+    font-size: 1.12rem;
+}
+
+.article-content a {
+    color: color-mix(in srgb, var(--color-primary) 60%, var(--color-text));
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+}
+
+.article-content a:hover {
+    text-decoration-thickness: 2px;
+}
+
+.article-content :where(ul, ol) {
+    padding-left: 1.4rem;
+}
+
+.article-content li {
+    margin-bottom: 0.4rem;
+}
+
+.article-content li > p {
+    margin: 0;
+}
+
+.article-content blockquote {
+    padding: 0.4rem 0 0.4rem 1.25rem;
+    border-left: 4px solid var(--color-accent);
+    color: var(--color-text-muted);
+    font-size: 1.12rem;
+    font-style: italic;
+}
+
+.article-content blockquote > :last-child {
+    margin-bottom: 0;
+}
+
+.article-content mark {
+    padding: 0 0.15em;
+    border-radius: 0.2em;
+    background: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    color: inherit;
+}
+
+.article-content code {
+    padding: 0.1em 0.35em;
+    border-radius: 0.3em;
+    background: var(--color-surface-alt);
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-size: 0.9em;
+}
+
+.article-content pre {
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-alt);
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+.article-content pre code {
+    padding: 0;
+    background: none;
+}
+
+.article-content hr {
+    height: 1px;
+    border: 0;
+    background: var(--color-border);
+}
+
+.article-content .text-center { text-align: center; }
+.article-content .text-right { text-align: right; }
+.article-content .text-justify { text-align: justify; }
+
+// Una imagen: a lo ancho, mediana o chica, con su pie.
+.article-content figure {
+    margin-inline: 0;
+}
+
+.article-content img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+    border-radius: var(--radius-md);
+}
+
+.article-content figure.image-medium img {
+    width: 70%;
+}
+
+.article-content figure.image-small img {
+    width: 45%;
+}
+
+@media (max-width: 640px) {
+    .article-content figure.image-medium img,
+    .article-content figure.image-small img {
+        width: 100%;
+    }
+}
+
+.article-content figcaption {
+    margin-top: 0.55rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+// Una tabla: se desplaza dentro de su caja si no cabe, nunca la página.
+.article-table {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.article-content table {
+    min-width: 100%;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.article-content :where(th, td) {
+    padding: 0.6rem 0.85rem;
+    border-top: 1px solid var(--color-border);
+    vertical-align: top;
+}
+
+.article-content tr:first-child :where(th, td) {
+    border-top: 0;
+}
+
+.article-content th {
+    background: var(--color-surface-alt);
+    font-weight: 700;
+    text-align: left;
+}
+
+.article-content :where(th, td) > p {
+    margin: 0;
+}
+
+// ── Compartir y la llamada a Pivox ───────────────────────────────────────
+
+.article-share {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.article-share-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-right: 0.25rem;
+    font-weight: 700;
+}
+
+.article-share-status {
+    color: var(--color-success);
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.article-cta {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem 1.25rem;
+    margin-top: 2rem;
+    padding: 1.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-primary-soft);
+}
+
+.article-cta-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    padding: 0.5rem;
+    border-radius: 0.8rem;
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+.article-cta-icon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.article-cta b {
+    display: block;
+    font-size: 1.05rem;
+}
+
+.article-cta p {
+    margin: 0.25rem 0 0;
+    color: var(--color-text-muted);
+    font-size: 0.94rem;
+}
+
+@media (max-width: 640px) {
+    .article-cta {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .article-cta .btn {
+        grid-column: 1 / -1;
+    }
+}
+
+.related-title {
+    margin-bottom: 1.75rem;
+}
+
+// ── Páginas legales ──────────────────────────────────────────────────────
+
+.legal-container {
+    max-width: 48rem;
+}
+
+.legal-updated {
+    margin: 0.75rem 0 2rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}

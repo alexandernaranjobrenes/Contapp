@@ -2,6 +2,7 @@
 
 namespace App\Domains\Feedback\Services;
 
+use App\Domains\Blog\Models\BlogPost;
 use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Feedback\Exceptions\FeedbackException;
 use App\Domains\Feedback\Models\NewsPost;
@@ -10,10 +11,14 @@ use App\Domains\Licensing\Models\Propietario;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Las noticias de Pivox que publica el backoffice: título, descripción, un
  * enlace opcional y una imagen opcional, en el bucket como news/{id}_1.{ext}.
+ *
+ * La noticia de un artículo del blog la maneja el artículo
+ * (syncForBlogPost): sin imagen ni enlace propios.
  */
 class NewsService
 {
@@ -94,5 +99,55 @@ class NewsService
         $this->media->delete($path);
 
         Cache::forget(NewsPost::LATEST_CACHE_KEY);
+    }
+
+    /**
+     * La noticia que avisa de un artículo del blog (CLAUDE.md secc. 41): existe
+     * mientras el artículo esté publicado y con «Avisar en Noticias». Lleva el
+     * título y la descripción que se escribieron para ella; la imagen y el
+     * enlace los toma del artículo al mostrarse.
+     *
+     * Solo se guarda si cambió algo: editar el artículo no la vuelve «nueva»
+     * para nadie (el punto de noticias sin ver sale de su created_at).
+     */
+    public function syncForBlogPost(BlogPost $post, Propietario $by): void
+    {
+        $news = NewsPost::query()->where('blog_post_id', $post->id)->first();
+
+        if (! $post->isPublished() || ! $post->announce_in_news) {
+            if ($news !== null) {
+                $news->delete();
+                Cache::forget(NewsPost::LATEST_CACHE_KEY);
+            }
+
+            return;
+        }
+
+        $news ??= new NewsPost;
+
+        $news->fill([
+            'title' => Str::limit(trim($post->news_title ?: $post->title), NewsPost::MAX_TITLE - 1, '…'),
+            'body' => Str::limit(trim($post->news_body ?: $post->metaDescription()), NewsPost::MAX_BODY - 1, '…'),
+            'link_url' => null,
+        ]);
+        $news->forceFill(['blog_post_id' => $post->id, 'image_path' => null]);
+
+        if (! $news->exists) {
+            $news->created_by = $by->id;
+        }
+
+        if ($news->isDirty()) {
+            $news->updated_by = $by->id;
+            $news->save();
+            Cache::forget(NewsPost::LATEST_CACHE_KEY);
+        }
+    }
+
+    /** Quita la noticia de un artículo que se va a eliminar. */
+    public function deleteForBlogPost(BlogPost $post): void
+    {
+        if (NewsPost::query()->where('blog_post_id', $post->id)->delete() > 0) {
+            Cache::forget(NewsPost::LATEST_CACHE_KEY);
+        }
     }
 }

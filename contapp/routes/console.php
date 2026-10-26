@@ -25,6 +25,10 @@ Schedule::command('pivox:process-journal-schedules')->daily();
 // quedan guardados más de un día (CLAUDE.md secc. 37).
 Schedule::command('pivox:prune-backups')->hourly();
 
+// Las imágenes del blog que se subieron al editor y ningún artículo guardado
+// usa: al día se borran del bucket (CLAUDE.md secc. 34 y 41).
+Schedule::command('pivox:prune-blog-images')->hourly();
+
 // Facturación electrónica (CLAUDE.md secc. 38): cada minuto se despacha a la
 // cola «hacienda» lo que toca enviar, consultar o entregar. La máquina de
 // estados deja la hora de cada uno en next_attempt_at; esto la cumple.

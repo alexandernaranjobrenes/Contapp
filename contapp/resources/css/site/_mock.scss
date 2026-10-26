@@ -1,0 +1,407 @@
+// La maqueta del Panel en la portada (site/home/app-mock.blade.php). Todo se
+// mide en em sobre la letra de .mock-window, que crece con el ancho del
+// contenedor (cqi): la maqueta se achica entera en un teléfono, sin
+// desacomodarse.
+
+.mock {
+    position: relative;
+    container-type: inline-size;
+    // Lugar arriba y abajo para los avisos, que cuelgan del borde de la maqueta.
+    padding-block: 1.75rem;
+}
+
+.mock-window {
+    position: relative;
+    display: grid;
+    grid-template-columns: 3.2em minmax(0, 1fr);
+    aspect-ratio: 16 / 11;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
+    color: var(--color-text);
+    font-size: clamp(7px, 2.05cqi, 13px);
+    line-height: 1.35;
+    box-shadow: 0 34px 80px -30px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    transform: perspective(1800px) rotateY(-7deg) rotateX(2deg);
+    transform-origin: 60% 50%;
+    transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.mock:hover .mock-window {
+    transform: perspective(1800px) rotateY(0) rotateX(0);
+}
+
+.mock svg.lucide {
+    width: 1.25em;
+    height: 1.25em;
+}
+
+.mock-sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45em;
+    padding: 0.85em 0;
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
+}
+
+.mock-brand {
+    display: inline-grid;
+    place-items: center;
+    width: 2.2em;
+    height: 2.2em;
+    margin-bottom: 0.5em;
+    padding: 0.32em;
+    border-radius: 0.55em;
+    background: #fff;
+}
+
+.mock-brand img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.mock-nav {
+    display: inline-grid;
+    place-items: center;
+    width: 2.3em;
+    height: 2.3em;
+    border-radius: 0.5em;
+    color: rgba(244, 246, 250, 0.68);
+}
+
+.mock-nav.is-active {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--color-on-sidebar);
+}
+
+.mock-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mock-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    padding: 0.75em 1.1em;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.mock-title {
+    margin-right: auto;
+    font-size: 1.1em;
+    font-weight: 700;
+}
+
+.mock-company {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.3em 0.7em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5em;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.mock-role {
+    padding: 0.25em 0.7em;
+    border-radius: 999px;
+    background: var(--color-primary-soft);
+    color: color-mix(in srgb, var(--color-primary) 75%, var(--color-text));
+    font-size: 0.78em;
+    font-weight: 700;
+}
+
+.mock-content {
+    display: grid;
+    gap: 0.85em;
+    padding: 1em 1.1em;
+}
+
+.mock-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75em;
+}
+
+.mock-stat,
+.mock-chart,
+.mock-docs {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.65em;
+}
+
+.mock-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+    padding: 0.7em 0.85em;
+}
+
+.mock-stat span {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 0.78em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mock-stat b {
+    font-size: 1.55em;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+.mock-chart {
+    padding: 0.8em 0.95em 0.6em;
+}
+
+.mock-chart-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1em;
+    margin-bottom: 0.7em;
+    font-size: 0.86em;
+    font-weight: 700;
+}
+
+.mock-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
+    color: var(--color-text-muted);
+    font-weight: 600;
+}
+
+.mock-legend i {
+    display: inline-block;
+    width: 0.7em;
+    height: 0.7em;
+    border-radius: 0.2em;
+}
+
+.mock-legend i.is-in,
+.mock-bar-group i.is-in {
+    background: var(--color-primary);
+}
+
+.mock-legend i.is-out,
+.mock-bar-group i.is-out {
+    background: var(--color-accent);
+}
+
+.mock-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 1.2em;
+    height: 6.5em;
+    padding: 0 0.3em;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.mock-bar-group {
+    display: flex;
+    flex: 1;
+    align-items: flex-end;
+    gap: 0.3em;
+    height: 100%;
+}
+
+.mock-bar-group i {
+    flex: 1;
+    height: var(--in);
+    border-radius: 0.3em 0.3em 0 0;
+    transform-origin: bottom;
+    animation: mock-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(var(--i) * 90ms + 0.35s);
+}
+
+.mock-bar-group i.is-out {
+    height: var(--out);
+    animation-delay: calc(var(--i) * 90ms + 0.45s);
+}
+
+.mock-months {
+    display: flex;
+    gap: 1.2em;
+    padding: 0.35em 0.3em 0;
+    color: var(--color-text-muted);
+    font-size: 0.72em;
+}
+
+.mock-months span {
+    flex: 1;
+    text-align: center;
+}
+
+.mock-docs {
+    display: grid;
+}
+
+.mock-doc {
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    padding: 0.55em 0.9em;
+    font-size: 0.86em;
+}
+
+.mock-doc + .mock-doc {
+    border-top: 1px solid var(--color-border);
+}
+
+.mock-doc span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mock-doc .badge {
+    font-size: 0.72em;
+    font-style: normal;
+}
+
+.mock-fab {
+    position: absolute;
+    right: 1.1em;
+    bottom: 1.1em;
+    display: inline-grid;
+    place-items: center;
+    width: 3.1em;
+    height: 3.1em;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.25);
+    animation: mock-pulse 2.8s ease-in-out infinite;
+}
+
+.mock-fab svg.lucide {
+    width: 1.5em;
+    height: 1.5em;
+}
+
+// Los avisos que salen de la maqueta: lo que Pivox hace solo.
+.mock-toast {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 0.65em;
+    max-width: 62%;
+    padding: 0.7em 0.95em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.8em;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: clamp(9px, 2.3cqi, 13.5px);
+    line-height: 1.3;
+    box-shadow: var(--site-shadow-lg);
+    opacity: 0;
+    animation: mock-toast 10s ease-in-out infinite;
+}
+
+.mock-toast b,
+.mock-toast small {
+    display: block;
+}
+
+.mock-toast small {
+    color: var(--color-text-muted);
+    font-size: 0.86em;
+}
+
+.mock-toast.is-first {
+    left: -0.75rem;
+    bottom: 0;
+    animation-delay: 1.4s;
+}
+
+.mock-toast.is-second {
+    right: -0.5rem;
+    top: 0;
+    animation-delay: 6.4s;
+}
+
+.mock-toast-icon {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.1em;
+    height: 2.1em;
+    border-radius: 50%;
+    background: var(--color-primary-soft);
+    color: color-mix(in srgb, var(--color-primary) 75%, var(--color-text));
+}
+
+.mock-toast-icon.is-success {
+    background: var(--color-success-soft);
+    color: var(--color-success);
+}
+
+.mock-toast svg.lucide {
+    width: 1.15em;
+    height: 1.15em;
+}
+
+@keyframes mock-grow {
+    from { transform: scaleY(0); }
+}
+
+@keyframes mock-pulse {
+    0%, 100% { box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.25), 0 0 0 0 color-mix(in srgb, var(--color-primary) 45%, transparent); }
+    50% { box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.25), 0 0 0 0.7em color-mix(in srgb, var(--color-primary) 0%, transparent); }
+}
+
+@keyframes mock-toast {
+    0% { opacity: 0; transform: translateY(0.8em) scale(0.97); }
+    6%, 42% { opacity: 1; transform: none; }
+    50%, 100% { opacity: 0; transform: translateY(-0.4em); }
+}
+
+// En un contenedor angosto (un teléfono), la letra crece un poco más que el
+// ancho para seguir leyéndose, y se va lo que no cabe: el rol y un documento.
+@container (max-width: 460px) {
+    .mock-window {
+        aspect-ratio: 4 / 3.6;
+        font-size: 2.55cqi;
+    }
+
+    .mock-role,
+    .mock-doc:nth-child(3) {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mock-window,
+    .mock:hover .mock-window {
+        transform: none;
+        transition: none;
+    }
+
+    .mock-bar-group i,
+    .mock-fab {
+        animation: none;
+    }
+
+    .mock-toast {
+        animation: none;
+    }
+
+    .mock-toast.is-first {
+        opacity: 1;
+    }
+}

@@ -3,6 +3,26 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-25 — Sitio público: landing, blog y planes y precios
+
+**Pedido del usuario:** la landing de Pivox con el estilo de la aplicación, que explique todo lo que hace, con animaciones (cómo funciona Conti, el escáner…) y responsiva. Un blog que se escriba desde el backoffice como en Word, con imágenes y portada, buen SEO y la opción de avisar cada artículo en Noticias, con las imágenes en el bucket de R2 como `blog/imag_{id}.{ext}`. Un botón «Solicitar licencia» que lleve a paquetes armados en el backoffice, que el visitante ajusta agregando o quitando funciones, por mes o por año; las solicitudes llegan al backoffice, que decide si las responde por correo.
+
+**Lo que definió el usuario:** cada función con precio mensual y anual; cada paquete se ofrece por mes, por año o las dos; colones y dólares; la tasa del IVA y si va incluido los decide el backoffice; las funciones se ligan a módulos, y habilitar módulos según lo comprado queda para después; el aviso de una solicitud va a servicios@ncodedigital.com; el correo de contacto es servicioalcliente@pivoxcr.com y el dominio, pivoxcr.com; todavía sin redes sociales; al pie, «Hecho por NcodeDigital» con el enlace a ncodedigital.com.
+
+**Qué se decidió** (CLAUDE.md secc. 40-42):
+- **El sitio en Blade, no en Inertia:** un buscador lee el HTML sin correr JavaScript, y producción no tiene un proceso de Node para dibujar Vue en el servidor. Vue queda solo para el configurador de precios, como isla.
+- **Las demos son HTML y CSS, no videos:** pesan poco, se ven nítidas en cualquier pantalla, siguen el tema claro u oscuro y respetan el movimiento reducido.
+- **La limpieza del HTML es propia, no `symfony/html-sanitizer`:** una lista blanca sobre el analizador HTML5 de PHP 8.4 (`Dom\HTMLDocument`). Una dependencia nueva de Composer no llega al contenedor sin reconstruir el volumen de `vendor`; la lista es corta y está probada contra los trucos conocidos (`javascript:` disimulado, `data:`, eventos, estilos, SVG).
+- **Las imágenes de un artículo se guardan sin dirección** (`data-image-id`): la dirección se pone al mostrarlas, así que cambiar el dominio del bucket no rompe nada, y se sabe qué imágenes usa cada artículo para borrar las que sobran.
+- **La noticia de un artículo es del artículo:** se publica, se actualiza y se quita con él, y no se edita desde Noticias, para que no haya dos versiones.
+- **El descuento de un paquete vale solo con el paquete entero:** si no, alcanza con elegir el paquete más grande y quitarle casi todo.
+- **El precio lo calcula el servidor** al recibir la solicitud; el del navegador es para ver. La solicitud guarda la cotización como la vio el visitante.
+- **Contra robots, sin captcha:** un campo trampa, un tiempo mínimo y uno máximo con la página abierta (cifrado) y un límite por IP.
+- **Las funciones sugeridas nacen sin precio e inactivas:** los precios los pone el backoffice; no se inventó ninguno.
+
+**Pendiente:** la página de privacidad es un borrador que tiene que revisar un abogado. Habilitar módulos según lo comprado. Un dominio propio para el bucket en vez de `r2.dev` (Cloudflare limita ese dominio y no lo recomienda para producción), y un `MAIL_FROM_ADDRESS` de pivoxcr.com con SPF y DKIM, para que los correos del sitio no caigan en spam.
+
+---
 ## 2026-10-23 — Repositorio de documentos de consulta
 
 **Pedido del usuario:** desde el backoffice, adjuntar y eliminar archivos Markdown (reglamentaciones, códigos legales, artículos del mundo contable y tributario), agrupados en carpetas. Cada uno se activa por separado para que Conti lo consulte y para que cualquier cuenta lo vea en una sección «Repositorio», como PDF. Los archivos van en `public/repositories`.

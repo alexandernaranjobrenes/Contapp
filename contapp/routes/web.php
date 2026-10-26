@@ -11,9 +11,16 @@ use App\Http\Controllers\Auth\LicenseInvitationAcceptanceController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Backoffice\AuthenticatedSessionController as BackofficeAuthenticatedSessionController;
+use App\Http\Controllers\Backoffice\BlogCategoryController;
+use App\Http\Controllers\Backoffice\BlogImageController;
+use App\Http\Controllers\Backoffice\BlogPostController;
 use App\Http\Controllers\Backoffice\CompanyBackupController as BackofficeCompanyBackupController;
 use App\Http\Controllers\Backoffice\FeedbackModerationController;
+use App\Http\Controllers\Backoffice\LicenseRequestController as BackofficeLicenseRequestController;
 use App\Http\Controllers\Backoffice\NewsController;
+use App\Http\Controllers\Backoffice\PricingController as BackofficePricingController;
+use App\Http\Controllers\Backoffice\PricingFeatureController;
+use App\Http\Controllers\Backoffice\PricingPackageController;
 use App\Http\Controllers\Backoffice\RepositoryController as BackofficeRepositoryController;
 use App\Http\Controllers\Backoffice\RepositoryFolderController;
 use App\Http\Controllers\BalanceSheetController;
@@ -106,6 +113,11 @@ use App\Http\Controllers\HaciendaSettingsController;
 use App\Http\Controllers\SalesDocumentController;
 use App\Http\Controllers\SalesOrderController;
 use App\Http\Controllers\SavedReportController;
+use App\Http\Controllers\Site\BlogController;
+use App\Http\Controllers\Site\HomeController;
+use App\Http\Controllers\Site\LicenseRequestController;
+use App\Http\Controllers\Site\PricingController;
+use App\Http\Controllers\Site\SiteController;
 use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\StockTransferController;
 use App\Http\Controllers\SupplierCreditNoteController;
@@ -120,7 +132,24 @@ use App\Http\Controllers\WarehouseBinController;
 use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/dashboard');
+// El sitio público (CLAUDE.md secc. 40): la landing, el blog y los planes.
+// Para cualquiera, con la sesión iniciada o sin ella: con sesión, el
+// encabezado ofrece «Ir a mi panel». Son páginas Blade armadas en el
+// servidor, no Inertia, para que un buscador las lea completas.
+Route::get('/', [HomeController::class, 'show'])->name('home');
+Route::get('precios', [PricingController::class, 'index'])->name('pricing.index');
+// La solicitud de licencia del configurador (CLAUDE.md secc. 42): JSON, con
+// un límite por IP contra los robots.
+Route::post('precios/solicitud', [LicenseRequestController::class, 'store'])
+    ->middleware('throttle:license-requests')
+    ->name('license-requests.store');
+Route::get('blog', [BlogController::class, 'index'])->name('blog.index');
+Route::get('blog/feed', [BlogController::class, 'feed'])->name('blog.feed');
+Route::get('blog/categoria/{slug}', [BlogController::class, 'category'])->name('blog.category');
+Route::get('blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
+Route::get('privacidad', [SiteController::class, 'privacy'])->name('privacy');
+Route::get('sitemap.xml', [SiteController::class, 'sitemap'])->name('sitemap');
+Route::get('robots.txt', [SiteController::class, 'robots'])->name('robots');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -1013,6 +1042,25 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('licenses/{license}/invitation/resend', [LicenseInvitationController::class, 'resend'])->name('licenses.invitation.resend');
     Route::delete('licenses/{license}/invitation', [LicenseInvitationController::class, 'destroy'])->name('licenses.invitation.destroy');
 
+    // Las solicitudes de licencia que llegan desde /precios (CLAUDE.md secc.
+    // 42): responderlas por correo, descartarlas o reabrirlas.
+    Route::get('license-requests', [BackofficeLicenseRequestController::class, 'index'])->name('license-requests.index');
+    Route::post('license-requests/{licenseRequest}/reply', [BackofficeLicenseRequestController::class, 'reply'])->middleware('throttle:30,1')->name('license-requests.reply');
+    Route::post('license-requests/{licenseRequest}/discard', [BackofficeLicenseRequestController::class, 'discard'])->name('license-requests.discard');
+    Route::post('license-requests/{licenseRequest}/reopen', [BackofficeLicenseRequestController::class, 'reopen'])->name('license-requests.reopen');
+
+    // Planes y precios (CLAUDE.md secc. 42): los ajustes, las funciones con su
+    // precio y los paquetes que se ven en /precios.
+    Route::get('pricing', [BackofficePricingController::class, 'index'])->name('pricing.index');
+    Route::put('pricing/settings', [BackofficePricingController::class, 'updateSettings'])->name('pricing.settings.update');
+    Route::post('pricing/defaults', [BackofficePricingController::class, 'loadDefaults'])->name('pricing.defaults');
+    Route::post('pricing/features', [PricingFeatureController::class, 'store'])->name('pricing.features.store');
+    Route::put('pricing/features/{feature}', [PricingFeatureController::class, 'update'])->name('pricing.features.update');
+    Route::delete('pricing/features/{feature}', [PricingFeatureController::class, 'destroy'])->name('pricing.features.destroy');
+    Route::post('pricing/packages', [PricingPackageController::class, 'store'])->name('pricing.packages.store');
+    Route::put('pricing/packages/{package}', [PricingPackageController::class, 'update'])->name('pricing.packages.update');
+    Route::delete('pricing/packages/{package}', [PricingPackageController::class, 'destroy'])->name('pricing.packages.destroy');
+
     Route::get('license-categories', [LicenseCategoryController::class, 'index'])->name('license-categories.index');
     Route::post('license-categories', [LicenseCategoryController::class, 'store'])->name('license-categories.store');
     Route::put('license-categories/{licenseCategory}', [LicenseCategoryController::class, 'update'])->name('license-categories.update');
@@ -1057,6 +1105,22 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('news', [NewsController::class, 'store'])->name('news.store');
     Route::put('news/{news}', [NewsController::class, 'update'])->name('news.update');
     Route::delete('news/{news}', [NewsController::class, 'destroy'])->name('news.destroy');
+
+    // El blog del sitio público (CLAUDE.md secc. 41): la lista, el editor (una
+    // pantalla propia), la vista previa y las categorías. Las imágenes del
+    // editor se suben aparte y contestan JSON; van al bucket como
+    // blog/imag_{id}.{ext}.
+    Route::get('blog', [BlogPostController::class, 'index'])->name('blog.index');
+    Route::get('blog/create', [BlogPostController::class, 'create'])->name('blog.create');
+    Route::post('blog', [BlogPostController::class, 'store'])->name('blog.store');
+    Route::post('blog/images', [BlogImageController::class, 'store'])->middleware('throttle:60,1')->name('blog.images.store');
+    Route::post('blog/categories', [BlogCategoryController::class, 'store'])->name('blog.categories.store');
+    Route::put('blog/categories/{category}', [BlogCategoryController::class, 'update'])->name('blog.categories.update');
+    Route::delete('blog/categories/{category}', [BlogCategoryController::class, 'destroy'])->name('blog.categories.destroy');
+    Route::get('blog/{post}/edit', [BlogPostController::class, 'edit'])->name('blog.edit');
+    Route::get('blog/{post}/preview', [BlogPostController::class, 'preview'])->name('blog.preview');
+    Route::put('blog/{post}', [BlogPostController::class, 'update'])->name('blog.update');
+    Route::delete('blog/{post}', [BlogPostController::class, 'destroy'])->name('blog.destroy');
 
     // El Repositorio (CLAUDE.md secc. 39): documentos en Markdown, en
     // carpetas, que Conti consulta y las cuentas ven como PDF, cada uno por

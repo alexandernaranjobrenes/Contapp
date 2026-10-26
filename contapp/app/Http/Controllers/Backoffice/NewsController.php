@@ -21,6 +21,8 @@ use Inertia\Response;
  */
 class NewsController extends Controller
 {
+    private const FROM_BLOG = 'Esta noticia avisa de un artículo del blog: se cambia o se quita desde el artículo, en Blog.';
+
     public function __construct(
         private readonly NewsService $news,
         private readonly MediaStorage $media,
@@ -29,7 +31,7 @@ class NewsController extends Controller
     public function index(): Response
     {
         $news = NewsPost::query()
-            ->with('creator:id,name')
+            ->with(['creator:id,name', 'blogPost.cover'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(20)
@@ -37,8 +39,14 @@ class NewsController extends Controller
                 'id' => $post->id,
                 'title' => $post->title,
                 'body' => $post->body,
-                'link_url' => $post->link_url,
-                'image_url' => $this->media->versionedUrl($post->image_path, $post->updated_at),
+                'link_url' => $post->linkUrl(),
+                'image_url' => $post->imageUrl($this->media),
+                // La de un artículo del blog se edita desde el artículo.
+                'blog_post' => $post->blogPost ? [
+                    'id' => $post->blogPost->id,
+                    'title' => $post->blogPost->title,
+                    'edit_url' => route('backoffice.blog.edit', $post->blogPost),
+                ] : null,
                 'created_by' => $post->creator?->name,
                 'created_at' => $post->created_at->toIso8601String(),
                 'updated_at' => $post->updated_at->toIso8601String(),
@@ -57,11 +65,15 @@ class NewsController extends Controller
 
     public function update(Request $request, NewsPost $news): RedirectResponse
     {
+        abort_if($news->isFromBlog(), 403, self::FROM_BLOG);
+
         return $this->save($request, $news, 'Los cambios de la noticia quedaron guardados.');
     }
 
     public function destroy(NewsPost $news): RedirectResponse
     {
+        abort_if($news->isFromBlog(), 403, self::FROM_BLOG);
+
         $this->news->delete($news);
 
         return back()->with('success', 'La noticia se eliminó.');

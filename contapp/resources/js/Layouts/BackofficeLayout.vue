@@ -1,7 +1,7 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
-import { KeyRoundIcon, LayersIcon, LibraryIcon, LogOutIcon, MenuIcon, MessagesSquareIcon, NewspaperIcon, PercentIcon, XIcon } from '@lucide/vue';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { BadgeDollarSignIcon, InboxIcon, KeyRoundIcon, LayersIcon, LibraryIcon, LogOutIcon, MenuIcon, MessagesSquareIcon, NewspaperIcon, PenLineIcon, PercentIcon, XIcon } from '@lucide/vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 defineProps({
     title: { type: String, default: '' },
@@ -9,13 +9,21 @@ defineProps({
 
 const page = usePage();
 
+// Las solicitudes de licencia sin atender, para el número del menú.
+const pendingRequests = computed(() => page.props.backofficeBadges?.license_requests ?? 0);
+
 const nav = [
     { label: 'Licencias', href: route('backoffice.licenses.index'), match: ['backoffice.licenses.*'], icon: KeyRoundIcon },
+    // Lo que se pide desde la página de precios del sitio (pivoxcr.com/precios).
+    { label: 'Solicitudes', href: route('backoffice.license-requests.index'), match: ['backoffice.license-requests.*'], icon: InboxIcon, badge: 'license_requests' },
     { label: 'Categorías de licencia', href: route('backoffice.license-categories.index'), match: ['backoffice.license-categories.*'], icon: LayersIcon },
+    { label: 'Planes y precios', href: route('backoffice.pricing.index'), match: ['backoffice.pricing.*'], icon: BadgeDollarSignIcon },
     { label: 'Indicadores de IVA', href: route('backoffice.tax-rates.index'), match: ['backoffice.tax-rates.*'], icon: PercentIcon },
     // Lo que se ve en el panel «Comentarios y noticias» de la aplicación.
     { label: 'Comentarios', href: route('backoffice.feedback.index'), match: ['backoffice.feedback.*'], icon: MessagesSquareIcon },
     { label: 'Noticias', href: route('backoffice.news.index'), match: ['backoffice.news.*'], icon: NewspaperIcon },
+    // El blog del sitio público (pivoxcr.com/blog).
+    { label: 'Blog', href: route('backoffice.blog.index'), match: ['backoffice.blog.*'], icon: PenLineIcon },
     // Los documentos de consulta que lee Conti y ven las cuentas (Repositorio).
     { label: 'Repositorio', href: route('backoffice.repository.index'), match: ['backoffice.repository.*'], icon: LibraryIcon },
 ];
@@ -62,6 +70,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
                 >
                     <span class="sidebar-icon"><component :is="item.icon" :size="18" /></span>
                     <span class="sidebar-label">{{ item.label }}</span>
+                    <span
+                        v-if="item.badge === 'license_requests' && pendingRequests"
+                        class="sidebar-count"
+                        :aria-label="`${pendingRequests} sin atender`"
+                    >{{ pendingRequests }}</span>
                 </Link>
             </nav>
         </aside>
@@ -183,6 +196,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', closeOnEscape));
 .sidebar-link:hover { background: rgba(255, 255, 255, 0.08); color: var(--color-on-sidebar); }
 .sidebar-link.active { background: rgba(255, 255, 255, 0.16); color: var(--color-on-sidebar); }
 .sidebar-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; flex-shrink: 0; }
+
+/* Cuántas solicitudes de licencia esperan respuesta. */
+.sidebar-count {
+    margin-left: auto;
+    min-width: 1.35rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--color-accent);
+    color: var(--color-sidebar);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: center;
+}
 
 .backoffice-main {
     display: flex;

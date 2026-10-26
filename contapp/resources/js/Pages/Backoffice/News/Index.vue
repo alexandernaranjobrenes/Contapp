@@ -137,7 +137,8 @@ function destroy() {
     });
 }
 
-function linkLabel(link) {
+function linkLabel(link, item = null) {
+    if (item?.blog_post) return 'Artículo del blog';
     if (!link) return '—';
     if (link.startsWith('/')) return `Pantalla de Pivox (${link})`;
 
@@ -164,6 +165,7 @@ onBeforeUnmount(clearPreview);
         <p class="hint">
             Las novedades de Pivox que ven todas las cuentas en la pestaña «Noticias» del panel de la barra superior,
             de la más nueva a la más vieja. Una noticia nueva le enciende un punto a ese botón hasta que se ve.
+            Las que avisan de un artículo del blog se manejan desde el artículo.
         </p>
 
         <div class="card">
@@ -196,7 +198,7 @@ onBeforeUnmount(clearPreview);
                                     </span>
                                 </span>
                             </td>
-                            <td data-label="Enlace">{{ linkLabel(item.link_url) }}</td>
+                            <td data-label="Enlace">{{ linkLabel(item.link_url, item) }}</td>
                             <td data-label="Publicada">
                                 <time :datetime="item.created_at" :title="fullDate(item.created_at)">{{ timeAgo(item.created_at) }}</time>
                             </td>
@@ -224,13 +226,17 @@ onBeforeUnmount(clearPreview);
         <DetailModal :open="modalOpen" :title="modalTitle" wide @close="close">
             <template v-if="selected && mode === 'details'">
                 <img v-if="selected.image_url" :src="selected.image_url" alt="" class="news-image">
+                <p v-if="selected.blog_post" class="flash flash-info">
+                    Esta noticia avisa del artículo «{{ selected.blog_post.title }}»: usa su portada y su enlace, y se publica,
+                    se cambia y se quita desde el artículo, en Blog.
+                </p>
                 <p class="news-body">{{ selected.body }}</p>
                 <dl class="detail-list">
                     <div>
                         <dt>Enlace</dt>
                         <dd>
                             <a v-if="selected.link_url" :href="selected.link_url" target="_blank" rel="noopener noreferrer">
-                                {{ linkLabel(selected.link_url) }} <ExternalLinkIcon />
+                                {{ linkLabel(selected.link_url, selected) }} <ExternalLinkIcon />
                             </a>
                             <template v-else>Sin enlace</template>
                         </dd>
@@ -289,7 +295,10 @@ onBeforeUnmount(clearPreview);
             </form>
 
             <template #actions>
-                <template v-if="selected && mode === 'details'">
+                <template v-if="selected && mode === 'details' && selected.blog_post">
+                    <Link :href="selected.blog_post.edit_url" class="btn btn-primary"><PencilIcon /> Editar en el blog</Link>
+                </template>
+                <template v-else-if="selected && mode === 'details'">
                     <button type="button" class="btn btn-ghost btn-danger-text footer-start" @click="destroy"><Trash2Icon /> Eliminar</button>
                     <button type="button" class="btn btn-primary" @click="startEdit"><PencilIcon /> Editar</button>
                 </template>

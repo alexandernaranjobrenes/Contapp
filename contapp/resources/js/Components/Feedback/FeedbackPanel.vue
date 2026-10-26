@@ -352,6 +352,7 @@ onBeforeUnmount(() => {
                                 <p class="news-body">{{ item.body }}</p>
                                 <span v-if="item.link_url" class="news-cta">
                                     <template v-if="item.link_is_internal">Ir a la pantalla <ArrowRightIcon /></template>
+                                    <template v-else-if="item.link_kind === 'article'">Leer el artículo <ExternalLinkIcon /></template>
                                     <template v-else>Abrir el enlace <ExternalLinkIcon /></template>
                                 </span>
                             </div>

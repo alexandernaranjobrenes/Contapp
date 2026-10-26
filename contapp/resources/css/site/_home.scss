@@ -1,0 +1,314 @@
+// Las secciones de la landing.
+
+// ── Portada ──────────────────────────────────────────────────────────────
+// El fondo del panel de las pantallas de acceso (AuthShell): profundo, con el
+// brillo del acento y la retícula de un libro contable.
+
+.site-hero,
+.site-cta {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    color: var(--color-on-sidebar);
+    background-color: var(--site-deep);
+    background-image:
+        radial-gradient(42rem 30rem at 6% 0%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 62%),
+        radial-gradient(36rem 28rem at 100% 100%, rgba(255, 255, 255, 0.08), transparent 60%),
+        linear-gradient(170deg, transparent 45%, rgba(0, 0, 0, 0.28));
+}
+
+.site-hero::before,
+.site-cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 70% at 30% 40%, #000 20%, transparent 78%);
+    mask-image: radial-gradient(ellipse 75% 70% at 30% 40%, #000 20%, transparent 78%);
+}
+
+.site-hero {
+    padding-block: clamp(2.75rem, 6vw, 5.5rem) clamp(3.5rem, 7vw, 6rem);
+}
+
+.site-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 4rem);
+}
+
+@media (max-width: 960px) {
+    .site-hero-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.site-hero-title {
+    margin: 0;
+    font-size: clamp(2.1rem, 3.4vw + 0.8rem, 3.3rem);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+}
+
+.site-hero-lead {
+    max-width: 36rem;
+    margin: 1.25rem 0 0;
+    color: rgba(244, 246, 250, 0.78);
+    font-size: clamp(1.02rem, 0.45vw + 0.95rem, 1.18rem);
+    line-height: 1.65;
+    text-wrap: pretty;
+}
+
+.site-hero-actions,
+.site-cta-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+.site-hero-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.4rem;
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+    color: rgba(244, 246, 250, 0.82);
+    font-size: 0.9rem;
+}
+
+.site-hero-points li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.site-hero-points svg {
+    color: var(--color-accent);
+}
+
+.site-hero-visual {
+    min-width: 0;
+}
+
+// ── Cifras ───────────────────────────────────────────────────────────────
+
+.site-stats {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.site-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.5rem;
+    padding-block: 2.1rem;
+}
+
+@media (max-width: 860px) {
+    .site-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.site-stat b {
+    display: block;
+    color: color-mix(in srgb, var(--color-primary) 62%, var(--color-text));
+    font-size: clamp(1.85rem, 2.5vw + 0.6rem, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.site-stat span {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+// ── Módulos ──────────────────────────────────────────────────────────────
+
+.module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+    gap: 1.1rem;
+}
+
+.module-card {
+    padding: 1.4rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.module-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+}
+
+.js .module-card[data-reveal].is-visible:hover {
+    transform: translateY(-3px);
+}
+
+.module-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.9rem;
+    height: 2.9rem;
+    margin-bottom: 1rem;
+    border-radius: var(--radius-md);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.module-card h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.1rem;
+}
+
+.module-card ul {
+    display: grid;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--color-text-muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+}
+
+.module-card li {
+    display: flex;
+    gap: 0.55rem;
+}
+
+.module-card li svg {
+    flex-shrink: 0;
+    margin-top: 0.2em;
+    color: var(--color-success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .module-card,
+    .module-card:hover {
+        transition: none;
+        transform: none;
+    }
+}
+
+// ── Seguridad ────────────────────────────────────────────────────────────
+
+.security-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+    gap: 2rem 2.25rem;
+}
+
+.security-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    color: color-mix(in srgb, var(--color-accent) 55%, var(--color-text));
+}
+
+.security-item h3 {
+    margin: 0.9rem 0 0.35rem;
+    font-size: 1.04rem;
+}
+
+.security-item p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.94rem;
+    line-height: 1.55;
+}
+
+// ── Cómo empezar ─────────────────────────────────────────────────────────
+
+.steps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 1.1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: none;
+}
+
+.step-card {
+    position: relative;
+    padding: 1.5rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.step-number {
+    display: inline-grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    color: color-mix(in srgb, var(--color-accent) 50%, var(--color-text));
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.step-card h3 {
+    margin: 1rem 0 0.35rem;
+    font-size: 1.1rem;
+}
+
+.step-card p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+}
+
+// ── Del blog ─────────────────────────────────────────────────────────────
+
+.home-posts-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+// ── Llamada final ────────────────────────────────────────────────────────
+
+.site-cta {
+    padding-block: clamp(3.5rem, 7vw, 5.5rem);
+    text-align: center;
+}
+
+.site-cta-inner {
+    max-width: 46rem;
+}
+
+.site-cta p {
+    margin: 1rem auto 0;
+    color: rgba(244, 246, 250, 0.78);
+    font-size: 1.08rem;
+}
+
+.site-cta-actions {
+    justify-content: center;
+}

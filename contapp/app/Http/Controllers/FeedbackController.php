@@ -147,16 +147,23 @@ class FeedbackController extends Controller
     {
         $request->validate(['page' => ['nullable', 'integer', 'min:1']]);
 
-        $page = NewsPost::query()->orderByDesc('created_at')->orderByDesc('id')->simplePaginate(self::NEWS_PER_PAGE);
+        $page = NewsPost::query()
+            ->with('blogPost.cover')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->simplePaginate(self::NEWS_PER_PAGE);
 
+        // La de un artículo del blog: la portada del artículo y su enlace,
+        // que se abre en otra pestaña (es una página del sitio, no de Inertia).
         return response()->json([
             'news' => $page->getCollection()->map(fn (NewsPost $news) => [
                 'id' => $news->id,
                 'title' => $news->title,
                 'body' => $news->body,
-                'link_url' => $news->link_url,
+                'link_url' => $news->linkUrl(),
                 'link_is_internal' => $news->hasInternalLink(),
-                'image_url' => $this->media->versionedUrl($news->image_path, $news->updated_at),
+                'link_kind' => $news->linkKind(),
+                'image_url' => $news->imageUrl($this->media),
                 'created_at' => $news->created_at->toIso8601String(),
             ])->values(),
             'has_more' => $page->hasMorePages(),

@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "vendor:zxing": "node -e \"require('fs').copyFileSync('node_modules/@zxing/browser/umd/zxing-browser.min.js', 'public/vendor/zxing/zxing-browser.min.js')\""
+        "vendor:zxing": "node -e \"require('fs').copyFileSync('node_modules/@zxing/browser/umd/zxing-browser.min.js', 'public/vendor/zxing/zxing-browser.min.js')\"",
+        "vendor:site-icons": "node scripts/site-icons.mjs"
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^6.0.0",
@@ -15,8 +16,16 @@
         "vite": "^8.0.0"
     },
     "dependencies": {
+        "@floating-ui/dom": "^1.8.0",
         "@inertiajs/vue3": "^2.0.0",
         "@lucide/vue": "^1.48.0",
+        "@tiptap/core": "^3.32.0",
+        "@tiptap/extension-highlight": "^3.32.0",
+        "@tiptap/extension-table": "^3.32.0",
+        "@tiptap/extensions": "^3.32.0",
+        "@tiptap/pm": "^3.32.0",
+        "@tiptap/starter-kit": "^3.32.0",
+        "@tiptap/vue-3": "^3.32.0",
         "@zxing/browser": "^0.2.1",
         "@zxing/library": "^0.23.0",
         "jsbarcode": "^3.12.3",

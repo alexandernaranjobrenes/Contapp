@@ -6,7 +6,9 @@ import vue from '@vitejs/plugin-vue';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.scss', 'resources/js/app.js'],
+            // La aplicación, y el sitio público (CLAUDE.md secc. 40), que carga
+            // app.scss más su propia hoja y su propio JavaScript.
+            input: ['resources/css/app.scss', 'resources/js/app.js', 'resources/css/site.scss', 'resources/js/site/main.js'],
             refresh: true,
             // Una tipografía por tema de compañía (CLAUDE.md secc. 31).
             // Solo se precarga la del tema predeterminado; las demás las baja

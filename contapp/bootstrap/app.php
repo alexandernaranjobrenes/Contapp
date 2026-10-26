@@ -62,6 +62,9 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*')
                 || $request->hasHeader('X-Pivox-Download')
                 || $request->routeIs('feedback.*', 'news.index', 'conti.messages.*', 'conti.settings.*', 'conti.forms.*', 'conti.scan.*', 'conti.phone.upload', 'items.barcode-scans.*', 'items.next-barcode', 'barcode-phone.store', 'activity-log.more')
+                // El sitio y el blog (CLAUDE.md secc. 41 y 42): la imagen que sube
+                // el editor y la solicitud de licencia hablan JSON.
+                || $request->routeIs('backoffice.blog.images.store', 'license-requests.store')
                 // Los respaldos (CLAUDE.md secc. 37): la pantalla habla JSON, y la
                 // descarga va por fetch para que un error vuelva al formulario.
                 || $request->routeIs('backups.preview', 'backups.export', 'backups.import*', 'backoffice.licenses.backups.preview', 'backoffice.licenses.backups.export', 'backoffice.licenses.backups.import*'),

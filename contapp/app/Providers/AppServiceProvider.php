@@ -77,6 +77,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('conti-forms', fn (Request $request) => Limit::perMinute(30)->by((string) ($request->user()?->id ?? $request->ip())));
         RateLimiter::for('conti-lookup', fn (Request $request) => Limit::perMinute(120)->by((string) ($request->user()?->id ?? $request->ip())));
 
+        // Las solicitudes de licencia del sitio público (CLAUDE.md secc. 42):
+        // sin sesión, por IP. Una persona manda una o dos; un robot, cientos.
+        RateLimiter::for('license-requests', fn (Request $request) => [
+            Limit::perHour(5)->by('hour:'.$request->ip()),
+            Limit::perDay(20)->by('day:'.$request->ip()),
+        ]);
+
         // La Bitácora de la compañía (ActivityRecorder, CLAUDE.md secc. 35):
         // todo lo que se crea, cambia o borra, y quién entra y sale.
         Event::listen(['eloquent.created: *', 'eloquent.updated: *', 'eloquent.deleted: *'], function (string $event, array $payload) {

@@ -7,6 +7,9 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        {{-- La aplicación y el backoffice no van a un buscador: lo que se
+             indexa es el sitio público (site/layout.blade.php). --}}
+        <meta name="robots" content="noindex, nofollow">
 
         <title inertia>{{ config('app.name', 'Pivox') }}</title>
 

@@ -1,0 +1,16 @@
+@extends('site.layout')
+
+@section('content')
+    @include('site.home.hero')
+    @include('site.home.stats')
+    @include('site.home.modules')
+    @include('site.home.conti')
+    @include('site.home.scanner')
+    @include('site.home.einvoice')
+    @include('site.home.reports')
+    @include('site.home.companies')
+    @include('site.home.security')
+    @include('site.home.steps')
+    @includeWhen($posts->isNotEmpty(), 'site.home.posts')
+    @include('site.home.cta')
+@endsection

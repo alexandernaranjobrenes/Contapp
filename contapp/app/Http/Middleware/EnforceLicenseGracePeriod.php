@@ -66,6 +66,9 @@ class EnforceLicenseGracePeriod
         // para la computadora (BarcodeScanService). Si el teléfono tiene una
         // sesión abierta, su compañía no es la del escaneo.
         'barcode-phone.store',
+        // Pedir una licencia desde el sitio público (CLAUDE.md secc. 42): es
+        // justo lo que necesita quien tiene la suya vencida.
+        'license-requests.store',
     ];
 
     public function handle(Request $request, Closure $next): Response

@@ -16,6 +16,7 @@ use App\Domains\Core\Support\MediaStorage;
 use App\Domains\Core\Support\ScreenCatalog;
 use App\Domains\Feedback\Models\NewsPost;
 use App\Domains\Licensing\Models\License;
+use App\Domains\Pricing\Models\LicenseRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -129,6 +130,11 @@ class HandleInertiaRequests extends Middleware
                 'id' => $propietario->id,
                 'name' => $propietario->name,
                 'email' => $propietario->email,
+            ] : null,
+            // El contador de «Solicitudes» en el menú del backoffice: las que
+            // llegaron desde /precios y nadie atendió (CLAUDE.md secc. 42).
+            'backofficeBadges' => fn () => $propietario ? [
+                'license_requests' => LicenseRequest::query()->where('status', LicenseRequest::STATUS_NEW)->count(),
             ] : null,
             // Las compañías del selector de la barra superior, con el estado
             // de su licencia: una suspendida o revocada se muestra marcada y

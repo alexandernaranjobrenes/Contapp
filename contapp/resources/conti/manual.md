@@ -10,6 +10,7 @@
 - **Agregar compañías:** en **Administración → Agregar compañía** (solo el Superusuario) se completa «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional). Si ya se llegó al máximo, aparece «Ya alcanzaste el máximo de compañías de tu licencia»; para más cupo hay que contactar al equipo de Pivox.
 - **Activar una licencia propia:** una persona que es Administrador o Usuario en la licencia de otro puede activar la suya en **Mi cuenta → Activar una licencia**. Esa opción solo aparece mientras la cuenta no sea dueña de una licencia. Si la cuenta la creó otra persona, primero hay que confirmar el correo con «Enviarme el enlace».
 - Una persona puede tener acceso a **varias compañías**, propias o de otras licencias por invitación. Su **rol es por compañía**.
+- **Pedir una licencia, o más cupo:** en la página de planes y precios del sitio de Pivox (pivoxcr.com/precios) se elige un paquete, se agregan o quitan funciones, compañías y usuarios, se ve el precio por mes o por año, en colones o en dólares, y se envía la solicitud. El equipo de Pivox responde por correo para coordinar el pago y la activación. También se puede escribir a servicioalcliente@pivoxcr.com.
 
 ### 1.2 Cambiar de compañía
 - Se cambia con el **selector de compañía** de la barra superior. Aparece una ventana de transición que confirma «Ahora estás en…». Si algo falla, la ventana ofrece reintentar, volver a la compañía anterior o cerrar la sesión.
@@ -111,7 +112,7 @@ Se ven en el pie de página y en el selector de compañía:
 - **Comentarios**: para proponer mejoras o reportar algo. Se escribe un texto y se pueden adjuntar imágenes (JPG o PNG de hasta 5 MB). Se puede votar a favor o en contra, y comentar; lo más votado queda arriba.
 - **Lo publicado lo ven todas las cuentas de Pivox**, no solo tu compañía: no hay que poner datos sensibles.
 - Cuando el equipo de Pivox marca una publicación como solucionada o la elimina, su autor recibe un correo.
-- **Noticias**: las novedades de Pivox que publica el equipo.
+- **Noticias**: las novedades de Pivox que publica el equipo. Algunas avisan de un artículo del blog de Pivox (pivoxcr.com/blog): «Leer el artículo» lo abre en otra pestaña.
 
 ### 1.11 Comportamientos comunes en todas las pantallas
 - «Crear nuevo» abre el formulario. Tocar una fila abre su **ficha**, con las acciones disponibles (Editar, Eliminar, Ver…).

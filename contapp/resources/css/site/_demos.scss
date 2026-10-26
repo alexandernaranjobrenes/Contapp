@@ -1,0 +1,1814 @@
+// Las demostraciones animadas de la landing (site/demos/*.blade.php).
+//
+// resources/js/site/demos.js las recorre paso a paso mientras están en
+// pantalla: cada paso alcanzado agrega su clase (s1, s2, s3…) a la demo, así
+// el CSS dice qué se ve DESDE qué paso. Al terminar, .is-resetting las
+// desvanece y vuelven a empezar. Con movimiento reducido quedan quietas en el
+// paso que mejor se explica solo.
+//
+// Todo se mide en em sobre la letra de la demo, que sigue al ancho de su
+// contenedor (cqi): se achican enteras en un teléfono.
+
+.demo {
+    position: relative;
+    container-type: inline-size;
+    user-select: none;
+}
+
+.demo svg.lucide {
+    width: 1.25em;
+    height: 1.25em;
+}
+
+.demo-frame {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
+    color: var(--color-text);
+    font-size: clamp(8.5px, 2.35cqi, 13.5px);
+    line-height: 1.35;
+    box-shadow: var(--site-shadow-lg);
+}
+
+.demo > *,
+.demo-frame > * {
+    transition: opacity 0.45s ease;
+}
+
+.demo.is-resetting :is(.cd-panel, .cd-toast, .sd-form, .sd-phone, .bd-result, .ei-card) {
+    opacity: 0;
+}
+
+@keyframes demo-pop {
+    from { opacity: 0; transform: translateY(0.6em) scale(0.98); }
+}
+
+@keyframes demo-spin {
+    to { transform: rotate(360deg); }
+}
+
+// ══ Conti ════════════════════════════════════════════════════════════════
+
+.cd-frame {
+    aspect-ratio: 5 / 4;
+}
+
+// En un teléfono el chat ocupa casi todo, más alto, y la letra crece un poco
+// más que el ancho para seguir leyéndose.
+@container (max-width: 480px) {
+    .cd-frame {
+        aspect-ratio: 4 / 4.7;
+        font-size: 2.9cqi;
+    }
+
+    .cd-panel {
+        width: 82%;
+    }
+}
+
+// La pantalla de atrás: Registros.
+.cd-page {
+    position: absolute;
+    inset: 0;
+    padding: 1.2em;
+}
+
+.cd-page-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 1em;
+    color: var(--color-text-muted);
+    font-size: 1.05em;
+}
+
+.cd-page-bar b {
+    color: var(--color-text);
+}
+
+.cd-rows {
+    display: grid;
+    gap: 0.6em;
+}
+
+.cd-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+    padding: 0.8em 1em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.6em;
+    background: var(--color-surface);
+    font-size: 0.95em;
+}
+
+.cd-row i {
+    flex-shrink: 0;
+    width: 4.5em;
+    height: 1.1em;
+    border-radius: 999px;
+    background: var(--color-success-soft);
+}
+
+// El botón del robot y sus dos opciones.
+.cd-dial {
+    position: absolute;
+    right: 1.3em;
+    bottom: 1.3em;
+    width: 3.6em;
+    height: 3.6em;
+    transition: opacity 0.3s ease;
+}
+
+.cd-fab {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
+}
+
+.cd-fab svg.lucide {
+    width: 1.6em;
+    height: 1.6em;
+}
+
+.cd-option {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: grid;
+    place-items: center;
+    width: 2.8em;
+    height: 2.8em;
+    margin: -1.4em 0 0 -1.4em;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    background: var(--color-surface);
+    color: color-mix(in srgb, var(--color-primary) 75%, var(--color-text));
+    box-shadow: 0 0.3em 0.9em rgba(0, 0, 0, 0.18);
+    opacity: 0;
+    transform: scale(0.4);
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.cd-option em {
+    position: absolute;
+    right: calc(100% + 0.45em);
+    padding: 0.15em 0.55em;
+    border-radius: 999px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.78em;
+    font-style: normal;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.conti-demo.s1 .cd-option {
+    opacity: 1;
+}
+
+.conti-demo.s1 .cd-option.is-chat {
+    transform: translate(0, -4.2em);
+    background: var(--color-primary-soft);
+}
+
+.conti-demo.s1 .cd-option.is-scan {
+    transform: translate(-4.2em, 0);
+}
+
+.conti-demo.s1 .cd-fab {
+    transform: scale(0.94);
+}
+
+// Con el chat abierto, el botón se esconde (como en la aplicación).
+.conti-demo.s2 .cd-dial {
+    opacity: 0;
+}
+
+// El chat.
+.cd-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    width: min(64%, 24em);
+    border-left: 1px solid var(--color-border);
+    background: var(--color-surface);
+    box-shadow: -1em 0 2em -1.2em rgba(0, 0, 0, 0.35);
+    transform: translateX(105%);
+    transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.45s ease;
+}
+
+.conti-demo.s2 .cd-panel {
+    transform: none;
+}
+
+.cd-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.8em 0.9em;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.cd-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 2.1em;
+    height: 2.1em;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.cd-avatar svg.lucide {
+    width: 1.1em;
+    height: 1.1em;
+}
+
+.cd-panel-name b,
+.cd-panel-name small {
+    display: block;
+}
+
+.cd-panel-name small {
+    color: var(--color-text-muted);
+    font-size: 0.8em;
+}
+
+// Como un chat que baja solo: lo último queda abajo, a la vista, y lo viejo
+// se va por arriba.
+.cd-messages {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.6em;
+    min-height: 0;
+    padding: 0.9em;
+    overflow: hidden;
+}
+
+.cd-messages > * {
+    flex-shrink: 0;
+}
+
+.cd-msg {
+    max-width: 88%;
+    margin: 0;
+    padding: 0.55em 0.8em;
+    border-radius: 0.9em;
+    font-size: 0.95em;
+}
+
+.cd-msg.is-bot {
+    align-self: flex-start;
+    border-bottom-left-radius: 0.25em;
+    background: var(--color-surface-alt);
+}
+
+.cd-msg.is-user {
+    display: none;
+    align-self: flex-end;
+    border-bottom-right-radius: 0.25em;
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.cd-msg.is-reply,
+.cd-typing,
+.cd-form {
+    display: none;
+}
+
+.conti-demo.s4 .cd-msg.is-user {
+    display: block;
+    animation: demo-pop 0.35s ease both;
+}
+
+.conti-demo.s5 .cd-typing {
+    display: inline-flex;
+}
+
+.conti-demo.s6 .cd-typing {
+    display: none;
+}
+
+.conti-demo.s6 .cd-msg.is-reply {
+    display: block;
+    animation: demo-pop 0.35s ease both;
+}
+
+.cd-typing {
+    align-self: flex-start;
+    gap: 0.3em;
+    margin: 0;
+    padding: 0.7em 0.85em;
+    border-radius: 0.9em;
+    background: var(--color-surface-alt);
+}
+
+.cd-typing i {
+    width: 0.45em;
+    height: 0.45em;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+    animation: cd-dot 1s ease-in-out infinite;
+}
+
+.cd-typing i:nth-child(2) { animation-delay: 0.15s; }
+.cd-typing i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes cd-dot {
+    0%, 60%, 100% { opacity: 0.35; transform: none; }
+    30% { opacity: 1; transform: translateY(-0.25em); }
+}
+
+// El formulario del chat, con lo que Pivox sugiere.
+.cd-form {
+    flex-direction: column;
+    gap: 0.45em;
+    padding: 0.75em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75em;
+    background: var(--color-bg);
+}
+
+.conti-demo.s6 .cd-form {
+    display: flex;
+}
+
+.cd-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.05em 0.6em;
+    padding: 0.35em 0.55em;
+    border: 1px solid var(--color-control-border);
+    border-radius: 0.45em;
+    background: var(--color-surface);
+}
+
+.conti-demo.s6 .cd-field {
+    animation: demo-pop 0.35s ease both;
+}
+
+.cd-field:nth-child(1) { animation-delay: 0.35s; }
+.cd-field:nth-child(2) { animation-delay: 0.6s; }
+.cd-field:nth-child(3) { animation-delay: 0.85s; }
+.cd-field:nth-child(4) { animation-delay: 1.1s; }
+
+.cd-field small {
+    grid-column: 1 / -1;
+    color: var(--color-text-muted);
+    font-size: 0.74em;
+}
+
+.cd-field b {
+    overflow: hidden;
+    font-size: 0.9em;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cd-field em,
+.sd-field em {
+    padding: 0.1em 0.5em;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+    color: color-mix(in srgb, var(--color-accent) 45%, var(--color-text));
+    font-size: 0.7em;
+    font-style: normal;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.cd-button {
+    display: inline-grid;
+    place-items: center;
+    min-height: 2.2em;
+    padding: 0.35em 0.9em;
+    border: 1px solid transparent;
+    border-radius: 0.45em;
+    font-size: 0.88em;
+    font-weight: 700;
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.cd-button.is-primary {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.cd-button.is-ghost {
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+.cd-prepare {
+    align-self: flex-end;
+    margin-top: 0.2em;
+}
+
+.conti-demo.s6 .cd-prepare {
+    animation: demo-pop 0.35s 1.35s ease both;
+}
+
+.conti-demo.s7 .cd-prepare,
+.conti-demo.s9 .cd-confirm-button {
+    transform: scale(0.94);
+    filter: brightness(1.18);
+}
+
+// Lo que se escribe, en el campo de abajo.
+.cd-composer {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    padding: 0.7em 0.8em;
+    border-top: 1px solid var(--color-border);
+}
+
+.cd-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.3em;
+    display: flex;
+    align-items: center;
+    padding: 0.3em 0.7em;
+    overflow: hidden;
+    border: 1px solid var(--color-control-border);
+    border-radius: 0.5em;
+    background: var(--color-surface);
+    font-size: 0.88em;
+    white-space: nowrap;
+}
+
+// Mientras se escribe, lo último que se tecleó queda a la vista: en un
+// contenedor rtl, un texto más largo que el campo desborda por la izquierda.
+// El texto en sí sigue siendo ltr.
+.cd-input-text {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    direction: rtl;
+    text-align: left;
+}
+
+.cd-input-text > span {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
+.conti-demo.s3 .cd-input-text {
+    display: block;
+}
+
+.cd-input-text > span:not(:empty)::after {
+    content: '';
+    display: inline-block;
+    width: 1px;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: -0.15em;
+    background: var(--color-text);
+    animation: cd-caret 0.9s steps(1) infinite;
+}
+
+@keyframes cd-caret {
+    50% { opacity: 0; }
+}
+
+.cd-placeholder {
+    color: var(--color-text-muted);
+}
+
+.conti-demo.s3 .cd-placeholder {
+    display: none;
+}
+
+// Enviado: el campo vuelve a quedar vacío.
+.conti-demo.s4 .cd-input-text {
+    display: none;
+}
+
+.conti-demo.s4 .cd-placeholder {
+    display: inline;
+}
+
+.cd-composer-icon,
+.cd-send {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.3em;
+    height: 2.3em;
+    border-radius: 0.5em;
+    color: var(--color-text-muted);
+}
+
+.cd-send {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+}
+
+.conti-demo.s4:not(.s5) .cd-send {
+    transform: scale(0.9);
+}
+
+// La ventana para confirmar, encima de la pantalla.
+.cd-confirm {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    padding: 1em;
+    background: rgba(0, 0, 0, 0.38);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+}
+
+.conti-demo.s8 .cd-confirm {
+    opacity: 1;
+}
+
+.conti-demo.s10 .cd-confirm {
+    opacity: 0;
+}
+
+.cd-confirm-card {
+    width: min(100%, 26em);
+    padding: 1.1em;
+    border-radius: 0.8em;
+    background: var(--color-surface);
+    box-shadow: 0 1.5em 3em -1em rgba(0, 0, 0, 0.45);
+    transform: translateY(0.8em) scale(0.97);
+    transition: transform 0.35s ease;
+}
+
+.conti-demo.s8 .cd-confirm-card {
+    transform: none;
+}
+
+.cd-confirm-title {
+    display: block;
+    margin-bottom: 0.8em;
+    font-size: 1.1em;
+}
+
+.cd-lines {
+    border: 1px solid var(--color-border);
+    border-radius: 0.5em;
+    font-size: 0.9em;
+}
+
+.cd-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr));
+    gap: 0.6em;
+    padding: 0.5em 0.7em;
+}
+
+.cd-line + .cd-line {
+    border-top: 1px solid var(--color-border);
+}
+
+.cd-line.is-head {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    font-weight: 700;
+}
+
+.cd-line span:not(:first-child) {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.cd-line span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cd-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5em;
+    margin-top: 0.9em;
+}
+
+// Guardado.
+.cd-toast {
+    position: absolute;
+    left: 1.2em;
+    bottom: 1.2em;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    max-width: calc(100% - 2.4em);
+    padding: 0.7em 1em;
+    border-radius: 0.7em;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    font-weight: 700;
+    box-shadow: var(--site-shadow-lg);
+    opacity: 0;
+    transform: translateY(1em);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.conti-demo.s10 .cd-toast {
+    opacity: 1;
+    transform: none;
+}
+
+// ══ Escanear un documento ════════════════════════════════════════════════
+
+.sd-stage {
+    position: relative;
+    aspect-ratio: 5 / 4;
+    font-size: clamp(8px, 2.25cqi, 13px);
+    line-height: 1.35;
+}
+
+.sd-laptop {
+    position: absolute;
+    top: 4%;
+    left: 0;
+    width: 77%;
+}
+
+.sd-screen {
+    position: relative;
+    aspect-ratio: 16 / 10.4;
+    overflow: hidden;
+    border: 0.6em solid var(--site-deep);
+    border-bottom-width: 0.9em;
+    border-radius: 0.9em 0.9em 0.3em 0.3em;
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
+    color: var(--color-text);
+    box-shadow: var(--site-shadow-lg);
+}
+
+.sd-base {
+    width: 112%;
+    height: 0.9em;
+    margin-left: -6%;
+    border-radius: 0 0 0.9em 0.9em;
+    background: color-mix(in srgb, var(--site-deep) 75%, var(--color-text-muted));
+}
+
+.sd-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    font-size: 1em;
+}
+
+// El modal que muestra el QR.
+.sd-modal,
+.sd-form {
+    position: absolute;
+    inset: 6% 16% 6% 6%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55em;
+    padding: 0.9em 1em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.7em;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.sd-modal {
+    align-items: center;
+    text-align: center;
+}
+
+.sd-modal small {
+    color: var(--color-text-muted);
+    font-size: 0.8em;
+}
+
+.sd-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
+    padding: 0.35em 0.7em;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+    border-radius: 0.5em;
+    background: var(--color-primary-soft);
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.sd-choice-check {
+    color: var(--color-success);
+}
+
+.sd-qr {
+    display: block;
+    width: 38%;
+    max-width: 11em;
+}
+
+// Un QR es negro sobre blanco en cualquier modo, como lo lee una cámara.
+.demo-qr {
+    display: block;
+    width: 100%;
+    height: auto;
+    fill: #000;
+}
+
+.demo-qr-bg {
+    fill: #fff;
+}
+
+.scan-demo.s4 .sd-modal {
+    opacity: 0;
+    transform: scale(0.96);
+}
+
+// El formulario que llega a la computadora.
+.sd-form {
+    gap: 0.35em;
+    opacity: 0;
+    transform: scale(0.98);
+}
+
+.scan-demo.s4 .sd-form {
+    opacity: 1;
+    transform: none;
+}
+
+.sd-field {
+    display: grid;
+    grid-template-columns: 6.5em minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.22em 0.5em;
+    border: 1px solid var(--color-control-border);
+    border-radius: 0.4em;
+    font-size: 0.84em;
+}
+
+.sd-field small {
+    color: var(--color-text-muted);
+}
+
+.sd-field b {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sd-field b,
+.sd-field em {
+    opacity: 0;
+}
+
+// demo-pop solo trae el «desde»: el «hasta» es la opacidad del elemento, que
+// tiene que ser 1 o el valor termina invisible.
+.scan-demo.s5 .sd-field b,
+.scan-demo.s5 .sd-field em {
+    opacity: 1;
+    animation: demo-pop 0.35s ease both;
+    animation-delay: calc(var(--i) * 260ms);
+}
+
+.sd-note {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    margin: 0.2em 0 0;
+    color: color-mix(in srgb, var(--color-info) 80%, var(--color-text));
+    font-size: 0.8em;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.scan-demo.s6 .sd-note {
+    opacity: 1;
+}
+
+// El teléfono.
+.sd-phone {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 27%;
+    aspect-ratio: 9 / 18.5;
+    padding: 0.45em;
+    border-radius: 1.7em;
+    background: var(--site-deep);
+    box-shadow: var(--site-shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    opacity: 0;
+    transform: translateY(18%) rotate(4deg);
+    transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.scan-demo.s1 .sd-phone {
+    opacity: 1;
+    transform: rotate(-3deg);
+}
+
+.sd-phone-screen {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 1.3em;
+    background: rgba(0, 0, 0, 0.88);
+}
+
+.sd-camera {
+    position: absolute;
+    inset: 12% 8% 22%;
+}
+
+// La factura que ve la cámara: papel blanco, siempre.
+.sd-paper {
+    position: absolute;
+    inset: 4% 6%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45em;
+    padding: 0.8em 0.7em;
+    border-radius: 0.3em;
+    background: #fff;
+    color: #1a2233;
+    font-size: 0.72em;
+    transform: rotate(-2deg);
+    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.4);
+}
+
+.sd-paper b {
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sd-paper i {
+    display: block;
+    height: 0.5em;
+    border-radius: 0.2em;
+    background: #d9dce3;
+}
+
+.sd-paper i.is-short {
+    width: 60%;
+}
+
+.sd-paper-rows {
+    display: grid;
+    gap: 0.35em;
+    margin-top: 0.4em;
+    padding-top: 0.5em;
+    border-top: 1px dashed #c4c8d2;
+}
+
+.sd-paper-total {
+    margin-top: auto;
+    font-weight: 800;
+    text-align: right;
+}
+
+.sd-corners {
+    position: absolute;
+    inset: 0;
+    border: 0.2em solid var(--color-accent);
+    border-radius: 0.6em;
+    -webkit-mask:
+        linear-gradient(#000 0 0) top left / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) top right / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) bottom left / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) bottom right / 22% 22% no-repeat;
+    mask:
+        linear-gradient(#000 0 0) top left / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) top right / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) bottom left / 22% 22% no-repeat,
+        linear-gradient(#000 0 0) bottom right / 22% 22% no-repeat;
+}
+
+.sd-scanline {
+    position: absolute;
+    left: 3%;
+    right: 3%;
+    top: 4%;
+    height: 0.18em;
+    border-radius: 999px;
+    background: var(--color-accent);
+    box-shadow: 0 0 0.8em 0.15em color-mix(in srgb, var(--color-accent) 70%, transparent);
+    opacity: 0;
+}
+
+.scan-demo.s2:not(.s3) .sd-scanline {
+    opacity: 1;
+    animation: sd-scan 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes sd-scan {
+    to { top: 94%; }
+}
+
+.sd-flash {
+    position: absolute;
+    inset: -20%;
+    background: #fff;
+    opacity: 0;
+}
+
+.scan-demo.s3 .sd-flash {
+    animation: sd-flash 0.6s ease-out both;
+}
+
+@keyframes sd-flash {
+    0% { opacity: 0; }
+    15% { opacity: 0.9; }
+    100% { opacity: 0; }
+}
+
+.sd-shutter {
+    position: absolute;
+    left: 50%;
+    bottom: 6%;
+    display: grid;
+    place-items: center;
+    width: 3.2em;
+    height: 3.2em;
+    margin-left: -1.6em;
+    border: 0.25em solid rgba(255, 255, 255, 0.85);
+    border-radius: 50%;
+}
+
+.sd-shutter span {
+    width: 2.2em;
+    height: 2.2em;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.92);
+    transition: transform 0.15s ease;
+}
+
+.scan-demo.s3:not(.s4) .sd-shutter span {
+    transform: scale(0.82);
+}
+
+.sd-sent {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    padding: 1em;
+    background: var(--color-surface);
+    color: var(--color-text);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.sd-sent svg.lucide {
+    width: 2.6em;
+    height: 2.6em;
+    color: var(--color-success);
+}
+
+.sd-sent small {
+    color: var(--color-text-muted);
+    font-size: 0.82em;
+}
+
+.scan-demo.s4 .sd-sent {
+    opacity: 1;
+}
+
+// ══ Código de barras ═════════════════════════════════════════════════════
+
+.barcode-demo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.9rem 1.1rem;
+    margin-top: 1.75rem;
+    padding: 0.95rem;
+    border: 1px dashed var(--color-control-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+}
+
+.site-section:not(.is-alt) .barcode-demo {
+    background: var(--color-surface);
+}
+
+// Un código de barras siempre negro sobre blanco, también en el modo
+// oscuro: así lo lee un lector (CLAUDE.md secc. 33).
+.bd-label {
+    position: relative;
+    flex-shrink: 0;
+    width: 10rem;
+    padding: 0.6rem 0.75rem 0.35rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.45rem;
+    background: #fff;
+    overflow: hidden;
+}
+
+.bd-bars {
+    display: block;
+    width: 100%;
+    height: 3.2rem;
+    fill: #000;
+}
+
+.bd-digits {
+    display: block;
+    margin-top: 0.2rem;
+    color: #000;
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-align: center;
+}
+
+.bd-laser {
+    position: absolute;
+    left: -4%;
+    right: -4%;
+    top: 12%;
+    height: 2px;
+    background: var(--color-danger);
+    box-shadow: 0 0 6px 1px var(--color-danger);
+    opacity: 0;
+}
+
+.barcode-demo.s1:not(.s2) .bd-laser {
+    opacity: 1;
+    animation: bd-sweep 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes bd-sweep {
+    to { top: 70%; }
+}
+
+.bd-result {
+    display: flex;
+    flex: 1 1 13rem;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    opacity: 0.25;
+    filter: grayscale(1);
+    transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+.barcode-demo.s2 .bd-result {
+    opacity: 1;
+    filter: none;
+}
+
+.bd-result-icon {
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-primary-soft);
+    color: color-mix(in srgb, var(--color-primary) 78%, var(--color-text));
+}
+
+.bd-result-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.bd-result-text b,
+.bd-result-text small {
+    display: block;
+}
+
+.bd-result-text b {
+    font-size: 0.95rem;
+}
+
+.bd-result-text small {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+}
+
+.bd-result-check {
+    flex-shrink: 0;
+    color: var(--color-success);
+}
+
+.barcode-demo svg.lucide {
+    width: 18px;
+    height: 18px;
+}
+
+// ══ Factura electrónica ══════════════════════════════════════════════════
+
+.ei-card {
+    padding: 1.4em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    font-size: clamp(11px, 2.55cqi, 14.5px);
+    line-height: 1.4;
+    box-shadow: var(--site-shadow-lg);
+}
+
+.ei-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6em;
+}
+
+.ei-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
+    font-weight: 700;
+}
+
+.ei-status em {
+    display: none;
+    align-items: center;
+    padding: 0.2em 0.7em;
+    border-radius: 999px;
+    font-size: 0.8em;
+    font-style: normal;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.ei-status .is-signed { background: var(--color-info-soft); color: var(--color-info); }
+.ei-status .is-sending,
+.ei-status .is-processing { background: var(--color-warning-soft); color: var(--color-warning); }
+.ei-status .is-accepted { background: var(--color-success-soft); color: var(--color-success); }
+
+// Un solo estado a la vez: el del último paso alcanzado.
+.einvoice-demo:not(.s1) .is-signed,
+.einvoice-demo.s1:not(.s2) .is-signed,
+.einvoice-demo.s2:not(.s3) .is-sending,
+.einvoice-demo.s3:not(.s4) .is-processing,
+.einvoice-demo.s4 .is-accepted {
+    display: inline-flex;
+}
+
+.ei-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
+    gap: 0.8em;
+    margin: 1.1em 0 1.3em;
+    padding: 0.85em 1em;
+    border-radius: 0.6em;
+    background: var(--color-bg);
+}
+
+.ei-meta small,
+.ei-meta b {
+    display: block;
+}
+
+.ei-meta small {
+    color: var(--color-text-muted);
+    font-size: 0.78em;
+}
+
+.ei-meta b {
+    overflow: hidden;
+    font-size: 0.92em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@container (max-width: 420px) {
+    .ei-meta {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .ei-meta span:first-child {
+        grid-column: 1 / -1;
+    }
+}
+
+.ei-steps {
+    position: relative;
+    display: grid;
+    gap: 1em;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    --progress: 0;
+}
+
+// La línea que une los pasos, y la que avanza.
+.ei-steps::before,
+.ei-steps::after {
+    content: '';
+    position: absolute;
+    top: 1.1em;
+    left: 1.05em;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--color-border);
+    height: calc(100% - 2.2em);
+}
+
+.ei-steps::after {
+    background: var(--color-success);
+    transform-origin: top;
+    transform: scaleY(var(--progress));
+    transition: transform 0.7s ease;
+}
+
+.einvoice-demo.s2 .ei-steps { --progress: 0.25; }
+.einvoice-demo.s3 .ei-steps { --progress: 0.5; }
+.einvoice-demo.s4 .ei-steps { --progress: 0.75; }
+.einvoice-demo.s5 .ei-steps { --progress: 1; }
+
+.ei-step {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    color: var(--color-text-muted);
+    transition: color 0.3s ease;
+}
+
+.ei-dot {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+    width: 2.1em;
+    height: 2.1em;
+    border: 2px solid var(--color-border);
+    border-radius: 50%;
+    background: var(--color-surface);
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.ei-dot svg.lucide {
+    width: 1.05em;
+    height: 1.05em;
+}
+
+.ei-text b,
+.ei-text small {
+    display: block;
+}
+
+.ei-text small {
+    font-size: 0.82em;
+}
+
+@for $i from 1 through 5 {
+    .einvoice-demo.s#{$i} .ei-step:nth-child(#{$i}) {
+        color: var(--color-text);
+    }
+
+    .einvoice-demo.s#{$i} .ei-step:nth-child(#{$i}) .ei-dot {
+        border-color: var(--color-success);
+        background: var(--color-success);
+        color: var(--color-surface);
+    }
+
+    .einvoice-demo.s#{$i} .ei-step:nth-child(#{$i}) small {
+        color: var(--color-text-muted);
+    }
+}
+
+// «En proceso»: el reloj de arena gira mientras Hacienda no responde.
+.einvoice-demo.s3:not(.s4) .ei-step:nth-child(3) .ei-dot {
+    border-color: var(--color-warning);
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
+}
+
+.einvoice-demo.s3:not(.s4) .ei-step:nth-child(3) .ei-dot svg {
+    animation: demo-spin 1.4s linear infinite;
+}
+
+// ══ Reporte ══════════════════════════════════════════════════════════════
+
+.rd-card {
+    padding: 1.4em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    font-size: clamp(11px, 2.5cqi, 14.5px);
+    line-height: 1.4;
+    box-shadow: var(--site-shadow-lg);
+}
+
+.rd-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8em;
+    margin-bottom: 1.2em;
+}
+
+.rd-head b,
+.rd-head small {
+    display: block;
+}
+
+.rd-head b {
+    font-size: 1.12em;
+}
+
+.rd-head small {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+}
+
+.rd-exports {
+    display: inline-flex;
+    gap: 0.4em;
+}
+
+.rd-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    padding: 0.35em 0.7em;
+    border: 1px solid var(--color-border);
+    border-radius: 0.45em;
+    font-size: 0.82em;
+    font-weight: 700;
+}
+
+.rd-lines {
+    display: grid;
+    gap: 0.75em;
+}
+
+.rd-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25em 1em;
+}
+
+.rd-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rd-amount {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.rd-line.is-subtotal .rd-label,
+.rd-line.is-total .rd-label,
+.rd-line.is-total .rd-amount {
+    font-weight: 800;
+}
+
+.rd-bar {
+    grid-column: 1 / -1;
+    height: 0.55em;
+    border-radius: 999px;
+    background: var(--color-surface-alt);
+    overflow: hidden;
+}
+
+.rd-bar i {
+    display: block;
+    width: var(--w);
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-primary);
+    transform-origin: left;
+}
+
+.rd-line.is-cost .rd-bar i { background: var(--color-accent); }
+.rd-line.is-subtotal .rd-bar i { background: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface)); }
+.rd-line.is-total .rd-bar i { background: var(--color-success); }
+
+.js .is-visible .rd-bar i {
+    animation: rd-grow 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(var(--i) * 120ms + 0.25s);
+}
+
+@keyframes rd-grow {
+    from { transform: scaleX(0); }
+}
+
+.rd-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5em 1em;
+    margin-top: 1.2em;
+    padding-top: 0.9em;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.82em;
+}
+
+.rd-foot span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    color: var(--color-success);
+    font-weight: 700;
+}
+
+// ══ Temas y cambio de compañía ═══════════════════════════════════════════
+
+.themes-demo {
+    display: grid;
+    gap: 0.9rem;
+}
+
+// data-company-theme pinta la maqueta con la paleta y la letra del tema.
+.td-preview {
+    position: relative;
+    display: grid;
+    grid-template-columns: 3.1em minmax(0, 1fr);
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg);
+    background-image: var(--marble-texture);
+    color: var(--color-text);
+    font-size: clamp(8.5px, 2.3cqi, 13.5px);
+    line-height: 1.35;
+    box-shadow: var(--site-shadow-lg);
+    transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.td-preview svg.lucide {
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.td-sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45em;
+    padding: 0.85em 0;
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
+    transition: background-color 0.4s ease;
+}
+
+.td-brand {
+    display: inline-grid;
+    place-items: center;
+    width: 2.1em;
+    height: 2.1em;
+    margin-bottom: 0.5em;
+    padding: 0.3em;
+    border-radius: 0.5em;
+    background: #fff;
+}
+
+.td-brand img,
+.td-switch-mark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.td-nav {
+    display: inline-grid;
+    place-items: center;
+    width: 2.2em;
+    height: 2.2em;
+    border-radius: var(--radius-sm);
+    color: rgba(244, 246, 250, 0.7);
+}
+
+.td-nav.is-active {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--color-on-sidebar);
+    box-shadow: inset 0.18em 0 0 var(--color-accent);
+}
+
+.td-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.td-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8em;
+    padding: 0.75em 1em;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+.td-company {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    min-width: 0;
+    padding: 0.3em 0.7em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.td-company span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.td-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.75em;
+    padding: 0.9em 1em;
+}
+
+.td-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7em;
+}
+
+.td-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+    padding: 0.7em 0.85em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+}
+
+.td-card small {
+    color: var(--color-text-muted);
+    font-size: 0.8em;
+}
+
+.td-card b {
+    font-size: 1.1em;
+    font-variant-numeric: tabular-nums;
+}
+
+.td-progress {
+    height: 0.4em;
+    margin-top: 0.3em;
+    border-radius: 999px;
+    background: var(--color-surface-alt);
+    overflow: hidden;
+}
+
+.td-progress i {
+    display: block;
+    width: 72%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+}
+
+.td-progress.is-short i {
+    width: 38%;
+}
+
+.td-table {
+    display: grid;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    overflow: hidden;
+}
+
+.td-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    padding: 0.5em 0.85em;
+    font-size: 0.86em;
+}
+
+.td-row + .td-row {
+    border-top: 1px solid var(--color-border);
+}
+
+.td-row span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.td-row em {
+    padding: 0.12em 0.55em;
+    border-radius: 999px;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    font-size: 0.78em;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.td-row em.is-draft {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+}
+
+.td-button {
+    align-self: flex-end;
+    margin-top: auto;
+    padding: 0.45em 0.95em;
+    border-radius: var(--radius-sm);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-size: 0.86em;
+    font-weight: 700;
+}
+
+// La ventana del cambio de compañía (CLAUDE.md secc. 30), con el tema de la
+// compañía a la que se va.
+.td-switch {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    padding: 1em;
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
+    font-family: var(--font-sans);
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.td-preview.is-switching .td-switch {
+    opacity: 1;
+}
+
+.td-switch-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 3em;
+    height: 3em;
+    margin-bottom: 0.6em;
+    padding: 0.45em;
+    border-radius: 0.8em;
+    background: #fff;
+    box-shadow: 0 0 0 0.3em color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.td-switch small {
+    color: rgba(244, 246, 250, 0.72);
+}
+
+.td-switch b {
+    font-size: 1.35em;
+}
+
+.td-switch-bar {
+    width: min(60%, 12em);
+    height: 0.3em;
+    margin-top: 0.8em;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    overflow: hidden;
+}
+
+.td-switch-bar i {
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-accent);
+    animation: td-progress 1s ease-in-out infinite;
+}
+
+@keyframes td-progress {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(250%); }
+}
+
+// Las muestras de los diez temas: cada una lleva su data-company-theme, así
+// sus colores son los del tema. La letra queda la del sitio, para no bajar
+// diez tipografías.
+.td-swatches {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+@media (max-width: 420px) {
+    .td-swatches {
+        grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+    }
+}
+
+.themes-demo .td-swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.75rem;
+    padding: 0.55rem 0.3rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--site-font);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.themes-demo .td-swatch:hover {
+    transform: translateY(-2px);
+}
+
+.themes-demo .td-swatch:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.themes-demo .td-swatch[aria-pressed="true"] {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.td-swatch-colors {
+    display: flex;
+}
+
+.td-swatch-colors i {
+    width: 1.15rem;
+    height: 1.15rem;
+    border: 2px solid var(--color-surface);
+    border-radius: 50%;
+}
+
+.td-swatch-colors .is-primary {
+    background: var(--color-primary);
+}
+
+.td-swatch-colors .is-accent {
+    margin-left: -0.4rem;
+    background: var(--color-accent);
+}
+
+// ══ Movimiento reducido ══════════════════════════════════════════════════
+
+@media (prefers-reduced-motion: reduce) {
+    .demo *,
+    .demo *::before,
+    .demo *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

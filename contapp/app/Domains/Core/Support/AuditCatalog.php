@@ -5,6 +5,7 @@ namespace App\Domains\Core\Support;
 use App\Domains\Accounting\Models as A;
 use App\Domains\Banking\Models as Bank;
 use App\Domains\Billing\Models as Bill;
+use App\Domains\Blog\Models as Blog;
 use App\Domains\BusinessPartners\Models as Bp;
 use App\Domains\Conti\Models as Conti;
 use App\Domains\Core\Models as Core;
@@ -12,6 +13,7 @@ use App\Domains\Feedback\Models as Feedback;
 use App\Domains\Inventory\Models as Inv;
 use App\Domains\Licensing\Models as Lic;
 use App\Domains\Payroll\Models as Pay;
+use App\Domains\Pricing\Models as Pricing;
 use App\Domains\Reporting\Models as Rep;
 use App\Domains\Repository\Models as Repo;
 use App\Domains\Tax\Models as Tax;
@@ -191,6 +193,15 @@ final class AuditCatalog
         Feedback\NewsPost::class => 'Comentarios y noticias son de Pivox, no de la compañía.',
         Repo\RepositoryFolder::class => 'El Repositorio es de Pivox: lo arma el backoffice.',
         Repo\RepositoryDocument::class => 'El Repositorio es de Pivox: lo arma el backoffice.',
+        Blog\BlogPost::class => 'El blog es del sitio público de Pivox: lo escribe el backoffice.',
+        Blog\BlogCategory::class => 'El blog es del sitio público de Pivox: lo escribe el backoffice.',
+        Blog\BlogImage::class => 'El blog es del sitio público de Pivox: lo escribe el backoffice.',
+        Blog\BlogPostSlug::class => 'El blog es del sitio público de Pivox: lo escribe el backoffice.',
+        Pricing\PricingSetting::class => 'Planes y precios: backoffice, con su propia bitácora.',
+        Pricing\PricingFeature::class => 'Planes y precios: backoffice, con su propia bitácora.',
+        Pricing\PricingPackage::class => 'Planes y precios: backoffice, con su propia bitácora.',
+        Pricing\LicenseRequest::class => 'Las solicitudes de licencia son del backoffice, con su propia bitácora.',
+        Pricing\LicenseRequestReply::class => 'Las solicitudes de licencia son del backoffice, con su propia bitácora.',
         Lic\CommercialFollowUp::class => 'Backoffice: tiene su propia bitácora.',
         Lic\CommercialInteraction::class => 'Backoffice: tiene su propia bitácora.',
         Lic\CommercialProfile::class => 'Backoffice: tiene su propia bitácora.',

@@ -1,0 +1,18 @@
+// El sitio público de Pivox (CLAUDE.md secc. 40): la landing, el blog y los
+// planes. Se carga DESPUÉS de app.scss, que trae los tokens del tema Marino,
+// el modo oscuro, los botones, los campos y los íconos de Lucide desde CSS.
+// Acá va solo lo propio del sitio, con los mismos tokens: ningún color fijo
+// que no cambie con el modo oscuro.
+//
+// La regla de «contenedores a todo el ancho» (secc. 25) es de las pantallas
+// de la aplicación: el sitio lleva un ancho de lectura (.site-container, y
+// ~70 caracteres en un artículo), igual que el marco de AuthShell.
+
+@use 'site/base';
+@use 'site/header';
+@use 'site/home';
+@use 'site/mock';
+@use 'site/demos';
+@use 'site/blog';
+@use 'site/pricing';
+@use 'site/footer';

@@ -1,0 +1,247 @@
+// La barra de arriba del sitio y su cajón de menú en pantallas angostas.
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+    -webkit-backdrop-filter: saturate(1.5) blur(12px);
+    backdrop-filter: saturate(1.5) blur(12px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.site-header.is-scrolled {
+    border-bottom-color: var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.site-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    min-height: var(--site-header-height);
+}
+
+.site-brand {
+    display: inline-flex;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+}
+
+// El logo para fondos claros y el blanco para el modo oscuro.
+.site-logo {
+    display: block;
+    width: auto;
+    height: 30px;
+}
+
+.site-logo.is-on-dark {
+    display: none;
+}
+
+:root[data-theme="dark"] {
+    .site-logo.is-on-light { display: none; }
+    .site-logo.is-on-dark { display: block; }
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        .site-logo.is-on-light { display: none; }
+        .site-logo.is-on-dark { display: block; }
+    }
+}
+
+.site-nav {
+    display: flex;
+    gap: 0.2rem;
+    margin-left: 0.5rem;
+}
+
+.site-nav-link {
+    padding: 0.45rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: 0.93rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.site-nav-link:hover,
+.site-nav-link.is-active {
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+}
+
+.site-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.site-icon-button {
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.site-icon-button:hover {
+    background: var(--color-surface-alt);
+}
+
+.site-icon-button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+// La luna en claro y el sol en oscuro, como el botón de la aplicación.
+.site-theme-toggle .is-sun {
+    display: none;
+}
+
+:root[data-theme="dark"] .site-theme-toggle {
+    .is-moon { display: none; }
+    .is-sun { display: block; }
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .site-theme-toggle {
+        .is-moon { display: none; }
+        .is-sun { display: block; }
+    }
+}
+
+.site-menu-button {
+    display: none;
+}
+
+@media (max-width: 960px) {
+    .site-nav,
+    .site-header-login {
+        display: none;
+    }
+
+    .site-menu-button {
+        display: inline-grid;
+    }
+}
+
+@media (max-width: 480px) {
+    .site-header-cta {
+        display: none;
+    }
+
+    .site-logo {
+        height: 26px;
+    }
+}
+
+// ── Cajón del menú ───────────────────────────────────────────────────────
+
+.site-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+}
+
+.site-drawer[hidden] {
+    display: none;
+}
+
+.site-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    animation: site-fade-in 0.2s ease;
+}
+
+.site-drawer-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    width: min(22rem, 88vw);
+    padding: 1rem;
+    overflow-y: auto;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+    animation: site-slide-in 0.25s ease;
+}
+
+.site-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.site-drawer-head .site-logo {
+    height: 26px;
+}
+
+.site-drawer-nav {
+    display: flex;
+    flex-direction: column;
+}
+
+.site-drawer-nav a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 0.4rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 1.02rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.site-drawer-nav a.is-active {
+    color: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+}
+
+.site-drawer-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.site-drawer-actions .btn {
+    width: 100%;
+}
+
+.site-drawer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.25rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+@keyframes site-fade-in {
+    from { opacity: 0; }
+}
+
+@keyframes site-slide-in {
+    from { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-drawer-backdrop,
+    .site-drawer-panel {
+        animation: none;
+    }
+}
