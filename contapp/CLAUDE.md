@@ -940,3 +940,16 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - **Responder:** asunto y texto precargados, y si va el resumen de la cotización. `LicenseRequestReplyNotification` tiene como responder-a el correo de contacto. Cada respuesta queda en `license_request_replies` con su estado; si el correo no sale, se anota el error y la solicitud sigue nueva.
   - **Descartar** (con una nota interna) y **Reabrir**. Todo va a la bitácora del Propietario (`license_request_*`).
 - **Pruebas:** `tests/Feature/Pricing`; `pricingCatalogFixture()` y `requestPayload()` están en su `helpers.php`.
+
+## 43. PRODUCCIÓN: HOSTINGER, DESDE GITHUB, CON CADA PUSH A MAIN
+
+**Regla:** producción es el hosting compartido (o Cloud) de Hostinger: sin Docker, sin procesos que queden corriendo y sin Node. Cada push a `main` lo despliega GitHub Actions (`.github/workflows/deploy.yml`, en la raíz del repositorio; la aplicación está en `contapp/`), y también se despliega a mano con `scripts/hostinger/deploy.sh`. La guía paso a paso es `docs/produccion.md`; lo que sigue es lo que un cambio nuevo tiene que respetar.
+
+- **Lo que llega al servidor es la rama `production`:** el código de `main` más `public/build`, que compila Actions. Se arma sola en cada despliegue y nunca se toca a mano, ni se edita código en el servidor. Si las pruebas fallan, no se despliega.
+- **El servidor no compila nada:** el frontend llega hecho y las dependencias de PHP se instalan con `--no-dev`. Algo que necesite Node, o un paquete de desarrollo, en producción no está.
+- **La configuración va en caché** (`artisan optimize` en el despliegue): **nada fuera de `config/` lee `env()`**, porque devolvería null. Un cambio en el `.env` del servidor pide volver a desplegar. En Docker, nunca `config:cache` (el entrypoint explica por qué).
+- **Las colas las atiende el programador** (`QUEUE_WORKERS_IN_SCHEDULER=true`, `config/queue.php`): cada minuto, un worker por cola que la vacía y termina (`routes/console.php`). Algo que se encole en una cola nueva se suma a la lista de `routes/console.php` y, para desarrollo, como servicio en `docker-compose.yml` (hoy: `hacienda`, `default` y `backups`). Lo encolado puede tardar hasta un minuto, y un trabajo muy largo puede cortarlo Hostinger.
+- **Lo programado lo corre el cron de hPanel** (`schedule:run` cada minuto): un `Schedule::command` nuevo no necesita nada más.
+- **La IP y el HTTPS del visitante** salen de `X-Forwarded-For` y `X-Forwarded-Proto`, creídos solo si vienen de la red interna o de Cloudflare (`config/trustedproxy.php`). Nunca `'*'`: en Laravel 13 confía en cualquiera y deja inventar la IP, y con ella saltarse los límites por IP. Pruebas: `tests/Feature/Http/TrustedProxiesTest.php`.
+- **Lo que no está en git ni en la base** (los documentos de `public/repositories` y el `.env`) lo respalda `scripts/hostinger/backup.sh` junto con la base. Si aparece otra carpeta así, se suma ahí.
+- **Una migración tiene que andar en MariaDB** (la que suele dar Hostinger), además de MySQL 8 (Docker) y SQLite (pruebas): nada de SQL propio de un motor.

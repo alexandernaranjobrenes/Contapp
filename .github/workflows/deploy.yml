@@ -1,0 +1,119 @@
+# Despliegue a Hostinger (docs/produccion.md).
+#
+# Cada push a main: compila el frontend, corre las pruebas, deja el resultado
+# en la rama «production» (el código de main más public/build, porque en el
+# hosting no hay Node) y entra por SSH a Hostinger a correr
+# scripts/hostinger/deploy.sh. También se lanza a mano: Actions → «Desplegar a
+# Hostinger» → Run workflow. Y por SSH, en el servidor, con el mismo script.
+#
+# Secretos del repositorio (Settings → Secrets and variables → Actions):
+#   HOSTINGER_SSH_HOST, HOSTINGER_SSH_PORT (en Hostinger, 65002),
+#   HOSTINGER_SSH_USER (u123456789), HOSTINGER_SSH_KEY (la llave privada) y
+#   HOSTINGER_APP_PATH (la carpeta de Laravel en el servidor:
+#   /home/u123456789/domains/pivoxcr.com/pivox/contapp).
+#   Opcional: HOSTINGER_SSH_KNOWN_HOSTS (lo que da ssh-keyscan -p 65002 IP).
+# Variable opcional: HOSTINGER_PHP_BIN, si el php del servidor no es el del PATH.
+# Sin los secretos, arma la rama production y no despliega.
+
+name: Desplegar a Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: Saltar las pruebas (solo para una urgencia)
+        type: boolean
+        default: false
+
+# Un despliegue a la vez: uno nuevo espera a que termine el anterior.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+permissions:
+  contents: write # para empujar la rama production
+
+env:
+  # La misma versión que en hPanel → Avanzado → Configuración de PHP.
+  PHP_VERSION: '8.4'
+
+# La aplicación vive en la carpeta contapp/ del repositorio.
+defaults:
+  run:
+    working-directory: contapp
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: contapp/package-lock.json
+
+      - name: Compilar el frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: bcmath, exif, gd, intl, mbstring, pdo_sqlite, sodium, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Dependencias de PHP
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Las pruebas usan SQLite en memoria (phpunit.xml): no tocan nada real.
+      - name: Pruebas
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          vendor/bin/pest
+
+      - name: Armar la rama production
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B production
+          git add -f public/build # contapp/public/build
+          git commit -m "Despliegue de ${GITHUB_SHA::7}: $(git log -1 --format=%s "$GITHUB_SHA")"
+          git push -f origin production
+
+      - name: Desplegar en Hostinger
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_SSH_KNOWN_HOSTS }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PHP_BIN: ${{ vars.HOSTINGER_PHP_BIN }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_KEY" ] || [ -z "$APP_PATH" ]; then
+            echo "::warning::Faltan los secretos de Hostinger: la rama production quedó lista, pero no se desplegó (docs/produccion.md)."
+            exit 0
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/hostinger
+          chmod 600 ~/.ssh/hostinger
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${SSH_PORT:-22}" "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+
+          # El script del commit que se despliega, no el que ya está en el servidor.
+          ssh -i ~/.ssh/hostinger -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_PATH='$APP_PATH' PHP_BIN='$PHP_BIN' bash -s" < scripts/hostinger/deploy.sh

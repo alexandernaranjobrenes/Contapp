@@ -50,13 +50,35 @@ services:
 
   # La cola «backups»: importar un respaldo (CLAUDE.md secc. 37) puede
   # tardar, y corre aparte de la pantalla. Solo esa cola: lo demás que se
-  # encola (los comprobantes de pago por correo) sigue como estaba.
+  # encola va a «default», que atiende queue-default.
   queue:
     image: contapp-app
     container_name: contapp_queue
     restart: unless-stopped
     working_dir: /var/www/html
     entrypoint: ["php", "artisan", "queue:work", "--queue=backups", "--tries=1", "--timeout=3600", "--sleep=3", "--memory=512"]
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro
+      - contapp_vendor:/var/www/html/vendor
+    depends_on:
+      - app
+    networks:
+      - contapp
+
+  # La cola «default»: lo que se encola sin una cola propia, hoy los
+  # comprobantes de pago por correo (PayslipController → PayslipMail). Sin
+  # este worker quedaban en la tabla jobs y nunca salían. Aparte de
+  # «backups», para que un respaldo grande no los detenga una hora. Un correo
+  # que falla se reintenta dos veces, con un minuto entre cada intento. El
+  # tiempo máximo queda por debajo del retry_after de la cola (90 s,
+  # config/queue.php): si no, un trabajo lento podría correr dos veces.
+  queue-default:
+    image: contapp-app
+    container_name: contapp_queue_default
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: ["php", "artisan", "queue:work", "--queue=default", "--tries=3", "--backoff=60", "--timeout=80", "--sleep=3", "--memory=256"]
     volumes:
       - .:/var/www/html
       - ./docker/php/php.ini:/usr/local/etc/php/conf.d/99-custom.ini:ro

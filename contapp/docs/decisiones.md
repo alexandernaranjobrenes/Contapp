@@ -3,6 +3,25 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-25 — Producción en Hostinger, desde GitHub
+
+**Pedido del usuario:** pasar Pivox a producción en el hosting compartido (o Cloud) de Hostinger, por medio de GitHub: hacer cambios en desarrollo y mandarlos a producción con un push, o a mano por SSH.
+
+**Qué se decidió** (CLAUDE.md secc. 43, guía en `docs/produccion.md`):
+- **Primero se preparó un VPS con Docker** (un `docker-compose.prod.yml` con túnel de Cloudflare). Se descartó antes de usarse: el plan es de hosting compartido, sin Docker ni root.
+- **GitHub Actions despliega con cada push a `main`:** compila el frontend, corre las pruebas (si fallan, no se despliega), arma la rama `production` (el código de `main` más `public/build`) y corre `scripts/hostinger/deploy.sh` por SSH.
+- **La rama `production` existe porque en el hosting no hay Node.** Llevar el frontend compilado en una rama aparte deja que el servidor despliegue con un `git reset` y que el despliegue a mano por SSH sea el mismo script, sin compilar nada. `main` sigue sin archivos compilados.
+- **El despliegue pone el sitio en mantenimiento, y si algo falla ahí queda:** para un sistema contable, mejor «en mantenimiento» que el código nuevo contra una base sin migrar.
+- **Las colas, desde el programador:** en un hosting compartido no puede quedar un worker corriendo. Con `QUEUE_WORKERS_IN_SCHEDULER`, el cron de `schedule:run` arranca cada minuto un worker por cola que la vacía y termina, de a uno por cola. En Docker sigue un servicio por cola.
+- **Un worker para la cola `default`, también en Docker:** los recibos de pago por correo se encolaban y ningún worker los atendía; nunca salían.
+- **Proxies de confianza con lista, no `'*'`:** en Laravel 13, `'*'` confía en todas las IPs, y cualquiera podía mandar su propio `X-Forwarded-For` y saltarse el límite de solicitudes de `/precios`. La lista es la red interna y los rangos publicados de Cloudflare.
+- **El respaldo propio, además del de Hostinger:** `scripts/hostinger/backup.sh` verifica el dump como `backup-db.ps1` y guarda también lo que no está en git ni en la base (los documentos del Repositorio y el `.env`). Las credenciales las da Laravel (`mysql-credentials.php`): leer el `.env` a mano no interpreta igual las comillas.
+
+**Pendiente:**
+- Hostinger suele dar MariaDB, y Pivox se probó en MySQL 8 y SQLite: recorrer lo principal después del primer despliegue.
+- Si se lleva la base de desarrollo, revisar la tabla `jobs` antes de que corra el cron (`docs/produccion.md`, paso 6): los recibos encolados en desarrollo se enviarían.
+
+---
 ## 2026-10-25 — Sitio público: landing, blog y planes y precios
 
 **Pedido del usuario:** la landing de Pivox con el estilo de la aplicación, que explique todo lo que hace, con animaciones (cómo funciona Conti, el escáner…) y responsiva. Un blog que se escriba desde el backoffice como en Word, con imágenes y portada, buen SEO y la opción de avisar cada artículo en Noticias, con las imágenes en el bucket de R2 como `blog/imag_{id}.{ext}`. Un botón «Solicitar licencia» que lleve a paquetes armados en el backoffice, que el visitante ajusta agregando o quitando funciones, por mes o por año; las solicitudes llegan al backoffice, que decide si las responde por correo.

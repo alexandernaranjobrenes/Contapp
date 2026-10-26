@@ -51,7 +51,10 @@ Lo que **no** conviene sincronizar es el directorio `.git` ni las carpetas
 
 ### Automatizarlo
 
-Programador de tareas de Windows, a diario:
+En producción (Hostinger) el respaldo es `scripts/hostinger/backup.sh`, con
+un cron diario de hPanel: ver `docs/produccion.md`, paso 9.
+
+En desarrollo, el Programador de tareas de Windows, a diario:
 
 ```
 Programa:   powershell.exe

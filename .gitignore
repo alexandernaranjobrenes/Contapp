@@ -1,0 +1,9 @@
+# Respaldos y bases de datos: nunca al repositorio. Llevan correos, hashes de
+# contraseñas, códigos de licencia y datos de clientes. Los respaldos van
+# fuera de git (contapp/docs/respaldos.md y contapp/docs/produccion.md).
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+/contapp/bdcontapp

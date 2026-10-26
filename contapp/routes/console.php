@@ -47,3 +47,25 @@ Schedule::command('pivox:sync-bccr-rates')
     ->twiceDaily(6, 13)
     ->timezone('America/Costa_Rica')
     ->withoutOverlapping();
+
+// Las colas en Hostinger (QUEUE_WORKERS_IN_SCHEDULER, config/queue.php): sin
+// procesos que queden corriendo, cada minuto arranca un worker por cola, que
+// vacía la cola y termina (--stop-when-empty; --max-time corta antes del
+// próximo minuto, terminado el trabajo en curso). Uno por cola a la vez: si
+// Hostinger mata uno, su candado vence a los minutos indicados. Las opciones,
+// las de los servicios de docker-compose.yml, donde esto queda apagado.
+$queueWorkers = [
+    // cola => [opciones, minutos del candado]
+    'hacienda' => ['--tries=1 --timeout=300', 10],
+    'default' => ['--tries=3 --backoff=60 --timeout=80', 10],
+    // Importar un respaldo de compañía puede tardar una hora.
+    'backups' => ['--tries=1 --timeout=3600', 70],
+];
+
+foreach ($queueWorkers as $queue => [$options, $lockMinutes]) {
+    Schedule::command("queue:work --queue={$queue} --stop-when-empty --max-time=50 {$options}")
+        ->everyMinute()
+        ->when(fn () => (bool) config('queue.workers_in_scheduler'))
+        ->withoutOverlapping($lockMinutes)
+        ->runInBackground();
+}

@@ -36,7 +36,7 @@ php artisan migrate --force
 php artisan route:cache
 
 # storage/ y bootstrap/cache/ los escriben también el programador y las colas
-# (scheduler, queue, queue-hacienda), que corren como root. Un archivo que
+# (scheduler, queue, queue-default, queue-hacienda), que corren como root. Un archivo que
 # crea root queda de root, y php-fpm (www-data) ya no lo puede escribir: el
 # error real de una página se tapa con «laravel.log: Permission denied». Se
 # devuelven a www-data en cada arranque (el route:cache de arriba también lo

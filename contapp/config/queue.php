@@ -126,4 +126,19 @@ return [
         'table' => 'failed_jobs',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Las colas desde el programador (docs/produccion.md)
+    |--------------------------------------------------------------------------
+    |
+    | En el hosting compartido de Hostinger no puede quedar un worker
+    | corriendo: con esto en true, el programador (el cron de schedule:run)
+    | arranca cada minuto un worker por cola, que trabaja hasta vaciarla y
+    | termina (routes/console.php). En Docker cada cola tiene su servicio
+    | (docker-compose.yml) y esto queda en false.
+    |
+    */
+
+    'workers_in_scheduler' => (bool) env('QUEUE_WORKERS_IN_SCHEDULER', false),
+
 ];
