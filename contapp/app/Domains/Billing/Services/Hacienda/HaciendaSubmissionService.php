@@ -228,7 +228,7 @@ class HaciendaSubmissionService
 
         $this->logExchange($document, 'submit', $response);
 
-        $document->transitionTo(ElectronicDocument::SUBMITTED, 'Recibido por Hacienda (HTTP '.$response->status.').', $userId, [
+        $document->transitionTo(ElectronicDocument::SUBMITTED, 'Recibido por Hacienda.', $userId, [
             'submitted_at' => now(),
             'poll_attempts' => 0,
             'hacienda_status' => 'recibido',

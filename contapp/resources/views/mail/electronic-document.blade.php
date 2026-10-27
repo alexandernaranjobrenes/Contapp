@@ -8,7 +8,7 @@
 Buen día{{ $customerName ? ', '.$customerName : '' }}:
 
 @if ($test)
-**Este es un comprobante de pruebas del ambiente sandbox de Hacienda: no tiene valor fiscal.**
+**Este es un comprobante del ambiente de pruebas de Hacienda: no tiene valor fiscal.**
 
 @endif
 Adjunto va el comprobante electrónico que le emitió **{{ $companyName }}**, aceptado por el Ministerio de Hacienda.

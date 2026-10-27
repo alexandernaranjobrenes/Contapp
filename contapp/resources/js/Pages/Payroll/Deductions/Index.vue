@@ -137,7 +137,7 @@ function installment(d) {
 
         <p class="hint">
             Un adelanto, un préstamo solidarista y un embargo son la misma cosa: un monto que se rebaja cada
-            período. Se aplican solas al calcular la planilla, en <strong>orden de prioridad</strong>, y el motor
+            período. Se aplican solas al calcular la planilla, en <strong>orden de prioridad</strong>, y el cálculo
             se detiene antes de dejar el neto en negativo: lo que no cabe queda como saldo para el período
             siguiente.
         </p>

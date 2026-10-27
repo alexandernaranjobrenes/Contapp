@@ -272,7 +272,7 @@ Mostrar en el pie de página, de forma discreta pero visible:
 - Referencia de la licencia (parcial/enmascarada) y su vigencia (fecha de vencimiento, no la fecha de emisión, que es la que le importa al usuario).
 - Versión de Pivox.
 
-**Versión confirmada: `v1.0.0`**, siguiendo versionado semántico (`MAJOR.MINOR.PATCH`), reservando:
+**Versión actual: `v1.0.1`** (la constante `PIVOX_VERSION` de `AppLayout.vue`, el único lugar donde aparece; se sube antes de pasar a producción), siguiendo versionado semántico (`MAJOR.MINOR.PATCH`), reservando:
 - `MAJOR` (1 → 2) para cambios que rompan compatibilidad o rediseños grandes (ej. migración a Inertia + Vue 3).
 - `MINOR` (1.0 → 1.1) para módulos nuevos (planillas, inventarios, facturación, compras, y este mismo módulo de licencias).
 - `PATCH` (1.0.0 → 1.0.1) para correcciones menores.
@@ -851,19 +851,20 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 ## 39. REPOSITORIO: DOCUMENTOS DE CONSULTA QUE SUBE EL BACKOFFICE, QUE CONTI CONSULTA Y LAS CUENTAS VEN COMO PDF
 
-**Regla:** el Repositorio son documentos de referencia (leyes, reglamentos, resoluciones de Hacienda, artículos) que el backoffice sube en Markdown y agrupa en carpetas. Cada uno tiene dos interruptores independientes: **Conti lo consulta** (`conti_enabled`) y **las cuentas lo ven** (`public_enabled`). Es de Pivox, global, sin compañía.
+**Regla:** el Repositorio (en pantalla, para las cuentas y el backoffice, se llama **Biblioteca**; en el código sigue siendo `Repository`) son documentos de referencia (leyes, reglamentos, resoluciones de Hacienda, artículos) que el backoffice sube en Markdown y agrupa en carpetas. Cada uno tiene dos interruptores independientes: **Conti lo consulta** (`conti_enabled`) y **las cuentas lo ven** (`public_enabled`). Es de Pivox, global, sin compañía.
 
 - **Dónde viven los archivos:** en el disco `repositories` (`public/repositories`, `config/filesystems.php`), como `{título}-{azar}.md`. Al reemplazar el archivo se pisa el mismo; al eliminar el documento, se borra. **No se sirven directo:** nginx devuelve 404 en `/repositories/` (`docker/nginx/conf.d/app.conf`) y la carpeta trae un `.htaccess` que niega todo. Se leen solo desde la aplicación, que respeta los interruptores. Un archivo editado a mano en la carpeta sale bien en el próximo PDF y en Conti.
 - **Tablas:** `repository_folders` (nombre único) y `repository_documents` (carpeta obligatoria, `file_updated_at` = cuándo se subió el archivo, lo que las cuentas ven como «Actualizado»). Una carpeta con documentos no se elimina. Las dos están en `BackupCatalog::EXCLUDED` y en `AuditCatalog::IGNORED`: no son de la compañía.
-- **Backoffice → Repositorio** (`Backoffice/RepositoryController`, `RepositoryFolderController`, `RepositoryService`; ícono `Library`):
+- **Backoffice → Biblioteca** (`Backoffice/RepositoryController`, `RepositoryFolderController`, `RepositoryService`; ícono `Library`):
   - **«Crear nuevo»** sube el `.md` (hasta 5 MB). Pide la carpeta, o «Nueva carpeta…» en el mismo formulario. Sin título, sale del primer encabezado del archivo, o del nombre del archivo. Un archivo en Windows-1252 se pasa a UTF-8; uno con bytes nulos no es texto y se rechaza.
   - **La ficha** tiene los dos interruptores, que se guardan al tocarlos, y «Ver PDF» (la vista previa, esté activo o no), «Descargar .md», «Editar» (título, carpeta, descripción, reemplazar el archivo) y «Eliminar».
   - **«Carpetas»** abre su ventana: crear, renombrar, eliminar las vacías.
-- **Las cuentas → Repositorio** (`RepositoryController`, `Pages/Repository/Index.vue`, en el menú lateral después de Impuestos):
+- **Las cuentas → Biblioteca** (`RepositoryController`, `Pages/Repository/Index.vue`; en el menú lateral, justo después del Panel; con el menú arriba, un ícono en la columna de la izquierda junto al tema, el ítem `tool` de `AppLayout.vue`):
   - **Para cualquier rol:** no es una pantalla de `ScreenCatalog` ni lleva `screen`.
   - **Solo los documentos visibles**, en sus carpetas (alfabéticas); una carpeta sin nada visible no aparece. Se busca y se filtra por carpeta en el navegador.
+  - **Las carpetas arrancan cerradas** y se abren al tocar su encabezado (un botón dentro del `h2`, con `aria-expanded`). Al buscar o elegir una carpeta se abren las que tienen resultados; al limpiar, se cierran.
   - **El PDF:** «Ver PDF» lo abre en otra pestaña y «Descargar» lo baja (`repository/{id}/pdf`, `?download=1`; límite de 30 por minuto). Uno oculto da 404.
-  - **Desde un enlace de Conti** (`/repository?document={id}`) la pantalla señala ese documento.
+  - **Desde un enlace de Conti** (`/repository?document={id}`) la pantalla abre su carpeta y señala ese documento.
 - **El PDF** (`RepositoryPdf`, `resources/views/repository/document.blade.php`):
   - **Contenido:** el Markdown en HTML (`Str::markdown` con `html_input: strip` y sin enlaces inseguros), sin imágenes (queda su texto alternativo) y sin el primer `#` si repite el título.
   - **Encabezado y pie:** el logo, la carpeta y la fecha arriba, y «Página N de M» abajo. Sin GD (el PHP del host), el logo sale como texto.

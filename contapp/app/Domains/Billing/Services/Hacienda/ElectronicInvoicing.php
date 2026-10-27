@@ -163,7 +163,7 @@ class ElectronicInvoicing
         }
 
         if (in_array($input->saleCondition, FiscalCatalogs::SALE_CONDITIONS_NOT_IN[$type] ?? [], true)) {
-            $errors[] = "La condición de venta «".FiscalCatalogs::SALE_CONDITIONS[$input->saleCondition]."» no existe en el XSD de «{$label}».";
+            $errors[] = "Hacienda no admite la condición de venta «".FiscalCatalogs::SALE_CONDITIONS[$input->saleCondition]."» en «{$label}».";
         }
 
         if ($input->saleCondition === '99' && mb_strlen(trim((string) $input->saleConditionOther)) < 5) {

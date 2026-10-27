@@ -24,8 +24,8 @@ const nav = [
     { label: 'Noticias', href: route('backoffice.news.index'), match: ['backoffice.news.*'], icon: NewspaperIcon },
     // El blog del sitio público (pivoxcr.com/blog).
     { label: 'Blog', href: route('backoffice.blog.index'), match: ['backoffice.blog.*'], icon: PenLineIcon },
-    // Los documentos de consulta que lee Conti y ven las cuentas (Repositorio).
-    { label: 'Repositorio', href: route('backoffice.repository.index'), match: ['backoffice.repository.*'], icon: LibraryIcon },
+    // Los documentos de consulta que lee Conti y ven las cuentas (la Biblioteca).
+    { label: 'Biblioteca', href: route('backoffice.repository.index'), match: ['backoffice.repository.*'], icon: LibraryIcon },
 ];
 
 function isCurrent(patterns) {

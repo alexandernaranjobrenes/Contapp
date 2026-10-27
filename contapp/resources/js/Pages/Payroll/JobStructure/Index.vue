@@ -227,8 +227,8 @@ const withoutOccupation = computed(
             <p class="hint small">
                 El <strong>código de ocupación de la CCSS</strong> va en el puesto y no en el trabajador:
                 todos los que ocupan el mismo puesto reportan la misma ocupación, así se llena una vez.
-                El catálogo de la Caja no viene cargado — son cientos de ocupaciones que cambian, y traerlas
-                de memoria sería inventarlas. {{ positions.length }} puesto(s).
+                Pivox no trae el catálogo de ocupaciones de la Caja (son cientos y cambian): el código se copia
+                del catálogo vigente de la CCSS. {{ positions.length }} puesto(s).
             </p>
 
             <div class="card">

@@ -184,7 +184,7 @@ function destroy() {
 
     confirmAction({
         title: 'Eliminar documento',
-        message: `«${document.title}» se borra del Repositorio, junto con su archivo: Conti deja de consultarlo y las cuentas de verlo. No se puede deshacer.`,
+        message: `«${document.title}» se borra de la Biblioteca, junto con su archivo: Conti deja de consultarlo y las cuentas de verlo. No se puede deshacer.`,
         confirmLabel: 'Eliminar',
         danger: true,
         onConfirm: () => router.delete(route('backoffice.repository.documents.destroy', document.id), {
@@ -262,9 +262,9 @@ function deleteFolder() {
 </script>
 
 <template>
-    <Head title="Repositorio" />
+    <Head title="Biblioteca" />
 
-    <BackofficeLayout title="Repositorio">
+    <BackofficeLayout title="Biblioteca">
         <div class="view-toolbar">
             <div class="view-actions">
                 <button type="button" class="btn btn-ghost" @click="openFolders"><FolderIcon /> Carpetas</button>
@@ -294,7 +294,7 @@ function deleteFolder() {
 
         <p class="hint">
             Documentos de consulta en Markdown (.md): leyes, reglamentos, resoluciones de Hacienda, artículos. De cada uno
-            decidís si Conti lo consulta para responder y si las cuentas lo ven en su Repositorio, como PDF y agrupado en
+            decidís si Conti lo consulta para responder y si las cuentas lo ven en su Biblioteca, como PDF y agrupado en
             su carpeta. Revisá el PDF antes de activarlo.
         </p>
 
@@ -376,7 +376,7 @@ function deleteFolder() {
                         >
                         <span>
                             <strong>Visible para las cuentas</strong>
-                            <span class="block muted small">Aparece en Repositorio, en la carpeta «{{ selected.folder }}», como PDF.</span>
+                            <span class="block muted small">Aparece en la Biblioteca, en la carpeta «{{ selected.folder }}», como PDF.</span>
                         </span>
                     </label>
                 </fieldset>

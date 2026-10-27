@@ -158,7 +158,7 @@ class ItemTemplateExporter
             Row::fromValues([]),
             Row::fromValues(['Lo que NO se puede cargar por acá, y por qué'], $warning),
             Row::fromValues(['Existencias y costo promedio NO son columnas de este archivo.']),
-            Row::fromValues(['El costo lo mantiene exclusivamente el motor de movimientos, porque cada cambio de costo']),
+            Row::fromValues(['El costo se calcula solo con los movimientos de inventario, porque cada cambio de costo']),
             Row::fromValues(['tiene que generar su asiento. Un artículo importado con existencia sería inventario sin']),
             Row::fromValues(['contrapartida contable: la bodega diría una cosa y el balance otra.']),
             Row::fromValues(['Las existencias iniciales se cargan con una entrada de mercancía contra la cuenta de']),

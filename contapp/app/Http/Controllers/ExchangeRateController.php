@@ -111,7 +111,7 @@ class ExchangeRateController extends Controller
         try {
             $result = $service->syncForCompany($company, $date);
         } catch (BccrUnavailableException $e) {
-            return back()->withErrors(['sync' => $e->getMessage().' Mientras tanto, se puede cargar a mano con «Crear nuevo».']);
+            return back()->withErrors(['sync' => $e->userMessage().' Mientras tanto, se puede cargar a mano con «Crear nuevo».']);
         }
 
         if ($result === null) {

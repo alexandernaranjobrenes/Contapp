@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <div class="footer">Pivox · Repositorio — {{ \Illuminate\Support\Str::limit($title, 90) }}</div>
+    <div class="footer">Pivox · Biblioteca — {{ \Illuminate\Support\Str::limit($title, 90) }}</div>
 
     <table class="masthead">
         <tr>
@@ -55,7 +55,7 @@
                     <span class="brand">Pivox</span>
                 @endif
             </td>
-            <td class="section">Repositorio{{ $folder ? ' · '.$folder : '' }}</td>
+            <td class="section">Biblioteca{{ $folder ? ' · '.$folder : '' }}</td>
         </tr>
     </table>
     <div class="masthead-rule"></div>

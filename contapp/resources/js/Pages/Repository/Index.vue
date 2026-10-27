@@ -2,16 +2,19 @@
 import { Head } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
-import { DownloadIcon, EyeIcon, FileTextIcon, FolderOpenIcon } from '@lucide/vue';
+import { ChevronDownIcon, DownloadIcon, EyeIcon, FileTextIcon, FolderIcon, FolderOpenIcon } from '@lucide/vue';
 
 /**
- * El Repositorio (RepositoryController, CLAUDE.md secc. 39): los documentos de
+ * La Biblioteca (RepositoryController, CLAUDE.md secc. 39): los documentos de
  * consulta que publica el equipo de Pivox —leyes, reglamentos, resoluciones,
  * artículos—, en las carpetas en que los agrupa el backoffice. Cada uno se
  * abre como PDF en otra pestaña, o se descarga.
  *
+ * Las carpetas arrancan cerradas y se abren al tocarlas. Al buscar o filtrar
+ * se abren solas las que tienen resultados.
+ *
  * Cualquier cuenta lo ve, con cualquier rol. Un enlace de Conti llega con
- * ?document={id}: ese documento se señala.
+ * ?document={id}: se abre su carpeta y ese documento se señala.
  */
 const props = defineProps({
     folders: { type: Array, required: true },
@@ -39,13 +42,28 @@ const visibleFolders = computed(() => {
 
 const totalDocuments = computed(() => props.folders.reduce((sum, folder) => sum + folder.documents.length, 0));
 
+// Las carpetas abiertas, por id. Sin buscar ni filtrar, ninguna.
+const open = ref(new Set());
+
+function toggle(id) {
+    if (open.value.has(id)) open.value.delete(id);
+    else open.value.add(id);
+}
+
+// Buscando o con una carpeta elegida, se abren las que tienen resultados; al
+// limpiar, vuelven a cerrarse.
+watch([() => search.value.trim(), folderFilter], ([term, folder]) => {
+    open.value = new Set(term || folder ? visibleFolders.value.map((f) => f.id) : []);
+});
+
 const longDate = new Intl.DateTimeFormat('es-CR', { dateStyle: 'long' });
 
 function pdfUrl(doc, download = false) {
     return route('repository.pdf', download ? { document: doc.id, download: 1 } : { document: doc.id });
 }
 
-// El documento que señaló Conti: a la vista, y marcado un momento.
+// El documento que señaló Conti: su carpeta abierta, el documento a la vista,
+// y marcado un momento.
 const highlighted = ref(null);
 let highlightTimer = null;
 
@@ -55,6 +73,11 @@ watch(() => props.highlight, async (id) => {
     search.value = '';
     folderFilter.value = '';
     highlighted.value = id;
+
+    // Primero que el watch de la búsqueda cierre todo; después se abre la suya.
+    await nextTick();
+    const folder = props.folders.find((f) => f.documents.some((d) => d.id === id));
+    if (folder) open.value.add(folder.id);
 
     await nextTick();
     document.getElementById(`repository-document-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -67,9 +90,9 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 </script>
 
 <template>
-    <Head title="Repositorio" />
+    <Head title="Biblioteca" />
 
-    <AppLayout title="Repositorio">
+    <AppLayout title="Biblioteca">
         <div v-if="totalDocuments" class="view-toolbar">
             <div class="view-filters">
                 <label class="filter-field filter-search">
@@ -91,17 +114,37 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
             como PDF. Es material de consulta: las decisiones tributarias y legales confirmalas con tu contador o asesor.
         </p>
 
-        <section v-for="folder in visibleFolders" :key="folder.id" class="card repository-folder" :aria-labelledby="`repository-folder-${folder.id}`">
-            <header class="repository-folder-head">
-                <span class="repository-folder-icon"><FolderOpenIcon :size="18" /></span>
-                <div class="repository-folder-text">
-                    <h2 :id="`repository-folder-${folder.id}`">{{ folder.name }}</h2>
-                    <p v-if="folder.description" class="muted small">{{ folder.description }}</p>
-                </div>
-                <span class="badge badge-neutral">{{ folder.documents.length }} {{ folder.documents.length === 1 ? 'documento' : 'documentos' }}</span>
-            </header>
+        <section
+            v-for="folder in visibleFolders"
+            :key="folder.id"
+            class="card repository-folder"
+            :class="{ 'is-open': open.has(folder.id) }"
+            :aria-labelledby="`repository-folder-${folder.id}`"
+        >
+            <!-- El botón va dentro del título (el patrón de acordeón de WAI-ARIA):
+                 un h2 no puede ir dentro de un botón. -->
+            <h2 class="repository-folder-heading">
+                <button
+                    type="button"
+                    class="repository-folder-head"
+                    :aria-expanded="open.has(folder.id)"
+                    :aria-controls="`repository-folder-documents-${folder.id}`"
+                    @click="toggle(folder.id)"
+                >
+                    <span class="repository-folder-icon">
+                        <FolderOpenIcon v-if="open.has(folder.id)" :size="18" />
+                        <FolderIcon v-else :size="18" />
+                    </span>
+                    <span class="repository-folder-text">
+                        <span :id="`repository-folder-${folder.id}`" class="repository-folder-name">{{ folder.name }}</span>
+                        <span v-if="folder.description" class="repository-folder-description muted small">{{ folder.description }}</span>
+                    </span>
+                    <span class="badge badge-neutral">{{ folder.documents.length }} {{ folder.documents.length === 1 ? 'documento' : 'documentos' }}</span>
+                    <ChevronDownIcon class="repository-folder-chevron" />
+                </button>
+            </h2>
 
-            <ul class="repository-documents">
+            <ul v-show="open.has(folder.id)" :id="`repository-folder-documents-${folder.id}`" class="repository-documents">
                 <li
                     v-for="document in folder.documents"
                     :id="`repository-document-${document.id}`"
@@ -125,7 +168,7 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 
         <div v-if="!visibleFolders.length" class="card empty-card">
             <template v-if="totalDocuments">Ningún documento coincide con la búsqueda.</template>
-            <template v-else>Todavía no hay documentos en el Repositorio. Cuando el equipo de Pivox publique alguno, va a aparecer acá.</template>
+            <template v-else>Todavía no hay documentos en la Biblioteca. Cuando el equipo de Pivox publique alguno, va a aparecer acá.</template>
         </div>
     </AppLayout>
 </template>
@@ -142,13 +185,55 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
     overflow: hidden;
 }
 
+.repository-folder-heading {
+    margin: 0;
+    font-size: inherit;
+}
+
 .repository-folder-head {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    width: 100%;
     padding: 0.9rem 1.1rem;
-    border-bottom: 1px solid var(--color-border);
+    border: 0;
     background: var(--color-surface-alt);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.repository-folder-head:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-alt));
+}
+
+.repository-folder-head:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+/* Abierta, la raya separa el encabezado de sus documentos. */
+.repository-folder.is-open .repository-folder-head {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.repository-folder-chevron {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease;
+}
+
+.repository-folder.is-open .repository-folder-chevron {
+    transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .repository-folder-head,
+    .repository-folder-chevron {
+        transition: none;
+    }
 }
 
 .repository-folder-icon {
@@ -167,13 +252,16 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
     min-width: 0;
 }
 
-.repository-folder-text h2 {
-    margin: 0;
+.repository-folder-name {
+    display: block;
     font-size: 0.98rem;
+    font-weight: 700;
 }
 
-.repository-folder-text p {
-    margin: 0.15rem 0 0;
+.repository-folder-description {
+    display: block;
+    margin-top: 0.15rem;
+    font-weight: 400;
 }
 
 .repository-documents {

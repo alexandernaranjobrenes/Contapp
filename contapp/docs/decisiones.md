@@ -3,6 +3,16 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-27 — El Repositorio pasa a llamarse Biblioteca y sube en el menú
+
+**Pedido del usuario:** cambiar «Repositorio» por «Biblioteca» y ponerlo junto al Panel (menú al lado) o junto al tema (menú arriba).
+
+**Qué se hizo:**
+- **El nombre cambia en todo lo que se ve:** el menú de las cuentas y el del backoffice, los títulos, los mensajes, el PDF, el sitio público y lo que Conti dice (manual e instrucciones). En el código, las rutas, las tablas y las clases siguen siendo `Repository`, y la herramienta de Conti sigue llamándose `repositorio`: cambiarlas no se ve y rompe enlaces ya dados (`/repository?document=…`).
+- **Menú al lado:** justo después del Panel, para cualquier rol, como antes.
+- **Menú arriba:** sale de la barra (que queda solo con los módulos) y va como ícono en la columna de la izquierda, después del tema. Es el ítem `tool: true` de `AppLayout.vue`: un enlace directo, sin ventana.
+
+---
 ## 2026-10-27 — Bug real: el respaldo llevaba las conciliaciones de cuenta de todas las compañías
 
 **Hallazgo:** al pasar compañías de desarrollo a producción, el respaldo de «Modelo» no se podía importar, ni en una compañía nueva ni completando una vacía: `account_reconciliations.account_id cannot be null`. Dos errores juntos:

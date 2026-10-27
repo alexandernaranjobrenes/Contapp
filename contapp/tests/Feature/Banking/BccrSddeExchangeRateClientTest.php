@@ -140,7 +140,7 @@ it('la pantalla dice por qué no sincronizó, y sin token ni ofrece el botón', 
         ->push(bccrSeries([]))]);
 
     $this->post(route('exchange-rates.sync'), ['date' => '2026-10-14'])
-        ->assertSessionHasErrors(['sync' => 'El BCCR rechazó el token (BCCR_TOKEN): venció o no es válido. Generá uno nuevo en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token. Mientras tanto, se puede cargar a mano con «Crear nuevo».']);
+        ->assertSessionHasErrors(['sync' => 'La conexión de Pivox con el BCCR no está funcionando. Avisale al equipo de Pivox. Mientras tanto, se puede cargar a mano con «Crear nuevo».']);
 
     $this->post(route('exchange-rates.sync'), ['date' => '2026-10-20'])
         ->assertSessionHasErrors(['sync' => 'El BCCR todavía no tiene el tipo de cambio del 20/10/2026: lo publica la tarde del día anterior. Para una fecha más adelante, cargalo a mano con «Crear nuevo».']);

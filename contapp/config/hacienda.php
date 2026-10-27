@@ -20,7 +20,7 @@ return [
     // credenciales y su llave de pruebas no sirven en producción (ni al revés).
     'environments' => [
         'stag' => [
-            'label' => 'Pruebas (sandbox)',
+            'label' => 'Pruebas',
             'idp_url' => env('HACIENDA_IDP_URL_STAG', 'https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token'),
             'api_url' => env('HACIENDA_API_URL_STAG', 'https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1'),
             'client_id' => 'api-stag',

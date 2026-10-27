@@ -463,7 +463,7 @@ const lineModalTitle = computed(() => {
                         class="btn btn-ghost"
                         :title="opensItemRetroactively(selectedLine)
                             ? 'Esta línea nunca abrió partida — definir un vencimiento acá la abre retroactivamente por el monto ya contabilizado, sin tocar el asiento'
-                            : 'El resto de la línea no se puede modificar — solo el vencimiento, para no corromper antigüedad de saldos'"
+                            : 'El resto de la línea no se puede modificar — solo el vencimiento, para no alterar la antigüedad de saldos'"
                         @click="startDueDateEdit"
                     >
                         <LockOpenIcon v-if="opensItemRetroactively(selectedLine)" /><PencilIcon v-else />

@@ -77,7 +77,7 @@ function quantity(value) {
 
         <p class="hint">
             La receta dice <strong>qué lleva</strong> un producto y <strong>cuánto</strong>, nunca a qué costo:
-            el costo lo pone el motor de movimientos al contabilizar la emisión, al promedio vigente de cada
+            el costo lo calcula Pivox al contabilizar la emisión, al promedio vigente de cada
             componente. La cantidad se guarda <strong>por lote</strong>, tal como está escrita la fórmula.
         </p>
 

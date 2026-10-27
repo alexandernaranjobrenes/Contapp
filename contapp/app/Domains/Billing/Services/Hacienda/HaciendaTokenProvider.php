@@ -99,8 +99,8 @@ class HaciendaTokenProvider
         $message = match (true) {
             $error === 'invalid_grant' && $grant['grant_type'] === 'password' => 'Hacienda rechazó el usuario o la contraseña del API del ATV ('.$this->label($credential).').',
             $error === 'invalid_grant' => 'La sesión con Hacienda venció.',
-            $response->serverError() => 'El servicio de autenticación de Hacienda no está respondiendo (HTTP '.$response->status().').',
-            default => 'Hacienda no entregó el token'.($description !== '' ? ": {$description}" : ($error !== '' ? ": {$error}" : '.')),
+            $response->serverError() => 'El servicio de autenticación de Hacienda no está respondiendo. Probá de nuevo en unos minutos.',
+            default => 'Hacienda no aceptó la conexión'.($description !== '' ? ": {$description}" : ($error !== '' ? ": {$error}" : '.')),
         };
 
         throw new HaciendaApiException(

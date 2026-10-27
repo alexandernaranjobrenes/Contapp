@@ -145,7 +145,7 @@ class ItemCatalogReport implements InventoryReport
             ],
             rows: $rows,
             notes: [
-                'El costo promedio es global por artículo, no por almacén: lo mantiene el motor de movimientos.',
+                'El costo promedio es global por artículo, no por almacén: se calcula solo con los movimientos de inventario.',
             ],
         );
     }

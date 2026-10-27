@@ -286,7 +286,7 @@ function submitVoid() {
         </DetailModal>
 
         <p class="hint">
-            Cada línea dejó su huella en el kardex y en el asiento contable, que se generaron en la misma transacción.
+            Cada línea dejó su huella en el kardex y en el asiento contable, que se generaron juntos, en el mismo paso.
         </p>
     </AppLayout>
 </template>

@@ -843,7 +843,8 @@ function statusOf(license) {
                 <h3 class="section-title assign-title">Conti (asistente de IA)</h3>
                 <label class="check"><input v-model="editForm.ai_enabled" type="checkbox"> Activado para esta licencia</label>
                 <p v-if="!aiConfigured" class="hint">
-                    Esta instalación todavía no tiene la key de OpenAI: aunque lo actives, Conti no aparece hasta configurarla.
+                    Pivox todavía no tiene configurada la conexión con OpenAI: aunque lo actives, Conti no aparece hasta
+                    que el equipo técnico la configure.
                 </p>
                 <div v-if="editForm.ai_enabled" class="field-row quota-row">
                     <div class="field">

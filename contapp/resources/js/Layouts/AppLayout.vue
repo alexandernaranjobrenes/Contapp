@@ -59,6 +59,12 @@ watch(() => page.props.auth?.user?.photo_url, () => { photoFailed.value = false;
 const nav = computed(() => {
     const items = [
         { label: 'Panel', href: route('dashboard'), match: ['dashboard'], icon: LayoutDashboardIcon },
+        // La Biblioteca (el Repositorio, CLAUDE.md secc. 39): los documentos de
+        // consulta que publica el equipo de Pivox. Para cualquier rol, como el
+        // Panel: no es una pantalla de la compañía, así que no lleva «screen».
+        // `tool`: con el menú arriba, va en la columna de la izquierda, junto
+        // al tema (pedido del usuario); en la barra quedan solo los módulos.
+        { label: 'Biblioteca', href: route('repository.index'), match: ['repository.*'], icon: LibraryIcon, tool: true },
         {
             label: 'Contabilidad', icon: BookOpenIcon,
             match: ['document-types.*', 'chart-of-accounts.*', 'opening-balance.*', 'journal-entries.*', 'journal-entry-schedules.*', 'period-close.*',
@@ -205,10 +211,6 @@ const nav = computed(() => {
                 { screen: 'tax.tax_rates', group: 'Catálogos', label: 'Indicadores de impuesto', href: route('tax-rates.index'), match: ['tax-rates.*'] },
             ],
         },
-        // El Repositorio (CLAUDE.md secc. 39): los documentos de consulta que
-        // publica el equipo de Pivox. Para cualquier rol, como el Panel: no es
-        // una pantalla de la compañía, así que no lleva «screen».
-        { label: 'Repositorio', href: route('repository.index'), match: ['repository.*'], icon: LibraryIcon },
         // Ya no hay un grupo «Reportes» de nivel superior: cada reporte vive
         // dentro del módulo que reporta.
         //
@@ -288,8 +290,7 @@ const ROLE_LABELS = {
 
 const roleLabel = computed(() => ROLE_LABELS[page.props.auth?.user?.role_type] ?? null);
 
-const PIVOX_VERSION = 'v1.0.0';
-const currentYear = computed(() => new Date().getFullYear());
+const PIVOX_VERSION = 'v1.0.1';
 
 const collapsed = ref(false);
 const theme = ref('light');
@@ -581,9 +582,11 @@ const topNavEl = ref(null);
 const visibleCount = ref(Infinity);
 let topNavObserver = null;
 
-// Con el menú arriba, la barra lleva el trabajo diario; Administración y Mi
-// cuenta, la columna de la izquierda (`rail`). Al lado, todo junto.
-const barNav = computed(() => (topLayout.value ? nav.value.filter((item) => ! item.rail) : nav.value));
+// Con el menú arriba, la barra lleva el trabajo diario; la Biblioteca va en la
+// columna de la izquierda, junto al tema (`tool`), y Administración y Mi
+// cuenta, abajo en esa columna (`rail`). Al lado, todo junto.
+const barNav = computed(() => (topLayout.value ? nav.value.filter((item) => ! item.rail && ! item.tool) : nav.value));
+const toolNav = computed(() => (topLayout.value ? nav.value.filter((item) => item.tool) : []));
 const railNav = computed(() => (topLayout.value ? nav.value.filter((item) => item.rail) : []));
 
 const overflowNav = computed(() => (topLayout.value ? barNav.value.slice(visibleCount.value) : []));
@@ -1156,6 +1159,20 @@ function toggleGroup(item) {
                         <MoonIcon v-else />
                     </button>
 
+                    <!-- Con el menú arriba, la Biblioteca va acá, junto al tema:
+                         un enlace directo, sin ventana. -->
+                    <Link
+                        v-for="item in toolNav"
+                        :key="item.label"
+                        :href="item.href"
+                        class="btn btn-ghost topbar-icon-btn rail-section"
+                        :class="{ active: isCurrent(item.match) }"
+                        :title="item.label"
+                        :aria-label="item.label"
+                    >
+                        <component :is="item.icon" />
+                    </Link>
+
                     <!-- El menú arriba o al lado: solo con lugar para elegir
                          (en una pantalla angosta, el menú siempre es su panel). -->
                     <button
@@ -1384,10 +1401,15 @@ function toggleGroup(item) {
                     </button>
                 </div>
 
-                <footer v-if="page.props.license" class="app-footer">
-                    <span>Licencia {{ page.props.license.category ?? '—' }} · {{ page.props.license.masked_code }} · Vence {{ page.props.license.expires_at }}</span>
-                    <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
-                    <span class="app-footer-meta">Pivox {{ PIVOX_VERSION }} · © {{ currentYear }}</span>
+                <footer class="app-footer">
+                    <template v-if="page.props.auth.user?.is_super_admin && page.props.license">
+                        <span>Licencia vence {{ page.props.license.expires_at }}</span>
+                        <span class="badge" :class="licenseStatus.cls">{{ licenseStatus.label }}</span>
+                    </template>
+                    <span class="app-footer-meta">
+                        Pivox {{ PIVOX_VERSION }} · Hecho por
+                        <a href="https://ncodedigital.com" target="_blank" rel="noopener">NcodeDigital</a>
+                    </span>
                 </footer>
             </div>
         </div>
@@ -2108,6 +2130,11 @@ function toggleGroup(item) {
 
 .app-footer-meta {
     margin-left: auto;
+}
+
+.app-footer-meta a {
+    color: inherit;
+    font-weight: 600;
 }
 
 .badge-role {

@@ -115,9 +115,8 @@ const currencyLabel = computed(() => props.foreignCurrency ? `${props.foreignCur
         </div>
 
         <div v-if="!bccrConfigured" class="notice card">
-            La conexión con el BCCR no está configurada: falta su token (<code>BCCR_TOKEN</code> en <code>.env</code>). Se genera
-            gratis en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token. Mientras tanto, cargá el tipo
-            de cambio a mano con «Crear nuevo».
+            La conexión de Pivox con el BCCR no está funcionando en este momento, así que el tipo de cambio no se trae solo.
+            Mientras tanto, cargalo a mano con «Crear nuevo», y avisale al equipo de Pivox para que lo revise.
         </div>
         <template v-else>
             <p class="hint">

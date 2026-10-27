@@ -55,7 +55,7 @@ class BccrSddeExchangeRateClient implements BccrExchangeRateClient
         $token = trim((string) config('services.bccr.token'));
 
         if ($token === '') {
-            throw new BccrUnavailableException(
+            throw BccrUnavailableException::configuration(
                 'Falta el token del BCCR (BCCR_TOKEN). Se genera en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token.'
             );
         }
@@ -86,16 +86,16 @@ class BccrSddeExchangeRateClient implements BccrExchangeRateClient
                 'body' => Str::limit($response->body(), 300),
             ]);
 
-            throw new BccrUnavailableException(match (true) {
-                $response->status() === 401 => 'El BCCR rechazó el token (BCCR_TOKEN): venció o no es válido. Generá uno nuevo en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token.',
-                $response->status() === 403 => 'El BCCR dice que la suscripción de ese token no está activa. Revisala en el sitio de Indicadores Económicos del BCCR.',
-                $response->status() === 429 => 'El BCCR está recibiendo demasiadas consultas. Probá de nuevo en unos minutos.',
+            throw match (true) {
+                $response->status() === 401 => BccrUnavailableException::configuration('El BCCR rechazó el token (BCCR_TOKEN): venció o no es válido. Generá uno nuevo en el sitio de Indicadores Económicos del BCCR, en Mi perfil → Generar token.'),
+                $response->status() === 403 => BccrUnavailableException::configuration('El BCCR dice que la suscripción de ese token no está activa. Revisala en el sitio de Indicadores Económicos del BCCR.'),
+                $response->status() === 429 => new BccrUnavailableException('El BCCR está recibiendo demasiadas consultas. Probá de nuevo en unos minutos.'),
                 // Los tokens del BCCR son JWT («eyJ…»: tres partes separadas
                 // por puntos). Uno con otra forma —copiado a medias— el BCCR
                 // no lo rechaza con 401: responde 500.
-                ! self::looksLikeToken($token) => 'El token del BCCR (BCCR_TOKEN) no tiene la forma de los que genera el BCCR: copialo completo desde Mi perfil → Generar token.',
-                default => "El BCCR no respondió bien (código {$response->status()}). Probá de nuevo en unos minutos.",
-            });
+                ! self::looksLikeToken($token) => BccrUnavailableException::configuration('El token del BCCR (BCCR_TOKEN) no tiene la forma de los que genera el BCCR: copialo completo desde Mi perfil → Generar token.'),
+                default => new BccrUnavailableException("El BCCR no respondió bien (código {$response->status()}). Probá de nuevo en unos minutos."),
+            };
         }
 
         $series = $response->json('datos.0.series');

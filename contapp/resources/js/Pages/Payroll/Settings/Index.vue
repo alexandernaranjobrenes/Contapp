@@ -337,7 +337,7 @@ function destroyRow() {
 
     confirmAction({
         title: 'Eliminar de la configuración',
-        message: `«${editorTitle.value}» se elimina. Si ya se usó en una planilla, el servidor no lo permite: ponele fecha final.`,
+        message: `«${editorTitle.value}» se elimina. Si ya se usó en una planilla no se puede eliminar: ponele fecha final.`,
         confirmLabel: 'Eliminar',
         danger: true,
         onConfirm: () => router.delete(route(`${routes[kind]}.destroy`, row.id), { preserveScroll: true }),
@@ -493,9 +493,9 @@ const accountLabel = (id) => {
         <div v-for="(message, key) in page.props.errors" :key="key" class="flash flash-error">{{ message }}</div>
 
         <div class="warning-box">
-            <h2>Las tasas viven acá, no en el código</h2>
+            <h2>Las tasas se configuran acá, con su vigencia</h2>
             <p>
-                Ninguna tasa está escrita dentro del cálculo. Todas viven en estas tablas
+                Pivox no trae ninguna tasa fija: todas salen de estas tablas
                 <strong>con fecha de vigencia</strong>, y eso es lo que hace que una planilla de marzo se
                 reproduzca años después con las tasas que regían en marzo — aunque la Caja las haya movido
                 desde entonces.
@@ -836,7 +836,7 @@ const accountLabel = (id) => {
                         <label>Tope de deducciones (% del disponible)</label>
                         <input v-model="settingsForm.max_deduction_percentage" type="number" step="0.01" min="0" max="100" required>
                         <span class="hint small">
-                            Cero = sin tope. Aun sin tope, el motor nunca deja el neto en negativo: lo que no
+                            Cero = sin tope. Aun sin tope, la planilla nunca deja el neto en negativo: lo que no
                             cabe queda como saldo para el período siguiente.
                         </span>
                     </div>
@@ -883,7 +883,7 @@ const accountLabel = (id) => {
                             </option>
                         </select>
                         <span class="hint small">
-                            Es una cuestión de la Ley del Impuesto sobre la Renta, no del motor. Aplicar la
+                            Lo define la Ley del Impuesto sobre la Renta. Aplicar la
                             escala al bruto sin restar las cargas obreras le cobra de más a todos, todos los
                             meses.
                         </span>
@@ -1276,8 +1276,8 @@ const accountLabel = (id) => {
                     <span class="hint small">
                         Se marca en los componentes de <strong>IVM</strong>: quien ya está pensionado por ese
                         régimen no vuelve a cotizarlo, ni él ni el patrono. Con eso su carga obrera baja de
-                        10,83% a 6,50%. Se marca acá y no se deduce del código, para que el día que cambie un
-                        nombre nadie empiece a cotizar de más.
+                        10,83% a 6,50%. Se marca a mano en cada componente, y no se adivina por su nombre: así, si
+                        un nombre cambia, nadie empieza a cotizar de más.
                     </span>
 
                     <div class="field">

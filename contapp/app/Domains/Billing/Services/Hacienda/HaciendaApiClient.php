@@ -8,6 +8,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Cliente del API de recepción (config/hacienda.php, por ambiente).
@@ -68,8 +69,12 @@ class HaciendaApiClient implements HaciendaTransport
         try {
             $response = $send();
         } catch (ConnectionException $e) {
+            // El detalle de la conexión (el error de cURL) queda en el registro:
+            // el historial del comprobante lo lee quien factura.
+            Log::warning('Hacienda: sin conexión.', ['message' => mb_substr($e->getMessage(), 0, 500)]);
+
             throw new HaciendaApiException(
-                'No se pudo conectar con Hacienda: '.mb_substr($e->getMessage(), 0, 200),
+                'No se pudo conectar con Hacienda: no respondió a tiempo o no hay conexión.',
                 transient: true,
                 previous: $e,
             );
@@ -105,7 +110,9 @@ class HaciendaApiClient implements HaciendaTransport
         }
 
         return new HaciendaApiException(
-            $prefix.' (HTTP '.$response->status.')'.($cause ? ': '.$cause : '.'),
+            // El código HTTP no va en el mensaje (lo lee quien factura): queda
+            // en `status` y en el intercambio guardado.
+            $prefix.($cause ? ': '.$cause : '.'),
             status: $response->status,
             errorCause: $cause,
             headers: $response->headers,

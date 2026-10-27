@@ -93,8 +93,8 @@ const hasDefault = computed(() => props.priceLists.some((l) => l.is_default && l
         </p>
 
         <p class="hint">
-            El precio es una decisión comercial y no tiene relación con el costo, que lo mantiene el motor de
-            movimientos. Una lista se denomina en <strong>una moneda</strong> y no se convierte: convertir al
+            El precio es una decisión comercial y no tiene relación con el costo, que se calcula solo con los
+            movimientos de inventario. Una lista se denomina en <strong>una moneda</strong> y no se convierte: convertir al
             tipo de cambio del día haría que el precio cambiara solo, todos los días.
         </p>
 

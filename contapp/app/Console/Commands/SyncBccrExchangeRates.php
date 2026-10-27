@@ -48,7 +48,9 @@ class SyncBccrExchangeRates extends Command
                 return [$results, $filled];
             });
         } catch (BccrUnavailableException $e) {
-            BccrSyncStatus::record(false, $date->format('Y-m-d'), $e->getMessage());
+            // Lo que ven las compañías en Tipos de cambio, sin el detalle del
+            // token; ese queda en la salida del comando.
+            BccrSyncStatus::record(false, $date->format('Y-m-d'), $e->userMessage());
             $this->error("BCCR: {$e->getMessage()}");
 
             return self::FAILURE;

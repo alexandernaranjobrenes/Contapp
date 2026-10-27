@@ -145,7 +145,7 @@ const { selected: selectedLine, openDetail: openLine, closeDetail: closeLine } =
             </div>
 
             <p v-if="electronic.environment === 'stag'" class="flash flash-warning">
-                Comprobante de pruebas: se envió al sandbox de Hacienda y no tiene validez fiscal.
+                Comprobante de pruebas: se envió al ambiente de pruebas de Hacienda y no tiene validez fiscal.
             </p>
 
             <p v-if="electronic.hacienda_message" class="hacienda-message">{{ electronic.hacienda_message }}</p>

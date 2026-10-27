@@ -99,7 +99,7 @@ class ElectronicDocumentIssuer
         $electronic->events()->create([
             'from_status' => null,
             'to_status' => ElectronicDocument::SIGNED,
-            'message' => 'Firmado y validado contra el XSD v4.4 ('.config("hacienda.environments.{$settings->environment}.label").').',
+            'message' => 'Firmado y revisado contra el formato oficial de Hacienda v4.4 ('.config("hacienda.environments.{$settings->environment}.label").').',
             'user_id' => $userId,
             'created_at' => now(),
         ]);

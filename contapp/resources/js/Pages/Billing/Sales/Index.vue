@@ -99,7 +99,7 @@ const canCredit = computed(() => selected.value && selected.value.fiscal_documen
                             <td data-label="Total" class="num">{{ d.currency?.code }} {{ money(d.total_document) }}</td>
                             <td data-label="Estado">
                                 <span class="badge" :class="statusOf(d).badge">{{ statusOf(d).label }}</span>
-                                <span v-if="statusOf(d).test" class="badge badge-neutral" title="Enviado al sandbox de Hacienda: sin validez fiscal">Pruebas</span>
+                                <span v-if="statusOf(d).test" class="badge badge-neutral" title="Enviado al ambiente de pruebas de Hacienda: sin validez fiscal">Pruebas</span>
                             </td>
                         </tr>
                         <tr v-if="!filtered.length">

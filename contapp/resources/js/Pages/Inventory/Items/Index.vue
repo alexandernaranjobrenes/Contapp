@@ -300,8 +300,8 @@ function onFileSelected(e) {
         </p>
 
         <p class="hint">
-            Existencias y costo promedio no se cargan ni se editan acá: los mantiene el motor de movimientos, porque cada
-            cambio de costo tiene que generar su asiento. Las existencias iniciales entran por una entrada de mercancía.
+            Existencias y costo promedio no se cargan ni se editan acá: se calculan solos con cada movimiento de inventario,
+            porque cada cambio de costo tiene que generar su asiento. Las existencias iniciales entran por una entrada de mercancía.
         </p>
 
         <div class="card">
@@ -667,7 +667,7 @@ function onFileSelected(e) {
                 <p class="hint small">
                     El CAByS se precarga en cada línea de la factura electrónica: Hacienda lo exige por línea, así que un
                     artículo que se vende y no lo tenga acá obliga a teclearlo en <strong>cada</strong> factura. La unidad
-                    de Hacienda es distinta de la unidad de medida interna: aquella es un catálogo cerrado del XML. Y la
+                    de Hacienda es distinta de la unidad de medida interna: aquella sale de una lista fija de Hacienda. Y la
                     tarifa de Hacienda tiene que decir el mismo porcentaje que el indicador de impuesto de arriba — si no,
                     la factura declararía un porcentaje y el asiento registraría otro; el sistema lo rechaza.
                 </p>

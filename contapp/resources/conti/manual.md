@@ -105,7 +105,7 @@ Se ven en el pie de página y en el selector de compañía:
   - el botón **Comentarios y noticias** (un punto avisa que hay noticias nuevas);
   - el botón «Salir».
 - Si la licencia tiene Conti, el asistente, su botón es el redondo con un robot, en la esquina inferior derecha.
-- El menú lateral se puede colapsar. Está organizado en secciones: Contabilidad, Centros de costo y cambiario, Inventario, Facturación, Planillas, Socios de negocio, Bancos, Impuestos, Repositorio (documentos de consulta, ver 1.16), Administración y Mi cuenta. Dentro de cada sección, las opciones se agrupan en Operación, Reportes, Catálogos y Configuración. **No hay un menú general de reportes:** cada reporte vive en el módulo al que pertenece.
+- El menú lateral se puede colapsar. Arriba de todo van el **Panel** y la **Biblioteca** (documentos de consulta, ver 1.16). Con el menú arriba, la Biblioteca es un ícono en la columna de la izquierda, junto al modo claro u oscuro. El resto está organizado en secciones: Contabilidad, Centros de costo y cambiario, Inventario, Facturación, Planillas, Socios de negocio, Bancos, Impuestos, Administración y Mi cuenta. Dentro de cada sección, las opciones se agrupan en Operación, Reportes, Catálogos y Configuración. **No hay un menú general de reportes:** cada reporte vive en el módulo al que pertenece.
 - El **Panel** es la página de inicio y muestra los documentos contabilizados recientes.
 
 ### 1.10 Comentarios y noticias
@@ -232,12 +232,12 @@ Se ven en el pie de página y en el selector de compañía:
 - **«La contraseña no es la de este respaldo»**: revisá la contraseña del archivo (no la de tu cuenta).
 - **«Este respaldo es de una versión anterior de Pivox y le faltan datos que esta versión exige»**: hay que avisarle al equipo de Pivox.
 
-### 1.16 Repositorio (menú lateral → Repositorio)
+### 1.16 Biblioteca (menú → Biblioteca)
 - Documentos de consulta que publica el equipo de Pivox: leyes, reglamentos, resoluciones de Hacienda y artículos del mundo contable y tributario. Los ve **cualquier cuenta, con cualquier rol**: no depende de los permisos de la compañía.
-- Están **agrupados en carpetas** (por ejemplo «Leyes» o «Resoluciones»). Arriba se busca por título o tema y se filtra por carpeta.
+- Están **agrupados en carpetas** (por ejemplo «Leyes» o «Resoluciones»). Las carpetas aparecen cerradas: se toca una para ver sus documentos, y otra vez para cerrarla. Arriba se busca por título o tema y se filtra por carpeta; al buscar, las carpetas con resultados se abren solas.
 - Cada documento se abre como **PDF**: «Ver PDF» lo abre en otra pestaña y «Descargar» lo guarda. Muestra la fecha de su última actualización.
 - Los documentos los sube y actualiza el equipo de Pivox: desde Pivox no se pueden subir ni editar. Para pedir uno, se propone en **Comentarios y noticias**.
-- Conti también consulta los documentos que el equipo activó para él, y cita de cuál sale lo que dice. Los enlaces que da llevan a esta pantalla, con el documento marcado.
+- Conti también consulta los documentos que el equipo activó para él, y cita de cuál sale lo que dice. Los enlaces que da llevan a esta pantalla, con su carpeta abierta y el documento marcado.
 - Es material de consulta: las decisiones tributarias y legales las confirma el contador o asesor de la empresa.
 ---
 
@@ -495,7 +495,7 @@ Son los documentos pendientes de cobro o de pago: facturas, saldos iniciales, no
 - **Costo promedio ponderado móvil, global por artículo**: es el mismo costo en todos los almacenes, lotes y ubicaciones.
 - **Cada movimiento genera su asiento contable** en el mismo momento.
 - El **kardex** es de solo agregar: una corrección se hace con un movimiento nuevo.
-- Las existencias y el costo **no se digitan** en la ficha del artículo: las mantiene el motor de movimientos. **Las existencias iniciales entran con un «Ajuste de entrada de mercancía».**
+- Las existencias y el costo **no se digitan** en la ficha del artículo: se calculan solas con cada movimiento de inventario. **Las existencias iniciales entran con un «Ajuste de entrada de mercancía».**
 - **Determinación de cuentas** (qué cuenta de inventario, costo de ventas, ajuste o ingresos usa cada artículo): gana lo más específico, en este orden: **artículo → grupo → almacén → compañía**. Lo que se deja vacío se hereda del nivel siguiente.
 
 ### 6.2 Catálogos
@@ -688,7 +688,7 @@ Con la facturación electrónica encendida solo se ofrecen los que Pivox firma y
   - **Rechazado** o **Hacienda no lo recibió**: el detalle dice por qué. Se corrige lo que indica (los datos del cliente o del emisor) y se usa **«Emitir de nuevo»**, que lo vuelve a emitir con consecutivo y clave nuevos. Una clave ya procesada no se puede reenviar. Si lo que está mal son los montos, se anula con una nota de crédito y se emite otra factura.
   - **Envío sin confirmar** / **Requiere atención**: no se sabe si llegó, o Hacienda no respondió. «Reintentar envío» consulta primero si Hacienda ya lo tiene (nunca lo envía dos veces).
   - **Sustituido**: un intento anterior, reemplazado por otro con clave nueva.
-  - **Pruebas**: se envió al sandbox de Hacienda y no tiene validez fiscal.
+  - **Pruebas**: se envió al ambiente de pruebas de Hacienda y no tiene validez fiscal.
 - En el detalle: «Consultar estado», «Reintentar envío», «Enviar al cliente», «Emitir de nuevo», y las descargas del **XML firmado**, la **respuesta de Hacienda** y el **PDF**. La «Historia ante Hacienda» muestra cada paso.
 - Una nota de crédito sobre una factura electrónica solo se puede emitir si Hacienda **aceptó** la factura.
 - Desde un comprobante, **«Copiar a → Nota de crédito»** prepara la nota de crédito.
@@ -711,7 +711,7 @@ Con la facturación electrónica encendida solo se ofrecen los que Pivox firma y
 - **Solo el Superusuario** de cada compañía la ve y la configura. Cada compañía tiene la suya: un Administrador no puede ver ni cambiar las credenciales.
 - **Lo que se carga:**
   - **Datos del emisor**: «Tipo de identificación», «Provincia», «Cantón» y «Distrito» (por nombre, de la tabla oficial de Hacienda), «Barrio» (opcional), «Otras señas», «Teléfono», los **correos** del emisor (hasta 4), la «Sucursal» y la «Terminal» por defecto, y si se le envía el comprobante al cliente cuando Hacienda lo acepta. La razón social y la cédula son las de la compañía (Mi cuenta → Mis datos).
-  - Por **ambiente** («Pruebas (sandbox)» y «Producción»), lo que se genera en el ATV de Hacienda: el **usuario y la contraseña del API**, y la **llave criptográfica (.p12) con su PIN**. La llave se revisa al cargarla (el PIN, que esté vigente y que sea de la compañía) y todo se guarda cifrado. La contraseña y el PIN nunca se vuelven a mostrar: para cambiarlos se escriben de nuevo.
+  - Por **ambiente** («Pruebas» y «Producción»), lo que se genera en el ATV de Hacienda: el **usuario y la contraseña del API**, y la **llave criptográfica (.p12) con su PIN**. La llave se revisa al cargarla (el PIN, que esté vigente y que sea de la compañía) y todo se guarda cifrado. La contraseña y el PIN nunca se vuelven a mostrar: para cambiarlos se escriben de nuevo.
   - **«Probar conexión»** pide un token a Hacienda con ese usuario y contraseña; no envía ningún comprobante.
   - **Consecutivos**: cada tipo de comprobante lleva su propia numeración por sucursal y terminal. Para continuar la que la compañía traía de TribuCR o de otro sistema, se fija el próximo número (nunca detrás de uno ya usado). Otra opción es usar otra terminal.
 - **Encender**: solo cuando no falta nada; la pantalla lista lo que falta. Se recomienda probar primero en **Pruebas**, en una compañía de prueba, porque cada comprobante igual queda registrado en el ERP.

@@ -47,8 +47,8 @@ defineProps({
         <section v-if="related.length" class="group">
             <h2>Otras salidas del módulo</h2>
             <p class="hint small">
-                No son reportes tabulares sino documentos por trabajador o archivos para terceros; se enlazan
-                acá para que este sea el único lugar al que haya que venir.
+                Documentos por trabajador y archivos para entregar a terceros. Se abren en su propia pantalla y
+                están acá para que encuentres todo lo de Planillas en un solo lugar.
             </p>
 
             <div class="cards">

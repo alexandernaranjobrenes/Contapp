@@ -44,8 +44,8 @@ defineProps({
         <section v-if="related.length" class="group">
             <h2>Otros reportes del módulo</h2>
             <p class="hint small">
-                Tienen su propia pantalla porque se construyeron antes; se enlazan acá para que este sea el
-                único lugar al que haya que venir.
+                Se abren en su propia pantalla. Están acá para que encuentres todos los reportes de Inventario en
+                un solo lugar.
             </p>
 
             <div class="cards">

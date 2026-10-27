@@ -154,8 +154,8 @@ function closeLedger() {
         <div v-if="page.props.errors?.cost_center" class="flash flash-error">{{ page.props.errors.cost_center }}</div>
 
         <p class="hint">
-            Un centro de costo recibe montos vía una <strong>norma de reparto</strong> — ya no se elige directo en una
-            línea de asiento. Ver "Normas de reparto" para configurar cómo se distribuye cada gasto/costo entre ellos.
+            Un centro de costo recibe montos vía una <strong>norma de reparto</strong> — en una línea de asiento no se
+            elige directo. Ver "Normas de reparto" para configurar cómo se distribuye cada gasto/costo entre ellos.
         </p>
 
         <div class="card">

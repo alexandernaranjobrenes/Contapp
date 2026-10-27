@@ -49,7 +49,7 @@ class RepositoryController extends Controller
     /** El PDF, para verlo en otra pestaña o, con ?download=1, descargarlo. */
     public function pdf(Request $request, RepositoryDocument $document): HttpResponse
     {
-        abort_unless($document->public_enabled, 404, 'Ese documento ya no está disponible en el Repositorio.');
+        abort_unless($document->public_enabled, 404, 'Ese documento ya no está disponible en la Biblioteca.');
 
         $disposition = $request->boolean('download') ? 'attachment' : 'inline';
 

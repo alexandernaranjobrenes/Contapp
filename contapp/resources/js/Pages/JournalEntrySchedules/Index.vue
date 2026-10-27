@@ -62,8 +62,8 @@ function processNow() {
 
         <p class="hint">
             Una programación genera un asiento <strong>preliminar</strong> cada vez que llega su fecha — nunca se contabiliza solo.
-            "Procesar vencidas ahora" corre el mismo proceso que el comando programado <code>pivox:process-journal-schedules</code>
-            (declarado a diario en <code>routes/console.php</code>; usá este botón mientras no haya un cron real corriendo <code>schedule:run</code>).
+            Pivox revisa las programaciones una vez al día; "Procesar vencidas ahora" genera en el momento los asientos de las
+            que ya llegaron a su fecha.
         </p>
 
         <h2 class="block-title">Registros pendientes programados</h2>

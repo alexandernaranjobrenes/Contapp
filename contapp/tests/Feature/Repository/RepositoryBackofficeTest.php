@@ -166,7 +166,7 @@ it('activa y desactiva cada interruptor por separado', function () {
     $set(['public_enabled' => 1]);
     expect($document->fresh()->only('conti_enabled', 'public_enabled'))->toBe(['conti_enabled' => true, 'public_enabled' => true]);
 
-    $set(['conti_enabled' => 0])->assertSessionHas('success', '«Ley de prueba»: Conti no lo consulta y las cuentas lo ven en el Repositorio.');
+    $set(['conti_enabled' => 0])->assertSessionHas('success', '«Ley de prueba»: Conti no lo consulta y las cuentas lo ven en la Biblioteca.');
     expect($document->fresh()->only('conti_enabled', 'public_enabled'))->toBe(['conti_enabled' => false, 'public_enabled' => true]);
 });
 

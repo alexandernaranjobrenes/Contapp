@@ -64,7 +64,7 @@ function changeEnvironment() {
         title: `Pasar a ${label}`,
         message: environmentChoice.value === 'prod'
             ? 'En producción cada comprobante es real: tiene validez fiscal y se le reporta a Hacienda. Rige desde el próximo comprobante.'
-            : 'En pruebas los comprobantes se envían al sandbox de Hacienda y no tienen validez fiscal. Rige desde el próximo comprobante.',
+            : 'En pruebas los comprobantes se envían al ambiente de pruebas de Hacienda y no tienen validez fiscal. Rige desde el próximo comprobante.',
         confirmLabel: `Pasar a ${label}`,
         danger: environmentChoice.value === 'prod',
         onConfirm: () => router.put(route('hacienda-settings.environment'), { environment: environmentChoice.value }, { preserveScroll: true }),
@@ -219,7 +219,6 @@ function saveSequence() {
             <p class="hint">
                 Proveedor de sistemas que va en cada comprobante:
                 <strong>{{ systemProvider ?? `${company.tax_id} (la cédula de la compañía)` }}</strong>.
-                <template v-if="!systemProvider">Si Pivox lo provee un tercero, se configura en <code>HACIENDA_SYSTEM_PROVIDER_ID</code>.</template>
             </p>
         </section>
 
@@ -227,7 +226,7 @@ function saveSequence() {
         <section class="card panel">
             <h2>Ambiente de Hacienda</h2>
             <p class="hint">
-                Primero en pruebas (sandbox): los comprobantes se envían a Hacienda pero no tienen validez fiscal. Conviene
+                Primero en pruebas: los comprobantes se envían a Hacienda pero no tienen validez fiscal. Conviene
                 probar en una compañía de prueba, porque cada comprobante igual queda registrado en el ERP. Cada ambiente usa
                 sus propias credenciales y su propia llave.
             </p>
@@ -369,7 +368,7 @@ function saveSequence() {
                             type="button"
                             class="btn btn-ghost"
                             :disabled="!credentials[env]?.has_password"
-                            title="Pide un token a Hacienda con este usuario y contraseña. No envía ningún comprobante."
+                            title="Revisa que Hacienda acepte este usuario y contraseña. No envía ningún comprobante."
                             @click="testConnection(env)"
                         ><PlugZapIcon /> Probar conexión</button>
                         <button type="submit" class="btn btn-primary" :disabled="credentialForms[env].processing">Guardar</button>

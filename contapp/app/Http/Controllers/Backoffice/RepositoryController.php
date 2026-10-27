@@ -71,7 +71,7 @@ class RepositoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        return $this->save($request, new RepositoryDocument, 'El documento quedó en el Repositorio.');
+        return $this->save($request, new RepositoryDocument, 'El documento quedó en la Biblioteca.');
     }
 
     public function update(Request $request, RepositoryDocument $document): RedirectResponse
@@ -96,7 +96,7 @@ class RepositoryController extends Controller
     {
         $this->repository->deleteDocument($document);
 
-        return back()->with('success', 'El documento se eliminó del Repositorio.');
+        return back()->with('success', 'El documento se eliminó de la Biblioteca.');
     }
 
     /** La vista previa del PDF, esté o no activo para las cuentas. */
@@ -180,7 +180,7 @@ class RepositoryController extends Controller
     private function availabilityMessage(RepositoryDocument $document): string
     {
         $conti = $document->conti_enabled ? 'Conti lo consulta' : 'Conti no lo consulta';
-        $public = $document->public_enabled ? 'las cuentas lo ven en el Repositorio' : 'las cuentas no lo ven';
+        $public = $document->public_enabled ? 'las cuentas lo ven en la Biblioteca' : 'las cuentas no lo ven';
 
         return "«{$document->title}»: {$conti} y {$public}.";
     }

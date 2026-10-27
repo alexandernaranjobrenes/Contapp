@@ -177,8 +177,8 @@ class CertificateInspector
                 ->run(['openssl', 'pkcs12', '-legacy', '-in', $path, '-nodes', '-passin', 'env:PIVOX_P12_PIN']);
         } catch (\Throwable $e) {
             throw new CertificateException(
-                'La llave usa un cifrado antiguo y el servidor no tiene el comando openssl para abrirla. '.
-                'Pedile al administrador del servidor que lo instale, o exportá la llave de nuevo desde el ATV.',
+                'La llave usa un cifrado antiguo que Pivox no pudo abrir. Exportá la llave de nuevo desde el ATV; '.
+                'si sigue pasando, avisale al equipo de Pivox.',
                 previous: $e,
             );
         } finally {

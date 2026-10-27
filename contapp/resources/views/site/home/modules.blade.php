@@ -48,7 +48,7 @@
             'Reporte de IVA por clasificación, base gravable e impuesto',
             'Un período ya declarado no cambia por una corrección posterior',
         ]],
-        ['icon' => 'library', 'name' => 'Repositorio', 'points' => [
+        ['icon' => 'library', 'name' => 'Biblioteca', 'points' => [
             'Leyes, reglamentos y resoluciones de Hacienda, en PDF',
             'Agrupados en carpetas y con buscador',
             'Conti los consulta y cita de dónde sale cada respuesta',

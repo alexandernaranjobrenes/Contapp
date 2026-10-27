@@ -314,7 +314,7 @@ const statusClass = {
 
             <p class="hint small">
                 Acá van horas extra, bonos y rebajos puntuales. El salario base sale de la ficha y las cargas
-                sociales las calcula el motor: no se digitan, porque poder digitarlas permitiría cuadrar una
+                sociales las calcula Pivox: no se digitan, porque poder digitarlas permitiría cuadrar una
                 planilla a mano y romper la conciliación con la Caja.
             </p>
 

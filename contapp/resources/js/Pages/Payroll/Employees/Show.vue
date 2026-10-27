@@ -223,7 +223,7 @@ const noteClass = {
                     <span class="pay-value">{{ formatMoney(employee.hourly_rate) }}</span>
                 </div>
                 <p class="hint small">
-                    El día es el primitivo: con él se pagan vacaciones, aguinaldo, incapacidades y liquidaciones.
+                    El día es la base: con él se pagan vacaciones, aguinaldo, incapacidades y liquidaciones.
                     La hora sale de dividirlo entre las horas de la jornada declarada, y es la base de las horas extra.
                 </p>
             </div>
@@ -248,7 +248,7 @@ const noteClass = {
                 </div>
 
                 <p class="hint small">
-                    El saldo es la suma de los movimientos, no un campo guardado: cada día acumulado se puede
+                    El saldo es la suma de los movimientos, no un número que alguien digita: cada día acumulado se puede
                     rastrear hasta el período que lo acreditó.
                 </p>
 

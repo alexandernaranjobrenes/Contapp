@@ -108,5 +108,6 @@ it('si el BCCR falla, queda constancia y Tipos de cambio lo muestra', function (
 
     $this->get(route('exchange-rates.index'))->assertInertia(fn ($page) => $page
         ->where('bccrLastSync.ok', false)
-        ->where('bccrLastSync.message', fn (string $message) => str_contains($message, 'El BCCR rechazó el token')));
+        // Sin hablar del token: las compañías no lo pueden arreglar.
+        ->where('bccrLastSync.message', 'La conexión de Pivox con el BCCR no está funcionando. Avisale al equipo de Pivox.'));
 });

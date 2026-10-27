@@ -162,8 +162,8 @@ function destroy() {
 
         <p class="hint">
             Una norma de reparto reparte el monto de una línea de asiento entre varios centros de costo, según el
-            porcentaje configurado — las cuentas de costo/gasto que exigen centro de costo ahora eligen una norma en
-            vez de un centro directo (ver "Nuevo asiento").
+            porcentaje configurado — en las cuentas de costo/gasto que exigen centro de costo, la línea del asiento
+            lleva una norma en vez de un centro directo (ver "Nuevo asiento").
         </p>
 
         <div class="card">
