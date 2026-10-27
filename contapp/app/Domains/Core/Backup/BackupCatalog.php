@@ -80,7 +80,8 @@ final class BackupCatalog
         'journal_entries' => ['accounting', 'movement', ['date' => 'posting_date']],
         'journal_details' => ['accounting', 'child', ['parent' => 'journal_entry_id']],
         'journal_detail_taxes' => ['accounting', 'child', ['parent' => 'journal_detail_id']],
-        'account_reconciliations' => ['accounting', 'movement', ['date' => 'reconciled_at']],
+        // Sin company_id: van con las cuentas de la compañía.
+        'account_reconciliations' => ['accounting', 'movement', ['date' => 'reconciled_at', 'parent' => 'account_id']],
         'account_reconciliation_lines' => ['accounting', 'child', ['parent' => 'account_reconciliation_id']],
         'fx_revaluation_runs' => ['accounting', 'movement', ['date' => 'cutoff_date']],
         'fx_revaluation_details' => ['accounting', 'child', ['parent' => 'fx_revaluation_run_id']],

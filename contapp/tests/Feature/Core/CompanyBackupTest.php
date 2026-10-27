@@ -260,6 +260,20 @@ it('cada tabla de la base está en el respaldo o tiene su motivo para no estar',
     }
 });
 
+it('cada tabla del respaldo se recorta por la compañía: por su company_id o por la fila de la que cuelga', function () {
+    $schema = app(BackupSchema::class);
+
+    foreach (BackupCatalog::TABLES as $table => $definition) {
+        // El estado lo arma BackupState, desde lo de la compañía.
+        if ($definition[1] === 'state') {
+            continue;
+        }
+
+        expect($schema->hasColumn($table, 'company_id') || BackupCatalog::option($table, 'parent') !== null)
+            ->toBeTrue("{$table}: sin company_id ni 'parent', el respaldo llevaría las filas de todas las compañías");
+    }
+});
+
 it('todo el historial: la compañía importada da lo mismo', function () {
     $f = backupFixture();
     ['copy' => $copy, 'result' => $result, 'inspection' => $inspection] = backupRoundTrip($f);
@@ -605,6 +619,86 @@ it('completar: quien ya tiene acceso queda como está; quien falta entra con sus
     expect($result['people']['added'])->toBe(['beto@example.com'])
         ->and($level($ana))->toBe('read_write')
         ->and($level($beto))->toBe('read');
+});
+
+it('las conciliaciones de cuenta viajan con las cuentas de la compañía, no con las de otra', function () {
+    $f = backupFixture();
+    $reconcile = fn (int $accountId) => DB::table('account_reconciliations')->insertGetId(['account_id' => $accountId, 'reconciled_at' => '2026-02-01 10:00:00', 'created_at' => now(), 'updated_at' => now()]);
+
+    // Una de la compañía, con su línea; otra de una compañía de otra licencia.
+    $mine = $reconcile($f['accounts']['receivable']->id);
+    $detail = DB::table('journal_details')
+        ->join('journal_entries', 'journal_entries.id', '=', 'journal_details.journal_entry_id')
+        ->where('journal_entries.company_id', $f['company']->id)
+        ->where('journal_details.account_id', $f['accounts']['receivable']->id)
+        ->value('journal_details.id');
+    DB::table('account_reconciliation_lines')->insert(['account_reconciliation_id' => $mine, 'journal_detail_id' => $detail, 'amount' => '1000.00', 'created_at' => now(), 'updated_at' => now()]);
+    $other = Company::factory()->create();
+    $reconcile(ChartOfAccount::factory()->create(['company_id' => $other->id])->id);
+
+    $counts = app(BackupExporter::class)->counts(new BackupOptions($f['company'], ['accounting']))['tables'];
+    expect($counts['account_reconciliations'])->toBe(1)
+        ->and($counts['account_reconciliation_lines'])->toBe(1);
+
+    ['copy' => $copy, 'result' => $result] = backupRoundTrip($f);
+    $account = ChartOfAccount::withoutGlobalScope(CompanyScope::class)->where('company_id', $copy->id)->where('code', '1-01-02-01-001')->value('id');
+    $reconciliation = DB::table('account_reconciliations')->where('account_id', $account)->sole();
+
+    expect($result['dropped'])->toBe([])
+        ->and($result['imported']['account_reconciliations'])->toBe(1)
+        ->and(DB::table('account_reconciliation_lines')->where('account_reconciliation_id', $reconciliation->id)->count())->toBe(1);
+});
+
+it('una fila que apunta a algo obligatorio que el respaldo no trae se descarta, sin romper la importación', function () {
+    $f = backupFixture();
+    $empty = Company::factory()->create(['license_id' => $f['license']->id]);
+
+    // Como los respaldos que se exportaron con las conciliaciones de otras
+    // compañías: una que apunta a una cuenta que no viene, en un respaldo sin
+    // ninguna cuenta. Se arma de nuevo, con su SHA-256 y su firma.
+    $records = [];
+
+    foreach (app(BackupExporter::class)->lines(new BackupOptions($empty, ['accounting']), ['name' => 'P', 'email' => 'p@x.com', 'role' => 'Superusuario']) as $line) {
+        $record = json_decode($line, true);
+
+        if ($record['tipo'] === 'cierre') {
+            $records[] = ['tipo' => 'fila', 'tabla' => 'account_reconciliations', 'fila' => ['id' => 999999, 'account_id' => 999999, 'reconciled_by' => null, 'reconciled_at' => '2026-02-01 10:00:00', 'created_at' => '2026-02-01 10:00:00', 'updated_at' => '2026-02-01 10:00:00']];
+
+            continue;
+        }
+
+        $records[] = $record;
+    }
+
+    $lines = [];
+    $hash = hash_init('sha256');
+    $rows = [];
+
+    foreach ($records as $record) {
+        $line = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        hash_update($hash, $line."\n");
+        $lines[] = $line;
+
+        if ($record['tipo'] === 'fila') {
+            $rows[$record['tabla']] = ($rows[$record['tabla']] ?? 0) + 1;
+        }
+    }
+
+    $digest = hash_final($hash);
+    $lines[] = json_encode(['tipo' => 'cierre', 'filas' => $rows, 'sha256' => $digest, 'firma' => BackupSignature::sign($digest)]);
+    $path = tempnam(sys_get_temp_dir(), 'respaldo');
+    $out = fopen($path, 'wb');
+    BackupFile::write($lines, BACKUP_PASSWORD, ['company' => 'X', 'period' => 'Todo'], $out);
+    fclose($out);
+
+    app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD);
+    $result = app(BackupImporter::class)->import($path, BACKUP_PASSWORD, $f['license'], ['legal_name' => 'Copia']);
+    $merged = backupMerge($path, Company::factory()->create(['license_id' => $f['license']->id]));
+    unlink($path);
+
+    expect($result['dropped'])->toBe(['account_reconciliations' => 1])
+        ->and($merged['totals']['added'])->toBe(0)
+        ->and(DB::table('account_reconciliations')->count())->toBe(0);
 });
 
 it('revisar e importar avisan su avance, y al final el total', function () {

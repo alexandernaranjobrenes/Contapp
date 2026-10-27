@@ -7,3 +7,6 @@
 *.sqlite3
 *.db
 /contapp/bdcontapp
+
+# Notas personales de despliegue.
+/DESPLIEGUE.md

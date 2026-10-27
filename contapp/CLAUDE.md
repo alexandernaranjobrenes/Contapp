@@ -748,6 +748,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **Qué lleva** (`App\Domains\Core\Backup\BackupCatalog`): cada tabla de la base es de una sección o está en EXCLUDED con su motivo; una prueba lo exige (como AuditCatalog).
   - Secciones que se eligen: Contabilidad y socios (siempre), Bancos, Inventario, Facturación (necesita Inventario), Planillas, Personas y permisos, Bitácora.
   - Formas: `catalog` (todo, como está hoy), `movement` (por su fecha, en el período), `child` (lo que cuelga de algo que va), `state` (existencias, partidas abiertas: como estaban al cierre).
+  - **Cada tabla se recorta por la compañía:** por su `company_id` o, si no tiene, por su `'parent'` (aunque sea `movement`, como las conciliaciones de cuenta). Sin ninguno de los dos, el respaldo llevaría las filas de todas las compañías; una prueba lo exige.
   - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo. Las monedas y lo de Pivox se referencian por su id.
   - Las referencias se leen de la base (`BackupSchema`: `Schema::getForeignKeys`, igual en MySQL y SQLite). Las que no son llave foránea (un tipo y un id, ids adentro de un JSON) van en `AFTER` y las traduce `BackupImporter::special()`.
 - **El período:** «Todo el historial», o «Desde» y «Hasta» (vacío = hoy).

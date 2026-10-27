@@ -454,10 +454,13 @@ final class BackupImporter
             if ($new === null) {
                 $unresolved[] = $column;
 
-                if ($this->comesLater($table, $target)) {
-                    $later[] = [$column, $target, (int) $old];
-                } elseif (! $this->schema->isNullable($table, $column)) {
+                // Una obligatoria no espera al final: lo que exige viene
+                // antes (BackupSchema::order). Si no está, no hay a qué
+                // apuntar, aunque su tabla no haya aparecido en el respaldo.
+                if (! $this->schema->isNullable($table, $column)) {
                     $missing[] = $column;
+                } elseif ($this->comesLater($table, $target)) {
+                    $later[] = [$column, $target, (int) $old];
                 }
             }
 

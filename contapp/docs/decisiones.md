@@ -3,6 +3,22 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-27 — Bug real: el respaldo llevaba las conciliaciones de cuenta de todas las compañías
+
+**Hallazgo:** al pasar compañías de desarrollo a producción, el respaldo de «Modelo» no se podía importar, ni en una compañía nueva ni completando una vacía: `account_reconciliations.account_id cannot be null`. Dos errores juntos:
+- **El exportador:** `account_reconciliations` no tiene `company_id`, y en `BackupCatalog` tampoco tenía `'parent'`, así que `BackupExporter::query()` la exportaba sin filtro: el respaldo de cualquier compañía llevaba las conciliaciones (y sus líneas) de todas las de la instalación, de cualquier licencia.
+- **El importador:** una referencia que no se encontraba se dejaba «para el final» si su tabla todavía no había aparecido en el respaldo (`comesLater`), aunque la columna fuera obligatoria. «Modelo» no tiene cuentas: las conciliaciones ajenas apuntaban a una tabla que nunca llega, y se insertaban con la cuenta en NULL. Con cuentas en el respaldo (ASERESUSA, Senna) se descartaban sin error, y el problema no se veía.
+
+**Corrección:**
+- `account_reconciliations` lleva `'parent' => 'account_id'`: van solo las de las cuentas de la compañía.
+- En `BackupImporter::translate()`, una columna obligatoria nunca se deja para el final: lo que exige viene antes (`BackupSchema::order`), y si no está, la fila se descarta y se cuenta, como cualquier otra sin a qué apuntar.
+- Una prueba exige que cada tabla del respaldo (salvo las de estado) tenga `company_id` o `'parent'`.
+
+**Cómo aplicar:** una tabla nueva sin `company_id` que entra al respaldo lleva su `'parent'` en `BackupCatalog::TABLES`, aunque su forma sea `movement`. Los respaldos ya descargados se siguen importando: las conciliaciones ajenas que traen se descartan.
+
+**De paso, en producción:** el respaldo quedaba «Revisándose» porque el servidor no tenía el cron de `schedule:run` (hPanel → Cron Jobs; `docs/produccion.md`, paso 8): ninguna cola se atendía.
+
+---
 ## 2026-10-25 — Producción en Hostinger, desde GitHub
 
 **Pedido del usuario:** pasar Pivox a producción en el hosting compartido (o Cloud) de Hostinger, por medio de GitHub: hacer cambios en desarrollo y mandarlos a producción con un push, o a mano por SSH.
