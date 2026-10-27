@@ -795,6 +795,8 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
     - una compañía nueva, con sus datos;
     - o completar una de la licencia: comparar, ver la comparación y confirmar.
   - Cada paso de la cola muestra su avance, con una barra.
+  - **Se puede salir y volver:** en «Importaciones recientes», uno que espera confirmación y no venció tiene «Ver revisión», y uno que la cola sigue trabajando, «Ver avance» (`CompanyBackup::canResume()`). La pantalla vuelve a donde quedó.
+  - **Descartar** (en el resumen o en la comparación, con confirmación) lo deja `cancelled` y borra el archivo y su contraseña. Solo uno que espera confirmación, aunque haya vencido.
   - Las rutas JSON están en `shouldRenderJsonWhen`.
   - Las compañías de la licencia viajan como `licenseCompanies`: `companies` es el nombre de las del selector de la barra superior, y lo taparía.
 - **Lo que queda guardado:** el archivo subido y su contraseña (cifrada con la APP_KEY), solo hasta que se importa o hasta 24 horas (`pivox:prune-backups`, cada hora, también los que quedaron revisándose o comparándose).

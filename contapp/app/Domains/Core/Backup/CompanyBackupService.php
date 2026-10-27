@@ -201,6 +201,13 @@ final class CompanyBackupService
         ImportCompanyBackupJob::dispatch($backup->id);
     }
 
+    /** Descartado sin importarlo: no queda guardado ni el archivo ni su contraseña. */
+    public function cancel(CompanyBackup $backup): void
+    {
+        self::forget($backup);
+        $backup->update(['status' => 'cancelled', 'finished_at' => now()]);
+    }
+
     /**
      * Lo que se muestra de una comparación o de una importación que completó
      * una compañía: por sección, cuánto falta (o se agregó), cuánto ya estaba

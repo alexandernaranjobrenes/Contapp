@@ -23,6 +23,7 @@ const routes = {
     import: 'backoffice.licenses.backups.import',
     compare: 'backoffice.licenses.backups.import.compare',
     confirm: 'backoffice.licenses.backups.import.confirm',
+    cancel: 'backoffice.licenses.backups.import.cancel',
     status: 'backoffice.licenses.backups.import.status',
 };
 </script>

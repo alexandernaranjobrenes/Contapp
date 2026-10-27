@@ -29,7 +29,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Importar: subir el archivo con su contraseña → se revisa en la cola →
  * resumen (ya verificado) → una compañía nueva (sus datos) o completar una
  * que ya existe (se compara en la cola: qué le falta) → la contraseña de la
- * cuenta → en cola. La pantalla sigue el avance con importStatus().
+ * cuenta → en cola. La pantalla sigue el avance con importStatus(). Mientras
+ * espera la confirmación, se puede retomar desde la lista o descartar.
  */
 trait HandlesCompanyBackups
 {
@@ -77,6 +78,7 @@ trait HandlesCompanyBackups
                     'source' => $b->summary['company']['trade_name'] ?? $b->summary['company']['legal_name'] ?? '',
                     'period' => $b->summary['period'] ?? '',
                     'created_at' => $b->created_at?->toIso8601String(),
+                    'resumable' => $b->canResume(),
                 ]),
         ];
     }
@@ -174,6 +176,20 @@ trait HandlesCompanyBackups
         }
 
         $backups->confirm($backup, $data, $by);
+
+        return response()->json($this->statusPayload($license, $backup->fresh()));
+    }
+
+    /** Descartar uno que espera confirmación, aunque haya vencido: no se importa y no queda guardado. */
+    protected function cancelImport(License $license, string $uuid, CompanyBackupService $backups): JsonResponse
+    {
+        $backup = CompanyBackup::where('license_id', $license->id)->where('uuid', $uuid)->firstOrFail();
+
+        if (! in_array($backup->status, CompanyBackup::WAITING, true)) {
+            throw ValidationException::withMessages(['backup' => 'Este respaldo ya no está esperando confirmación: no hay nada que descartar.']);
+        }
+
+        $backups->cancel($backup);
 
         return response()->json($this->statusPayload($license, $backup->fresh()));
     }

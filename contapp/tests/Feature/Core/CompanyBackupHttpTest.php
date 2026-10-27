@@ -286,6 +286,63 @@ it('si la comparación encontró algo que lo impide, no se confirma', function (
     expect($backup->fresh()->status)->toBe('compared');
 });
 
+it('uno que espera confirmación se retoma desde la lista, o se descarta y no queda guardado', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+
+    // Al volver a la pantalla, la fila se puede retomar: lo que trae sigue ahí.
+    $this->get(route('backups.index'))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('imports.0.uuid', $uuid)->where('imports.0.status', 'validated')->where('imports.0.resumable', true));
+    expect($this->getJson(route('backups.import.status', $uuid))->json('summary.company.legal_name'))->toBe('Panadería La Espiga S.A.');
+
+    // Otra licencia no lo ve ni lo descarta.
+    $stranger = User::factory()->create(['is_super_admin' => true]);
+    $otherCompany = Company::factory()->create(['license_id' => License::factory()->create(['superuser_id' => $stranger->id])->id]);
+    $otherCompany->users()->attach($stranger->id, ['is_default' => true]);
+    $stranger->update(['default_company_id' => $otherCompany->id]);
+    $this->actingAs($stranger)->deleteJson(route('backups.import.cancel', $uuid))->assertNotFound();
+    $this->actingAs($f['superuser']);
+
+    $cancelled = $this->deleteJson(route('backups.import.cancel', $uuid))->assertOk()->json();
+    $backup = CompanyBackup::where('uuid', $uuid)->sole();
+
+    expect($cancelled['status'])->toBe('cancelled')
+        ->and($backup->finished_at)->not->toBeNull()
+        ->and($backup->getRawOriginal('secret'))->toBeNull()
+        ->and(Storage::disk('local')->allFiles('backups'))->toBe([]);
+
+    // Ya descartado: no se retoma, no se confirma ni se descarta otra vez.
+    $this->get(route('backups.index'))->assertInertia(fn ($page) => $page->where('imports.0.resumable', false));
+    $this->postJson(route('backups.import.confirm', $uuid), ['legal_name' => 'Copia', 'account_password' => 'password'])->assertStatus(422);
+    $this->deleteJson(route('backups.import.cancel', $uuid))->assertStatus(422)->assertJsonValidationErrors('backup');
+});
+
+it('uno comparado también se descarta, y desde el backoffice', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+    $this->postJson(route('backups.import.compare', $uuid), ['company_id' => $f['company']->id])->assertOk();
+
+    loginAsPropietario();
+    $this->get(route('backoffice.licenses.backups.index', $f['license']->id))
+        ->assertInertia(fn ($page) => $page->where('imports.0.status', 'compared')->where('imports.0.resumable', true));
+
+    $this->deleteJson(route('backoffice.licenses.backups.import.cancel', [$f['license']->id, $uuid]))->assertOk()->assertJsonPath('status', 'cancelled');
+    expect(Storage::disk('local')->allFiles('backups'))->toBe([]);
+});
+
+it('uno vencido ya no se retoma, pero todavía se puede descartar', function () {
+    $f = httpBackupFixture();
+    $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());
+    $uuid = $this->post(route('backups.import'), ['file' => $file, 'password' => 'clave-del-archivo'], ['Accept' => 'application/json'])->json('uuid');
+
+    $this->travel(25)->hours();
+
+    $this->get(route('backups.index'))->assertInertia(fn ($page) => $page->where('imports.0.resumable', false));
+    $this->deleteJson(route('backups.import.cancel', $uuid))->assertOk()->assertJsonPath('status', 'cancelled');
+});
+
 it('un respaldo subido que nadie confirma se borra a las 24 horas', function () {
     $f = httpBackupFixture();
     $file = UploadedFile::fake()->createWithContent('respaldo.txt', httpBackupExport($f)->streamedContent());

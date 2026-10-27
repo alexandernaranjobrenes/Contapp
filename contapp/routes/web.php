@@ -986,6 +986,7 @@ Route::middleware('auth')->group(function () {
     Route::post('backups/import/{uuid}/compare', [CompanyBackupController::class, 'compare'])->middleware('throttle:10,1')->name('backups.import.compare');
     Route::post('backups/import/{uuid}/confirm', [CompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('backups.import.confirm');
     Route::get('backups/import/{uuid}', [CompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('backups.import.status');
+    Route::delete('backups/import/{uuid}', [CompanyBackupController::class, 'cancel'])->middleware('throttle:10,1')->name('backups.import.cancel');
 
     Route::middleware('can-manage-users')->group(function () {
         Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
@@ -1076,6 +1077,7 @@ Route::middleware('auth:propietario')->prefix('backoffice')->name('backoffice.')
     Route::post('licenses/{license}/backups/import/{uuid}/compare', [BackofficeCompanyBackupController::class, 'compare'])->middleware('throttle:10,1')->name('licenses.backups.import.compare');
     Route::post('licenses/{license}/backups/import/{uuid}/confirm', [BackofficeCompanyBackupController::class, 'confirm'])->middleware('throttle:10,1')->name('licenses.backups.import.confirm');
     Route::get('licenses/{license}/backups/import/{uuid}', [BackofficeCompanyBackupController::class, 'status'])->middleware('throttle:120,1')->name('licenses.backups.import.status');
+    Route::delete('licenses/{license}/backups/import/{uuid}', [BackofficeCompanyBackupController::class, 'cancel'])->middleware('throttle:10,1')->name('licenses.backups.import.cancel');
     Route::post('licenses/{license}/commercial-profile', [CommercialProfileController::class, 'store'])->name('licenses.commercial-profile.store');
     Route::post('licenses/{license}/commercial-interactions', [CommercialInteractionController::class, 'store'])->name('licenses.commercial-interactions.store');
     Route::post('licenses/{license}/commercial-follow-ups', [CommercialFollowUpController::class, 'store'])->name('licenses.commercial-follow-ups.store');

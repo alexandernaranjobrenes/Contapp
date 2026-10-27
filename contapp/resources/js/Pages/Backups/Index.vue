@@ -22,6 +22,7 @@ const routes = {
     import: 'backups.import',
     compare: 'backups.import.compare',
     confirm: 'backups.import.confirm',
+    cancel: 'backups.import.cancel',
     status: 'backups.import.status',
 };
 </script>

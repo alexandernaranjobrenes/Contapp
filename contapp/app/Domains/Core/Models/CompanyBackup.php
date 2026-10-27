@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Un respaldo subido para importar: se revisa en la cola (inspecting),
  * queda revisado (validated), se compara con una compañía que ya existe
  * (comparing → compared), y confirmado va a la cola (queued → importing →
- * done o failed). Sin confirmar, vence (expired). Ver las migraciones y
- * CLAUDE.md secc. 37.
+ * done o failed). Sin confirmar, vence (expired) o se descarta (cancelled).
+ * Ver las migraciones y CLAUDE.md secc. 37.
  */
 class CompanyBackup extends Model
 {
@@ -21,6 +21,9 @@ class CompanyBackup extends Model
 
     /** Mientras la cola trabaja con él. */
     public const RUNNING = ['inspecting', 'comparing', 'queued', 'importing'];
+
+    /** Esperando que se confirme (o se descarte). */
+    public const WAITING = ['validated', 'compared'];
 
     protected $fillable = [
         'uuid', 'license_id', 'requested_by_user_id', 'requested_by_propietario_id', 'status', 'mode', 'target_company_id',
@@ -66,6 +69,15 @@ class CompanyBackup extends Model
     public function isPending(): bool
     {
         return in_array($this->status, self::RUNNING, true);
+    }
+
+    /**
+     * Se puede volver a él desde la lista: la cola trabaja con él (se sigue
+     * su avance), o espera que se confirme y no venció.
+     */
+    public function canResume(): bool
+    {
+        return $this->isPending() || (in_array($this->status, self::WAITING, true) && $this->expires_at?->isFuture());
     }
 
     /** Lo que ve la pantalla mientras trabaja la cola y al terminar. */

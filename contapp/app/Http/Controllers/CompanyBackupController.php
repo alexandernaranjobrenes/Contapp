@@ -54,6 +54,11 @@ class CompanyBackupController extends Controller
         return $this->confirmImport($request, $this->ownLicense($request, $currentCompany), $uuid, $this->backups);
     }
 
+    public function cancel(Request $request, CurrentCompany $currentCompany, string $uuid): JsonResponse
+    {
+        return $this->cancelImport($this->ownLicense($request, $currentCompany), $uuid, $this->backups);
+    }
+
     public function status(Request $request, CurrentCompany $currentCompany, string $uuid): JsonResponse
     {
         return $this->importStatus($this->ownLicense($request, $currentCompany), $uuid);

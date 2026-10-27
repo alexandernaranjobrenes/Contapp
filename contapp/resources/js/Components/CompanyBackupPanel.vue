@@ -7,6 +7,7 @@ import {
 import { requestJson } from '../Utils/http';
 import { fullDate } from '../Utils/relativeTime';
 import { startCompanySwitch } from '../Utils/companySwitch';
+import { confirmAction } from '../Utils/confirm';
 
 /**
  * Exportar e importar el respaldo de una compañía (CLAUDE.md secc. 37). Lo
@@ -19,6 +20,8 @@ import { startCompanySwitch } from '../Utils/companySwitch';
  * ya verificado → en una compañía nueva (sus datos) o completando una que ya
  * existe (se compara en la cola: qué le falta, qué ya tiene, qué lo impide) →
  * la contraseña de la cuenta → en cola. Cada paso de la cola muestra su avance.
+ * Desde «Importaciones recientes» se vuelve a uno que espera confirmación (o
+ * que la cola sigue trabajando), aunque se haya salido de la pantalla.
  */
 const props = defineProps({
     companies: { type: Array, required: true },
@@ -27,7 +30,7 @@ const props = defineProps({
     license: { type: Object, required: true },
     minPassword: { type: Number, default: 10 },
     imports: { type: Array, default: () => [] },
-    // { preview, export, import, compare, confirm, status }: nombres de ruta; params, los que llevan todas.
+    // { preview, export, import, compare, confirm, cancel, status }: nombres de ruta; params, los que llevan todas.
     routes: { type: Object, required: true },
     routeParams: { type: Object, default: () => ({}) },
     accountLabel: { type: String, default: 'Tu contraseña de Pivox' },
@@ -156,6 +159,7 @@ function restartExport() {
 
 // upload | inspecting | review | comparing | comparison | importing | done | failed
 const importStep = ref('upload');
+const importPanel = ref(null);
 const importFile = ref(null);
 const fileInput = ref(null);
 const importPassword = ref('');
@@ -248,6 +252,7 @@ async function reviewImport() {
     importPassword.value = '';
     pending.value = null;
     show(result.data);
+    router.reload({ only: ['imports'] });
 }
 
 /** Lo que pidió la persona, a la cola; si el servidor lo rechaza, el motivo queda junto al campo. */
@@ -263,8 +268,58 @@ async function send(name, body) {
     }
 
     show(result.data);
+    router.reload({ only: ['imports'] });
 
     return true;
+}
+
+/**
+ * Uno de la lista: la pantalla vuelve a donde quedó (lo que trae, la
+ * comparación o el avance de la cola), para confirmarlo o descartarlo.
+ */
+async function resumeImport(item) {
+    const result = await requestJson(url('status', { uuid: item.uuid }));
+
+    if (! result.ok) {
+        importErrors.value = { general: result.message };
+        return;
+    }
+
+    restartImport();
+    const data = result.data;
+
+    if (data.defaults) {
+        companyForm.value = { legal_name: data.defaults.legal_name, trade_name: data.defaults.trade_name ?? '', tax_id: data.defaults.tax_id ?? '', account_password: '' };
+    }
+
+    destination.value = data.mode === 'merge' ? 'merge' : 'new';
+    mergeCompanyId.value = data.target_company_id ?? null;
+    show(data);
+    importPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** No importarlo: se borran el archivo subido y su contraseña. */
+function discardImport() {
+    confirmAction({
+        title: 'Descartar el respaldo',
+        message: 'No se importa nada, y se borran el archivo subido y su contraseña. Para importarlo después, hay que volver a subirlo.',
+        confirmLabel: 'Descartar',
+        danger: true,
+        onConfirm: async () => {
+            importBusy.value = true;
+            importErrors.value = {};
+            const result = await requestJson(url('cancel', { uuid: pending.value.uuid }), { method: 'DELETE' });
+            importBusy.value = false;
+
+            if (! result.ok) {
+                importErrors.value = { general: result.status === 422 ? Object.values(result.errors)[0] : result.message };
+                return;
+            }
+
+            restartImport();
+            router.reload({ only: ['imports'] });
+        },
+    });
 }
 
 function confirmImport() {
@@ -351,7 +406,7 @@ const runningTitle = computed(() => {
     if (importStep.value === 'comparing') return `Comparando con «${companyNameOf(pending.value?.target_company_id)}»…`;
     if (pending.value?.mode === 'merge') return `Completando «${pending.value.company_name}»…`;
 
-    return `Importando «${companyForm.value.trade_name || companyForm.value.legal_name}»…`;
+    return `Importando «${pending.value?.company_name || companyForm.value.trade_name || companyForm.value.legal_name}»…`;
 });
 
 const progressText = computed(() => {
@@ -406,6 +461,7 @@ const STATUS = {
     done: ['Importado', 'badge-success'],
     failed: ['Con error', 'badge-danger'],
     expired: ['Vencido', 'badge-neutral'],
+    cancelled: ['Descartado', 'badge-neutral'],
 };
 
 const droppedTotal = computed(() => Object.values(pending.value?.result?.dropped ?? {}).reduce((a, b) => a + b, 0));
@@ -547,7 +603,7 @@ function xsrfToken() {
         </section>
 
         <!-- ── Importar ── -->
-        <section class="card panel" aria-labelledby="import-title">
+        <section ref="importPanel" class="card panel" aria-labelledby="import-title">
             <header class="panel-head">
                 <ArchiveRestoreIcon aria-hidden="true" />
                 <div>
@@ -682,7 +738,7 @@ function xsrfToken() {
                 <p v-if="importErrors.general" class="flash flash-error" role="alert">{{ importErrors.general }}</p>
 
                 <div class="form-actions">
-                    <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="restartImport">Cancelar</button>
+                    <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="discardImport">Descartar</button>
                     <button
                         v-if="destination === 'new'"
                         type="submit"
@@ -769,6 +825,7 @@ function xsrfToken() {
 
                 <div class="form-actions">
                     <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="backToReview"><ArrowLeftIcon /> Volver</button>
+                    <button type="button" class="btn btn-ghost" :disabled="importBusy" @click="discardImport">Descartar</button>
                     <button v-if="! blocked && ! nothingToAdd" type="submit" class="btn btn-primary" :disabled="importBusy" :data-busy="importBusy ? '' : null">
                         <ArchiveRestoreIcon /> {{ importBusy ? 'Enviando…' : 'Sí, completar' }}
                     </button>
@@ -811,7 +868,7 @@ function xsrfToken() {
             <div class="table-responsive">
                 <table>
                     <thead>
-                        <tr><th>Fecha</th><th>Respaldo de</th><th>Período</th><th>Estado</th><th>Compañía</th></tr>
+                        <tr><th>Fecha</th><th>Respaldo de</th><th>Período</th><th>Estado</th><th>Compañía</th><th><span class="sr-only">Acciones</span></th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="i in imports" :key="i.uuid">
@@ -822,6 +879,16 @@ function xsrfToken() {
                             <td data-label="Compañía">
                                 <template v-if="i.status === 'done'">{{ i.mode === 'merge' ? `Completó ${i.company_name}` : `Creó ${i.company_name}` }}</template>
                                 <template v-else>{{ i.error ?? '—' }}</template>
+                            </td>
+                            <td class="row-action">
+                                <button
+                                    v-if="i.resumable && pending?.uuid !== i.uuid"
+                                    type="button"
+                                    class="btn btn-ghost btn-sm"
+                                    @click="resumeImport(i)"
+                                >
+                                    {{ ['validated', 'compared'].includes(i.status) ? 'Ver revisión' : 'Ver avance' }}
+                                </button>
                             </td>
                         </tr>
                     </tbody>
@@ -893,6 +960,8 @@ legend { font-weight: 600; font-size: 0.84rem; margin-bottom: 0.35rem; padding: 
 .done .flash { display: flex; gap: 0.5rem; align-items: center; }
 .done .flash svg { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 .result { margin: 0.5rem 0 0.75rem; padding-left: 1.2rem; font-size: 0.84rem; }
+
+.row-action { text-align: right; white-space: nowrap; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
