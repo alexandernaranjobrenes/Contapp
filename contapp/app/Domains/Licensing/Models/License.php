@@ -37,6 +37,9 @@ class License extends Model
         return [
             'expires_at' => 'date',
             'ai_enabled' => 'boolean',
+            // El recorrido de bienvenida para el dueño (WelcomeTourController).
+            // Fuera de $fillable, como superuser_id: lo prende la activación.
+            'welcome_pending' => 'boolean',
             'ai_daily_credits' => 'decimal:2',
             'ai_weekly_credits' => 'decimal:2',
             'ai_user_daily_credits' => 'decimal:2',

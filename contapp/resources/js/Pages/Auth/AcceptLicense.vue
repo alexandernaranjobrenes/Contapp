@@ -8,9 +8,10 @@ import { ArrowRightIcon, CheckIcon, TriangleAlertIcon } from '@lucide/vue';
 
 /**
  * El enlace del correo de una licencia asignada desde el backoffice
- * (LicenseInvitationService): la persona la acepta con los datos de su
- * primera compañía y, si hace falta, eligiendo su contraseña. Si no la
- * acepta, la licencia no se activa.
+ * (LicenseInvitationService): la persona la acepta, eligiendo su contraseña
+ * si hace falta. Si no la acepta, la licencia no se activa. La compañía no se
+ * pide: nace con un nombre predefinido, y el recorrido de bienvenida
+ * (WelcomeTourHost.vue) pide los datos reales al entrar.
  */
 const props = defineProps({
     token: { type: String, required: true },
@@ -21,14 +22,14 @@ const props = defineProps({
 });
 
 const form = useForm({
-    legal_name: '',
-    trade_name: '',
-    tax_id: '',
     password: '',
     password_confirmation: '',
 });
 
 const usable = computed(() => props.state === 'pending' && props.invitation);
+
+// Sin la invitación (enlace vencido o usado) se muestran los tres pasos.
+const needsPassword = computed(() => !props.invitation || props.invitation.requires_password);
 
 // Hasta cuándo sirve el enlace, en la hora de quien lo abre.
 const linkExpiry = computed(() => {
@@ -51,13 +52,13 @@ function submit() {
     <AuthShell
         wide
         subtitle="Aceptá tu licencia de Pivox"
-        lead="El equipo de Pivox te asignó una licencia. Se activa cuando la aceptás: con los datos de tu primera compañía, y tu contraseña si hace falta."
+        lead="El equipo de Pivox te asignó una licencia. Se activa cuando la aceptás, y tu compañía queda lista para empezar."
     >
         <template #panel-extra>
             <ol class="auth-steps">
-                <li><span class="auth-step-number">1</span> Los datos básicos de tu primera compañía</li>
-                <li v-if="!invitation || invitation.requires_password"><span class="auth-step-number">2</span> Tu contraseña, que solo vas a saber vos</li>
-                <li><span class="auth-step-number">{{ !invitation || invitation.requires_password ? 3 : 2 }}</span> Entrás directo a tu compañía como Superusuario</li>
+                <li v-if="needsPassword"><span class="auth-step-number">1</span> Tu contraseña, que solo vas a saber vos</li>
+                <li><span class="auth-step-number">{{ needsPassword ? 2 : 1 }}</span> Entrás directo a tu compañía como Superusuario</li>
+                <li><span class="auth-step-number">{{ needsPassword ? 3 : 2 }}</span> Un recorrido corto por Pivox, y al final los datos de tu compañía</li>
             </ol>
         </template>
 
@@ -152,25 +153,10 @@ function submit() {
                     />
                 </template>
 
-                <h3 class="section-title">Tu primera compañía</h3>
-
-                <div class="grid">
-                    <div class="field">
-                        <label for="legal_name">Razón social</label>
-                        <input id="legal_name" v-model="form.legal_name" type="text" required>
-                        <span v-if="form.errors.legal_name" class="error">{{ form.errors.legal_name }}</span>
-                    </div>
-                    <div class="field">
-                        <label for="trade_name">Nombre comercial</label>
-                        <input id="trade_name" v-model="form.trade_name" type="text">
-                        <span v-if="form.errors.trade_name" class="error">{{ form.errors.trade_name }}</span>
-                    </div>
-                    <div class="field">
-                        <label for="tax_id">Cédula jurídica (opcional)</label>
-                        <input id="tax_id" v-model="form.tax_id" type="text">
-                        <span v-if="form.errors.tax_id" class="error">{{ form.errors.tax_id }}</span>
-                    </div>
-                </div>
+                <p class="company-note">
+                    Tu compañía se crea con un nombre provisional. Al entrar te mostramos dónde ponerle la razón social
+                    y el nombre comercial.
+                </p>
 
                 <button type="submit" class="btn btn-primary auth-submit submit-btn" :disabled="form.processing">
                     <CheckIcon /> Aceptar y activar
@@ -207,6 +193,15 @@ function submit() {
 
 .account-note {
     margin: 0 0 0.9rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+}
+
+.company-note {
+    margin: 1.25rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border);
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--color-text-muted);

@@ -847,7 +847,7 @@ function xsrfToken() {
                         No cupieron en la licencia: {{ pending.result.people.no_quota.join(', ') }}.
                     </li>
                     <li v-if="droppedTotal">
-                        Quedaron fuera {{ number(droppedTotal) }} registros que dependían de movimientos anteriores al período.
+                        Quedaron fuera {{ number(droppedTotal) }} registros: dependían de algo que no viene en el respaldo, como movimientos anteriores al período.
                     </li>
                 </ul>
                 <div class="form-actions">
@@ -877,7 +877,9 @@ function xsrfToken() {
                             <td data-label="Período">{{ i.period }}</td>
                             <td data-label="Estado"><span class="badge" :class="STATUS[i.status]?.[1]">{{ STATUS[i.status]?.[0] ?? i.status }}</span></td>
                             <td data-label="Compañía">
-                                <template v-if="i.status === 'done'">{{ i.mode === 'merge' ? `Completó ${i.company_name}` : `Creó ${i.company_name}` }}</template>
+                                <template v-if="i.status === 'done'">
+                                    {{ i.mode === 'merge' ? `Completó ${i.company_name}` : `Creó ${i.company_name}` }}<span v-if="i.dropped" class="muted"> · quedaron fuera {{ number(i.dropped) }} registros</span>
+                                </template>
                                 <template v-else>{{ i.error ?? '—' }}</template>
                             </td>
                             <td class="row-action">

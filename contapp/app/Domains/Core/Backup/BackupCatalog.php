@@ -192,6 +192,7 @@ final class BackupCatalog
         'company_modules' => 'Los módulos de una compañía los decide su licencia.',
         'company_invitations' => 'Una invitación lleva un enlace con token: no se respalda.',
         'saved_reports' => 'Son preferencias de cada persona, no datos de la compañía.',
+        'dashboard_layouts' => 'Es la forma del Panel, no un dato contable: se vuelve a armar en la compañía.',
         'conti_actions' => 'Lo que Conti prepara: lo confirmado ya está en sus registros.',
         'conti_usage' => 'El consumo de Conti es de la licencia, no de la compañía.',
         'conti_user_settings' => 'El acceso a Conti es de la licencia.',
@@ -252,11 +253,35 @@ final class BackupCatalog
     /** Van al final, después de todo lo demás. */
     public const LAST = ['audit_logs'];
 
-    /** Se referencian por su id, que es el mismo en toda la instalación. */
+    /** Son de Pivox: no viajan en el respaldo, las filas solo las referencian. */
     public const GLOBAL_TABLES = ['currencies', 'modules'];
 
     /** Tablas con filas de Pivox (company_id NULL) y de la compañía: las de Pivox se referencian. */
     public const MIXED_TABLES = ['tax_types', 'tax_rates', 'roles'];
+
+    /**
+     * Cómo se reconoce lo de Pivox en cualquier instalación: los ids no valen,
+     * cada una tiene los suyos. Van en el encabezado del respaldo. La primera
+     * columna es la que lo reconoce; las demás eligen si hay varias filas con
+     * ese valor (las vigencias de una tarifa).
+     *
+     * @var array<string, list<string>>
+     */
+    public const GLOBAL_KEYS = [
+        'currencies' => ['code'],
+        'modules' => ['code'],
+        'tax_types' => ['code'],
+        'tax_rates' => ['code', 'effective_from'],
+        'roles' => ['type'],
+    ];
+
+    /** Cómo se nombra lo que falta. Los roles no están: se crean la primera vez que hacen falta. */
+    public const GLOBAL_LABELS = [
+        'currencies' => 'la moneda',
+        'modules' => 'el módulo',
+        'tax_types' => 'el tipo de impuesto',
+        'tax_rates' => 'la tarifa',
+    ];
 
     /**
      * Columnas que no viajan: las fotos y el logo están en el bucket, y el

@@ -59,20 +59,16 @@ class LicenseInvitationAcceptanceController extends Controller
         }
 
         $validated = $request->validate([
-            'legal_name' => ['required', 'string', 'max:255'],
-            'trade_name' => ['nullable', 'string', 'max:255'],
-            'tax_id' => ['nullable', 'string', 'max:50'],
             'password' => $invitation->requiresPassword()
                 ? ['required', 'string', 'confirmed', PasswordPolicy::rule()]
                 : ['nullable'],
-        ], [], ['legal_name' => 'razón social']);
+        ]);
 
         try {
-            $result = $service->accept($invitation, [
-                'legal_name' => $validated['legal_name'],
-                'trade_name' => $validated['trade_name'] ?? null,
-                'tax_id' => $validated['tax_id'] ?? null,
-            ], $invitation->requiresPassword() ? $validated['password'] : null);
+            // La compañía no se pide: nace con el nombre predefinido
+            // (LicenseActivationService), y el recorrido de bienvenida pide
+            // los datos reales al entrar.
+            $result = $service->accept($invitation, [], $invitation->requiresPassword() ? $validated['password'] : null);
         } catch (InvitationException $e) {
             return back()->withErrors([$e->field => $e->getMessage()]);
         } catch (InvalidLicenseException|AccountNotEligibleException $e) {

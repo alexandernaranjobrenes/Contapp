@@ -170,6 +170,24 @@ class HandleInertiaRequests extends Middleware
                 'expires_at' => $license->expires_at->format('Y-m-d'),
                 'display_status' => $license->displayStatus(),
             ] : null,
+            // La bienvenida de una licencia recién activada (WelcomeTourHost.vue):
+            // solo para su dueño, hasta que la termina o la salta. Lleva las
+            // secciones del menú que puede abrir, para no presentarle una
+            // herramienta que no tiene, y la compañía, que nació con el
+            // nombre predefinido y al final se le pide cambiar.
+            'welcomeTour' => ($user && $company && $license?->superuser_id === $user->id && $license->welcome_pending) ? [
+                'sections' => collect($screenAccess)
+                    ->reject(fn (string $level) => $level === 'none')
+                    ->keys()
+                    ->map(fn (string $key) => ScreenCatalog::find($key)['section'] ?? null)
+                    ->filter()
+                    ->unique()
+                    ->values(),
+                'company' => [
+                    'legal_name' => $company->legal_name,
+                    'trade_name' => $company->trade_name,
+                ],
+            ] : null,
             // La fecha de la última noticia del backoffice: el botón de
             // «Comentarios y noticias» de la barra superior lleva un punto
             // mientras haya una que esta persona todavía no vio. Va en caché

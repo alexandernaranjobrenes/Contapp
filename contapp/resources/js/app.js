@@ -8,6 +8,7 @@ import ContiScanModal from './Components/Conti/ContiScanModal.vue';
 import ContiPanel from './Components/Conti/ContiPanel.vue';
 import StartupHost from './Components/StartupHost.vue';
 import ToastHost from './Components/ToastHost.vue';
+import WelcomeTourHost from './Components/WelcomeTourHost.vue';
 // Botón ocupado mientras dura la operación que disparó, también en las
 // descargas, y el error dicho en pantalla si falla (CLAUDE.md secc. 27).
 // Cada uno se instala solo al importarlo.
@@ -45,8 +46,9 @@ createInertiaApp({
         // avisos siguen a la vista aunque la acción termine en otra página.
         // El chat de Conti, igual: la conversación sigue abierta al pasar de
         // pantalla, y el modal para confirmar lo que preparó se abre encima
-        // de cualquiera.
-        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ContiActionModal), h(ContiScanModal), h(ConfirmHost), h(CompanySwitchHost), h(StartupHost), h(ToastHost)] });
+        // de cualquiera. El recorrido de bienvenida de una licencia nueva
+        // espera a que termine la entrada (StartupHost) para aparecer.
+        const app = createApp({ render: () => [h(App, props), h(ContiPanel), h(ContiActionModal), h(ContiScanModal), h(ConfirmHost), h(CompanySwitchHost), h(StartupHost), h(WelcomeTourHost), h(ToastHost)] });
 
         // Ziggy (@routes en app.blade.php) define route() como global de
         // window, pero las plantillas .vue precompiladas resuelven cada

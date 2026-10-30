@@ -165,6 +165,15 @@ class JournalEntryController extends Controller
 
         abort_if($entry->status !== 'draft', 404);
 
+        // Las fechas de encabezado valen para cada línea sin la suya
+        // (docs/decisiones.md 2026-10-30). Un preliminar guardado antes de
+        // eso tiene el vencimiento del encabezado copiado en cada línea: igual
+        // al del encabezado es heredado, no propio, y vuelve vacío para que
+        // cambiar el encabezado lo alcance. Al contabilizar da lo mismo.
+        $headerDueDate = $entry->due_date?->format('Y-m-d');
+        $headerDocumentDate = $entry->document_date->format('Y-m-d');
+        $own = fn (?string $lineDate, ?string $headerDate) => $lineDate !== null && $lineDate !== $headerDate ? $lineDate : null;
+
         return Inertia::render('JournalEntries/Create', [
             'entry' => [
                 'id' => $entry->id,
@@ -184,9 +193,9 @@ class JournalEntryController extends Controller
                     'description' => $d->description,
                     'electronic_key' => $d->electronic_key,
                     'cost_allocation_rule_id' => $d->cost_allocation_rule_id,
-                    'due_date' => $d->due_date?->format('Y-m-d'),
+                    'due_date' => $own($d->due_date?->format('Y-m-d'), $headerDueDate),
                     'reference_document' => $d->reference_document,
-                    'reference_document_date' => $d->reference_document_date?->format('Y-m-d'),
+                    'reference_document_date' => $own($d->reference_document_date?->format('Y-m-d'), $headerDocumentDate),
                 ]),
             ],
             // El destino de "anterior/siguiente" desde acá es SIEMPRE
@@ -888,7 +897,10 @@ class JournalEntryController extends Controller
                 ->where('is_active', true)
                 ->with('taxRate:id,code,name,percentage,effective_from,effective_to')
                 ->orderBy('code')
-                ->get(['id', 'code', 'description_es', 'requires_cost_center', 'tax_classification', 'tax_rate_id']),
+                ->get(['id', 'code', 'description_es', 'account_type', 'requires_cost_center', 'tax_classification', 'tax_rate_id']),
+            // Los nombres de las clases, para filtrar la ventana de búsqueda
+            // de cuentas (AccountSearchModal).
+            'accountTypes' => ChartOfAccount::ACCOUNT_TYPES,
             'currencies' => Currency::all(['id', 'code', 'symbol']),
             'businessPartners' => BusinessPartner::where('status', 'active')
                 ->orderBy('code')

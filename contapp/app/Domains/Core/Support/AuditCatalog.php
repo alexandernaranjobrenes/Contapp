@@ -178,6 +178,7 @@ final class AuditCatalog
         Core\Module::class => 'Catálogo del sistema.',
         Core\CompanyModule::class => 'Los módulos de la compañía los decide la licencia, en el backoffice.',
         Core\CompanyBackup::class => 'Las importaciones de respaldos: ya quedan como «creó la compañía desde un respaldo».',
+        Core\DashboardLayout::class => 'Los cambios del Panel ya los anota DashboardService (company.dashboard_updated).',
         // Facturación electrónica (CLAUDE.md secc. 38).
         Bill\HaciendaSetting::class => 'Lo anota HaciendaSettingsController («editó los datos del emisor para Hacienda»), solo para el Superusuario.',
         Bill\HaciendaCredential::class => 'Son las credenciales del ATV y la llave: HaciendaSettingsController anota que cambiaron, nunca los valores.',

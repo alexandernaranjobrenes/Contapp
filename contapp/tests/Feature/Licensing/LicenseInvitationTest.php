@@ -65,10 +65,13 @@ function invitationToken(string $email): string
     return basename(parse_url(invitationLink($email), PHP_URL_PATH));
 }
 
-/** Los datos de la compañía que se cargan al aceptar. */
+/**
+ * Lo que manda el formulario al aceptar: la contraseña, si hace falta. La
+ * compañía no se pide: nace con el nombre predefinido.
+ */
 function acceptance(array $overrides = []): array
 {
-    return array_merge(['legal_name' => 'Empresa de Kevin S.A.', 'trade_name' => 'Kevin', 'tax_id' => '3-101-555555'], $overrides);
+    return $overrides;
 }
 
 /** Una cuenta que ya existe, con la contraseña elegida por ella o puesta por otra persona. */
@@ -123,7 +126,6 @@ it('emite una licencia asignada a una cuenta existente: queda reservada y le lle
     leaveBackoffice();
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Otra Empresa',
         'name' => 'Otra Persona',
         'email' => 'otra@example.com',
         'password' => 'Secreto#1234',
@@ -203,7 +205,7 @@ it('una cuenta existente con contraseña propia acepta con los datos de su compa
         ->assertRedirect(route('dashboard'));
 
     $license = License::sole();
-    $company = Company::where('legal_name', 'Empresa de Kevin S.A.')->sole();
+    $company = Company::where('license_id', $license->id)->sole();
     $kevin->refresh();
 
     expect($license->superuser_id)->toBe($kevin->id)

@@ -18,11 +18,11 @@ Aceptar la licencia
 </x-mail::button>
 
 @if ($newAccount)
-Al aceptarla se crea tu cuenta con el correo **{{ $email }}**: vas a elegir tu contraseña y cargar los datos de tu primera compañía.
+Al aceptarla se crea tu cuenta con el correo **{{ $email }}**: solo vas a elegir tu contraseña, y tu compañía queda lista para empezar.
 @elseif ($requiresPassword)
-Se activa en tu cuenta **{{ $email }}**. Como tu contraseña actual la definió otra persona, al aceptar vas a elegir una nueva, y cargar los datos de tu primera compañía.
+Se activa en tu cuenta **{{ $email }}**. Como tu contraseña actual la definió otra persona, al aceptar vas a elegir una nueva, y tu compañía queda lista para empezar.
 @else
-Se activa en tu cuenta **{{ $email }}**: al aceptar vas a cargar los datos de tu primera compañía.
+Se activa en tu cuenta **{{ $email }}**: al aceptar, tu compañía queda lista para empezar.
 @endif
 
 El enlace vence en **{{ $minutes }} minutos**. Si vence, pedile al equipo de {{ config('app.name') }} que te lo reenvíe: la licencia no se activa hasta que la aceptes.

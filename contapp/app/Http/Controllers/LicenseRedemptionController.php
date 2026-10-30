@@ -46,21 +46,12 @@ class LicenseRedemptionController extends Controller
     {
         $validated = $request->validate([
             'code' => ['required', 'string'],
-            'legal_name' => ['required', 'string', 'max:255'],
-            'trade_name' => ['nullable', 'string', 'max:255'],
-            'tax_id' => ['nullable', 'string', 'max:50'],
         ]);
 
         try {
-            $result = $service->activateForExistingUser(
-                $validated['code'],
-                [
-                    'legal_name' => $validated['legal_name'],
-                    'trade_name' => $validated['trade_name'] ?? null,
-                    'tax_id' => $validated['tax_id'] ?? null,
-                ],
-                $request->user(),
-            );
+            // La compañía no se pide: nace con el nombre predefinido, y el
+            // recorrido de bienvenida pide los datos reales al entrar.
+            $result = $service->activateForExistingUser($validated['code'], [], $request->user());
         } catch (InvalidLicenseException $e) {
             return back()->withErrors(['code' => $e->getMessage()]);
         } catch (AccountNotEligibleException $e) {

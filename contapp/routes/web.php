@@ -130,6 +130,7 @@ use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\VacationController;
 use App\Http\Controllers\WarehouseBinController;
 use App\Http\Controllers\WarehouseController;
+use App\Http\Controllers\WelcomeTourController;
 use Illuminate\Support\Facades\Route;
 
 // El sitio público (CLAUDE.md secc. 40): la landing, el blog y los planes.
@@ -244,6 +245,10 @@ Route::middleware('auth')->group(function () {
     // Los datos de una compañía propia (solo su Superusuario, lo comprueba el
     // controlador). Recibe la compañía: puede no ser la activa.
     Route::put('my-account/companies/{company}', [CompanyDetailsController::class, 'update'])->name('profile.companies.update');
+
+    // El recorrido de bienvenida de una licencia recién activada: terminarlo
+    // o saltarlo lo apaga (WelcomeTourController). Es de la persona.
+    Route::post('welcome/complete', [WelcomeTourController::class, 'complete'])->name('welcome-tour.complete');
 
     // El panel «Comentarios y noticias» de la barra superior
     // (FeedbackController). Cualquier cuenta, con cualquier rol: no es un
@@ -962,6 +967,10 @@ Route::middleware('auth')->group(function () {
         // La Bitácora (CLAUDE.md secc. 35): de a 15, y «Ver más».
         Route::get('activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
         Route::get('activity-log/more', [ActivityLogController::class, 'more'])->middleware('throttle:60,1')->name('activity-log.more');
+
+        // Los elementos del Panel (CLAUDE.md secc. 44): cada uno, solo si
+        // quien guarda lo ve (DashboardService).
+        Route::put('dashboard/layout', [DashboardController::class, 'update'])->name('dashboard.layout.update');
     });
 
     // Facturación electrónica (CLAUDE.md secc. 38): las credenciales del ATV

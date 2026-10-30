@@ -94,6 +94,10 @@ class ProfileController extends Controller
                 ->values(),
             'passwordRequirements' => PasswordPolicy::requirements(),
             'emailLinkMinutes' => self::EMAIL_LINK_MINUTES,
+            // ?compania={id}: la ficha de esa compañía se abre sola, si la
+            // persona la puede editar. Así llega el final del recorrido de
+            // bienvenida (WelcomeTourController).
+            'openCompanyId' => $request->integer('compania') ?: null,
         ]);
     }
 

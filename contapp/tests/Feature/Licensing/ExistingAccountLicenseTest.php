@@ -62,7 +62,6 @@ function existingAccountPayload(License $license, array $overrides = []): array
     return array_merge([
         'account' => 'existing',
         'code' => $license->code,
-        'legal_name' => 'Empresa de Kevin S.A.',
         'email' => 'kevin@example.com',
         'password' => 'Clave-Puesta-1234',
     ], $overrides);
@@ -80,7 +79,7 @@ it('una cuenta existente activa su licencia y queda como Superusuario de la suya
         ->assertRedirect(route('dashboard'))
         ->assertSessionHas('success');
 
-    $company = Company::where('legal_name', 'Empresa de Kevin S.A.')->sole();
+    $company = Company::where('license_id', $license->id)->sole();
     $member->refresh();
 
     // La licencia queda a su nombre, y no se creó ninguna cuenta.
@@ -136,7 +135,6 @@ it('sin un código válido no sirve para probar contraseñas ni para saber qué 
 
     $response = $this->post(route('license-activation.store'), array_merge([
         'code' => 'PIVOX-NOPE-NOPE-NOPE',
-        'legal_name' => 'Empresa de Kevin S.A.',
         'email' => 'kevin@example.com',
     ], $payload));
 
@@ -171,7 +169,6 @@ it('crear una cuenta nueva con un correo que ya existe manda a «Ya tengo una cu
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Empresa de Kevin S.A.',
         'name' => 'Un Impostor',
         'email' => 'kevin@example.com',
         'password' => 'Secreto#1234',
@@ -321,10 +318,9 @@ it('con la sesión iniciada activa su licencia, y el rol depende de la compañí
 
     $this->post(route('license-redemption.store'), [
         'code' => $license->code,
-        'legal_name' => 'Empresa de Kevin S.A.',
     ])->assertRedirect(route('dashboard'))->assertSessionHas('success');
 
-    $company = Company::where('legal_name', 'Empresa de Kevin S.A.')->sole();
+    $company = Company::where('license_id', $license->id)->sole();
     expect($license->fresh()->superuser_id)->toBe($member->id)
         ->and($member->fresh()->default_company_id)->toBe($company->id);
 
@@ -360,11 +356,10 @@ it('con la sesión iniciada tampoco activa una segunda licencia ni con la contra
 
     $this->post(route('license-redemption.store'), [
         'code' => $license->code,
-        'legal_name' => 'No Debería Existir',
     ])->assertSessionHasErrors('account');
 
     expect($license->fresh()->superuser_id)->toBeNull()
-        ->and(Company::where('legal_name', 'No Debería Existir')->exists())->toBeFalse();
+        ->and(Company::where('license_id', $license->id)->exists())->toBeFalse();
 })->with([
     'ya es dueña de una licencia' => [true, 'otherOwner'],
     'tiene la contraseña que le puso otra persona' => [false, 'member'],
@@ -376,13 +371,11 @@ it('con la sesión iniciada rechaza un código inválido', function () {
 
     $this->post(route('license-redemption.store'), [
         'code' => 'PIVOX-NOPE-NOPE-NOPE',
-        'legal_name' => 'Empresa de Kevin S.A.',
     ])->assertSessionHasErrors('code');
 
     // Un código ya activado tampoco: el de la licencia en la que es Usuario.
     $this->post(route('license-redemption.store'), [
         'code' => $f['otherLicense']->code,
-        'legal_name' => 'Empresa de Kevin S.A.',
     ])->assertSessionHasErrors('code');
 
     expect($f['otherLicense']->fresh()->superuser_id)->toBe($f['otherOwner']->id);
@@ -402,7 +395,6 @@ it('que la licencia de la otra persona esté vencida no le impide activar la suy
     // …pero activar la suya no es escribir en esa compañía.
     $this->post(route('license-redemption.store'), [
         'code' => $license->code,
-        'legal_name' => 'Empresa de Kevin S.A.',
     ])->assertRedirect(route('dashboard'));
 
     $this->get(route('dashboard'))->assertInertia(fn ($page) => $page->where('licenseGrace', false));

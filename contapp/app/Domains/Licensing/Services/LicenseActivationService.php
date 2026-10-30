@@ -29,13 +29,22 @@ use Illuminate\Support\Facades\Hash;
  * Compañías adicionales bajo una licencia ya activada se agregan desde
  * CompanyProvisioningService (el Superusuario ya logueado), nunca canjeando
  * el código de nuevo.
+ *
+ * La primera compañía nace sin pedirle datos a nadie: con DEFAULT_COMPANY_NAME
+ * como razón social y nombre comercial, para que activar sea solo la cuenta.
+ * La licencia queda con la bienvenida pendiente (welcome_pending): la primera
+ * vez que su dueño entra, un recorrido por Pivox termina pidiéndole los datos
+ * reales (WelcomeTourController, WelcomeTourHost.vue).
  */
 class LicenseActivationService
 {
+    /** La razón social y el nombre comercial con que nace la primera compañía. */
+    public const DEFAULT_COMPANY_NAME = 'Mi compañía';
+
     /**
      * Una persona nueva: se le crea la cuenta junto con la compañía.
      *
-     * @param  array{legal_name:string, trade_name?:string, tax_id?:string}  $companyData
+     * @param  array{legal_name?:string, trade_name?:string, tax_id?:string}  $companyData  vacío: DEFAULT_COMPANY_NAME
      * @param  array{name:string, email:string, password:string}  $userData
      * @return array{license: License, company: Company, user: User}
      *
@@ -71,7 +80,7 @@ class LicenseActivationService
 
             // Fuera de $fillable a propósito (ver License.php): se fija acá,
             // de una sola vez, atómico con la creación de compañía+usuario.
-            $license->forceFill(['superuser_id' => $user->id])->save();
+            $license->forceFill(['superuser_id' => $user->id, 'welcome_pending' => true])->save();
 
             return ['license' => $license, 'company' => $company, 'user' => $user];
         });
@@ -93,7 +102,7 @@ class LicenseActivationService
      * rango de Superusuario en cualquiera de esas a las que perteneciera. Con
      * licencia de por medio, lo que manda es licenses.superuser_id.
      *
-     * @param  array{legal_name:string, trade_name?:string, tax_id?:string}  $companyData
+     * @param  array{legal_name?:string, trade_name?:string, tax_id?:string}  $companyData  vacío: DEFAULT_COMPANY_NAME
      * @return array{license: License, company: Company, user: User}
      *
      * @throws InvalidLicenseException
@@ -118,7 +127,7 @@ class LicenseActivationService
 
             $user->forceFill(['default_company_id' => $company->id])->save();
 
-            $license->forceFill(['superuser_id' => $user->id])->save();
+            $license->forceFill(['superuser_id' => $user->id, 'welcome_pending' => true])->save();
 
             AuditLog::create([
                 'company_id' => $company->id,
@@ -203,10 +212,12 @@ class LicenseActivationService
     }
 
     /**
-     * @param  array{legal_name:string, trade_name?:string, tax_id?:string}  $companyData
+     * @param  array{legal_name?:string, trade_name?:string, tax_id?:string}  $companyData
      */
     private function createCompany(License $license, array $companyData): Company
     {
+        $legalName = ($companyData['legal_name'] ?? null) ?: self::DEFAULT_COMPANY_NAME;
+
         $crc = Currency::firstOrCreate(
             ['code' => 'CRC'],
             ['name' => 'Colón costarricense', 'symbol' => '₡', 'decimal_places' => 2]
@@ -218,9 +229,9 @@ class LicenseActivationService
 
         $company = Company::create([
             'license_id' => $license->id,
-            'legal_name' => $companyData['legal_name'],
-            'trade_name' => $companyData['trade_name'] ?? $companyData['legal_name'],
-            'tax_id' => $companyData['tax_id'] ?? null,
+            'legal_name' => $legalName,
+            'trade_name' => ($companyData['trade_name'] ?? null) ?: $legalName,
+            'tax_id' => ($companyData['tax_id'] ?? null) ?: null,
             'country_code' => 'CR',
             'local_currency_id' => $crc->id,
             'foreign_currency_id' => $usd->id,

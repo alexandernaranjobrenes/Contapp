@@ -104,6 +104,19 @@ it('muestra el formulario de creación con los datos de la compañía activa', f
         );
 });
 
+it('la ventana de búsqueda de cuentas recibe la clase de cada cuenta y los nombres de las clases', function () {
+    journalHttpFixture();
+
+    $this->get(route('journal-entries.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('accountTypes', ChartOfAccount::ACCOUNT_TYPES)
+            ->where('accounts', fn ($accounts) => collect($accounts)->every(
+                fn ($a) => array_key_exists($a['account_type'], ChartOfAccount::ACCOUNT_TYPES)
+            ))
+        );
+});
+
 it('contabiliza un asiento balanceado enviado desde el formulario', function () {
     $fx = journalHttpFixture();
 
@@ -1565,6 +1578,88 @@ it('una fecha de vencimiento de encabezado respalda a las líneas que no traen l
     expect($entry->due_date->format('Y-m-d'))->toBe('2026-03-01')
         ->and($entry->details->firstWhere('account_id', $fx['cash']->id)->due_date->format('Y-m-d'))->toBe('2026-04-15')
         ->and($entry->details->firstWhere('account_id', $fx['capital']->id)->due_date->format('Y-m-d'))->toBe('2026-03-01');
+});
+
+it('la fecha de documento del encabezado vale para las líneas sin la suya; una línea con la suya la conserva', function () {
+    $fx = journalHttpFixture();
+
+    $this->post(route('journal-entries.store'), [
+        'document_type_id' => $fx['add']->id,
+        'document_date' => '2026-02-20',
+        'posting_date' => now()->format('Y-m-d'),
+        'lines' => [
+            ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 100, 'credit' => 0, 'reference_document_date' => '2026-02-05'],
+            ['account_id' => $fx['capital']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => 100],
+        ],
+    ])->assertSessionHasNoErrors();
+
+    $details = JournalEntry::withoutGlobalScope(CompanyScope::class)->sole()->details;
+    expect($details->firstWhere('account_id', $fx['cash']->id)->reference_document_date->format('Y-m-d'))->toBe('2026-02-05')
+        ->and($details->firstWhere('account_id', $fx['capital']->id)->reference_document_date->format('Y-m-d'))->toBe('2026-02-20');
+});
+
+it('un preliminar no copia las fechas del encabezado en las líneas: cambiarlo antes de contabilizar alcanza a todas', function () {
+    $fx = journalHttpFixture();
+    $line = fn (string $account, int $debit, int $credit, array $extra = []) => [
+        'account_id' => $fx[$account]->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => $debit, 'credit' => $credit, ...$extra,
+    ];
+
+    $this->post(route('journal-entries.store'), [
+        'intent' => 'draft',
+        'document_type_id' => $fx['add']->id,
+        'document_date' => '2026-02-20',
+        'posting_date' => now()->format('Y-m-d'),
+        'due_date' => '2026-03-01',
+        'lines' => [$line('cash', 100, 0, ['due_date' => '2026-04-15']), $line('capital', 0, 100)],
+    ])->assertSessionHasNoErrors();
+
+    $draft = JournalEntry::withoutGlobalScope(CompanyScope::class)->sole();
+    expect($draft->details->firstWhere('account_id', $fx['capital']->id)->due_date)->toBeNull()
+        ->and($draft->details->firstWhere('account_id', $fx['capital']->id)->reference_document_date)->toBeNull();
+
+    // Se cambian las fechas del encabezado y se contabiliza: la línea sin las
+    // suyas toma las nuevas; la que tenía vencimiento propio lo conserva.
+    $this->put(route('journal-entries.update', $draft->id), [
+        'intent' => 'post',
+        'document_type_id' => $fx['add']->id,
+        'document_date' => '2026-02-25',
+        'posting_date' => now()->format('Y-m-d'),
+        'due_date' => '2026-03-31',
+        'lines' => [$line('cash', 100, 0, ['due_date' => '2026-04-15']), $line('capital', 0, 100)],
+    ])->assertSessionHasNoErrors();
+
+    $details = $draft->fresh()->details;
+    expect($details->firstWhere('account_id', $fx['capital']->id)->due_date->format('Y-m-d'))->toBe('2026-03-31')
+        ->and($details->firstWhere('account_id', $fx['capital']->id)->reference_document_date->format('Y-m-d'))->toBe('2026-02-25')
+        ->and($details->firstWhere('account_id', $fx['cash']->id)->due_date->format('Y-m-d'))->toBe('2026-04-15');
+});
+
+it('al editar un preliminar de antes, la fecha copiada del encabezado vuelve como heredada y la distinta como propia', function () {
+    $fx = journalHttpFixture();
+
+    $this->post(route('journal-entries.store'), [
+        'intent' => 'draft',
+        'document_type_id' => $fx['add']->id,
+        'document_date' => '2026-02-20',
+        'posting_date' => now()->format('Y-m-d'),
+        'due_date' => '2026-03-01',
+        'lines' => [
+            ['account_id' => $fx['cash']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 100, 'credit' => 0],
+            ['account_id' => $fx['capital']->id, 'currency_id' => $fx['company']->local_currency_id, 'debit' => 0, 'credit' => 100],
+        ],
+    ])->assertSessionHasNoErrors();
+
+    // Como lo guardaba Pivox antes: el vencimiento del encabezado copiado en
+    // cada línea, y una línea con su propia fecha de documento.
+    $draft = JournalEntry::withoutGlobalScope(CompanyScope::class)->sole();
+    $draft->details()->update(['due_date' => '2026-03-01']);
+    $draft->details()->where('account_id', $fx['cash']->id)->update(['reference_document_date' => '2026-02-05', 'due_date' => '2026-04-15']);
+
+    $this->get(route('journal-entries.edit', $draft->id))->assertInertia(fn ($page) => $page
+        ->where('entry.lines.0.due_date', '2026-04-15')
+        ->where('entry.lines.0.reference_document_date', '2026-02-05')
+        ->where('entry.lines.1.due_date', null)
+        ->where('entry.lines.1.reference_document_date', null));
 });
 
 it('guarda y muestra un documento de referencia y su fecha distintos por línea', function () {

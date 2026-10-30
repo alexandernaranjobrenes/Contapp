@@ -6,6 +6,7 @@ use App\Domains\Core\Backup\Exceptions\InvalidBackupException;
 use App\Domains\Core\Models\AuditLog;
 use App\Domains\Core\Models\Company;
 use App\Domains\Core\Services\ActivityLogService;
+use App\Domains\Core\Services\PermissionGrantService;
 use App\Domains\Licensing\Models\License;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -32,6 +33,9 @@ use Throwable;
  * tarda es la base, y todo esto corre en la cola.
  *
  * - Lo contabilizado entra contabilizado, sin volver a contabilizarse.
+ * - Lo de Pivox (monedas, módulos, impuestos, roles) no viaja: se reconoce por
+ *   su código, porque cada instalación tiene sus ids. Si el respaldo usa algo
+ *   que acá no existe, inspect() lo rechaza diciendo qué.
  * - Una referencia a algo que no vino (anterior al período): si la columna
  *   admite vacío, queda vacía; si no, la fila no entra, y se cuenta.
  * - Las personas, por su correo. Sus accesos (Personas y permisos), dentro
@@ -71,15 +75,21 @@ final class BackupImporter
     /** @var array<string, list<array<string, mixed>>> */
     private array $peopleRows = [];
 
-    /** @var array<string, array<int, bool>> */
-    private array $globalExists = [];
+    /** @var array<string, array<int, array<string, mixed>>>|null lo de Pivox según el respaldo; null en uno anterior, que no lo trae */
+    private ?array $globalKeys = null;
+
+    /** @var array<string, array<int, ?int>> tabla => [id del respaldo => id de acá] */
+    private array $globalIds = [];
 
     private int $companyId;
 
     /** Al completar una compañía que ya existe: decide qué ya está. */
     private ?BackupMerger $merger = null;
 
-    public function __construct(private readonly BackupSchema $schema) {}
+    public function __construct(
+        private readonly BackupSchema $schema,
+        private readonly PermissionGrantService $permissions,
+    ) {}
 
     /**
      * Lo que trae el archivo, verificado.
@@ -92,6 +102,8 @@ final class BackupImporter
         $manifest = null;
         $rows = [];
         $columns = [];
+        $used = [];
+        $own = [];
         $people = 0;
         $close = null;
         $hash = hash_init('sha256');
@@ -129,6 +141,7 @@ final class BackupImporter
                 $rows[$table] = ($rows[$table] ?? 0) + 1;
                 // Las columnas que traen todas sus filas.
                 $columns[$table] = isset($columns[$table]) ? array_intersect_key($columns[$table], $record['fila']) : array_fill_keys(array_keys($record['fila']), true);
+                $this->noteGlobals($table, $record['fila'], $used, $own);
 
                 if ($progress !== null && (++$count % 250) === 0) {
                     $progress($count);
@@ -157,6 +170,7 @@ final class BackupImporter
         }
 
         $this->checkColumns($columns);
+        $this->checkGlobals($manifest, $used, $own);
         $progress && $progress($count, true);
 
         return ['manifest' => $manifest, 'rows' => $rows, 'people' => $people, 'total' => array_sum($rows)];
@@ -243,7 +257,8 @@ final class BackupImporter
         $this->imported = [];
         $this->dropped = [];
         $this->peopleRows = [];
-        $this->globalExists = [];
+        $this->globalKeys = null;
+        $this->globalIds = [];
         $this->merger = null;
     }
 
@@ -254,6 +269,10 @@ final class BackupImporter
 
         foreach (BackupFile::lines($path, $password) as $line) {
             $record = json_decode($line, true);
+
+            if ($record['tipo'] === 'manifiesto') {
+                $this->globalKeys = $record['globales'] ?? null;
+            }
 
             match ($record['tipo']) {
                 'manifiesto' => $onManifest($record),
@@ -328,6 +347,67 @@ final class BackupImporter
         }
     }
 
+    /**
+     * Lo de Pivox que usa una fila. Las filas propias de una tabla mixta
+     * vienen en el respaldo: esas no hay que buscarlas.
+     *
+     * @param  array<string, array<int, true>>  $used
+     * @param  array<string, array<int, true>>  $own
+     */
+    private function noteGlobals(string $table, array $row, array &$used, array &$own): void
+    {
+        foreach ($this->schema->references($table) as $column => $target) {
+            if (isset(BackupCatalog::GLOBAL_KEYS[$target], $row[$column])) {
+                $used[$target][(int) $row[$column]] = true;
+            }
+        }
+
+        if (isset(BackupCatalog::GLOBAL_KEYS[$table], $row['id'])) {
+            $own[$table][(int) $row['id']] = true;
+        }
+    }
+
+    /**
+     * Lo de Pivox que el respaldo usa tiene que existir acá. Sin eso, sus filas
+     * no entrarían (una línea de asiento sin moneda) o entrarían sin el dato
+     * (una cuenta sin su tarifa), y solo se notaría después: se dice ahora,
+     * antes de confirmar.
+     *
+     * @param  array<string, array<int, true>>  $used
+     * @param  array<string, array<int, true>>  $own
+     */
+    private function checkGlobals(array $manifest, array $used, array $own): void
+    {
+        $this->globalKeys = $manifest['globales'] ?? null;
+        $this->globalIds = [];
+
+        foreach (['local_currency_id', 'foreign_currency_id', 'system_currency_id'] as $column) {
+            if (isset($manifest['compania'][$column])) {
+                $used['currencies'][(int) $manifest['compania'][$column]] = true;
+            }
+        }
+
+        $gaps = [];
+
+        foreach (BackupCatalog::GLOBAL_LABELS as $table => $label) {
+            foreach (array_keys(array_diff_key($used[$table] ?? [], $own[$table] ?? [])) as $id) {
+                if ($this->global($table, $id) === null) {
+                    $gaps[] = $label.' '.(array_values($this->globalKeys[$table][$id] ?? [])[0] ?? "#{$id}");
+                }
+            }
+        }
+
+        if ($gaps === []) {
+            return;
+        }
+
+        $list = implode(', ', array_slice($gaps, 0, 8)).(count($gaps) > 8 ? '…' : '');
+
+        throw new InvalidBackupException($this->globalKeys === null
+            ? "Este respaldo es de una versión anterior de Pivox y usa lo que esta instalación no tiene ({$list}). Exportalo de nuevo desde donde salió."
+            : "Este respaldo usa lo que esta instalación de Pivox no tiene: {$list}. Hay que cargarlo antes de importar.");
+    }
+
     private function createCompany(array $manifest, License $license, array $data): void
     {
         $source = $manifest['compania'];
@@ -358,7 +438,11 @@ final class BackupImporter
     {
         $this->companyId = $company->id;
         $this->map['companies'][(int) $manifest['compania']['id']] = $company->id;
-        $this->merger->start($manifest);
+
+        // La moneda del respaldo, en los ids de esta instalación.
+        $source = $manifest['compania'];
+        $source['local_currency_id'] = $this->global('currencies', $source['local_currency_id'] ?? null);
+        $this->merger->start(['compania' => $source] + $manifest);
     }
 
     private function person(array $record): void
@@ -484,7 +568,7 @@ final class BackupImporter
         };
     }
 
-    /** Un registro de Pivox (moneda, módulo, tarifa nacional): el mismo id, si existe. */
+    /** Un registro de Pivox (moneda, módulo, tarifa nacional): el de esta instalación. */
     private function global(string $table, mixed $id): ?int
     {
         if ($id === null) {
@@ -493,17 +577,43 @@ final class BackupImporter
 
         $id = (int) $id;
 
-        if (! isset($this->globalExists[$table][$id])) {
-            $query = DB::table($table)->where('id', $id);
-
-            if (in_array($table, BackupCatalog::MIXED_TABLES, true)) {
-                $query->whereNull('company_id');
-            }
-
-            $this->globalExists[$table][$id] = $query->exists();
+        if (! array_key_exists($id, $this->globalIds[$table] ?? [])) {
+            $this->globalIds[$table][$id] = $this->findGlobal($table, $id);
         }
 
-        return $this->globalExists[$table][$id] ? $id : null;
+        return $this->globalIds[$table][$id];
+    }
+
+    /**
+     * Por lo que lo reconoce en cualquier instalación, no por su id. Un
+     * respaldo anterior no lo trae: va por su id, que vale si se exportó acá.
+     * Un rol de Pivox se crea la primera vez que hace falta, como al invitar.
+     */
+    private function findGlobal(string $table, int $id): ?int
+    {
+        $query = DB::table($table)->when(in_array($table, BackupCatalog::MIXED_TABLES, true), fn ($q) => $q->whereNull('company_id'));
+
+        if ($this->globalKeys === null) {
+            $found = $query->where('id', $id)->value('id');
+
+            return $found === null ? null : (int) $found;
+        }
+
+        $wanted = $this->globalKeys[$table][$id] ?? null;
+
+        if ($wanted === null) {
+            return null;
+        }
+
+        $key = array_key_first($wanted);
+        $rows = $query->where($key, $wanted[$key])->orderByDesc('id')->get(['id', ...array_keys($wanted)]);
+        $found = $rows->first(fn ($row) => array_diff_assoc($wanted, (array) $row) === []) ?? $rows->first();
+
+        if ($found !== null) {
+            return (int) $found->id;
+        }
+
+        return $table === 'roles' ? $this->permissions->globalRole($wanted['type'])->id : null;
     }
 
     /** Una tabla que todavía no se importó (un ciclo, o la misma tabla): se completa al final. */

@@ -15,9 +15,6 @@ const form = useForm({
     // persona) y activa la suya con ella: solo correo y contraseña actual.
     account: 'new',
     code: '',
-    legal_name: '',
-    trade_name: '',
-    tax_id: '',
     name: '',
     email: '',
     password: '',
@@ -46,14 +43,14 @@ function submit() {
 
     <AuthShell
         wide
-        subtitle="Activá tu licencia y creá tu primera compañía"
-        lead="En un solo paso: el código que recibiste, los datos de tu compañía y tu cuenta de Superusuario."
+        subtitle="Activá tu licencia de Pivox"
+        lead="En un solo paso: el código que recibiste y tu cuenta de Superusuario. Tu compañía queda lista para empezar."
     >
         <template #panel-extra>
             <ol class="auth-steps">
                 <li><span class="auth-step-number">1</span> El código de licencia que recibiste al contratar Pivox</li>
-                <li><span class="auth-step-number">2</span> Los datos básicos de tu compañía</li>
-                <li><span class="auth-step-number">3</span> Tu cuenta: una nueva, o la que ya tenés en Pivox</li>
+                <li><span class="auth-step-number">2</span> Tu cuenta: una nueva, o la que ya tenés en Pivox</li>
+                <li><span class="auth-step-number">3</span> Un recorrido corto por Pivox, y al final los datos de tu compañía</li>
             </ol>
         </template>
 
@@ -67,24 +64,6 @@ function submit() {
                 <label for="code">Código de licencia</label>
                 <input id="code" v-model="form.code" type="text" placeholder="PIVOX-XXXX-XXXX-XXXX" required>
                 <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
-            </div>
-
-            <h3 class="section-title">Tu compañía</h3>
-
-            <div class="grid">
-                <div class="field">
-                    <label for="legal_name">Razón social</label>
-                    <input id="legal_name" v-model="form.legal_name" type="text" required>
-                    <span v-if="form.errors.legal_name" class="error">{{ form.errors.legal_name }}</span>
-                </div>
-                <div class="field">
-                    <label for="trade_name">Nombre comercial</label>
-                    <input id="trade_name" v-model="form.trade_name" type="text">
-                </div>
-                <div class="field">
-                    <label for="tax_id">Cédula jurídica (opcional)</label>
-                    <input id="tax_id" v-model="form.tax_id" type="text">
-                </div>
             </div>
 
             <h3 class="section-title">Tu cuenta</h3>
@@ -189,8 +168,13 @@ function submit() {
                 </p>
             </template>
 
+            <p class="account-note company-note">
+                Tu compañía se crea con un nombre provisional. Al entrar te mostramos dónde ponerle la razón social y el
+                nombre comercial.
+            </p>
+
             <button type="submit" class="btn btn-primary auth-submit submit-btn" :disabled="form.processing">
-                <CheckIcon /> Activar y crear compañía
+                <CheckIcon /> Activar licencia
             </button>
         </form>
 
@@ -233,6 +217,12 @@ function submit() {
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--color-text-muted);
+}
+
+.company-note {
+    margin: 1.25rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border);
 }
 
 .submit-btn {

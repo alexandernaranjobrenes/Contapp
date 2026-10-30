@@ -159,7 +159,7 @@ class LicenseInvitationService
      * compañía. Con una cuenta nueva, la cuenta se crea acá; con una
      * existente cuya contraseña la puso otro, se cambia acá.
      *
-     * @param  array{legal_name: string, trade_name?: ?string, tax_id?: ?string}  $companyData
+     * @param  array{legal_name?: string, trade_name?: ?string, tax_id?: ?string}  $companyData  vacío: LicenseActivationService::DEFAULT_COMPANY_NAME
      * @return array{license: License, company: Company, user: User}
      *
      * @throws InvitationException

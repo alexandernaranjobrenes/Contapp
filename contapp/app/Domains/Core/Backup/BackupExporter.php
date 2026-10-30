@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\DB;
  * Arma el respaldo de una compañía: una línea JSON por registro (JSON Lines),
  * en el orden en que se importa (cada fila después de las que necesita).
  *
- * 1. El encabezado: la compañía, el período, las secciones, quién y cuándo.
+ * 1. El encabezado: la compañía, el período, las secciones, quién y cuándo, y
+ *    lo de Pivox que las filas referencian (BackupCatalog::GLOBAL_KEYS).
  * 2. Las personas que aparecen (quién creó, aprobó, contabilizó…), con su
  *    correo: al importar se reconocen por él.
  * 3. Las filas de cada tabla, con los saldos iniciales (BackupOpening) y el
@@ -212,6 +213,7 @@ final class BackupExporter
             'version' => self::VERSION,
             'esquema' => DB::table('migrations')->orderByDesc('id')->value('migration'),
             'compania' => $company,
+            'globales' => $this->globals(),
             'periodo' => [
                 'desde' => $options->fromDate(),
                 'hasta' => $options->toDate(),
@@ -226,6 +228,27 @@ final class BackupExporter
                 'el' => now()->toIso8601String(),
             ],
         ];
+    }
+
+    /**
+     * Lo de Pivox, con lo que lo reconoce en cualquier instalación: las filas
+     * llevan su id, y el de otra instalación puede ser otro.
+     *
+     * @return array<string, array<int, array<string, mixed>>> tabla => [id => [columna => valor]]
+     */
+    private function globals(): array
+    {
+        $globals = [];
+
+        foreach (BackupCatalog::GLOBAL_KEYS as $table => $columns) {
+            $globals[$table] = DB::table($table)
+                ->when(in_array($table, BackupCatalog::MIXED_TABLES, true), fn ($q) => $q->whereNull('company_id'))
+                ->get(['id', ...$columns])
+                ->mapWithKeys(fn ($row) => [(int) $row->id => array_intersect_key((array) $row, array_flip($columns))])
+                ->all();
+        }
+
+        return $globals;
     }
 
     /**

@@ -63,6 +63,14 @@ $lucide-icons: (
  * sobre la barra lateral oscura; los fondos, un neutro apenas teñido del
  * primario. En oscuro, el primario sube a un tono medio para que los
  * botones se distingan del fondo.
+ *
+ * Los gráficos del Panel (chart-1, chart-2) no usan el primario y el acento
+ * tal cual: el primario claro es casi negro y, en algunos temas, los dos son
+ * del mismo tono. Salen de esos dos tonos, con la luminosidad ajustada para
+ * que se distingan con daltonismo (protanopía y deuteranopía), que no se
+ * confundan entre sí y que tengan contraste de al menos 3:1 sobre la
+ * superficie. Se validaron con el método de la guía de visualización
+ * (docs/decisiones.md, 2026-10-30): un tema nuevo pasa por esa validación.
  * ──────────────────────────────────────────────────────────────────────── */
 $company-themes: (
     'marino': (
@@ -73,12 +81,14 @@ $company-themes: (
             'accent': '#f2a05c', 'sidebar': '#0b1f3a',
             'bg': '#f6f5f2', 'surface': '#ffffff', 'surface-alt': '#f0efe9', 'border': '#e1dfd7', 'control-border': '#cdcac0',
             'text': '#1a2233', 'text-muted': '#616a7a',
+            'chart-1': '#235596', 'chart-2': '#cf803a',
         ),
         'dark': (
             'primary': '#3a5f95', 'primary-hover': '#4a71aa', 'primary-soft': '#16233b', 'on-primary': '#eef2f8',
             'accent': '#f2a05c', 'sidebar': '#3a5f95',
             'bg': '#0b1220', 'surface': '#111a2e', 'surface-alt': '#16213a', 'border': '#253253', 'control-border': '#34446b',
             'text': '#e7e9ee', 'text-muted': '#97a2b8',
+            'chart-1': '#5f90d8', 'chart-2': '#9b5401',
         ),
     ),
     'grafito': (
@@ -89,12 +99,14 @@ $company-themes: (
             'accent': '#2dd4bf', 'sidebar': '#1f2937',
             'bg': '#f5f6f7', 'surface': '#ffffff', 'surface-alt': '#eef0f2', 'border': '#dfe2e6', 'control-border': '#c9ced5',
             'text': '#111827', 'text-muted': '#5f6b7a',
+            'chart-1': '#245496', 'chart-2': '#00a694',
         ),
         'dark': (
             'primary': '#4b5a70', 'primary-hover': '#5a6a82', 'primary-soft': '#1c2230', 'on-primary': '#f8fafc',
             'accent': '#2dd4bf', 'sidebar': '#232b37',
             'bg': '#0d0f12', 'surface': '#15181d', 'surface-alt': '#1b1f26', 'border': '#2a3039', 'control-border': '#3a414c',
             'text': '#e5e7eb', 'text-muted': '#9aa3af',
+            'chart-1': '#3766aa', 'chart-2': '#00a694',
         ),
     ),
     'esmeralda': (
@@ -105,12 +117,14 @@ $company-themes: (
             'accent': '#dcb862', 'sidebar': '#0f3d2e',
             'bg': '#f5f6f2', 'surface': '#ffffff', 'surface-alt': '#eef1ea', 'border': '#dde3d9', 'control-border': '#c6cfc2',
             'text': '#13241c', 'text-muted': '#5c6b63',
+            'chart-1': '#007557', 'chart-2': '#b5902e',
         ),
         'dark': (
             'primary': '#2f7a5c', 'primary-hover': '#3a8c6b', 'primary-soft': '#0f2a20', 'on-primary': '#eef7f2',
             'accent': '#e0bf6a', 'sidebar': '#1d5a43',
             'bg': '#07130e', 'surface': '#0d1c16', 'surface-alt': '#12251d', 'border': '#1f3a2e', 'control-border': '#2c4d3f',
             'text': '#e3ece7', 'text-muted': '#93a89d',
+            'chart-1': '#35a67b', 'chart-2': '#7e6201',
         ),
     ),
     'borgona': (
@@ -121,12 +135,14 @@ $company-themes: (
             'accent': '#eab08a', 'sidebar': '#4a1628',
             'bg': '#f8f5f3', 'surface': '#ffffff', 'surface-alt': '#f2ecea', 'border': '#e5dcd9', 'control-border': '#d2c6c2',
             'text': '#26161b', 'text-muted': '#6e5d63',
+            'chart-1': '#883350', 'chart-2': '#ce7f48',
         ),
         'dark': (
             'primary': '#8a3553', 'primary-hover': '#9c4262', 'primary-soft': '#2a111b', 'on-primary': '#fbeff3',
             'accent': '#eab38c', 'sidebar': '#5e2239',
             'bg': '#120a0d', 'surface': '#1c1015', 'surface-alt': '#24151b', 'border': '#3a2129', 'control-border': '#4d2d38',
             'text': '#efe4e7', 'text-muted': '#b09aa2',
+            'chart-1': '#ca6e8b', 'chart-2': '#98510a',
         ),
     ),
     'petroleo': (
@@ -137,12 +153,14 @@ $company-themes: (
             'accent': '#4fd1c5', 'sidebar': '#0c3b4a',
             'bg': '#f3f7f7', 'surface': '#ffffff', 'surface-alt': '#eaf1f2', 'border': '#d7e3e5', 'control-border': '#bfd0d3',
             'text': '#0f2830', 'text-muted': '#587077',
+            'chart-1': '#17a1c8', 'chart-2': '#025991',
         ),
         'dark': (
             'primary': '#1f7185', 'primary-hover': '#288398', 'primary-soft': '#0b2830', 'on-primary': '#eaf7fa',
             'accent': '#5eead4', 'sidebar': '#14505f',
             'bg': '#061317', 'surface': '#0b1d23', 'surface-alt': '#10262d', 'border': '#1b3a43', 'control-border': '#294c56',
             'text': '#e0edf0', 'text-muted': '#8fabb2',
+            'chart-1': '#069fbe', 'chart-2': '#4f62b0',
         ),
     ),
     'indigo': (
@@ -153,12 +171,14 @@ $company-themes: (
             'accent': '#c4b5fd', 'sidebar': '#26215c',
             'bg': '#f6f6fa', 'surface': '#ffffff', 'surface-alt': '#efeff6', 'border': '#e0e0ec', 'control-border': '#c9c9dc',
             'text': '#1b1a33', 'text-muted': '#62617a',
+            'chart-1': '#4c4a95', 'chart-2': '#9986d8',
         ),
         'dark': (
             'primary': '#5146b8', 'primary-hover': '#5f55c9', 'primary-soft': '#1a1740', 'on-primary': '#f3f2ff',
             'accent': '#c4b5fd', 'sidebar': '#342d7c',
             'bg': '#0c0b1a', 'surface': '#141327', 'surface-alt': '#1b1932', 'border': '#2c2950', 'control-border': '#3b3766',
             'text': '#e8e7f5', 'text-muted': '#a3a1c2',
+            'chart-1': '#817df4', 'chart-2': '#6a56a4',
         ),
     ),
     'cobalto': (
@@ -169,12 +189,14 @@ $company-themes: (
             'accent': '#7dd3fc', 'sidebar': '#16325f',
             'bg': '#f4f6fa', 'surface': '#ffffff', 'surface-alt': '#eceff6', 'border': '#dce2ec', 'control-border': '#c3ccda',
             'text': '#142038', 'text-muted': '#586579',
+            'chart-1': '#2b5397', 'chart-2': '#2a9fcd',
         ),
         'dark': (
             'primary': '#3b73c4', 'primary-hover': '#4b83d4', 'primary-soft': '#122340', 'on-primary': '#f0f6ff',
             'accent': '#7dd3fc', 'sidebar': '#1f4a8a',
             'bg': '#080e18', 'surface': '#0f1726', 'surface-alt': '#141e31', 'border': '#22324d', 'control-border': '#304466',
             'text': '#e3e9f3', 'text-muted': '#97a5bd',
+            'chart-1': '#568fe3', 'chart-2': '#007095',
         ),
     ),
     'terracota': (
@@ -185,12 +207,14 @@ $company-themes: (
             'accent': '#e8906a', 'sidebar': '#3d2a1f',
             'bg': '#f7f3ee', 'surface': '#fffdfa', 'surface-alt': '#f1ebe3', 'border': '#e4dbd0', 'control-border': '#d2c5b7',
             'text': '#2a1f18', 'text-muted': '#74665b',
+            'chart-1': '#863d00', 'chart-2': '#d27b56',
         ),
         'dark': (
             'primary': '#8a5a3c', 'primary-hover': '#9b6a4a', 'primary-soft': '#2a1d15', 'on-primary': '#fbf3ec',
             'accent': '#ec9a6e', 'sidebar': '#5a3c29',
             'bg': '#120d0a', 'surface': '#1b1410', 'surface-alt': '#231a15', 'border': '#3a2c23', 'control-border': '#4d3b30',
             'text': '#eee5dc', 'text-muted': '#b3a393',
+            'chart-1': '#c87845', 'chart-2': '#865d00',
         ),
     ),
     'salvia': (
@@ -201,12 +225,14 @@ $company-themes: (
             'accent': '#a8cfad', 'sidebar': '#2f3d33',
             'bg': '#f4f5f1', 'surface': '#ffffff', 'surface-alt': '#ecefe8', 'border': '#dce1d8', 'control-border': '#c5ccbf',
             'text': '#1d241f', 'text-muted': '#626d64',
+            'chart-1': '#006736', 'chart-2': '#56a365',
         ),
         'dark': (
             'primary': '#56705d', 'primary-hover': '#648168', 'primary-soft': '#182019', 'on-primary': '#f0f5f1',
             'accent': '#b5d6b9', 'sidebar': '#3c4f41',
             'bg': '#0c0f0c', 'surface': '#131813', 'surface-alt': '#192019', 'border': '#283228', 'control-border': '#374436',
             'text': '#e4e9e4', 'text-muted': '#9cab9e',
+            'chart-1': '#4da46b', 'chart-2': '#25753a',
         ),
     ),
     // En oscuro, Ónix invierte el primario: los botones son dorados con texto
@@ -219,12 +245,14 @@ $company-themes: (
             'accent': '#d4b25e', 'sidebar': '#141414',
             'bg': '#f6f5f2', 'surface': '#ffffff', 'surface-alt': '#efeeea', 'border': '#e0ded8', 'control-border': '#cac7bf',
             'text': '#141414', 'text-muted': '#66635c',
+            'chart-1': '#775d00', 'chart-2': '#b4902e',
         ),
         'dark': (
             'primary': '#c9a44c', 'primary-hover': '#d6b35d', 'primary-soft': '#2a2416', 'on-primary': '#17150f',
             'accent': '#d9b865', 'sidebar': '#1b1a17',
             'bg': '#0b0b0a', 'surface': '#141412', 'surface-alt': '#1b1a17', 'border': '#2c2a25', 'control-border': '#3d3a33',
             'text': '#ece9e1', 'text-muted': '#a7a197',
+            'chart-1': '#af8926', 'chart-2': '#7b5f01',
         ),
     ),
 );
@@ -252,6 +280,10 @@ $font-fallback: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
     --color-control-border: #{map.get($palette, 'control-border')};
     --color-text: #{map.get($palette, 'text')};
     --color-text-muted: #{map.get($palette, 'text-muted')};
+
+    // Los gráficos del Panel: la serie 1 (la única, si hay una) y la 2.
+    --color-chart-1: #{map.get($palette, 'chart-1')};
+    --color-chart-2: #{map.get($palette, 'chart-2')};
 
     // La flecha del select y la lupa del buscador son imágenes, no toman el
     // color del texto: cada paleta pinta las suyas con su gris.

@@ -175,6 +175,9 @@ it('importar: se revisa, se confirma y crea una compañía nueva con lo que trae
 
     // Ya importado, no se confirma otra vez.
     $this->postJson(route('backups.import.confirm', $upload['uuid']), ['legal_name' => 'Otra', 'account_password' => 'password'])->assertStatus(422);
+
+    // En la lista, cuántos registros quedaron fuera.
+    $this->get(route('backups.index'))->assertInertia(fn ($page) => $page->where('imports.0.status', 'done')->where('imports.0.dropped', 0));
 });
 
 it('sin cupo en la licencia no se importa', function () {

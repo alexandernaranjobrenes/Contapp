@@ -264,12 +264,16 @@ class PostJournalService
                     'currency_id' => $amounts['currency_id'],
                     'exchange_rate_lc_fc' => $amounts['exchange_rate_lc_fc'],
                     'exchange_rate_fc_sc' => $amounts['exchange_rate_fc_sc'],
-                    // Si la línea no trae su propio vencimiento, hereda el de
-                    // encabezado (precarga editable, ver JournalEntries/Create.vue) —
-                    // ninguno de los dos es obligatorio.
+                    // Las fechas del encabezado valen para cada línea que no
+                    // trae la suya (docs/decisiones.md 2026-10-30): el
+                    // vencimiento y la fecha del documento. Una línea con la
+                    // suya propia (un asiento que junta varias facturas) la
+                    // conserva. Se resuelven acá, al contabilizar, y quedan
+                    // guardadas: el mayor, las partidas abiertas y los reportes
+                    // leen la de cada línea.
                     'due_date' => $line->dueDate ?? $dueDate?->format('Y-m-d'),
                     'reference_document' => $line->referenceDocument,
-                    'reference_document_date' => $line->referenceDocumentDate,
+                    'reference_document_date' => $line->referenceDocumentDate ?? $documentDate->format('Y-m-d'),
                 ];
 
                 if ($rule !== null) {
@@ -644,7 +648,11 @@ class PostJournalService
                     'credit_foreign' => '0.00',
                     'debit_system' => '0.00',
                     'credit_system' => '0.00',
-                    'due_date' => $line->dueDate ?? $dueDate?->format('Y-m-d'),
+                    // En un preliminar se guarda solo lo propio de la línea:
+                    // las fechas del encabezado se resuelven al contabilizar.
+                    // Si se copiaran acá, al reabrirlo parecerían de la línea y
+                    // cambiar el encabezado ya no las alcanzaría.
+                    'due_date' => $line->dueDate,
                     'reference_document' => $line->referenceDocument,
                     'reference_document_date' => $line->referenceDocumentDate,
                 ]);

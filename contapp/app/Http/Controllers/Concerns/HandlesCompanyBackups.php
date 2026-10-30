@@ -79,6 +79,7 @@ trait HandlesCompanyBackups
                     'period' => $b->summary['period'] ?? '',
                     'created_at' => $b->created_at?->toIso8601String(),
                     'resumable' => $b->canResume(),
+                    'dropped' => array_sum($b->result['dropped'] ?? []),
                 ]),
         ];
     }

@@ -1,10 +1,11 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3';
 import { useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
 import SearchableCombobox from '../../Components/SearchableCombobox.vue';
+import AccountPicker from '../../Components/AccountPicker.vue';
 import LedgerPanel from '../../Components/LedgerPanel.vue';
 import DocumentSearchModal from '../../Components/DocumentSearchModal.vue';
 import RecordNav from '../../Components/RecordNav.vue';
@@ -19,6 +20,7 @@ const props = defineProps({
     entry: { type: Object, default: null }, // presente = editando un borrador existente
     documentTypes: { type: Array, default: () => [] },
     accounts: { type: Array, default: () => [] },
+    accountTypes: { type: Object, default: () => ({}) }, // clase => nombre, para filtrar la búsqueda de cuentas
     currencies: { type: Array, default: () => [] },
     costAllocationRules: { type: Array, default: () => [] },
     businessPartners: { type: Array, default: () => [] },
@@ -32,11 +34,11 @@ const accountsById = computed(() => Object.fromEntries(props.accounts.map((a) =>
 const partnersById = computed(() => Object.fromEntries(props.businessPartners.map((p) => [p.id, p])));
 const documentTypesById = computed(() => Object.fromEntries(props.documentTypes.map((dt) => [dt.id, dt])));
 
-// Opciones para SearchableCombobox (cuenta y socio): busca por código sin
-// guiones o por nombre en cualquier posición — reemplaza el datalist de
-// código exacto y el <select> plano, que obligaban a saber el código de
-// memoria o a desplazarse por una lista larga.
-const accountOptions = computed(() => props.accounts.map((a) => ({ id: a.id, code: a.code, label: a.description_es })));
+// Opciones de la cuenta (AccountPicker: una ventana con todo el catálogo, en
+// letra chica, que se abre al escribir o con la lupa) y del socio
+// (SearchableCombobox): las dos buscan por código sin guiones o por nombre en
+// cualquier posición.
+const accountOptions = computed(() => props.accounts.map((a) => ({ id: a.id, code: a.code, label: a.description_es, type: a.account_type })));
 const partnerOptions = computed(() => props.businessPartners.map((p) => ({ id: p.id, code: p.code, label: p.name })));
 
 // Series disponibles para el tipo de documento elegido ahora mismo — cambiar
@@ -561,14 +563,18 @@ function onPartnerChange(line) {
 // cédula de antigüedad de saldos cuando alguien se equivoca — si el socio
 // tiene días de crédito configurados, el vencimiento se sugiere solo a
 // partir de la fecha del documento de ESTA línea (o la fecha de documento
-// del encabezado si la línea todavía no tiene la suya propia). Es una
-// PRECARGA editable, no un vínculo que se mantenga sincronizado (mismo
-// criterio que el vencimiento de encabezado → línea, docs/decisiones.md
-// 2026-08-22): se recalcula al cambiar de socio o de fecha de referencia,
-// pero el usuario sigue pudiendo corregirla a mano después si de verdad
-// hay una excepción de pago.
+// del encabezado si la línea todavía no tiene la suya propia). Se recalcula
+// al cambiar de socio o de fecha de referencia, pero el usuario sigue
+// pudiendo corregirla a mano después si de verdad hay una excepción de pago.
+//
+// Con un vencimiento en el encabezado no se sugiere nada: el del encabezado
+// vale para cada línea que no tenga el suyo (docs/decisiones.md 2026-10-30),
+// y lo sugerido por el plazo del socio no es una fecha que la persona haya
+// puesto en la línea. Por eso lo sugerido se marca (_dueSuggested): si
+// después se pone un vencimiento en el encabezado, se quita.
 function applySuggestedDueDate(line) {
     if (line.mode !== 'partner' || ! line.business_partner_id) return;
+    if (form.due_date) return;
 
     const partner = partnersById.value[line.business_partner_id];
     if (! partner?.payment_terms_days) return;
@@ -580,6 +586,21 @@ function applySuggestedDueDate(line) {
     date.setDate(date.getDate() + Number(partner.payment_terms_days));
 
     line.due_date = date.toISOString().slice(0, 10);
+    line._dueSuggested = true;
+}
+
+// Una fecha de la línea puesta a mano: es suya, aunque coincida con una
+// sugerida.
+function setLineDueDate(line, value) {
+    line.due_date = value || null;
+    line._dueSuggested = false;
+}
+
+// «27/10/2026», para decir de dónde sale la fecha de una línea.
+function shortDate(iso) {
+    if (! iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
 }
 
 const form = useForm({
@@ -602,6 +623,20 @@ const form = useForm({
         : [emptyLine(), emptyLine()],
 });
 
+// Poner un vencimiento en el encabezado quita lo que había sugerido el plazo
+// de cada socio (vale el del encabezado); quitarlo vuelve a sugerirlo en las
+// líneas de socio que no tienen uno propio.
+watch(() => form.due_date, (headerDueDate) => {
+    for (const line of form.lines) {
+        if (headerDueDate && line._dueSuggested) {
+            line.due_date = null;
+            line._dueSuggested = false;
+        } else if (! headerDueDate && ! line.due_date) {
+            applySuggestedDueDate(line);
+        }
+    }
+});
+
 // Copia los campos "de identidad" de la última línea (cuenta/socio, moneda,
 // descripción, norma de reparto, vencimiento, documento de referencia) para
 // no repetir todo a mano en registros con muchas líneas parecidas — pero
@@ -613,7 +648,7 @@ function addLine() {
     const previous = form.lines[form.lines.length - 1];
 
     if (! previous) {
-        form.lines.push(emptyLine(form.due_date || null));
+        form.lines.push(emptyLine());
         return;
     }
 
@@ -687,7 +722,7 @@ function submit(intent = 'post') {
     // normaliza a "0.00" recién acá, justo antes de enviar.
     form.transform((data) => ({
         ...data,
-        lines: data.lines.map(({ _expanded, ...l }) => ({ ...l, debit: l.debit || '0.00', credit: l.credit || '0.00' })),
+        lines: data.lines.map(({ _expanded, _dueSuggested, ...l }) => ({ ...l, debit: l.debit || '0.00', credit: l.credit || '0.00' })),
     }));
 
     if (props.entry?.id) {
@@ -797,6 +832,7 @@ function submitSchedule() {
                         <span class="hint-inline">(la de la factura/comprobante)</span>
                     </label>
                     <input id="document_date" v-model="form.document_date" type="date" required>
+                    <span class="hint">Vale para cada línea que no tenga su propia fecha de documento.</span>
                     <span v-if="form.errors.document_date" class="error">{{ form.errors.document_date }}</span>
                 </div>
 
@@ -823,7 +859,7 @@ function submitSchedule() {
                 <div class="field">
                     <label for="due_date">Fecha de vencimiento <span class="hint-inline">(opcional)</span></label>
                     <input id="due_date" v-model="form.due_date" type="date">
-                    <span class="hint">Precarga el vencimiento de cada línea nueva que agregués; cada línea lo puede cambiar aparte.</span>
+                    <span class="hint">Vale para cada línea que no tenga su propio vencimiento.</span>
                     <span v-if="form.errors.due_date" class="error">{{ form.errors.due_date }}</span>
                 </div>
 
@@ -946,13 +982,14 @@ function submitSchedule() {
                                 >Socio</button>
                             </div>
 
-                            <SearchableCombobox
+                            <AccountPicker
                                 v-if="line.mode === 'account'"
                                 :options="accountOptions"
+                                :types="accountTypes"
                                 :model-value="line.account_id"
                                 required
-                                placeholder="Código o nombre de cuenta..."
-                                title="Doble clic: ver mayor auxiliar"
+                                placeholder="Código o nombre de cuenta…"
+                                title="Escribí para buscar, o usá la lupa. Doble clic: ver mayor auxiliar"
                                 @update:model-value="(id) => (line.account_id = id)"
                                 @dblclick="openLedger(line, 'account')"
                             />
@@ -1047,17 +1084,49 @@ function submitSchedule() {
                                     <label>Doc. de referencia</label>
                                     <input v-model="line.reference_document" type="text" maxlength="255" placeholder="Ej. Factura #4521">
                                 </div>
+                                <!--
+                                    Las dos fechas de la línea son opcionales: vacías, vale la
+                                    del encabezado (docs/decisiones.md 2026-10-30). Se dice de
+                                    dónde sale cada una, y una propia se puede soltar para
+                                    volver a la del encabezado.
+                                -->
                                 <div class="field-inline">
                                     <label>Fecha del doc.</label>
                                     <input
                                         :value="line.reference_document_date"
                                         type="date"
+                                        aria-label="Fecha del documento de esta línea"
                                         @change="line.reference_document_date = $event.target.value || null; applySuggestedDueDate(line)"
                                     >
+                                    <span v-if="!line.reference_document_date" class="date-source">
+                                        Del encabezado: {{ form.document_date ? shortDate(form.document_date) : '—' }}
+                                    </span>
+                                    <button
+                                        v-else
+                                        type="button"
+                                        class="date-source date-reset"
+                                        @click="line.reference_document_date = null; applySuggestedDueDate(line)"
+                                    >Propia · usar la del encabezado</button>
                                 </div>
                                 <div class="field-inline">
                                     <label>Vencimiento</label>
-                                    <input v-model="line.due_date" type="date" class="due-date-input">
+                                    <input
+                                        :value="line.due_date"
+                                        type="date"
+                                        class="due-date-input"
+                                        aria-label="Vencimiento de esta línea"
+                                        @change="setLineDueDate(line, $event.target.value)"
+                                    >
+                                    <span v-if="!line.due_date" class="date-source">
+                                        {{ form.due_date ? `Del encabezado: ${shortDate(form.due_date)}` : 'Sin vencimiento' }}
+                                    </span>
+                                    <span v-else-if="line._dueSuggested" class="date-source">Por el plazo del socio</span>
+                                    <button
+                                        v-else
+                                        type="button"
+                                        class="date-source date-reset"
+                                        @click="setLineDueDate(line, null); applySuggestedDueDate(line)"
+                                    >{{ form.due_date ? 'Propio · usar el del encabezado' : 'Propio · quitar' }}</button>
                                 </div>
 
                                 <div v-if="line.mode === 'partner' && bpLineRequirement !== 'none'" class="bp-control field-inline-wide">
@@ -1455,7 +1524,8 @@ function submitSchedule() {
 
 .lines-table select,
 .lines-table input,
-.lines-table .combobox {
+.lines-table .combobox,
+.lines-table .account-picker {
     width: 100%;
     min-width: 0;
 }
@@ -1676,6 +1746,26 @@ function submitSchedule() {
 .field-inline-wide {
     flex-basis: 100%;
 }
+
+/* De dónde sale la fecha de la línea: del encabezado, o propia. */
+.date-source {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
+
+.date-reset {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-primary);
+    font: inherit;
+    font-size: 0.7rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.date-reset:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 .field-inline label {
     font-size: 0.72rem;

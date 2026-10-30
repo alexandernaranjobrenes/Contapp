@@ -180,7 +180,12 @@ Estos dos planos deben vivir en **guards/paneles separados** en la aplicación (
 
 - **Una cuenta, una licencia.** Nadie es dueño de dos: lo valida `LicenseActivationService` y lo garantiza un índice único en `licenses.superuser_id`. Más compañías se piden ampliando el cupo de la que ya se tiene.
 - **Dos formas de llegar a ser dueño:** alguien nuevo activa creando su cuenta; quien ya tiene cuenta activa con ella, por «Ya tengo una cuenta» en el formulario público o por Mi cuenta → Activar una licencia con la sesión iniciada. Activar no le toca el nombre, la contraseña ni sus roles en otras compañías; la compañía nueva pasa a ser su predeterminada.
-- **O se la asigna el backoffice** (Licencias → al emitirla, o desde su ficha): a una cuenta existente o a una nueva, por correo. La persona recibe un enlace que dura 30 minutos y la licencia se activa recién cuando lo acepta, con los datos de su primera compañía. Mientras tanto la licencia queda reservada: su código no sirve en la activación pública. El backoffice puede reenviar el correo, cambiar a quién está asignada o quitar la asignación, mientras no se haya aceptado. Una cuenta nueva siempre elige su contraseña al aceptar; una existente, solo si la suya la definió otra persona (`LicenseInvitationService`).
+- **Activar no pide los datos de la compañía**, por ninguno de los tres caminos (formulario público, Mi cuenta, enlace del backoffice): la primera nace como «Mi compañía», razón social y nombre comercial (`LicenseActivationService::DEFAULT_COMPANY_NAME`), sin cédula. Así activar es solo la cuenta.
+- **La bienvenida:** activar deja `licenses.welcome_pending` en verdadero. La primera vez que el dueño entra, después de la animación de entrada (secc. 30), aparece un recorrido por las herramientas (`WelcomeTourHost.vue`, montado en `app.js`; el servidor lo comparte como `welcomeTour`).
+  - **Solo lo que puede usar:** el servidor manda las secciones del menú con alguna pantalla a la que tiene acceso, y un paso sin ninguna no se muestra. El de Conti, solo si la licencia lo tiene (`conti.enabled`).
+  - **Termina con los datos de la compañía:** «Cambiar los datos» lleva a Mi cuenta con la ficha de la compañía abierta (`profile.edit?compania={id}`).
+  - **Terminarlo, saltarlo o cerrarlo lo apaga** para siempre (`WelcomeTourController`, exento del modo de gracia). Quien entra invitado a la licencia no lo ve, y las licencias activadas antes de esto tampoco.
+- **O se la asigna el backoffice** (Licencias → al emitirla, o desde su ficha): a una cuenta existente o a una nueva, por correo. La persona recibe un enlace que dura 30 minutos y la licencia se activa recién cuando lo acepta. Mientras tanto la licencia queda reservada: su código no sirve en la activación pública. El backoffice puede reenviar el correo, cambiar a quién está asignada o quitar la asignación, mientras no se haya aceptado. Una cuenta nueva siempre elige su contraseña al aceptar; una existente, solo si la suya la definió otra persona (`LicenseInvitationService`).
 - **Se entra a la licencia de otro solo por invitación** (Administración → Usuarios → Crear nuevo, `CompanyInvitationService`).
   - **Quien invita pone el correo, el rol y los permisos por pantalla.** Nunca pone el nombre ni la contraseña de nadie.
   - **La persona acepta desde el correo.** El enlace dura 7 días y se puede reenviar; al reenviarlo, el anterior deja de servir.
@@ -272,7 +277,7 @@ Mostrar en el pie de página, de forma discreta pero visible:
 - Referencia de la licencia (parcial/enmascarada) y su vigencia (fecha de vencimiento, no la fecha de emisión, que es la que le importa al usuario).
 - Versión de Pivox.
 
-**Versión actual: `v1.0.1`** (la constante `PIVOX_VERSION` de `AppLayout.vue`, el único lugar donde aparece; se sube antes de pasar a producción), siguiendo versionado semántico (`MAJOR.MINOR.PATCH`), reservando:
+**Versión actual: `v1.0.2`** (la constante `PIVOX_VERSION` de `AppLayout.vue`, el único lugar donde aparece; se sube antes de pasar a producción), siguiendo versionado semántico (`MAJOR.MINOR.PATCH`), reservando:
 - `MAJOR` (1 → 2) para cambios que rompan compatibilidad o rediseños grandes (ej. migración a Inertia + Vue 3).
 - `MINOR` (1.0 → 1.1) para módulos nuevos (planillas, inventarios, facturación, compras, y este mismo módulo de licencias).
 - `PATCH` (1.0.0 → 1.0.1) para correcciones menores.
@@ -321,6 +326,7 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 
 **Piezas ya hechas — usarlas, no reinventarlas:**
 - `resources/js/Components/DetailModal.vue`: el modal de la ficha (slots `badge`, contenido y `actions`; prop `wide` para formularios largos, 920px).
+- `resources/js/Components/AccountPicker.vue`: la cuenta de una línea de captura. Escribir abre `AccountSearchModal.vue` (todo el catálogo en letra chica, con filtro por clase) con lo escrito como búsqueda; la lupa la abre vacía; entrar al campo no abre nada. Se elige con doble clic, Enter o «Seleccionar». Los dígitos buscan por el comienzo del código sin guiones. Necesita `account_type` en cada cuenta y los nombres de las clases (`ChartOfAccount::ACCOUNT_TYPES`). El socio sigue con `SearchableCombobox.vue`.
 - `resources/js/Utils/recordDetail.js` (`useRecordDetail`): qué fila está abierta. `resources/js/Utils/crudModal.js` (`useCrudModal`): ficha, alta y edición de un catálogo en un solo modal.
 - `resources/css/app.scss`: `.table-responsive`, `.clickable-row` (con el `chevron-right` de Lucide en un margen reservado de la última celda), `.detail-list`, `.capture-grid`, `.col-extra` se define por pantalla.
 - Ejemplos: `Pages/Inventory/UnitsOfMeasure/Index.vue` (catálogo), `Pages/JournalEntries/Index.vue` (documentos), `Pages/Reports/Inventory/Show.vue` (reporte con columnas del servidor), `Pages/Billing/Sales/Create.vue` (grilla de captura con detalle de línea).
@@ -505,7 +511,8 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Un test verifica que las tres listas coincidan.
 - **Cómo se aplica:** con `data-company-theme` en `<html>`. Lo pone `app.blade.php` en la primera carga, para que no haya un parpadeo, y `app.js` después de cada visita, con el `companyTheme` que comparte el servidor. El mismo atributo en cualquier elemento lo pinta con otro tema: las tarjetas de Apariencia y la ventana del cambio de compañía.
 - **Apariencia:** cada tema se muestra en una miniatura de Pivox con sus colores y su tipografía. Tocarlo lo aplica a toda la pantalla como vista previa; «Guardar tema» lo deja para todos, con registro en la bitácora. Salir sin guardar vuelve al tema guardado.
-- **Un tema nuevo** necesita las tres piezas: el caso del enum, la paleta clara y oscura en `$company-themes`, y la tipografía en `vite.config.js`. El tope es diez.
+- **Los colores de los gráficos del Panel** (`chart-1`, `chart-2` en cada paleta, secc. 44) salen de los tonos del primario y del acento del tema, pero no son esos colores: se ajustaron para distinguirse con daltonismo (protanopía y deuteranopía), no confundirse entre sí y tener contraste de 3:1 sobre la superficie, validados con el script de la guía de visualización. Un tema nuevo pasa por esa validación.
+- **Un tema nuevo** necesita las tres piezas: el caso del enum, la paleta clara y oscura en `$company-themes` (con sus dos colores de gráfico), y la tipografía en `vite.config.js`. El tope es diez.
 
 ## 32. CONTI, EL ASISTENTE: VE LO QUE LA PERSONA VE, Y NO GUARDA NADA SIN SU CONFIRMACIÓN
 
@@ -749,7 +756,8 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   - Secciones que se eligen: Contabilidad y socios (siempre), Bancos, Inventario, Facturación (necesita Inventario), Planillas, Personas y permisos, Bitácora.
   - Formas: `catalog` (todo, como está hoy), `movement` (por su fecha, en el período), `child` (lo que cuelga de algo que va), `state` (existencias, partidas abiertas: como estaban al cierre).
   - **Cada tabla se recorta por la compañía:** por su `company_id` o, si no tiene, por su `'parent'` (aunque sea `movement`, como las conciliaciones de cuenta). Sin ninguno de los dos, el respaldo llevaría las filas de todas las compañías; una prueba lo exige.
-  - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo. Las monedas y lo de Pivox se referencian por su id.
+  - No van: contraseñas, tokens, invitaciones, Conti, lo del backoffice, las fotos y el logo.
+  - **Lo de Pivox (monedas, módulos, impuestos nacionales, roles) no viaja, y no se reconoce por su id:** cada instalación tiene los suyos. El encabezado lleva `globales` (id y código, según `BackupCatalog::GLOBAL_KEYS`) y el importador lo busca por código. **Una tabla global nueva va en `GLOBAL_KEYS`** (una prueba lo exige) y, si le falta a un respaldo que la usa, en `GLOBAL_LABELS`. Un respaldo anterior, sin `globales`, va por id.
   - Las referencias se leen de la base (`BackupSchema`: `Schema::getForeignKeys`, igual en MySQL y SQLite). Las que no son llave foránea (un tipo y un id, ids adentro de un JSON) van en `AFTER` y las traduce `BackupImporter::special()`.
 - **El período:** «Todo el historial», o «Desde» y «Hasta» (vacío = hoy).
   - Con «Desde»: los saldos al día anterior (`BackupOpening`). Son un asiento APE contabilizado con el saldo de cada cuenta por socio y moneda (como el balance de comprobación), una línea por partida abierta, las existencias y el costo promedio como primeras filas del kardex, y el saldo de vacaciones como un ajuste. Las planillas traen además los 12 meses anteriores (aguinaldo, liquidaciones).
@@ -764,7 +772,8 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
   2. `import()` (compañía nueva) o `merge()` (completar), en una transacción (todo o nada). Cada fila que entra recibe un id nuevo y sus referencias se traducen.
   - El archivo se lee de nuevo en cada paso, a propósito: queda cifrado en el disco y lo descifrado nunca se escribe. Descifrar es lo de menos; lo que tarda es la base.
   - Los códigos y números de documento se conservan, y lo contabilizado entra contabilizado.
-  - Una referencia a algo que no vino: vacía si se puede; si no, la fila no entra y se cuenta.
+  - **Lo de Pivox que el respaldo usa y acá no existe se rechaza en `inspect()`, diciendo qué** (`checkGlobals`): sin eso, las líneas de asiento, los socios y los bancos no entrarían, y la importación terminaría «bien». Los roles no: se crean la primera vez que hacen falta (`PermissionGrantService::globalRole`).
+  - Una referencia a algo que no vino: vacía si se puede; si no, la fila no entra y se cuenta. Lo que quedó fuera se dice al terminar y en la lista.
   - Las personas, por su correo, dentro del cupo de la licencia; quien no tiene cuenta o no cabe queda anotado. El Superusuario de la licencia siempre entra.
   - **El avance** (`BackupProgress`) va por una conexión aparte, copia de la de siempre: lo que se escribe dentro de la transacción no se ve hasta el final. En SQLite, por la misma.
 - **Completar una compañía que ya existe** (`BackupMerger`, `BackupBalances`):
@@ -957,3 +966,24 @@ Sobre el año: en vez de fijar "2026" como texto estático, calcula el año del 
 - **La IP y el HTTPS del visitante** salen de `X-Forwarded-For` y `X-Forwarded-Proto`, creídos solo si vienen de la red interna o de Cloudflare (`config/trustedproxy.php`). Nunca `'*'`: en Laravel 13 confía en cualquiera y deja inventar la IP, y con ella saltarse los límites por IP. Pruebas: `tests/Feature/Http/TrustedProxiesTest.php`.
 - **Lo que no está en git ni en la base** (los documentos de `public/repositories` y el `.env`) lo respalda `scripts/hostinger/backup.sh` junto con la base. Si aparece otra carpeta así, se suma ahí.
 - **Una migración tiene que andar en MariaDB** (la que suele dar Hostinger), además de MySQL 8 (Docker) y SQLite (pruebas): nada de SQL propio de un motor.
+
+## 44. EL PANEL: ELEMENTOS QUE ELIGE LA COMPAÑÍA, Y CADA PERSONA VE SOLO LO DE SUS PANTALLAS
+
+**Regla:** el Panel (la página de inicio) lleva gráficos, resúmenes y listas que elige la compañía. El Superusuario y los Administradores lo personalizan; cada persona ve solo los elementos de las pantallas a las que tiene acceso y los que su licencia o su compañía permiten. Lo que no ve ni se calcula ni se le manda.
+
+- **El catálogo** (`App\Domains\Core\Dashboard\DashboardWidgetCatalog`): cada elemento es una clase en `Dashboard/Widgets` que declara su clave (no cambia nunca: es lo que se guarda), título, descripción, sección del menú, forma (`stat`, `columns`, `bars`, `line`, `list`, `meter`), tamaño (`small` una columna, `medium` dos, `large` la fila entera), las pantallas de las que muestra datos (`screens()`: con Lectura en alguna, se ve) y lo que además pide (`requires()`: `conti`, `electronic_invoicing`).
+  - **Los datos salen del mismo cálculo que su reporte o su pantalla**, nunca de uno propio: el resultado del mes es el del estado de resultados mes por mes (`MonthlyResults`, con su mismo criterio: naturaleza de cada cuenta, contabilizados y anulados, sin el asiento de cierre); la antigüedad, de `AgingService`; el inventario, de `InventoryValuationService`; la sugerencia de compra, de `ReorderSuggestionService`; Conti, de `ContiUsageService::personal`. Una prueba compara los números con los reportes.
+  - Montos en moneda local, como número. Lo que se calcula una vez y usan varios elementos va en `DashboardContext::remember()`.
+  - **Un elemento nuevo:** su clase, su lugar en el catálogo y, si lo amerita, en `DEFAULT_LAYOUT`. Una prueba revisa que sus pantallas existan en `ScreenCatalog`.
+  - **La licencia:** hoy lo que depende de ella es Conti; la facturación electrónica es de la compañía. Los módulos por licencia (`company_modules`) todavía no se aplican en ningún lado; cuando se apliquen, entran por `requires()` o por los accesos por pantalla.
+- **Guardar** (`DashboardService::save`, `PUT dashboard/layout`, middleware `can-manage-company`): una fila por compañía en `dashboard_layouts` (la lista de claves en orden). Sin fila, el Panel de siempre (`DEFAULT_LAYOUT`); vacío es una elección y queda vacío.
+  - **Nadie agrega lo que no ve:** el servidor lo rechaza con el nombre del elemento.
+  - **Lo que quien edita no ve queda donde estaba:** no lo puede quitar ni mover. La pantalla le dice cuántos son.
+  - **Máximo `MAX_WIDGETS` (12)**, contando los que no ve.
+  - Queda en la Bitácora como `company.dashboard_updated`, con la lista de antes y de después. No va en los respaldos.
+- **Un elemento que falla al calcularse** se reporta y sale con su aviso: el Panel nunca se cae por uno.
+- **La pantalla** (`Pages/Dashboard.vue`, `Components/Dashboard/`): «Personalizar el Panel» (mover antes o después, quitar, «Agregar elemento» con el catálogo agrupado por sección) y «Guardar el Panel». La rejilla responde a su propio ancho (`container-type`): cuatro columnas desde 56rem, dos desde 38rem, una en un teléfono.
+- **Los gráficos** se dibujan en SVG, sin librería, al ancho real de su tarjeta (`useWidth`), con los colores del tema:
+  - **Una serie, `--color-chart-1`; dos, además `--color-chart-2`.** Cada tema define los dos en claro y en oscuro (secc. 31), validados para distinguirse con daltonismo y con contraste de 3:1 sobre la superficie. Texto, ejes y grilla, con los tokens de texto y de borde, nunca con el color de la serie.
+  - Columnas de hasta 24px con la punta redondeada y la base recta, 2px de aire entre las que se tocan; líneas de 2px con un velo del 10%; grilla de una línea, nunca punteada; nunca dos ejes.
+  - Con dos o más series, leyenda. Al pasar el mouse o llegar con el teclado, un aviso con todas las series del período; y cada gráfico de columnas o de línea tiene «Ver como tabla», con los mismos datos.

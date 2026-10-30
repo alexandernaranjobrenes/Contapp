@@ -3,6 +3,80 @@
 Formato: fecha, decisión, motivo. Solo se agrega al final; no se reescribe historia.
 
 ---
+## 2026-10-30 — Bug real: el respaldo reconocía lo de Pivox por su id, y entre instalaciones perdía los datos sin avisar
+
+**Hallazgo:** ASERESUSA y Senna, pasadas de desarrollo a producción, quedaron como «Importado» pero solo con su esqueleto: 277 y 224 registros, casi todos cuentas. En desarrollo CRC y USD son 949 y 950; en producción, 1 y 2. El importador buscaba las monedas por el mismo id: al no encontrarlas, la compañía quedaba sin moneda (es opcional) y se descartaban las filas que la exigen (líneas de asiento, socios, cuentas bancarias, tipos de cambio, partidas, listas de precios, comprobantes), y con ellas lo que depende de ellas. El aviso decía que dependían «de movimientos anteriores al período», que era falso.
+
+**Por qué no se vio antes:** la firma (2026-10-14) impide importar lo de otra instalación, y dentro de una los ids siempre coinciden. Se saltó la firma exportando en desarrollo con la `APP_KEY` de producción, sin ver que el archivo también dependía de esos ids. Peor que perder filas: si el id existe pero es otra cosa (ids cruzados), entraba la moneda equivocada sin ningún error.
+
+**Corrección:**
+- El encabezado lleva `globales`: lo de Pivox, con lo que lo reconoce en cualquier instalación (`BackupCatalog::GLOBAL_KEYS`: el código; la tarifa, además su vigencia; el rol, su tipo).
+- El importador lo busca por eso (`findGlobal`). Se agregó al encabezado sin subir `VERSION`: los respaldos ya descargados se siguen importando, por id.
+- `inspect()` rechaza, diciendo qué falta, lo que el respaldo usa y acá no existe (`checkGlobals`), incluidos los respaldos anteriores. Solo cuenta lo que se usa, y no lo que viene en el propio respaldo.
+- Los roles de Pivox se crean si faltan (`globalRole`), como al invitar a alguien: producción puede no tenerlos todavía.
+- Al completar, la moneda local se compara ya traducida: si no, toda compañía de otra instalación daba «otra moneda local».
+- El aviso de lo que quedó fuera dice el motivo real, y la lista de importaciones muestra cuántos.
+
+**Decidido:** lo que falta se rechaza, no se crea. El catálogo nacional de impuestos es del Propietario (`/backoffice/tax-rates`), y una importación no debería escribirlo. Copiarlo como propio de la compañía dejaría tarifas duplicadas cuando se cargue el nacional.
+
+**Pendiente:** `docs/produccion.md`, paso 8, siembra monedas y módulos, pero no el catálogo de impuestos (solo `DemoCompanySeeder` lo hace, y ese no se corre en producción). Si producción no lo tiene, un respaldo que use IVA-13 se va a rechazar hasta cargarlo.
+
+---
+## 2026-10-30 — Las fechas del encabezado valen para cada línea que no tiene la suya
+
+**Pedido del usuario:** el encabezado de un registro tiene fecha de documento y vencimiento, y cada línea puede tener además su número, su fecha de documento y su vencimiento, lo que puede confundir. Las fechas del encabezado deben ser las que valen para el registro y los reportes, salvo en la línea que tenga la suya: un registro puede juntar varios documentos fuente, y cada línea necesita el vencimiento de su cobro o pago y la fecha de su documento.
+
+**Qué estaba mal:** el servidor ya usaba el vencimiento del encabezado en las líneas sin el suyo (2026-08-22), pero:
+- La pantalla lo **copiaba** en cada línea nueva, y al guardar un preliminar el servidor lo copiaba en todas. Al reabrirlo, esas líneas parecían tener vencimiento propio, y cambiar el del encabezado ya no las alcanzaba.
+- La fecha de documento del encabezado no se usaba en las líneas sin la suya: quedaban vacías.
+- El plazo de crédito del socio ponía un vencimiento en la línea aunque el encabezado tuviera uno.
+
+**Qué se hizo:**
+- **Se resuelven al contabilizar** (`PostJournalService::post`): vencimiento y fecha de documento de cada línea, el suyo o el del encabezado. Quedan guardados en la línea: el mayor, las partidas abiertas y los reportes leen la de cada línea, igual que antes. Vale para todo lo que contabiliza, también lo automático (facturas, planillas).
+- **Un preliminar guarda solo lo propio de cada línea** (`saveDraft`). Los preliminares de antes se abren con la fecha igual a la del encabezado como heredada (`JournalEntryController::edit`): al contabilizar da lo mismo, y cambiar el encabezado vuelve a alcanzarla.
+- **La pantalla dice de dónde sale cada fecha de la línea:** «Del encabezado: …», «Por el plazo del socio», o «Propia · usar la del encabezado». Las líneas nuevas no copian el vencimiento del encabezado.
+- **El plazo del socio solo se sugiere sin vencimiento en el encabezado.** Si después se pone uno, lo sugerido se quita: no es una fecha que la persona haya puesto en la línea.
+- **El número de documento de la línea queda solo de la línea:** el encabezado no tiene uno.
+
+---
+## 2026-10-30 — Las cuentas de un asiento se eligen en una ventana con todo el catálogo
+
+**Pedido del usuario:** la lista desplegable para elegir la cuenta en Registros mostraba pocas cuentas. Pidió una ventana aparte, con letra más chica para ver más cuentas a la vez, propuestas según los dígitos que se escriben. Se elige con doble clic o con un botón «Seleccionar». Sin nada escrito, la ventana no se abre sola: se abre con un ícono.
+
+**Qué se hizo** (`AccountPicker.vue`, `AccountSearchModal.vue`; CLAUDE.md secc. 20):
+- **Escribir en el campo abre la ventana** con lo escrito como búsqueda. Las teclas que llegan antes de que la ventana tome el foco no se pierden.
+- **Los dígitos buscan por el comienzo del código**, sin importar los guiones. La lista de antes los buscaba en cualquier parte: «101» traía también 6-01-01-01-…, y lo propuesto no se parecía a lo escrito. Solo si nada empieza así, se buscan en cualquier parte.
+- **Filtro por clase** (Activos, Pasivos…): con un catálogo grande acota mejor que seguir escribiendo.
+- **Sin paginar:** se dibujan hasta 400 filas, y un aviso pide escribir más.
+- **Solo la cuenta.** El socio sigue con su lista desplegable: el pedido era el de las cuentas.
+
+---
+## 2026-10-30 — El Panel se arma con elementos, y cada persona ve solo los de sus pantallas
+
+**Pedido del usuario:** que en el Panel se puedan agregar gráficos y resúmenes según los privilegios de la licencia y los accesos de cada persona. Que lo editen el Superusuario y los Administradores, que quien no tiene acceso a una pantalla no vea sus elementos, con un máximo, y que sigan el tema de la compañía, el modo claro u oscuro y se adapten a cualquier pantalla.
+
+**Qué se decidió** (CLAUDE.md secc. 44):
+- **El Panel es de la compañía, no de cada persona.** Una sola lista de elementos; cada persona ve el subconjunto de las pantallas a las que entra. El Panel de antes mostraba los últimos asientos a cualquiera, aunque no tuviera acceso a Contabilidad: eso se corrige.
+- **Quien edita no puede mostrar lo que no ve, ni tocarlo.** Agregar algo de una pantalla sin acceso sería una forma de saltarse los permisos. Y si un Administrador sin acceso a Planillas pudiera quitar el gráfico de planilla, borraría lo que eligió el Superusuario sin saber qué era. Por eso queda donde estaba.
+- **Máximo 12 elementos**, contando los que quien edita no ve.
+- **Cada número sale del servicio de su reporte.** El Panel no tiene cálculos propios que puedan contradecir a un reporte. Al probarlo apareció un caso: con cuentas de resultado de naturaleza invertida, deducir la naturaleza de la clase daba otro resultado que el reporte. Se usa la naturaleza de cada cuenta, como el reporte.
+- **Gráficos en SVG propio, no Chart.js ni ECharts.** Las alternativas eran Chart.js (liviana pero en canvas: hay que releer los colores del tema y redibujar a mano al cambiar de tema o de modo) y ECharts (completa pero pesada para lo que se usa). Con SVG, los colores salen directo de los tokens del tema y cambian solos; el costo es mantener cuatro componentes chicos.
+- **Dos colores de gráfico por tema** (`chart-1`, `chart-2`). El primario claro de los temas es casi negro y en algunos temas el primario y el acento son del mismo tono (en Ónix oscuro, dos dorados casi iguales). Se derivaron de esos tonos y se validaron los 20 pares (10 temas, claro y oscuro): separación con daltonismo de 12 a 26, contraste de 3:1 o más.
+- **Los módulos por licencia todavía no se aplican** (la tabla `company_modules` existe, pero nada la consulta). Por ahora, «los privilegios de la licencia» en el Panel son Conti y la facturación electrónica. El filtro queda listo para cuando se apliquen.
+
+---
+## 2026-10-30 — Activar una licencia ya no pide la compañía; el dueño recibe un recorrido de bienvenida
+
+**Pedido del usuario:** que al activar una licencia no aparezca «Tu primera compañía» (que nazca con razón social y nombre comercial predefinidos), y que la primera vez que el dueño entra vea una bienvenida con un recorrido breve por Pivox, según lo que la licencia permita, que termine pidiéndole cambiar esos datos.
+
+**Qué se decidió** (CLAUDE.md secc. 12):
+- **El nombre predefinido es «Mi compañía»**, para la razón social y el nombre comercial, sin cédula. Vale para los tres caminos: el formulario público, Mi cuenta → Activar una licencia y el enlace de una licencia asignada por el backoffice. El servicio todavía acepta los datos (lo usan las pruebas), pero ninguna pantalla los manda.
+- **La bienvenida es una bandera de la licencia** (`licenses.welcome_pending`), no de la persona: una cuenta es dueña de una sola licencia, y así quien entra invitado no la ve. Arranca en falso para las licencias que ya existían.
+- **Un recorrido en una ventana, no señalando el menú.** Señalar los ítems del menú se rompe con el menú arriba, colapsado o en el cajón de un teléfono. La ventana dice dónde está cada cosa con los nombres del menú, y en un teléfono es una hoja que sube desde abajo.
+- **«Según lo que la licencia permita»:** se muestran solo las secciones con alguna pantalla a la que la persona tiene acceso, y Conti solo si la licencia lo tiene. Hoy el dueño ve todas las secciones; el filtro queda listo para cuando la licencia habilite módulos según lo comprado.
+- **Terminarlo, saltarlo o cerrarlo lo apaga para siempre.** No hay forma de volver a abrirlo.
+
+---
 ## 2026-10-27 — El Repositorio pasa a llamarse Biblioteca y sube en el menú
 
 **Pedido del usuario:** cambiar «Repositorio» por «Biblioteca» y ponerlo junto al Panel (menú al lado) o junto al tema (menú arriba).

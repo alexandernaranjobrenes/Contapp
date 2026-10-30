@@ -13,9 +13,6 @@ const props = defineProps({
 
 const form = useForm({
     code: '',
-    legal_name: '',
-    trade_name: '',
-    tax_id: '',
 });
 
 function submit() {
@@ -63,6 +60,10 @@ function sendPasswordLink() {
                     Superusuario de la compañía nueva, que pasa a ser tu compañía predeterminada. En las demás seguís con
                     el rol que ya tenés.
                 </p>
+                <p class="muted intro">
+                    La compañía nueva se crea con un nombre provisional. Al entrar te mostramos dónde ponerle la razón
+                    social y el nombre comercial.
+                </p>
 
                 <p v-if="form.errors.account" class="flash flash-error notice" role="alert">{{ form.errors.account }}</p>
 
@@ -72,25 +73,10 @@ function sendPasswordLink() {
                         <input id="code" v-model="form.code" type="text" placeholder="PIVOX-XXXX-XXXX-XXXX" required>
                         <span v-if="form.errors.code" class="error">{{ form.errors.code }}</span>
                     </div>
-                    <div class="field">
-                        <label for="legal_name">Razón social</label>
-                        <input id="legal_name" v-model="form.legal_name" type="text" required>
-                        <span v-if="form.errors.legal_name" class="error">{{ form.errors.legal_name }}</span>
-                    </div>
-                    <div class="field">
-                        <label for="trade_name">Nombre comercial</label>
-                        <input id="trade_name" v-model="form.trade_name" type="text">
-                        <span v-if="form.errors.trade_name" class="error">{{ form.errors.trade_name }}</span>
-                    </div>
-                    <div class="field">
-                        <label for="tax_id">Cédula jurídica (opcional)</label>
-                        <input id="tax_id" v-model="form.tax_id" type="text">
-                        <span v-if="form.errors.tax_id" class="error">{{ form.errors.tax_id }}</span>
-                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary" :disabled="form.processing">
-                        <KeyRoundIcon /> Activar y crear compañía
+                        <KeyRoundIcon /> Activar licencia
                     </button>
                 </div>
             </form>

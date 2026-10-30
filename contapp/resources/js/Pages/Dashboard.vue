@@ -1,25 +1,83 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '../Layouts/AppLayout.vue';
-import DetailModal from '../Components/DetailModal.vue';
-import { useRecordDetail } from '../Utils/recordDetail';
-import { EyeIcon } from '@lucide/vue';
+import DashboardWidget from '../Components/Dashboard/DashboardWidget.vue';
+import WidgetCatalog from '../Components/Dashboard/WidgetCatalog.vue';
+import { CheckIcon, PencilIcon, PlusIcon } from '@lucide/vue';
 
+/**
+ * El Panel (CLAUDE.md secc. 44): los elementos que la compañía eligió, solo
+ * los que esta persona puede ver (el servidor ya los filtró y calculó).
+ *
+ * El Superusuario y los Administradores lo personalizan: agregar del
+ * catálogo, mover y quitar, y guardar. Lo que guardan es lo que ven, en su
+ * orden; los elementos que no ven quedan donde estaban (DashboardService).
+ * El máximo cuenta también esos.
+ */
 const props = defineProps({
     noCompany: { type: Boolean, default: false },
-    stats: { type: Object, default: () => ({}) },
-    recentEntries: { type: Array, default: () => [] },
+    widgets: { type: Array, default: () => [] },
+    canEdit: { type: Boolean, default: false },
+    // { catalog, hidden, max }: solo para quien puede editar.
+    editor: { type: Object, default: null },
 });
 
-const statusLabels = { draft: 'Preliminar', posted: 'Contabilizado', voided: 'Anulado' };
-const statusBadge = { draft: 'badge-warning', posted: 'badge-success', voided: 'badge-neutral' };
+const page = usePage();
 
-function documentLabel(entry) {
-    return `${entry.document_type?.code ?? ''}-${entry.document_number}`;
+const editing = ref(false);
+const draft = ref([]);
+const catalogOpen = ref(false);
+const saving = ref(false);
+
+const loaded = computed(() => Object.fromEntries(props.widgets.map((w) => [w.key, w])));
+const catalogByKey = computed(() => Object.fromEntries((props.editor?.catalog ?? []).map((w) => [w.key, w])));
+
+// Lo que se dibuja: el Panel guardado, o el borrador mientras se edita. Uno
+// recién agregado no tiene datos todavía (los trae al guardar).
+const shown = computed(() => (editing.value
+    ? draft.value.map((key) => loaded.value[key] ?? catalogByKey.value[key]).filter(Boolean)
+    : props.widgets));
+
+const used = computed(() => draft.value.length + (props.editor?.hidden ?? 0));
+const full = computed(() => !!props.editor && used.value >= props.editor.max);
+const changed = computed(() => draft.value.join() !== props.widgets.map((w) => w.key).join());
+
+function startEditing() {
+    draft.value = props.widgets.map((w) => w.key);
+    editing.value = true;
 }
 
-// Ficha del documento (CLAUDE.md secc. 20), con el enlace al asiento.
-const { selected, openDetail, closeDetail } = useRecordDetail(() => props.recentEntries);
+function cancel() {
+    editing.value = false;
+    catalogOpen.value = false;
+}
+
+function move(index, step) {
+    const to = index + step;
+    if (to < 0 || to >= draft.value.length) return;
+    const list = [...draft.value];
+    [list[index], list[to]] = [list[to], list[index]];
+    draft.value = list;
+}
+
+function remove(index) {
+    draft.value = draft.value.filter((_, i) => i !== index);
+}
+
+function add(key) {
+    if (full.value || draft.value.includes(key)) return;
+    draft.value = [...draft.value, key];
+}
+
+function save() {
+    router.put(route('dashboard.layout.update'), { widgets: draft.value }, {
+        preserveScroll: true,
+        onStart: () => { saving.value = true; },
+        onSuccess: () => { editing.value = false; },
+        onFinish: () => { saving.value = false; },
+    });
+}
 </script>
 
 <template>
@@ -32,127 +90,111 @@ const { selected, openDetail, closeDetail } = useRecordDetail(() => props.recent
         </div>
 
         <template v-else>
-            <div class="stat-grid">
-                <div class="card stat-card">
-                    <span class="stat-label">Cuentas en el catálogo</span>
-                    <span class="stat-value">{{ stats.accounts }}</span>
-                </div>
-                <div class="card stat-card">
-                    <span class="stat-label">Asientos contabilizados</span>
-                    <span class="stat-value">{{ stats.journalEntries }}</span>
-                </div>
-                <div class="card stat-card">
-                    <span class="stat-label">Partidas abiertas (CxC/CxP)</span>
-                    <span class="stat-value">{{ stats.openItems }}</span>
-                </div>
-            </div>
-
-            <div class="view-toolbar">
-                <h2 class="section-heading">Últimos documentos</h2>
+            <div v-if="canEdit" class="view-toolbar">
                 <div class="view-actions">
-                    <Link :href="route('journal-entries.index')" class="btn btn-ghost">Ver todos</Link>
+                    <template v-if="!editing">
+                        <button type="button" class="btn btn-ghost" @click="startEditing"><PencilIcon /> Personalizar el Panel</button>
+                    </template>
+                    <template v-else>
+                        <span class="counter" :class="{ 'is-full': full }">
+                            {{ used }} de {{ editor.max }} elementos<template v-if="editor.hidden">, {{ editor.hidden }} que no ves</template>
+                        </span>
+                        <button type="button" class="btn btn-ghost" :disabled="saving" @click="cancel">Cancelar</button>
+                        <button type="button" class="btn btn-ghost" :disabled="full" @click="catalogOpen = true"><PlusIcon /> Agregar elemento</button>
+                        <button type="button" class="btn btn-primary" :disabled="saving || !changed" @click="save"><CheckIcon /> Guardar el Panel</button>
+                    </template>
                 </div>
             </div>
 
-            <div class="card">
-                <div v-if="recentEntries.length" class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Documento</th>
-                                <th>Fecha</th>
-                                <th>Descripción</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="entry in recentEntries"
-                                :key="entry.id"
-                                class="clickable-row"
-                                tabindex="0"
-                                @click="openDetail(entry)"
-                                @keydown.enter="openDetail(entry)"
-                                @keydown.space.prevent="openDetail(entry)"
-                            >
-                                <td class="code">{{ documentLabel(entry) }}</td>
-                                <td data-label="Fecha" class="code">{{ entry.posting_date }}</td>
-                                <td data-label="Descripción">{{ entry.description }}</td>
-                                <td data-label="Estado">
-                                    <span class="badge" :class="statusBadge[entry.status] ?? 'badge-neutral'">
-                                        {{ statusLabels[entry.status] ?? entry.status }}
-                                    </span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <p v-if="editing" class="hint">
+                Lo que elijas lo ve toda la compañía, pero cada persona solo ve los elementos de las pantallas a las que
+                tiene acceso.<template v-if="editor.hidden"> Los {{ editor.hidden }} elementos de pantallas a las que vos no
+                tenés acceso siguen en el Panel: no los podés mover ni quitar.</template>
+            </p>
+
+            <p v-if="page.props.errors?.widgets" class="flash flash-error" role="alert">{{ page.props.errors.widgets }}</p>
+
+            <div class="dashboard">
+                <div v-if="shown.length" class="dashboard-grid">
+                    <DashboardWidget
+                        v-for="(widget, i) in shown"
+                        :key="widget.key"
+                        :widget="widget"
+                        :editing="editing"
+                        :first="i === 0"
+                        :last="i === shown.length - 1"
+                        @move="move(i, $event)"
+                        @remove="remove(i)"
+                    />
                 </div>
-                <p v-else class="muted empty-row">Todavía no hay documentos contabilizados.</p>
+
+                <div v-else class="card empty-state">
+                    <template v-if="editing">
+                        <p>El Panel está vacío.</p>
+                        <p class="muted">Agregá gráficos y resúmenes con «Agregar elemento».</p>
+                    </template>
+                    <template v-else-if="canEdit">
+                        <p>El Panel está vacío.</p>
+                        <p class="muted">Con «Personalizar el Panel» elegís los gráficos y resúmenes que ve la compañía.</p>
+                    </template>
+                    <template v-else>
+                        <p>Todavía no hay nada en el Panel para vos.</p>
+                        <p class="muted">Cada elemento se ve solo con acceso a su pantalla. Usá el menú para ir a tus pantallas.</p>
+                    </template>
+                </div>
             </div>
 
-            <DetailModal :open="!!selected" :title="selected ? documentLabel(selected) : ''" @close="closeDetail">
-                <template #badge>
-                    <span v-if="selected" class="badge" :class="statusBadge[selected.status] ?? 'badge-neutral'">
-                        {{ statusLabels[selected.status] ?? selected.status }}
-                    </span>
-                </template>
-
-                <dl v-if="selected" class="detail-list">
-                    <div>
-                        <dt>Fecha</dt>
-                        <dd>{{ selected.posting_date }}</dd>
-                    </div>
-                    <div>
-                        <dt>Descripción</dt>
-                        <dd>{{ selected.description ?? '—' }}</dd>
-                    </div>
-                </dl>
-
-                <template #actions>
-                    <Link v-if="selected" :href="route('journal-entries.show', selected.id)" class="btn btn-primary"><EyeIcon /> Ver asiento</Link>
-                </template>
-            </DetailModal>
+            <WidgetCatalog
+                v-if="editor"
+                :open="catalogOpen"
+                :catalog="editor.catalog"
+                :selected="draft"
+                :full="full"
+                :max="editor.max"
+                @add="add"
+                @close="catalogOpen = false"
+            />
         </template>
     </AppLayout>
 </template>
 
 <style scoped>
-.stat-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-}
-
-.stat-card {
-    padding: 1rem 1.1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.stat-label {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    font-weight: 600;
-}
-
-.stat-value {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: var(--color-primary);
-}
-
-.section-heading {
-    font-size: 0.95rem;
-    margin: 0;
+.counter {
     align-self: center;
+    margin-right: auto;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
 }
 
-table { font-size: 0.85rem; }
-.code { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.counter.is-full { color: var(--color-warning); font-weight: 600; }
 
-.empty-state, .empty-row {
-    padding: 1.25rem;
+/*
+ * La rejilla responde a su propio ancho (no al de la ventana): con el menú al
+ * lado o arriba, el lugar para el Panel cambia. Cuatro columnas cuando hay
+ * espacio, dos en una tablet, una en un teléfono. Un elemento mediano ocupa
+ * dos; uno ancho, la fila entera.
+ */
+.dashboard { container-type: inline-size; }
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    align-items: stretch;
 }
+
+@container (min-width: 38rem) {
+    .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-grid > :deep(.w-medium),
+    .dashboard-grid > :deep(.w-large) { grid-column: 1 / -1; }
+}
+
+@container (min-width: 56rem) {
+    .dashboard-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .dashboard-grid > :deep(.w-medium) { grid-column: span 2; }
+    .dashboard-grid > :deep(.w-large) { grid-column: 1 / -1; }
+}
+
+.empty-state { padding: 1.25rem; }
+.empty-state p { margin: 0 0 0.35rem; }
 </style>

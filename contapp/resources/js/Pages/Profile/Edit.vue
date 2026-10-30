@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DetailModal from '../../Components/DetailModal.vue';
@@ -17,6 +17,9 @@ const props = defineProps({
     emailLinkMinutes: { type: Number, required: true },
     // Qué foto se puede subir (formatos y peso), dicho por el servidor.
     photoRules: { type: Object, required: true },
+    // La compañía cuya ficha se abre al llegar (?compania=): el final del
+    // recorrido de bienvenida lleva acá.
+    openCompanyId: { type: Number, default: null },
 });
 
 const ROLE_LABELS = { super_admin: 'Superusuario', admin: 'Administrador', user: 'Usuario' };
@@ -53,6 +56,11 @@ function membershipDetail(membership) {
 function closeCompany() {
     editingCompanyId.value = null;
 }
+
+onMounted(() => {
+    const membership = props.memberships.find((m) => m.id === props.openCompanyId);
+    if (membership?.can_edit) editCompany(membership);
+});
 
 function saveCompany() {
     companyForm.put(route('profile.companies.update', editingCompanyId.value), {

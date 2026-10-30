@@ -290,7 +290,7 @@ const ROLE_LABELS = {
 
 const roleLabel = computed(() => ROLE_LABELS[page.props.auth?.user?.role_type] ?? null);
 
-const PIVOX_VERSION = 'v1.0.1';
+const PIVOX_VERSION = 'v1.0.2';
 
 const collapsed = ref(false);
 const theme = ref('light');

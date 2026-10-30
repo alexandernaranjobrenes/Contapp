@@ -43,6 +43,9 @@ class EnforceLicenseGracePeriod
         // puede no ser la activa, así que su licencia la revisa
         // CompanyDetailsController, no este middleware.
         'profile.companies.update',
+        // Cerrar el recorrido de bienvenida: solo apaga un aviso, y no tiene
+        // que dejar a nadie encerrado en él.
+        'welcome-tour.complete',
         // Aceptar una invitación a otra compañía: es de la persona.
         'company-invitation.accept',
         // El canal de comentarios sobre Pivox: no es de la compañía, y

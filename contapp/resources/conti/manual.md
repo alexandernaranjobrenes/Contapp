@@ -4,8 +4,9 @@
 - No hay registro público: el equipo de Pivox emite cada **licencia** con un código. Quien la activa crea su compañía y queda como **Superusuario**, el dueño de la licencia.
 - La pantalla de activación pide:
   - el «Código de licencia»;
-  - los datos de la compañía: «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional);
   - los datos de la persona: nombre, correo y contraseña. Si ya tiene cuenta, elige «Ya tengo una cuenta».
+- **Los datos de la compañía no se piden al activar:** la primera compañía se crea como «Mi compañía» (razón social y nombre comercial). Se cambian en **Mi cuenta → Mis datos → Tus compañías → Editar datos**.
+- **La primera vez que el dueño entra** a su licencia nueva aparece un recorrido corto por Pivox: Contabilidad, Facturación, Inventario, Planillas, Conti (si la licencia lo tiene) y la administración del equipo. Muestra solo lo que su licencia y sus permisos le dejan usar. Al final pide cambiar la razón social y el nombre comercial, con el botón «Cambiar los datos», que abre la ficha de la compañía. «Saltar el recorrido», «Más tarde» o cerrarlo lo dan por visto: no vuelve a aparecer.
 - **Una cuenta puede ser dueña de una sola licencia.** Una licencia puede tener varias compañías, hasta el máximo de su categoría. Cada categoría define cuántas empresas, administradores y usuarios admite, y su duración.
 - **Agregar compañías:** en **Administración → Agregar compañía** (solo el Superusuario) se completa «Razón social», «Nombre comercial» y «Cédula jurídica» (opcional). Si ya se llegó al máximo, aparece «Ya alcanzaste el máximo de compañías de tu licencia»; para más cupo hay que contactar al equipo de Pivox.
 - **Activar una licencia propia:** una persona que es Administrador o Usuario en la licencia de otro puede activar la suya en **Mi cuenta → Activar una licencia**. Esa opción solo aparece mientras la cuenta no sea dueña de una licencia. Si la cuenta la creó otra persona, primero hay que confirmar el correo con «Enviarme el enlace».
@@ -106,7 +107,12 @@ Se ven en el pie de página y en el selector de compañía:
   - el botón «Salir».
 - Si la licencia tiene Conti, el asistente, su botón es el redondo con un robot, en la esquina inferior derecha.
 - El menú lateral se puede colapsar. Arriba de todo van el **Panel** y la **Biblioteca** (documentos de consulta, ver 1.16). Con el menú arriba, la Biblioteca es un ícono en la columna de la izquierda, junto al modo claro u oscuro. El resto está organizado en secciones: Contabilidad, Centros de costo y cambiario, Inventario, Facturación, Planillas, Socios de negocio, Bancos, Impuestos, Administración y Mi cuenta. Dentro de cada sección, las opciones se agrupan en Operación, Reportes, Catálogos y Configuración. **No hay un menú general de reportes:** cada reporte vive en el módulo al que pertenece.
-- El **Panel** es la página de inicio y muestra los documentos contabilizados recientes.
+- El **Panel** es la página de inicio: gráficos, resúmenes y listas que elige la compañía (resultado del mes, ingresos y gastos, cuentas por cobrar y por pagar, ventas por mes, saldos en bancos, tipo de cambio, inventario por almacén, artículos bajo el mínimo, costo de planilla, consumo de Conti, entre otros).
+  - **Cada persona ve solo los elementos de las pantallas a las que tiene acceso.** Si alguien no ve un gráfico que ven otros, es porque no tiene acceso a esa pantalla: lo da el Superusuario o un Administrador en Administración → Usuarios.
+  - **Lo cambian el Superusuario y los Administradores**, con «Personalizar el Panel»: «Agregar elemento» (el catálogo, agrupado por sección), mover antes o después, quitar, y «Guardar el Panel». Lo que se guarda lo ve toda la compañía.
+  - Solo se puede agregar lo que uno mismo ve. Los elementos que un Administrador no ve siguen en el Panel: no los puede mover ni quitar.
+  - **Hasta 12 elementos.** Para agregar otro con el Panel lleno, hay que quitar alguno.
+  - Los gráficos de columnas y de línea tienen «Ver como tabla», y al pasar el mouse dicen el valor de cada período. La flecha de cada elemento abre su pantalla o su reporte.
 
 ### 1.10 Comentarios y noticias
 - **Comentarios**: para proponer mejoras o reportar algo. Se escribe un texto y se pueden adjuntar imágenes (JPG o PNG de hasta 5 MB). Se puede votar a favor o en contra, y comentar; lo más votado queda arriba.
@@ -304,21 +310,27 @@ Se abre desde la ficha de la cuenta, con «Reconciliar». Sirve para emparejar m
 
 **El encabezado del formulario:**
 - **Tipo de documento**.
-- **Fecha de documento**: la de la factura o comprobante. Es informativa.
+- **Fecha de documento**: la de la factura o comprobante. Vale para cada línea que no tenga su propia «Fecha del doc.».
 - **Fecha de contabilización**: define el **período**, el **tipo de cambio** y las **vigencias** (de centros de costo, normas de reparto e indicadores de impuesto).
 - **Serie** (opcional): si se elige una, el asiento lleva además el número de esa serie.
-- **Fecha de vencimiento** (opcional).
+- **Fecha de vencimiento** (opcional): vale para cada línea que no tenga su propio «Vencimiento». Con un vencimiento en el encabezado, el plazo de crédito del socio no se sugiere en las líneas.
+- **Las fechas del encabezado mandan, salvo en la línea que tiene la suya.** Un asiento que junta varias facturas lleva en cada línea su propia «Fecha del doc.» y su «Vencimiento»; las líneas que no los tienen usan los del encabezado. Cada línea dice de dónde sale su fecha («Del encabezado: 27/10/2026», o «Propia · usar la del encabezado» para volver a la del encabezado). Si se cambia una fecha del encabezado, cambia en todas las líneas que no tienen la suya, también en un preliminar.
 - **Tipo de cambio**: si se deja vacío, se usa el automático, que aparece como sugerencia. Si se escribe un valor, rige **solo para este asiento**. El factor a la moneda de sistema siempre es automático.
 - **Descripción**.
 
 **Las líneas:**
 - Cada línea se registra en modo «Cuenta» o «Socio». En modo Socio se elige el cliente o proveedor, y la cuenta de control del socio se pone sola.
+- **Elegir la cuenta:** al escribir en el campo de la cuenta se abre la ventana **«Buscar cuenta»**, con todo el catálogo en letra chica y lo escrito como búsqueda. La **lupa** al lado del campo la abre sin búsqueda; entrar al campo o hacer clic no la abre.
+  - Los dígitos buscan por el comienzo del código, sin importar los guiones: «10102» trae las cuentas 1-01-02-…. Las palabras buscan en el nombre, sin tildes y en cualquier orden.
+  - Los botones de clase (Activos, Pasivos, Gastos…) acotan la lista.
+  - Se elige con **doble clic**, con **Enter** o con **«Seleccionar»** sobre la marcada. Las flechas mueven la marca; Escape cierra sin cambiar nada.
+  - El doble clic en el campo de la cuenta sigue abriendo su mayor auxiliar.
 - Columnas: «Moneda», «Débito», «Crédito» y «Descripción».
 - Según la cuenta y el tipo de documento, una línea puede pedir además:
   - una **Norma de reparto**;
   - un indicador de **IVA**: al elegirlo, se agrega sola la línea del impuesto;
-  - el «Doc. de referencia» y su «Fecha del doc.»;
-  - un «Vencimiento» (marcando «Abre partida (vencimiento)»), o una partida existente elegida en «Aplicar a partida»;
+  - el «Doc. de referencia» y su «Fecha del doc.» (vacía, la del encabezado);
+  - un «Vencimiento» (vacío, el del encabezado; marcando «Abre partida (vencimiento)» la línea queda como partida pendiente), o una partida existente elegida en «Aplicar a partida»;
   - la **Clave numérica electrónica**.
 - Cada línea se puede duplicar o eliminar.
 

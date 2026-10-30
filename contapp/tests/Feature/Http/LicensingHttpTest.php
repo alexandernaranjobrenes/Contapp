@@ -4,12 +4,12 @@ use App\Domains\Core\Models\Company;
 use App\Domains\Core\Services\PermissionGrantService;
 use App\Domains\Licensing\Models\License;
 use App\Domains\Licensing\Models\LicenseCategory;
+use App\Domains\Licensing\Services\LicenseActivationService;
 use App\Models\User;
 
 it('rechaza activar con un código que no existe', function () {
     $this->post(route('license-activation.store'), [
         'code' => 'PIVOX-NOPE-NOPE-NOPE',
-        'legal_name' => 'Mi Empresa',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -19,14 +19,11 @@ it('rechaza activar con un código que no existe', function () {
     $this->assertGuest();
 });
 
-it('activa una licencia válida, crea la compañía y deja al usuario logueado como super usuario de su propia compañía', function () {
+it('activa una licencia válida, crea la compañía con el nombre predefinido y deja al usuario logueado como super usuario de su propia compañía', function () {
     $license = License::factory()->create(['max_companies' => 1]);
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Mi Empresa S.A.',
-        'trade_name' => 'Mi Empresa',
-        'tax_id' => '3-101-999999',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -38,8 +35,14 @@ it('activa una licencia válida, crea la compañía y deja al usuario logueado c
     $this->assertAuthenticatedAs($user);
     expect($user->isSuperAdmin())->toBeTrue();
 
-    $company = Company::where('legal_name', 'Mi Empresa S.A.')->sole();
-    expect($company->license_id)->toBe($license->id);
+    // La compañía no se pide al activar: nace con el nombre predefinido, y
+    // la licencia queda con la bienvenida pendiente para su dueño.
+    $company = Company::where('license_id', $license->id)->sole();
+    expect($company->only('legal_name', 'trade_name', 'tax_id'))->toBe([
+        'legal_name' => LicenseActivationService::DEFAULT_COMPANY_NAME,
+        'trade_name' => LicenseActivationService::DEFAULT_COMPANY_NAME,
+        'tax_id' => null,
+    ])->and($license->fresh()->welcome_pending)->toBeTrue();
 });
 
 it('rechaza activar una licencia que ya alcanzó el máximo de compañías', function () {
@@ -47,7 +50,6 @@ it('rechaza activar una licencia que ya alcanzó el máximo de compañías', fun
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'Secreto#1234',
@@ -61,7 +63,6 @@ it('rechaza activar una licencia que ya alcanzó el máximo de compañías', fun
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Segunda Empresa',
         'name' => 'Beto',
         'email' => 'beto@example.com',
         'password' => 'Secreto#1234',
@@ -76,7 +77,6 @@ it('rechaza activar una licencia vencida', function () {
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -91,7 +91,6 @@ it('cierra la sesión de inmediato si la licencia de la compañía fue revocada'
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -109,7 +108,6 @@ it('una licencia solo vencida (no revocada) entra en modo de gracia: no bloquea 
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Mi Empresa',
         'name' => 'Juan',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -130,7 +128,7 @@ it('una licencia solo vencida (no revocada) entra en modo de gracia: no bloquea 
     // Cambiar de compañía activa y cerrar sesión siguen exentos del bloqueo
     // (housekeeping de sesión, no dato de negocio) — mismo usuario, misma
     // única compañía, así que company-switch es un no-op válido.
-    $company = Company::where('legal_name', 'Mi Empresa')->sole();
+    $company = Company::where('license_id', $license->id)->sole();
     $this->put(route('company-switch'), ['company_id' => $company->id])->assertSessionHasNoErrors();
     $this->delete(route('logout'))->assertRedirect(route('login'));
 });
@@ -148,7 +146,6 @@ it('cambiar a una segunda compañía "pega" en el siguiente request, con el id l
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Empresa Uno',
         'name' => 'Juan',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -157,7 +154,7 @@ it('cambiar a una segunda compañía "pega" en el siguiente request, con el id l
 
     $this->post(route('companies.store'), ['legal_name' => 'Empresa Dos'])->assertSessionHasNoErrors();
 
-    $companyOne = Company::where('legal_name', 'Empresa Uno')->sole();
+    $companyOne = Company::where('legal_name', LicenseActivationService::DEFAULT_COMPANY_NAME)->sole();
     $companyTwo = Company::where('legal_name', 'Empresa Dos')->sole();
 
     $this->put(route('company-switch'), ['company_id' => (string) $companyTwo->id])
@@ -268,7 +265,6 @@ it('activar una licencia la fija como superuser_id del usuario creado', function
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Mi Empresa',
         'name' => 'Juan Pérez',
         'email' => 'juan@example.com',
         'password' => 'Secreto#1234',
@@ -285,7 +281,6 @@ it('rechaza reactivar el mismo código aunque queden cupos disponibles: /activat
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'Secreto#1234',
@@ -296,7 +291,6 @@ it('rechaza reactivar el mismo código aunque queden cupos disponibles: /activat
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Segunda Empresa',
         'name' => 'Beto',
         'email' => 'beto@example.com',
         'password' => 'Secreto#1234',
@@ -312,7 +306,6 @@ it('el superusuario dueño de la licencia agrega una compañía adicional bajo s
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'Secreto#1234',
@@ -340,7 +333,6 @@ it('rechaza agregar una compañía adicional cuando la licencia ya alcanzó su t
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'Secreto#1234',
@@ -359,7 +351,6 @@ it('rechaza agregar una compañía adicional a un usuario que no es el superusua
 
     $this->post(route('license-activation.store'), [
         'code' => $license->code,
-        'legal_name' => 'Primera Empresa',
         'name' => 'Ana',
         'email' => 'ana@example.com',
         'password' => 'Secreto#1234',
@@ -367,7 +358,7 @@ it('rechaza agregar una compañía adicional a un usuario que no es el superusua
     ]);
 
     $superuser = User::where('email', 'ana@example.com')->sole();
-    $company = Company::where('legal_name', 'Primera Empresa')->sole();
+    $company = Company::where('license_id', $license->id)->sole();
 
     $admin = app(PermissionGrantService::class)->createUser(
         $superuser,

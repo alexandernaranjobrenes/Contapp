@@ -33,6 +33,7 @@ use App\Domains\Inventory\Services\PostStockMovementService;
 use App\Domains\Licensing\Models\License;
 use App\Domains\Payroll\Models\Employee;
 use App\Domains\Payroll\Models\VacationMovement;
+use App\Domains\Tax\Models\TaxRate;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -229,6 +230,62 @@ function backupFixtureOf(Company $copy, array $f): array
         'item' => $scoped(Item::class)->where('code', 'ART-1')->sole(),
         'warehouse' => $scoped(Warehouse::class)->where('code', 'ALM1')->sole(),
     ];
+}
+
+/** Un respaldo armado a mano, con su SHA-256 y su firma: el cierre se calcula de nuevo. */
+function backupSignedFile(array $records): string
+{
+    $lines = [];
+    $hash = hash_init('sha256');
+    $rows = [];
+
+    foreach ($records as $record) {
+        if ($record['tipo'] === 'cierre') {
+            continue;
+        }
+
+        $line = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        hash_update($hash, $line."\n");
+        $lines[] = $line;
+
+        if ($record['tipo'] === 'fila') {
+            $rows[$record['tabla']] = ($rows[$record['tabla']] ?? 0) + 1;
+        }
+    }
+
+    $digest = hash_final($hash);
+    $lines[] = json_encode(['tipo' => 'cierre', 'filas' => $rows, 'sha256' => $digest, 'firma' => BackupSignature::sign($digest)]);
+    $path = tempnam(sys_get_temp_dir(), 'respaldo');
+    $out = fopen($path, 'wb');
+    BackupFile::write($lines, BACKUP_PASSWORD, ['company' => 'X', 'period' => 'Todo'], $out);
+    fclose($out);
+
+    return $path;
+}
+
+/**
+ * Como otra instalación: las mismas monedas con los ids cruzados, que existen
+ * pero son la otra. Las pruebas corren en una transacción que no se confirma:
+ * las llaves foráneas, que se revisarían al final, no estorban.
+ *
+ * @return array{local: int, foreign: int} los ids nuevos de las monedas de la compañía
+ */
+function backupSwapCurrencies(Company $company): array
+{
+    $local = $company->local_currency_id;
+    $foreign = $company->foreign_currency_id;
+
+    DB::statement('PRAGMA defer_foreign_keys = ON');
+    DB::table('currencies')->where('id', $local)->update(['id' => 900001]);
+    DB::table('currencies')->where('id', $foreign)->update(['id' => $local]);
+    DB::table('currencies')->where('id', 900001)->update(['id' => $foreign]);
+
+    return ['local' => $foreign, 'foreign' => $local];
+}
+
+function backupCurrencyCode(?int $id): ?string
+{
+    return DB::table('currencies')->where('id', $id)->value('code');
 }
 
 function backupNextConsecutive(Company $company, string $code): int
@@ -655,41 +712,10 @@ it('una fila que apunta a algo obligatorio que el respaldo no trae se descarta, 
 
     // Como los respaldos que se exportaron con las conciliaciones de otras
     // compañías: una que apunta a una cuenta que no viene, en un respaldo sin
-    // ninguna cuenta. Se arma de nuevo, con su SHA-256 y su firma.
-    $records = [];
-
-    foreach (app(BackupExporter::class)->lines(new BackupOptions($empty, ['accounting']), ['name' => 'P', 'email' => 'p@x.com', 'role' => 'Superusuario']) as $line) {
-        $record = json_decode($line, true);
-
-        if ($record['tipo'] === 'cierre') {
-            $records[] = ['tipo' => 'fila', 'tabla' => 'account_reconciliations', 'fila' => ['id' => 999999, 'account_id' => 999999, 'reconciled_by' => null, 'reconciled_at' => '2026-02-01 10:00:00', 'created_at' => '2026-02-01 10:00:00', 'updated_at' => '2026-02-01 10:00:00']];
-
-            continue;
-        }
-
-        $records[] = $record;
-    }
-
-    $lines = [];
-    $hash = hash_init('sha256');
-    $rows = [];
-
-    foreach ($records as $record) {
-        $line = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        hash_update($hash, $line."\n");
-        $lines[] = $line;
-
-        if ($record['tipo'] === 'fila') {
-            $rows[$record['tabla']] = ($rows[$record['tabla']] ?? 0) + 1;
-        }
-    }
-
-    $digest = hash_final($hash);
-    $lines[] = json_encode(['tipo' => 'cierre', 'filas' => $rows, 'sha256' => $digest, 'firma' => BackupSignature::sign($digest)]);
-    $path = tempnam(sys_get_temp_dir(), 'respaldo');
-    $out = fopen($path, 'wb');
-    BackupFile::write($lines, BACKUP_PASSWORD, ['company' => 'X', 'period' => 'Todo'], $out);
-    fclose($out);
+    // ninguna cuenta.
+    $records = array_map(fn (string $line) => json_decode($line, true), iterator_to_array(app(BackupExporter::class)->lines(new BackupOptions($empty, ['accounting']), ['name' => 'P', 'email' => 'p@x.com', 'role' => 'Superusuario']), false));
+    $records[] = ['tipo' => 'fila', 'tabla' => 'account_reconciliations', 'fila' => ['id' => 999999, 'account_id' => 999999, 'reconciled_by' => null, 'reconciled_at' => '2026-02-01 10:00:00', 'created_at' => '2026-02-01 10:00:00', 'updated_at' => '2026-02-01 10:00:00']];
+    $path = backupSignedFile($records);
 
     app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD);
     $result = app(BackupImporter::class)->import($path, BACKUP_PASSWORD, $f['license'], ['legal_name' => 'Copia']);
@@ -699,6 +725,116 @@ it('una fila que apunta a algo obligatorio que el respaldo no trae se descarta, 
     expect($result['dropped'])->toBe(['account_reconciliations' => 1])
         ->and($merged['totals']['added'])->toBe(0)
         ->and(DB::table('account_reconciliations')->count())->toBe(0);
+});
+
+it('cada tabla de Pivox que se referencia dice con qué se reconoce en otra instalación', function () {
+    $schema = app(BackupSchema::class);
+
+    foreach ([...BackupCatalog::GLOBAL_TABLES, ...BackupCatalog::MIXED_TABLES] as $table) {
+        expect(BackupCatalog::GLOBAL_KEYS)->toHaveKey($table);
+
+        foreach (BackupCatalog::GLOBAL_KEYS[$table] as $column) {
+            expect($schema->hasColumn($table, $column))->toBeTrue("{$table}.{$column} no existe");
+        }
+    }
+});
+
+it('entre instalaciones, las monedas se reconocen por su código y no por su id', function () {
+    $f = backupFixture();
+    $balance = backupTrialBalance($f['company']);
+    $detailsOf = fn (Company $c) => DB::table('journal_details')->whereIn('journal_entry_id', DB::table('journal_entries')->where('company_id', $c->id)->select('id'));
+    $lines = $detailsOf($f['company'])->count();
+    $path = backupFileOf($f['company']);
+
+    // Con los ids cruzados, el id de la moneda local existe, pero es la otra.
+    $ids = backupSwapCurrencies($f['company']);
+
+    app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD);
+    $result = app(BackupImporter::class)->import($path, BACKUP_PASSWORD, $f['license'], ['legal_name' => 'Copia']);
+    unlink($path);
+    $copy = $result['company'];
+
+    expect($result['dropped'])->toBe([])
+        ->and($copy->local_currency_id)->toBe($ids['local'])
+        ->and($copy->foreign_currency_id)->toBe($ids['foreign'])
+        ->and(backupCurrencyCode($copy->local_currency_id))->toBe('CRC')
+        ->and($detailsOf($copy)->count())->toBe($lines)
+        ->and($detailsOf($copy)->distinct()->pluck('currency_id')->all())->toBe([$ids['local']])
+        ->and(BusinessPartner::withoutGlobalScope(CompanyScope::class)->where('company_id', $copy->id)->value('currency_id'))->toBe($ids['local'])
+        ->and(ExchangeRate::withoutGlobalScope(CompanyScope::class)->where('company_id', $copy->id)->value('currency_id'))->toBe($ids['foreign'])
+        ->and(backupTrialBalance($copy))->toBe($balance);
+});
+
+it('entre instalaciones, completar reconoce la moneda local por su código', function () {
+    $f = backupFixture();
+    $path = backupFileOf($f['company']);
+    $ids = backupSwapCurrencies($f['company']);
+    $target = Company::factory()->create(['license_id' => $f['license']->id, 'local_currency_id' => $ids['local'], 'foreign_currency_id' => $ids['foreign'], 'system_currency_id' => $ids['foreign']]);
+
+    $report = backupMerge($path, $target);
+    unlink($path);
+
+    expect($report['conflicts'])->toBe([])
+        ->and($report['tables']['business_partners']['added'])->toBe(1)
+        ->and(BusinessPartner::withoutGlobalScope(CompanyScope::class)->where('company_id', $target->id)->value('currency_id'))->toBe($ids['local']);
+});
+
+it('si usa algo de Pivox que acá no existe, se rechaza al revisarlo diciendo qué, y no entra a medias', function () {
+    $f = backupFixture();
+    $rate = TaxRate::factory()->create(['code' => 'IVA-13']);
+    $f['accounts']['sales']->update(['tax_rate_id' => $rate->id]);
+    $unused = TaxRate::factory()->create(['code' => 'IVA-SIN-USO']);
+    $path = backupFileOf($f['company']);
+
+    DB::table('currencies')->where('id', $f['company']->foreign_currency_id)->update(['code' => 'EUR']);
+    DB::table('tax_rates')->whereIn('id', [$rate->id, $unused->id])->update(['code' => 'OTRA']);
+    $companies = Company::withoutGlobalScopes()->count();
+
+    expect(fn () => app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD))
+        ->toThrow(InvalidBackupException::class, 'usa lo que esta instalación de Pivox no tiene: la moneda USD, la tarifa IVA-13.');
+
+    unlink($path);
+    expect(Company::withoutGlobalScopes()->count())->toBe($companies);
+});
+
+it('un respaldo exportado antes de traer los códigos se importa por id, y si el id no existe se rechaza', function () {
+    $f = backupFixture();
+    $records = array_map(fn (string $line) => json_decode($line, true), iterator_to_array(app(BackupExporter::class)->lines(new BackupOptions($f['company'], ['accounting']), ['name' => 'P', 'email' => 'p@x.com', 'role' => 'Superusuario']), false));
+    unset($records[0]['globales']);
+    $path = backupSignedFile($records);
+
+    // En la misma instalación, los ids valen.
+    app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD);
+    expect(app(BackupImporter::class)->import($path, BACKUP_PASSWORD, $f['license'], ['legal_name' => 'Copia'])['dropped'])->toBe([]);
+
+    // En otra, no existen.
+    $old = $f['company']->local_currency_id;
+    DB::statement('PRAGMA defer_foreign_keys = ON');
+    DB::table('currencies')->where('id', $old)->update(['id' => 900001]);
+
+    expect(fn () => app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD))
+        ->toThrow(InvalidBackupException::class, "versión anterior de Pivox y usa lo que esta instalación no tiene (la moneda #{$old}");
+
+    unlink($path);
+});
+
+it('un rol de Pivox que acá todavía no existe se crea: la persona entra con él', function () {
+    $f = backupFixture();
+    $ana = User::factory()->create(['email' => 'ana@example.com']);
+    $f['company']->users()->attach($ana->id, ['is_default' => false]);
+    $role = Role::firstOrCreate(['company_id' => null, 'type' => 'user'], ['name' => 'Usuario', 'can_grant_permissions' => false]);
+    DB::table('user_roles')->insert(['user_id' => $ana->id, 'role_id' => $role->id, 'company_id' => $f['company']->id]);
+    $path = backupFileOf($f['company']);
+
+    DB::table('user_roles')->delete();
+    DB::table('roles')->where('id', $role->id)->delete();
+
+    app(BackupImporter::class)->inspect($path, BACKUP_PASSWORD);
+    $result = app(BackupImporter::class)->import($path, BACKUP_PASSWORD, $f['license'], ['legal_name' => 'Copia']);
+    unlink($path);
+
+    expect($result['people']['added'])->toBe(['ana@example.com'])
+        ->and(DB::table('user_roles')->join('roles', 'roles.id', '=', 'user_roles.role_id')->where('user_roles.company_id', $result['company']->id)->where('user_roles.user_id', $ana->id)->value('roles.type'))->toBe('user');
 });
 
 it('revisar e importar avisan su avance, y al final el total', function () {

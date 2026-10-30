@@ -50,9 +50,6 @@ class LicenseActivationController extends Controller
         $validated = $request->validate([
             'account' => ['nullable', 'string', 'in:new,existing'],
             'code' => ['required', 'string'],
-            'legal_name' => ['required', 'string', 'max:255'],
-            'trade_name' => ['nullable', 'string', 'max:255'],
-            'tax_id' => ['nullable', 'string', 'max:50'],
             'email' => ['required', 'email'],
             ...($existingAccount ? [
                 // La contraseña que ya tiene: se comprueba, no se le exige
@@ -64,11 +61,9 @@ class LicenseActivationController extends Controller
             ]),
         ]);
 
-        $companyData = [
-            'legal_name' => $validated['legal_name'],
-            'trade_name' => $validated['trade_name'] ?? null,
-            'tax_id' => $validated['tax_id'] ?? null,
-        ];
+        // La compañía no se pide: nace con el nombre predefinido, y el
+        // recorrido de bienvenida pide los datos reales al entrar.
+        $companyData = [];
 
         try {
             $result = $existingAccount
@@ -94,7 +89,7 @@ class LicenseActivationController extends Controller
 
         return redirect()->route('dashboard')->with('success', $existingAccount
             ? "Licencia activada: ya sos Superusuario de {$result['company']->legal_name}"
-            : 'Compañía activada. ¡Bienvenido a Pivox!');
+            : 'Licencia activada. ¡Te damos la bienvenida a Pivox!');
     }
 
     /**

@@ -93,6 +93,7 @@ class ActivityLogService
         'company_created' => 'creó la compañía',
         'company.details_updated' => 'editó los datos de la compañía',
         'company.theme_updated' => 'cambió el tema de la compañía',
+        'company.dashboard_updated' => 'cambió los elementos del Panel',
         'company.logo_updated' => 'cambió el logo de la compañía',
         'company.logo_removed' => 'quitó el logo de la compañía',
         'company.backup_exported' => 'exportó un respaldo de la compañía',
